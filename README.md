@@ -47,9 +47,26 @@ npm run dev
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile devices
 
 ### Privacy & Security
-- **Local-Only Processing**: All image processing happens locally in your browser
-- **No Data Upload**: Your images and metadata never leave your device
-- **Browser Security**: Leverages modern File System Access API with proper permissions
+
+**Complete Local Processing - Zero Data Collection:**
+
+- **100% Local Execution**: All image processing, metadata extraction, and caching happens entirely within your browser
+- **No Network Requests**: The application never sends any data to external servers or services
+- **No Telemetry**: No usage analytics, tracking pixels, or data collection of any kind
+- **No User Accounts**: No registration, login, or personal information required
+- **Offline Capable**: Works completely offline after initial page load
+- **Browser-Only Storage**: All data (cache, settings, thumbnails) stored locally using browser APIs (IndexedDB, localStorage)
+- **No Cloud Dependencies**: Does not rely on any cloud services or external APIs
+- **File System Permissions**: Uses browser's File System Access API with explicit user permission for each directory access
+- **Your Data Stays Yours**: Images, metadata, prompts, and all generated data never leave your device
+
+**Technical Privacy Implementation:**
+- **IndexedDB**: Local database storage for caching (never synchronized)
+- **File System Access API**: Direct local file access without file uploads
+- **PNG Metadata Parsing**: Client-side metadata extraction from image files
+- **No External CDNs**: All dependencies bundled locally (except Tailwind CSS from CDN for styling only)
+
+This tool is designed for users who prioritize data privacy and want complete control over their AI-generated image collections.
 
 ## Browser Compatibility
 

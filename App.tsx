@@ -59,9 +59,9 @@ export default function App() {
         try {
           // Note: Due to browser security, we can't automatically restore the exact directory
           // We can only save the name for user reference
-          console.log(`Previously used directory: ${savedDirectoryName}`);
+          // console.log removed for production
         } catch (error) {
-          console.log('Could not restore previous directory');
+          // console.log removed for production
         }
       }
     };
@@ -73,7 +73,7 @@ export default function App() {
     const allModels = new Set<string>();
     const allLoras = new Set<string>();
     
-    console.log('Processing images for filters:', images.length);
+    // // console.log removed for production
     
     images.forEach((image, index) => {
       console.log(`Image ${index}:`, {
@@ -95,41 +95,41 @@ export default function App() {
       // Handle models
       if (Array.isArray(image.models)) {
         imageModels = image.models;
-        console.log('Models already array:', imageModels);
+        // console.log removed for production
       } else if (image.models && typeof image.models === 'object') {
         // Try different ways to extract from object
         const modelsObj = image.models as any;
         if (modelsObj.length !== undefined) {
           // Object with length property (array-like)
           imageModels = Array.from(modelsObj);
-          console.log('Converted array-like object to array:', imageModels);
+          // console.log removed for production
         } else {
           // Regular object - get values
           imageModels = Object.values(modelsObj).filter(v => v && typeof v === 'string');
-          console.log('Converted object values to array:', imageModels);
+          // console.log removed for production
         }
       }
       
       // Handle loras
       if (Array.isArray(image.loras)) {
         imageLoras = image.loras;
-        console.log('Loras already array:', imageLoras);
+        // console.log removed for production
       } else if (image.loras && typeof image.loras === 'object') {
         // Try different ways to extract from object
         const lorasObj = image.loras as any;
         if (lorasObj.length !== undefined) {
           // Object with length property (array-like)
           imageLoras = Array.from(lorasObj);
-          console.log('Converted loras array-like object to array:', imageLoras);
+          // console.log removed for production
         } else {
           // Regular object - get values
           imageLoras = Object.values(lorasObj).filter(v => v && typeof v === 'string');
-          console.log('Converted loras object values to array:', imageLoras);
+          // console.log removed for production
         }
       }
       
       imageModels.forEach((model, idx) => {
-        console.log(`Model ${idx}:`, model, 'type:', typeof model);
+        // console.log removed for production
         
         let modelName = '';
         if (typeof model === 'string') {
@@ -158,14 +158,14 @@ export default function App() {
         
         if (modelName && modelName.length > 0) {
           allModels.add(modelName);
-          console.log('Successfully added model:', modelName);
+          // console.log removed for production
         } else {
-          console.log('Model rejected:', model);
+          // console.log removed for production
         }
       });
       
       imageLoras.forEach((lora, idx) => {
-        console.log(`Lora ${idx}:`, lora, 'type:', typeof lora);
+        // console.log removed for production
         
         let loraName = '';
         if (typeof lora === 'string') {
@@ -194,9 +194,9 @@ export default function App() {
         
         if (loraName && loraName.length > 0) {
           allLoras.add(loraName);
-          console.log('Successfully added lora:', loraName);
+          // console.log removed for production
         } else {
-          console.log('Lora rejected:', lora);
+          // console.log removed for production
         }
       });
     });
@@ -204,8 +204,8 @@ export default function App() {
     const finalModels = Array.from(allModels).sort();
     const finalLoras = Array.from(allLoras).sort();
     
-    console.log('Final models for UI:', finalModels);
-    console.log('Final loras for UI:', finalLoras);
+    // console.log removed for production
+    // console.log removed for production
     
     setAvailableModels(finalModels);
     setAvailableLoras(finalLoras);
@@ -329,16 +329,16 @@ export default function App() {
       await cacheManager.init();
       
       // Quick count of PNG files to determine if we should use cache
-      console.log('Counting PNG files...');
+      // console.log removed for production
       const allFiles = await getAllFileHandles(handle);
       const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
-      console.log(`Found ${pngCount} PNG files`);
+      // console.log removed for production
       
       // Check if we should use cached data
       const shouldRefresh = await cacheManager.shouldRefreshCache(handle.name, pngCount);
       
       if (!shouldRefresh) {
-        console.log('Loading from cache...');
+        // console.log removed for production
         const cachedData = await cacheManager.getCachedData(handle.name);
         if (cachedData) {
           // Reconstruct IndexedImage objects from cached metadata
@@ -347,13 +347,13 @@ export default function App() {
           setFilteredImages(reconstructedImages);
           updateFilterOptions(reconstructedImages);
           setIsLoading(false);
-          console.log(`Loaded ${reconstructedImages.length} images from cache instantly!`);
+          // console.log removed for production
           return;
         }
       }
       
       // Process directory normally and cache the results
-      console.log('Processing directory...');
+      // console.log removed for production
       const indexedImages = await processDirectory(handle, setProgress);
       setImages(indexedImages);
       setFilteredImages(indexedImages);
@@ -361,11 +361,11 @@ export default function App() {
       
       // Cache the processed data
       await cacheManager.cacheData(handle.name, indexedImages);
-      console.log('Data cached successfully!');
+      // console.log removed for production
       
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        console.log("User cancelled folder selection.");
+        // console.log removed for production
       } else {
         console.error("Error selecting directory:", err);
         setError("Failed to process the directory. See console for details.");

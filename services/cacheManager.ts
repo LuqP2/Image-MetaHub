@@ -92,7 +92,7 @@ class CacheManager {
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
-        console.log(`Cached metadata for ${images.length} images`);
+        // console.log removed
         resolve();
       };
     });
@@ -165,7 +165,7 @@ class CacheManager {
     const countChangeThreshold = Math.max(10, cached.imageCount * 0.05); // 5% or 10 images
     
     if (countDiff > countChangeThreshold) {
-      console.log(`Image count changed significantly: ${cached.imageCount} → ${currentImageCount}`);
+      // console.log removed
       return true;
     }
 
@@ -174,7 +174,7 @@ class CacheManager {
     const maxAge = 60 * 60 * 1000; // 1 hour
     
     if (cacheAge > maxAge) {
-      console.log(`Cache is old: ${Math.round(cacheAge / 1000 / 60)} minutes`);
+      // console.log removed
       return true;
     }
 
@@ -182,4 +182,7 @@ class CacheManager {
   }
 }
 
-export const cacheManager = new CacheManager();
+// Export cache manager instance
+const cacheManager = new CacheManager();
+export { cacheManager };
+export default cacheManager;

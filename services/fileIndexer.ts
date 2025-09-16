@@ -40,9 +40,9 @@ function extractModels(metadata: InvokeAIMetadata): string[] {
     });
   }
   
-  const result = models.filter(Boolean); // Remove empty strings
-  console.log('extractModels returning:', result, 'type:', typeof result, 'isArray:', Array.isArray(result));
-  return result;
+  // const result = models.filter(Boolean); // Remove empty strings
+  // // console.log removed
+  return models.filter(Boolean);
 }
 
 // Helper function to extract readable model name
@@ -130,9 +130,9 @@ function extractLoras(metadata: InvokeAIMetadata): string[] {
     }
   }
   
-  const result = loras.filter(Boolean); // Remove empty strings
-  console.log('extractLoras returning:', result, 'type:', typeof result, 'isArray:', Array.isArray(result));
-  return result;
+  // const result = loras.filter(Boolean); // Remove empty strings
+  // // console.log removed
+  return loras.filter(Boolean);
 }
 
 async function parseInvokeAIMetadata(file: File): Promise<InvokeAIMetadata | null> {
@@ -206,9 +206,9 @@ export async function processDirectory(
   let thumbnailsDir: FileSystemDirectoryHandle | null = null;
   try {
     thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
-    console.log('Found thumbnails directory!');
+    // console.log removed
   } catch (error) {
-    console.log('No thumbnails directory found, will use original images');
+    // console.log removed
   }
 
   // Get thumbnail files if directory exists
@@ -222,7 +222,7 @@ export async function processDirectory(
       const pngName = thumbEntry.handle.name.replace(/\.webp$/i, '.png');
       thumbnailMap.set(pngName, thumbEntry.handle);
     }
-    console.log(`Found ${thumbnailMap.size} thumbnails`);
+    // console.log removed
   }
 
   const total = pngFiles.length;
@@ -243,15 +243,15 @@ export async function processDirectory(
         // Find corresponding thumbnail
         const thumbnailHandle = thumbnailMap.get(fileEntry.handle.name);
         
-        console.log('Before creating IndexedImage:', {
-          models,
-          loras,
-          modelsType: typeof models,
-          lorasType: typeof loras,
-          modelsIsArray: Array.isArray(models),
-          lorasIsArray: Array.isArray(loras),
-          hasThumbnail: !!thumbnailHandle
-        });
+        // console.log('Before creating IndexedImage:', {
+        //   models,
+        //   loras,
+        //   modelsType: typeof models,
+        //   lorasType: typeof loras,
+        //   modelsIsArray: Array.isArray(models),
+        //   lorasIsArray: Array.isArray(loras),
+        //   hasThumbnail: !!thumbnailHandle
+        // });
         
         indexedImages.push({
           id: fileEntry.path,
