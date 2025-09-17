@@ -321,19 +321,10 @@ export async function processDirectory(
         const metadataString = JSON.stringify(metadata);
         const models = extractModels(metadata);
         const loras = extractLoras(metadata);
+        const scheduler = metadata.scheduler || 'Unknown';
         
         // Find corresponding thumbnail
         const thumbnailHandle = thumbnailMap.get(fileEntry.handle.name);
-        
-        // console.log('Before creating IndexedImage:', {
-        //   models,
-        //   loras,
-        //   modelsType: typeof models,
-        //   lorasType: typeof loras,
-        //   modelsIsArray: Array.isArray(models),
-        //   lorasIsArray: Array.isArray(loras),
-        //   hasThumbnail: !!thumbnailHandle
-        // });
         
         indexedImages.push({
           id: fileEntry.path,
@@ -345,6 +336,7 @@ export async function processDirectory(
           lastModified: file.lastModified,
           models,
           loras,
+          scheduler,
         });
       }
     } catch (error) {

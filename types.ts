@@ -23,11 +23,14 @@ export interface IndexedImage {
   lastModified: number; // File's last modified date
   models: string[]; // Extracted models from metadata
   loras: string[]; // Extracted LoRAs from metadata
+  scheduler: string; // Extracted scheduler from metadata
 }
 
 export interface FilterOptions {
   models: string[];
   loras: string[];
+  schedulers: string[];
   selectedModel: string;
   selectedLora: string;
+  selectedScheduler: string;
 }

@@ -6,11 +6,12 @@ A fast, local web application for browsing and organizing AI-generated images fr
 
 ## Features
 
-### Current Features (v1.1)
+### Current Features (v1.3)
 - **Local-First**: Browse images directly from your local folders - no uploads required
 - **Smart Caching**: Intelligent IndexedDB caching with incremental updates for fast subsequent loads
 - **Advanced Search**: Full-text search across all metadata including prompts, models, and settings
-- **Intelligent Filtering**: Filter by AI models and LoRA models with auto-detection
+- **Comprehensive Filtering**: Filter by AI models, LoRA models, and schedulers with auto-detection
+- **Metadata Export**: Export individual image metadata as readable TXT or structured JSON files
 - **Thumbnail Support**: Automatic WebP thumbnail detection and display
 - **Responsive Design**: Works on desktop and mobile devices
 - **Privacy First**: Everything runs locally - no data leaves your machine
@@ -80,6 +81,8 @@ npm run dev
 - **New Images**: Only new images are processed, maintaining fast performance
 - **Search**: Use word-boundary search (e.g., "city" won't match "opacity")
 - **Thumbnails**: Place your InvokeAI thumbnails directory alongside images for faster loading
+- **Export Metadata**: Click any image to open details and use export buttons for TXT/JSON files
+- **Filtering**: Combine multiple filters (model + LoRA + scheduler) for precise searches
 
 ## Technical Architecture
 

@@ -2,7 +2,7 @@
   "name": "local-image-browser-for-invokeai",
   "description": "Local image browser for browsing InvokeAI outputs (unaffiliated)",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
