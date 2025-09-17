@@ -2,15 +2,33 @@
 
 > **Disclaimer:** This project is an independent, community-created tool and is **not affiliated with or endorsed by** Invoke AI, Inc. or the official InvokeAI project. "InvokeAI" is a trademark of Invoke AI, Inc. This tool is designed to work with InvokeAI-generated images but is developed and maintained independently.
 
-A fast, local web application for browsing and organizing AI-generated images from InvokeAI with advanced filtering and caching capabilities.
+A fast, local web application for browsing and organizing AI-generated images from InvokeAI with advanced filtering and smart caching capabilities. Built with React + TypeScript for optimal performance with large image collections.
+
+## Features
+
+### Current Features (v1.1)
+- **Local-First**: Browse images directly from your local folders - no uploads required
+- **Smart Caching**: Intelligent IndexedDB caching with incremental updates for fast subsequent loads
+- **Advanced Search**: Full-text search across all metadata including prompts, models, and settings
+- **Intelligent Filtering**: Filter by AI models and LoRA models with auto-detection
+- **Thumbnail Support**: Automatic WebP thumbnail detection and display
+- **Responsive Design**: Works on desktop and mobile devices
+- **Privacy First**: Everything runs locally - no data leaves your machine
+- **InvokeAI Optimized**: Deep metadata extraction from InvokeAI PNG files
+
+### Performance Features
+- **Incremental Indexing**: Only processes new/changed images on subsequent loads
+- **Memory Efficient**: Handles 17,000+ images without performance degradation
+- **Background Processing**: Non-blocking file indexing with progress indicators
+- **Lazy Loading**: Images loaded on-demand for optimal performance
 
 ## Installation
 
-**Prerequisites:** Node.js (LTS recommended)
+**Prerequisites:** Node.js 16+ (LTS recommended) and a modern browser
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/local-image-browser-for-invokeai.git
+git clone https://github.com/LuqP2/local-image-browser-for-invokeai.git
 cd local-image-browser-for-invokeai
 
 # Install dependencies
@@ -20,26 +38,86 @@ npm install
 npm run dev
 ```
 
-## Features
+## Browser Compatibility
 
-### Core Functionality
-- **Local Image Browsing**: Browse AI-generated images directly from your local folder
-- **Metadata Search**: Search through image metadata including prompts, models, and settings
-- **File System Access**: Uses modern browser APIs to access local directories securely
-- **InvokeAI Compatibility**: Optimized for browsing InvokeAI outputs with metadata extraction
+| Browser | Support | Notes |
+|---------|---------|-------|
+| Chrome 86+ | Full Support | File System Access API supported |
+| Edge 86+ | Full Support | File System Access API supported |
+| Firefox | Limited Support | Fallback implementation needed |
+| Safari | Not Supported | File System Access API not available |
 
-### Advanced Filtering & Organization
-- **Model & LoRA Filtering**: Filter images by AI models and LoRA
-- **Smart Search**: Word-boundary search that finds exact matches (e.g., "city" won't match "opacity")
-- **Multiple Sort Options**: Alphabetical (A-Z, Z-A) and Date-based (Newest/Oldest First)
-- **Flexible Pagination**: Choose 10, 20, 50, 100 items per page, or view all images at once
-- **Real-time Search**: Instant search results as you type through large collections
+## Roadmap
 
-### Performance & Caching
-- **Thumbnail Support**: Automatic detection and use of InvokeAI thumbnail cache (.webp files)
-- **Smart Caching**: IndexedDB cache for instant loading (first scan ~4 min, subsequent loads ~10 sec)
-- **Intermediate Image Filtering**: Automatically excludes InvokeAI intermediate/temporary images from indexing
-- **Intelligent Cache Invalidation**: Detects new images and refreshes cache only when needed
+### Short Term (v1.1)
+- Enhanced Filters: Scheduler, Steps slider, CFG Scale slider
+- Dimension Filtering: Filter by image dimensions (512x512, 1024x1024, etc.)
+- Performance Optimizations: Virtual scrolling for massive collections
+
+### Medium Term (v1.5)
+- Multi-Platform Support: ComfyUI and Automatic1111 metadata parsing
+- Tag System: Custom tagging and organization
+- Batch Operations: Move, delete, export multiple images
+- Analytics Dashboard: Usage statistics and trends
+
+### Long Term (v2.0)
+- Universal AI Browser: Support for all major AI image generation platforms
+- Image Similarity: Find similar images using embeddings
+- Cloud Sync: Optional cloud backup and sync
+- Plugin System: Extensible architecture for custom parsers
+
+## Quick Start
+
+1. **Select Folder**: Click "Change Folder" and select your InvokeAI outputs directory
+2. **Wait for Indexing**: First-time indexing takes a few minutes (cached afterwards)
+3. **Search & Filter**: Use the search bar and filters to find specific images
+4. **View Details**: Click any image to see full metadata and larger preview
+
+## Usage Tips
+
+- **First Load**: Initial indexing of large collections (17k+ images) takes 3-4 minutes
+- **Subsequent Loads**: Cached data loads in ~10 seconds
+- **New Images**: Only new images are processed, maintaining fast performance
+- **Search**: Use word-boundary search (e.g., "city" won't match "opacity")
+- **Thumbnails**: Place your InvokeAI thumbnails directory alongside images for faster loading
+
+## Technical Architecture
+
+Built with modern web technologies for optimal performance:
+
+- **Frontend**: React 18 + TypeScript 5.2
+- **Build Tool**: Vite 5.0
+- **Storage**: IndexedDB for persistent caching
+- **File Access**: File System Access API (Chrome/Edge)
+- **Styling**: Tailwind CSS (responsive design)
+
+For detailed technical documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Contributing
+
+Contributions are welcome! This project has potential to become a universal AI image browser supporting multiple platforms.
+
+### Development Setup
+```bash
+git clone https://github.com/LuqP2/local-image-browser-for-invokeai.git
+cd local-image-browser-for-invokeai
+npm install
+npm run dev
+```
+
+### Planned Contributions Areas
+- Additional metadata parsers (ComfyUI, A1111)
+- Enhanced filtering options
+- Performance optimizations
+- UI/UX improvements
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## Disclaimer
+
+This is an independent project not affiliated with Invoke AI, Inc. InvokeAI is a trademark of Invoke AI, Inc. This tool is designed to work with InvokeAI-generated content but is developed and maintained independently by the community.
 - **Lazy Loading**: Images load as you scroll for optimal performance
 
 ### User Experience

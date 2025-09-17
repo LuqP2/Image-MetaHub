@@ -447,12 +447,16 @@ export default function App() {
   };
 
   useEffect(() => {
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, imagesCount: images.length });
+    
     if (!searchQuery && !selectedModel && !selectedLora) {
+      console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
       return;
     }
 
+    console.log('🎯 APPLYING FILTERS...');
     let results = images;
 
     // Apply search filter
@@ -478,13 +482,21 @@ export default function App() {
 
     // Apply LoRA filter
     if (selectedLora) {
-      results = results.filter(image => 
-        image.loras.some(lora => {
+      console.log('🔍 APPLYING LORA FILTER:', selectedLora);
+      console.log('🔍 TOTAL IMAGES BEFORE LORA FILTER:', results.length);
+      
+      results = results.filter(image => {
+        console.log('🔍 Filtering by LoRA:', { selectedLora, imageLoras: image.loras });
+        return image.loras.some(lora => {
           // Ensure lora is a string before calling toLowerCase
           const loraString = typeof lora === 'string' ? lora : String(lora);
-          return loraString.toLowerCase().includes(selectedLora.toLowerCase());
-        })
-      );
+          const match = loraString.toLowerCase().includes(selectedLora.toLowerCase());
+          console.log('🔍 LoRA match check:', { lora: loraString, selectedLora, match });
+          return match;
+        });
+      });
+      
+      console.log('🔍 TOTAL IMAGES AFTER LORA FILTER:', results.length);
     }
 
     const sortedResults = sortImages(results);
