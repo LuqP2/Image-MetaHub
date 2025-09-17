@@ -29,7 +29,7 @@ npm run dev
 - **InvokeAI Compatibility**: Optimized for browsing InvokeAI outputs with metadata extraction
 
 ### Advanced Filtering & Organization
-- **Model & LoRA Filtering**: Filter images by AI models and LoRA (supports 41+ models, 18+ LoRAs)
+- **Model & LoRA Filtering**: Filter images by AI models and LoRA
 - **Smart Search**: Word-boundary search that finds exact matches (e.g., "city" won't match "opacity")
 - **Multiple Sort Options**: Alphabetical (A-Z, Z-A) and Date-based (Newest/Oldest First)
 - **Flexible Pagination**: Choose 10, 20, 50, 100 items per page, or view all images at once
