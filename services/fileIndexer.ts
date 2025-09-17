@@ -115,8 +115,39 @@ function extractLoras(metadata: InvokeAIMetadata): string[] {
   // Also check metadata for LoRA fields
   if (metadata.loras && Array.isArray(metadata.loras)) {
     metadata.loras.forEach((lora: any) => {
-      const loraName = typeof lora === 'string' ? lora : lora.name || lora.model;
-      if (loraName && !loras.includes(loraName)) {
+      let loraName = '';
+      
+      if (typeof lora === 'string') {
+        loraName = lora.trim();
+      } else if (lora && typeof lora === 'object') {
+        // First check direct string properties
+        const directNames = [lora.name, lora.model_name, lora.key];
+        
+        // Then check if model is an object with name properties
+        if (lora.model && typeof lora.model === 'object') {
+          directNames.push(lora.model.name, lora.model.model, lora.model.model_name, lora.model.key);
+        } else if (lora.model && typeof lora.model === 'string') {
+          directNames.push(lora.model);
+        }
+        
+        for (const name of directNames) {
+          if (name && typeof name === 'string' && name.trim().length > 0) {
+            loraName = name.trim();
+            break;
+          }
+        }
+        
+        // If still no valid name found, skip this lora
+        if (!loraName) {
+          return;
+        }
+      }
+      
+      // Basic validation - avoid empty strings and [object Object]
+      if (loraName && 
+          loraName.length > 0 && 
+          loraName !== '[object Object]' &&
+          !loras.includes(loraName)) {
         loras.push(loraName);
       }
     });
@@ -124,8 +155,18 @@ function extractLoras(metadata: InvokeAIMetadata): string[] {
   
   // Check for LoRA in other common metadata fields
   if (metadata.lora) {
-    const loraName = typeof metadata.lora === 'string' ? metadata.lora : metadata.lora.name;
-    if (loraName && !loras.includes(loraName)) {
+    let loraName = '';
+    
+    if (typeof metadata.lora === 'string') {
+      loraName = metadata.lora.trim();
+    } else if (metadata.lora && typeof metadata.lora === 'object') {
+      loraName = metadata.lora.name || metadata.lora.model || metadata.lora.key;
+      if (typeof loraName !== 'string') {
+        loraName = metadata.lora.key || JSON.stringify(metadata.lora);
+      }
+    }
+    
+    if (loraName && loraName.length > 0 && !loras.includes(loraName)) {
       loras.push(loraName);
     }
   }
