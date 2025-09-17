@@ -195,12 +195,40 @@ async function getFileHandlesRecursive(
   return entries;
 }
 
+// Function to filter out InvokeAI intermediate images
+function isIntermediateImage(filename: string): boolean {
+  const name = filename.toLowerCase();
+  
+  // Common patterns for InvokeAI intermediate images
+  const intermediatePatterns = [
+    /^intermediate_/, // Files starting with "intermediate_"
+    /_intermediate_/, // Files containing "_intermediate_"
+    /^canvas_/, // Canvas intermediate images
+    /_canvas_/, // Canvas related files
+    /^controlnet_/, // ControlNet intermediate images
+    /_controlnet_/, // ControlNet related files
+    /^inpaint_/, // Inpainting intermediate images
+    /_inpaint_/, // Inpainting related files
+    /^tmp_/, // Temporary files
+    /_tmp_/, // Temporary files
+    /^temp_/, // Temp files
+    /_temp_/, // Temp files
+    /\.tmp\.png$/, // Files ending with .tmp.png
+    /\.temp\.png$/, // Files ending with .temp.png
+  ];
+  
+  return intermediatePatterns.some(pattern => pattern.test(name));
+}
+
 export async function processDirectory(
   directoryHandle: FileSystemDirectoryHandle,
   setProgress: (progress: { current: number; total: number }) => void
 ): Promise<IndexedImage[]> {
   const allFileEntries = await getFileHandlesRecursive(directoryHandle);
-  const pngFiles = allFileEntries.filter(entry => entry.handle.name.toLowerCase().endsWith('.png'));
+  const pngFiles = allFileEntries.filter(entry => 
+    entry.handle.name.toLowerCase().endsWith('.png') && 
+    !isIntermediateImage(entry.handle.name)
+  );
 
   // Try to find thumbnails directory
   let thumbnailsDir: FileSystemDirectoryHandle | null = null;

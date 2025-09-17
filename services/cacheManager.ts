@@ -155,18 +155,17 @@ class CacheManager {
   async shouldRefreshCache(
     directoryName: string,
     currentImageCount: number
-  ): Promise<boolean> {
+  ): Promise<{ shouldRefresh: boolean }> {
     const cached = await this.getCachedData(directoryName);
     
-    if (!cached) return true;
+    if (!cached) return { shouldRefresh: true };
     
-    // Refresh if image count changed significantly
+    // Check if image count changed
     const countDiff = Math.abs(cached.imageCount - currentImageCount);
-    const countChangeThreshold = Math.max(10, cached.imageCount * 0.05); // 5% or 10 images
     
-    if (countDiff > countChangeThreshold) {
-      // console.log removed
-      return true;
+    // If count changed, refresh cache
+    if (countDiff > 0) {
+      return { shouldRefresh: true };
     }
 
     // Refresh if cache is older than 1 hour
@@ -174,11 +173,10 @@ class CacheManager {
     const maxAge = 60 * 60 * 1000; // 1 hour
     
     if (cacheAge > maxAge) {
-      // console.log removed
-      return true;
+      return { shouldRefresh: true };
     }
 
-    return false;
+    return { shouldRefresh: false };
   }
 }
 

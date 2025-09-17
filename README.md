@@ -30,6 +30,7 @@ npm run dev
 
 ### Advanced Filtering & Organization
 - **Model & LoRA Filtering**: Filter images by AI models and LoRA (supports 41+ models, 18+ LoRAs)
+- **Smart Search**: Word-boundary search that finds exact matches (e.g., "city" won't match "opacity")
 - **Multiple Sort Options**: Alphabetical (A-Z, Z-A) and Date-based (Newest/Oldest First)
 - **Flexible Pagination**: Choose 10, 20, 50, 100 items per page, or view all images at once
 - **Real-time Search**: Instant search results as you type through large collections
@@ -37,7 +38,8 @@ npm run dev
 ### Performance & Caching
 - **Thumbnail Support**: Automatic detection and use of InvokeAI thumbnail cache (.webp files)
 - **Smart Caching**: IndexedDB cache for instant loading (first scan ~4 min, subsequent loads ~10 sec)
-- **Incremental Updates**: Only processes new/changed images on subsequent scans
+- **Intermediate Image Filtering**: Automatically excludes InvokeAI intermediate/temporary images from indexing
+- **Intelligent Cache Invalidation**: Detects new images and refreshes cache only when needed
 - **Lazy Loading**: Images load as you scroll for optimal performance
 
 ### User Experience
@@ -96,6 +98,16 @@ Tested and optimized for large collections:
 - **~10 seconds** subsequent loads with cache
 - **Memory efficient** with lazy loading and pagination
 - **Thumbnail optimization** using InvokeAI's .webp cache
+- **Smart filtering** excludes intermediate/temporary images automatically
+
+## Search Features
+
+**Precise Search Functionality:**
+- **Word Boundary Matching**: Searches for complete words only (searching "city" won't match "opacity")
+- **Case Insensitive**: Matches regardless of capitalization
+- **Metadata Search**: Searches through all PNG metadata including prompts, model names, and generation settings
+- **Real-time Results**: Instant filtering as you type
+- **Combined Filtering**: Search terms work alongside model and LoRA filters
 
 ## License
 

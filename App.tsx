@@ -305,6 +305,31 @@ export default function App() {
     return reconstructedImages;
   };
 
+  // Function to filter out InvokeAI intermediate images  
+  const isIntermediateImage = (filename: string): boolean => {
+    const name = filename.toLowerCase();
+    
+    // Common patterns for InvokeAI intermediate images
+    const intermediatePatterns = [
+      /^intermediate_/, // Files starting with "intermediate_"
+      /_intermediate_/, // Files containing "_intermediate_"
+      /^canvas_/, // Canvas intermediate images
+      /_canvas_/, // Canvas related files
+      /^controlnet_/, // ControlNet intermediate images
+      /_controlnet_/, // ControlNet related files
+      /^inpaint_/, // Inpainting intermediate images
+      /_inpaint_/, // Inpainting related files
+      /^tmp_/, // Temporary files
+      /_tmp_/, // Temporary files
+      /^temp_/, // Temp files
+      /_temp_/, // Temp files
+      /\.tmp\.png$/, // Files ending with .tmp.png
+      /\.temp\.png$/, // Files ending with .temp.png
+    ];
+    
+    return intermediatePatterns.some(pattern => pattern.test(name));
+  };
+
   const handleSelectFolder = async () => {
     try {
       if (!window.showDirectoryPicker) {
@@ -329,15 +354,17 @@ export default function App() {
       await cacheManager.init();
       
       // Quick count of PNG files to determine if we should use cache
-      // console.log removed for production
       const allFiles = await getAllFileHandles(handle);
-      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
-      // console.log removed for production
+      const pngCount = allFiles.filter(f => 
+        f.handle.name.toLowerCase().endsWith('.png') && 
+        !isIntermediateImage(f.handle.name)
+      ).length;
       
       // Check if we should use cached data
-      const shouldRefresh = await cacheManager.shouldRefreshCache(handle.name, pngCount);
+      const cacheResult = await cacheManager.shouldRefreshCache(handle.name, pngCount);
       
-      if (!shouldRefresh) {
+      // Handle cache check and processing
+      if (!cacheResult.shouldRefresh) {
         // console.log removed for production
         const cachedData = await cacheManager.getCachedData(handle.name);
         if (cachedData) {
@@ -352,7 +379,7 @@ export default function App() {
         }
       }
       
-      // Process directory normally and cache the results
+      // Process directory and cache the results
       // console.log removed for production
       const indexedImages = await processDirectory(handle, setProgress);
       setImages(indexedImages);
@@ -387,8 +414,10 @@ export default function App() {
     // Apply search filter
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
+      // Use word boundary regex to match whole words only
+      const searchRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       results = results.filter(image => 
-        image.metadataString.toLowerCase().includes(lowerCaseQuery)
+        searchRegex.test(image.metadataString)
       );
     }
 
