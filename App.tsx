@@ -283,6 +283,11 @@ export default function App() {
 
     const reconstructedImages: IndexedImage[] = [];
     
+    console.log('🔍 RECONSTRUCTING IMAGES FROM CACHE');
+    console.log('Cached metadata:', cachedData.metadata);
+    console.log('Files in directory:', Array.from(fileMap.keys()));
+    console.log('Thumbnails in directory:', Array.from(thumbnailMap.keys()));
+
     for (const metadata of cachedData.metadata) {
       const fileHandle = fileMap.get(metadata.name);
       if (fileHandle) {
@@ -378,21 +383,6 @@ export default function App() {
       // Check if we should use cached data
       const cacheResult = await cacheManager.shouldRefreshCache(handle.name, pngCount);
       
-      // RESET: Clear cache to start fresh since we had consistency issues
-      // console.log('🧹 CLEARING CACHE: Starting fresh to fix consistency issues');
-      // await cacheManager.clearCache();
-      
-      // Process directory and cache the results
-      // console.log removed for production
-      const indexedImages = await processDirectory(handle, setProgress);
-      setImages(indexedImages);
-      setFilteredImages(indexedImages);
-      updateFilterOptions(indexedImages);
-      
-      // Cache the processed data
-      await cacheManager.cacheData(handle.name, indexedImages);
-      // console.log removed for production
-      
       if (!cacheResult.shouldRefresh) {
         console.log('✅ USING EXISTING CACHE');
         const cachedData = await cacheManager.getCachedData(handle.name);
@@ -406,19 +396,42 @@ export default function App() {
         }
       } else {
         console.log('🔄 UPDATING CACHE INCREMENTALLY');
-        const allFiles = await getAllFileHandles(handle);
-        const pngFiles = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png'));
         const cachedData = await cacheManager.getCachedData(handle.name);
-        const cachedFileNames = cachedData ? cachedData.metadata.map(meta => meta.name) : [];
-        const newFiles = pngFiles.filter(f => !cachedFileNames.includes(f.handle.name));
+        
+        if (cachedData) {
+          // Use existing cache and add only new images
+          const cachedFileNames = cachedData.metadata.map(meta => meta.name);
+          const newFiles = allFiles.filter(f => 
+            f.handle.name.toLowerCase().endsWith('.png') && 
+            !cachedFileNames.includes(f.handle.name)
+          );
 
-        if (newFiles.length > 0) {
-          const indexedNewImages = await processDirectory(handle, setProgress, newFiles);
-          await cacheManager.updateCacheIncrementally(handle.name, indexedNewImages);
-          const updatedImages = [...images, ...indexedNewImages];
-          setImages(updatedImages);
-          setFilteredImages(updatedImages);
-          updateFilterOptions(updatedImages);
+          if (newFiles.length > 0) {
+            console.log(`🆕 FOUND ${newFiles.length} NEW IMAGES`);
+            const indexedNewImages = await processDirectory(handle, setProgress, newFiles);
+            await cacheManager.updateCacheIncrementally(handle.name, indexedNewImages);
+            
+            // Reconstruct all images from updated cache
+            const updatedCachedData = await cacheManager.getCachedData(handle.name);
+            const allReconstructedImages = await reconstructImagesFromCache(handle, updatedCachedData);
+            const sortedImages = sortImages(allReconstructedImages);
+            setImages(sortedImages);
+            setFilteredImages(sortedImages);
+            updateFilterOptions(sortedImages);
+          } else {
+            console.log('📄 NO NEW IMAGES FOUND, USING EXISTING CACHE');
+            const reconstructedImages = await reconstructImagesFromCache(handle, cachedData);
+            setImages(reconstructedImages);
+            setFilteredImages(reconstructedImages);
+            updateFilterOptions(reconstructedImages);
+          }
+        } else {
+          console.log('🔄 NO CACHE FOUND, FULL INDEXING');
+          const indexedImages = await processDirectory(handle, setProgress);
+          setImages(indexedImages);
+          setFilteredImages(indexedImages);
+          updateFilterOptions(indexedImages);
+          await cacheManager.cacheData(handle.name, indexedImages);
         }
       }
     } catch (err) {

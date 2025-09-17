@@ -222,7 +222,12 @@ class CacheManager {
       const cachedData: CacheEntry = request.result;
       if (cachedData) {
         // Merge new images with existing cache
-        const updatedMetadata = [...cachedData.metadata, ...newImages.map(img => ({
+
+        // Ensure no duplicates in the cache
+        const existingNames = new Set(cachedData.metadata.map(meta => meta.name));
+        const uniqueNewImages = newImages.filter(img => !existingNames.has(img.name));
+
+        const updatedMetadata = [...cachedData.metadata, ...uniqueNewImages.map(img => ({
           id: img.id,
           name: img.name,
           metadataString: img.metadataString,
