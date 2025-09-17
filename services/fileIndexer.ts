@@ -176,6 +176,142 @@ function extractLoras(metadata: InvokeAIMetadata): string[] {
   return loras.filter(Boolean);
 }
 
+// Function to extract board information from metadata
+function extractBoard(metadata: InvokeAIMetadata): string {
+  // Check for board_name first (most common)
+  if (metadata.board_name && typeof metadata.board_name === 'string') {
+    return metadata.board_name.trim();
+  }
+  
+  // Check for board_id as fallback
+  if (metadata.board_id && typeof metadata.board_id === 'string') {
+    return metadata.board_id.trim();
+  }
+  
+  // Check different case variations
+  if (metadata.boardName && typeof metadata.boardName === 'string') {
+    return metadata.boardName.trim();
+  }
+  
+  if (metadata.boardId && typeof metadata.boardId === 'string') {
+    return metadata.boardId.trim();
+  }
+  
+  // Check for 'Board Name' with space
+  if (metadata['Board Name'] && typeof metadata['Board Name'] === 'string') {
+    return metadata['Board Name'].trim();
+  }
+  
+  // Check for board object
+  if (metadata.board && typeof metadata.board === 'object') {
+    const boardObj = metadata.board as any;
+    if (boardObj.name) return boardObj.name;
+    if (boardObj.board_name) return boardObj.board_name;
+    if (boardObj.id) return boardObj.id;
+  }
+  
+  // Check for board as direct string
+  if (metadata.board && typeof metadata.board === 'string') {
+    return metadata.board.trim();
+  }
+  
+  // NEW: Check canvas_v2_metadata for board information
+  if (metadata.canvas_v2_metadata && typeof metadata.canvas_v2_metadata === 'object') {
+    const canvasData = metadata.canvas_v2_metadata as any;
+    console.log('🔍 FULL canvas_v2_metadata:', JSON.stringify(canvasData, null, 2));
+    // Look for board_id in canvas metadata
+    if (canvasData.board_id) {
+      const boardId = canvasData.board_id;
+      console.log('🔍 Found board_id in canvas_v2_metadata:', boardId);
+      return getFriendlyBoardName(boardId);
+    }
+    // Look for board object in canvas metadata
+    if (canvasData.board && typeof canvasData.board === 'object') {
+      const boardObj = canvasData.board;
+      if (boardObj.board_id) {
+        console.log('🔍 Found board.board_id in canvas_v2_metadata:', boardObj.board_id);
+        return getFriendlyBoardName(boardObj.board_id);
+      }
+    }
+  }
+  
+  // Check inside workflow for board information (if it exists)
+  if (metadata.workflow && typeof metadata.workflow === 'object') {
+    const workflow = metadata.workflow as any;
+    
+    // Check if workflow is a string (JSON)
+    if (typeof workflow === 'string') {
+      try {
+        const workflowObj = JSON.parse(workflow);
+        const boardInfo = extractBoardFromWorkflow(workflowObj);
+        if (boardInfo) {
+          return boardInfo;
+        }
+      } catch (e) {
+        // Failed to parse workflow JSON
+      }
+    } else {
+      // Workflow is already an object
+      const boardInfo = extractBoardFromWorkflow(workflow);
+      if (boardInfo) {
+        return boardInfo;
+      }
+    }
+  }
+  
+  // Try to find any field that might contain board info
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key.toLowerCase().includes('board') && typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  
+  // Default to "Uncategorized" if no board info found
+  return 'Uncategorized';
+}
+
+// Helper function to extract board info from workflow
+function extractBoardFromWorkflow(workflow: any): string | null {
+  if (!workflow || !workflow.nodes) return null;
+  
+  // Look for canvas_output or l2i nodes that typically contain board info
+  for (const node of workflow.nodes) {
+    if (node.data && node.data.type && (node.data.type === 'l2i' || node.data.type === 'canvas_output')) {
+      if (node.data.inputs && node.data.inputs.board) {
+        const boardInput = node.data.inputs.board;
+        
+        // Check if board has a value with board_id
+        if (boardInput.value && boardInput.value.board_id) {
+          const boardId = boardInput.value.board_id;
+          
+          // Use the friendly board name mapping
+          return getFriendlyBoardName(boardId);
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Board mapping cache to track unique board IDs and names
+const boardIdCache = new Map<string, string>();
+let boardCounter = 1;
+
+// Function to get or create a friendly board name
+function getFriendlyBoardName(boardId: string): string {
+  if (boardIdCache.has(boardId)) {
+    return boardIdCache.get(boardId)!;
+  }
+  
+  // Create a new friendly name for this board ID
+  const friendlyName = `My Board ${boardCounter}`;
+  boardIdCache.set(boardId, friendlyName);
+  boardCounter++;
+  
+  return friendlyName;
+}
+
 async function parseInvokeAIMetadata(file: File): Promise<InvokeAIMetadata | null> {
   try {
     const buffer = await file.arrayBuffer();
@@ -199,7 +335,29 @@ async function parseInvokeAIMetadata(file: File): Promise<InvokeAIMetadata | nul
         const [keyword, text] = chunkString.split('\0');
         
         if (keyword === 'invokeai_metadata' && text) {
-          return JSON.parse(text);
+          const metadata = JSON.parse(text);
+          // Temporary debug: log first few characters of each field to understand structure
+          console.log('🔍 METADATA FIELDS DEBUG:', {
+            filename: file.name,
+            availableFields: Object.keys(metadata),
+            fieldTypes: Object.fromEntries(
+              Object.entries(metadata).map(([key, value]) => [
+                key, 
+                typeof value + (typeof value === 'string' ? ` (${value.length} chars)` : '')
+              ])
+            ),
+            hasWorkflow: 'workflow' in metadata,
+            workflowType: typeof metadata.workflow,
+            sampleFields: Object.fromEntries(
+              Object.entries(metadata).slice(0, 5).map(([key, value]) => [
+                key,
+                typeof value === 'string' 
+                  ? value.substring(0, 100) + (value.length > 100 ? '...' : '')
+                  : value
+              ])
+            )
+          });
+          return metadata;
         }
       }
       
@@ -322,6 +480,7 @@ export async function processDirectory(
         const models = extractModels(metadata);
         const loras = extractLoras(metadata);
         const scheduler = metadata.scheduler || 'Unknown';
+        const board = extractBoard(metadata);
         
         // Find corresponding thumbnail
         const thumbnailHandle = thumbnailMap.get(fileEntry.handle.name);
@@ -337,6 +496,7 @@ export async function processDirectory(
           models,
           loras,
           scheduler,
+          board,
         });
       }
     } catch (error) {

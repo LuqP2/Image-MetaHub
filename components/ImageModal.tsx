@@ -9,14 +9,28 @@ interface ImageModalProps {
   onClose: () => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (imageId: string, newName: string) => void;
+  currentIndex?: number;
+  totalImages?: number;
+  onNavigateNext?: () => void;
+  onNavigatePrevious?: () => void;
 }
 
-const ImageModal: React.FC<ImageModalProps> = ({ image, onClose, onImageDeleted, onImageRenamed }) => {
+const ImageModal: React.FC<ImageModalProps> = ({ 
+  image, 
+  onClose, 
+  onImageDeleted, 
+  onImageRenamed,
+  currentIndex = 0,
+  totalImages = 0,
+  onNavigateNext,
+  onNavigatePrevious
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showNavigationControls, setShowNavigationControls] = useState(false);
 
   // Function to export metadata as TXT
   const exportToTxt = () => {
@@ -48,6 +62,11 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose, onImageDeleted,
     // Add scheduler
     if (image.scheduler) {
       content += `Scheduler: ${image.scheduler}\n\n`;
+    }
+    
+    // Add board
+    if (image.board) {
+      content += `Board: ${image.board}\n\n`;
     }
     
     // Add all metadata
@@ -173,6 +192,12 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose, onImageDeleted,
         } else {
           onClose();
         }
+      } else if (event.key === 'ArrowLeft' && onNavigatePrevious) {
+        event.preventDefault();
+        onNavigatePrevious();
+      } else if (event.key === 'ArrowRight' && onNavigateNext) {
+        event.preventDefault();
+        onNavigateNext();
       }
     };
 
@@ -223,11 +248,57 @@ const ImageModal: React.FC<ImageModalProps> = ({ image, onClose, onImageDeleted,
         className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col md:flex-row overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-full md:w-2/3 h-1/2 md:h-full bg-black flex items-center justify-center p-4">
+        <div className="w-full md:w-2/3 h-1/2 md:h-full bg-black flex items-center justify-center p-4 relative"
+             onMouseEnter={() => setShowNavigationControls(true)}
+             onMouseLeave={() => setShowNavigationControls(false)}>
           {imageUrl ? (
             <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" />
           ) : (
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
+          )}
+          
+          {/* Navigation Controls */}
+          {showNavigationControls && totalImages > 1 && (
+            <>
+              {/* Previous Button */}
+              {onNavigatePrevious && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigatePrevious();
+                  }}
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-3 transition-all duration-200 backdrop-blur-sm border border-white/20 hover:border-white/40 shadow-lg"
+                  aria-label="Previous image"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+              
+              {/* Next Button */}
+              {onNavigateNext && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigateNext();
+                  }}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white rounded-full p-3 transition-all duration-200 backdrop-blur-sm border border-white/20 hover:border-white/40 shadow-lg"
+                  aria-label="Next image"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              )}
+            </>
+          )}
+          
+          {/* Image Counter */}
+          {totalImages > 1 && (
+            <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
+              {currentIndex + 1} / {totalImages}
+            </div>
           )}
         </div>
         <div className="w-full md:w-1/3 h-1/2 md:h-full p-6 overflow-y-auto">

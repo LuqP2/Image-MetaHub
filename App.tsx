@@ -29,7 +29,7 @@ export default function App() {
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
   
   // States for sorting and pagination
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'date-asc' | 'date-desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'date-asc' | 'date-desc'>('date-desc');
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(20);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -37,9 +37,11 @@ export default function App() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [availableLoras, setAvailableLoras] = useState<string[]>([]);
   const [availableSchedulers, setAvailableSchedulers] = useState<string[]>([]);
+  const [availableBoards, setAvailableBoards] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedLora, setSelectedLora] = useState<string>('');
   const [selectedScheduler, setSelectedScheduler] = useState<string>('');
+  const [selectedBoard, setSelectedBoard] = useState<string>('');
 
   // Load persisted settings on component mount
   useEffect(() => {
@@ -48,6 +50,10 @@ export default function App() {
     
     if (savedSortOrder) {
       setSortOrder(savedSortOrder as 'asc' | 'desc' | 'date-asc' | 'date-desc');
+    } else {
+      // Set default to date descending (newest first) and save it
+      setSortOrder('date-desc');
+      localStorage.setItem('invokeai-sort-order', 'date-desc');
     }
     if (savedItemsPerPage) {
       const items = savedItemsPerPage === 'all' ? 'all' : Number(savedItemsPerPage);
@@ -77,6 +83,7 @@ export default function App() {
     const allModels = new Set<string>();
     const allLoras = new Set<string>();
     const allSchedulers = new Set<string>();
+    const allBoards = new Set<string>();
     
     // // console.log removed for production
     
@@ -86,6 +93,7 @@ export default function App() {
         models: image.models,
         loras: image.loras,
         scheduler: image.scheduler,
+        board: image.board,
         modelsType: typeof image.models,
         lorasType: typeof image.loras,
         schedulerType: typeof image.scheduler,
@@ -214,11 +222,20 @@ export default function App() {
           allSchedulers.add(schedulerName);
         }
       }
+      
+      // Handle board
+      if (image.board && typeof image.board === 'string') {
+        const boardName = image.board.trim();
+        if (boardName.length > 0) {
+          allBoards.add(boardName);
+        }
+      }
     });
     
     const finalModels = Array.from(allModels).sort();
     const finalLoras = Array.from(allLoras).sort();
     const finalSchedulers = Array.from(allSchedulers).sort();
+    const finalBoards = Array.from(allBoards).sort();
     
     // console.log removed for production
     // console.log removed for production
@@ -226,6 +243,7 @@ export default function App() {
     setAvailableModels(finalModels);
     setAvailableLoras(finalLoras);
     setAvailableSchedulers(finalSchedulers);
+    setAvailableBoards(finalBoards);
   }, []);
 
   // Function to sort images
@@ -321,6 +339,7 @@ export default function App() {
           models: metadata.models,
           loras: metadata.loras,
           scheduler: metadata.scheduler,
+          board: metadata.board || 'Uncategorized',
         });
       }
     }
@@ -386,6 +405,8 @@ export default function App() {
       setSearchQuery('');
       setSelectedModel('');
       setSelectedLora('');
+      setSelectedScheduler('');
+      setSelectedBoard('');
       setProgress({ current: 0, total: 0 });
       
       // Save directory name for user reference
@@ -465,9 +486,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, imagesCount: images.length });
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, selectedBoard, imagesCount: images.length });
     
-    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler) {
+    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler && !selectedBoard) {
       console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
@@ -536,10 +557,29 @@ export default function App() {
       console.log('🔍 TOTAL IMAGES AFTER SCHEDULER FILTER:', results.length);
     }
 
+    // Apply board filter
+    if (selectedBoard) {
+      console.log('🔍 APPLYING BOARD FILTER:', selectedBoard);
+      console.log('🔍 TOTAL IMAGES BEFORE BOARD FILTER:', results.length);
+      
+      results = results.filter(image => {
+        const match = image.board && 
+                      image.board.toLowerCase().includes(selectedBoard.toLowerCase());
+        console.log('🔍 Board match check:', { 
+          board: image.board, 
+          selectedBoard, 
+          match 
+        });
+        return match;
+      });
+      
+      console.log('🔍 TOTAL IMAGES AFTER BOARD FILTER:', results.length);
+    }
+
     const sortedResults = sortImages(results);
     setFilteredImages(sortedResults);
     setCurrentPage(1); // Reset to first page when searching/filtering
-  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, sortImages]);
+  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, selectedBoard, sortImages]);
 
   // Calculate paginated images
   const paginatedImages = itemsPerPage === 'all' 
@@ -628,6 +668,30 @@ export default function App() {
     setSelectedImages(new Set());
   }, []);
 
+  // Navigation functions for modal
+  const handleNavigateNext = useCallback(() => {
+    if (!selectedImage) return;
+    
+    const currentIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+    if (currentIndex < filteredImages.length - 1) {
+      setSelectedImage(filteredImages[currentIndex + 1]);
+    }
+  }, [selectedImage, filteredImages]);
+
+  const handleNavigatePrevious = useCallback(() => {
+    if (!selectedImage) return;
+    
+    const currentIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+    if (currentIndex > 0) {
+      setSelectedImage(filteredImages[currentIndex - 1]);
+    }
+  }, [selectedImage, filteredImages]);
+
+  const getCurrentImageIndex = useCallback(() => {
+    if (!selectedImage) return 0;
+    return filteredImages.findIndex(img => img.id === selectedImage.id);
+  }, [selectedImage, filteredImages]);
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
       <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
@@ -712,14 +776,37 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Board Filter */}
+                {availableBoards.length > 0 && (
+                  <div className="flex-1">
+                    <label htmlFor="boardFilter" className="text-gray-400 text-sm mb-2 block">Filter by Board:</label>
+                    <select
+                      id="boardFilter"
+                      value={selectedBoard}
+                      onChange={(e) => setSelectedBoard(e.target.value)}
+                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                      aria-describedby="board-filter-description"
+                    >
+                      <option value="">All Boards ({availableBoards.length})</option>
+                      {availableBoards.map((board, index) => (
+                        <option key={`board-${index}-${board}`} value={board}>
+                          {board}
+                        </option>
+                      ))}
+                    </select>
+                    <span id="board-filter-description" className="sr-only">Filter images by the InvokeAI board they belong to</span>
+                  </div>
+                )}
+
                 {/* Clear Filters Button */}
-                {(selectedModel || selectedLora || selectedScheduler) && (
+                {(selectedModel || selectedLora || selectedScheduler || selectedBoard) && (
                   <div className="flex items-end">
                     <button
                       onClick={() => {
                         setSelectedModel('');
                         setSelectedLora('');
                         setSelectedScheduler('');
+                        setSelectedBoard('');
                       }}
                       className="bg-gray-600 hover:bg-gray-500 text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
                       aria-label="Clear all filters"
@@ -766,7 +853,7 @@ export default function App() {
                   <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
                 </div>
               </div>
-              {(selectedModel || selectedLora) && (
+              {(selectedModel || selectedLora || selectedScheduler || selectedBoard) && (
                 <div className="mt-2 text-xs text-gray-400">
                   Active filters: 
                   {selectedModel && (
@@ -785,6 +872,24 @@ export default function App() {
                       title="Click to remove LoRA filter"
                     >
                       LoRA: {selectedLora} ×
+                    </button>
+                  )}
+                  {selectedScheduler && (
+                    <button 
+                      onClick={() => setSelectedScheduler('')}
+                      className="ml-1 bg-green-600 text-green-100 px-2 py-1 rounded hover:bg-green-700 transition-colors cursor-pointer"
+                      title="Click to remove scheduler filter"
+                    >
+                      Scheduler: {selectedScheduler} ×
+                    </button>
+                  )}
+                  {selectedBoard && (
+                    <button 
+                      onClick={() => setSelectedBoard('')}
+                      className="ml-1 bg-orange-600 text-orange-100 px-2 py-1 rounded hover:bg-orange-700 transition-colors cursor-pointer"
+                      title="Click to remove board filter"
+                    >
+                      Board: {selectedBoard} ×
                     </button>
                   )}
                 </div>
@@ -910,6 +1015,10 @@ export default function App() {
           }}
           onImageDeleted={handleImageDeleted}
           onImageRenamed={handleImageRenamed}
+          currentIndex={getCurrentImageIndex()}
+          totalImages={filteredImages.length}
+          onNavigateNext={handleNavigateNext}
+          onNavigatePrevious={handleNavigatePrevious}
         />
       )}
     </div>

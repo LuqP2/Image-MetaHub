@@ -16,7 +16,8 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "public/favicon.ico"
+    "icon": "public/favicon.ico",
+    "artifactName": "LocalImageBrowser-InvokeAI-Setup-${version}.exe"
   },
   "mac": {
     "target": [

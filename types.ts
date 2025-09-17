@@ -8,6 +8,8 @@ export interface InvokeAIMetadata {
   steps: number;
   cfg_scale: number;
   scheduler: string;
+  board_id?: string;
+  board_name?: string;
   // Add other fields you expect from InvokeAI metadata
   [key: string]: any;
 }
@@ -24,6 +26,7 @@ export interface IndexedImage {
   models: string[]; // Extracted models from metadata
   loras: string[]; // Extracted LoRAs from metadata
   scheduler: string; // Extracted scheduler from metadata
+  board?: string; // Extracted board name from metadata
 }
 
 export interface FilterOptions {
