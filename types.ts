@@ -34,3 +34,15 @@ export interface FilterOptions {
   selectedLora: string;
   selectedScheduler: string;
 }
+
+// Electron API types
+declare global {
+  interface Window {
+    electronAPI?: {
+      trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
+      renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+      setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean }>;
+      showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
+    };
+  }
+}

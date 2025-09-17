@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from './types';
 import { processDirectory, isIntermediateImage } from './services/fileIndexer';
 import { cacheManager } from './services/cacheManager';
+import { FileOperations } from './services/fileOperations';
 import FolderSelector from './components/FolderSelector';
 import SearchBar from './components/SearchBar';
 import ImageGrid from './components/ImageGrid';
@@ -20,6 +21,7 @@ export default function App() {
   const [filteredImages, setFilteredImages] = useState<IndexedImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState<IndexedImage | null>(null);
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
 
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
@@ -549,6 +551,83 @@ export default function App() {
 
   const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
 
+  // Handle image deletion
+  const handleImageDeleted = useCallback((imageId: string) => {
+    setImages(prevImages => prevImages.filter(img => img.id !== imageId));
+    setFilteredImages(prevFiltered => prevFiltered.filter(img => img.id !== imageId));
+    setSelectedImage(null);
+  }, []);
+
+  // Handle image renaming
+  const handleImageRenamed = useCallback((imageId: string, newName: string) => {
+    setImages(prevImages => 
+      prevImages.map(img => 
+        img.id === imageId ? { ...img, name: newName } : img
+      )
+    );
+    setFilteredImages(prevFiltered => 
+      prevFiltered.map(img => 
+        img.id === imageId ? { ...img, name: newName } : img
+      )
+    );
+    setSelectedImage(null);
+  }, []);
+
+  // Handle multiple image selection
+  const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      // Ctrl+Click: toggle selection
+      setSelectedImages(prev => {
+        const newSelection = new Set(prev);
+        if (newSelection.has(image.id)) {
+          newSelection.delete(image.id);
+        } else {
+          newSelection.add(image.id);
+        }
+        return newSelection;
+      });
+    } else {
+      // Regular click: single selection and open modal
+      setSelectedImages(new Set([image.id]));
+      setSelectedImage(image);
+    }
+  }, []);
+
+  // Delete selected images
+  const handleDeleteSelectedImages = useCallback(async () => {
+    if (selectedImages.size === 0) return;
+    
+    const confirmMessage = selectedImages.size === 1 
+      ? 'Are you sure you want to delete this image?' 
+      : `Are you sure you want to delete ${selectedImages.size} images?`;
+    
+    if (!window.confirm(confirmMessage)) return;
+
+    const imagesToDelete = Array.from(selectedImages);
+    for (const imageId of imagesToDelete) {
+      const image = images.find(img => img.id === imageId);
+      if (image) {
+        try {
+          const result = await FileOperations.deleteFile(image);
+          if (result.success) {
+            handleImageDeleted(imageId);
+          } else {
+            alert(`Failed to delete ${image.name}: ${result.error}`);
+          }
+        } catch (error) {
+          alert(`Error deleting ${image.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+    }
+    
+    setSelectedImages(new Set());
+  }, [selectedImages, images, handleImageDeleted]);
+
+  // Clear selection
+  const clearSelection = useCallback(() => {
+    setSelectedImages(new Set());
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
       <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
@@ -754,7 +833,41 @@ export default function App() {
               </div>
             </div>
             
-            <ImageGrid images={paginatedImages} onImageClick={setSelectedImage} />
+            {/* Selection Toolbar */}
+            {selectedImages.size > 0 && (
+              <div className="flex items-center justify-between bg-blue-900/30 border border-blue-700/50 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-4">
+                  <span className="text-blue-300 font-medium">
+                    {selectedImages.size} image{selectedImages.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    onClick={clearSelection}
+                    className="text-gray-400 hover:text-gray-200 transition-colors duration-200"
+                    title="Clear selection"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleDeleteSelectedImages}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+                    title={`Delete ${selectedImages.size} selected image${selectedImages.size !== 1 ? 's' : ''}`}
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    Delete Selected
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <ImageGrid 
+              images={paginatedImages} 
+              onImageClick={handleImageSelection}
+              selectedImages={selectedImages}
+            />
             
             {/* Pagination Controls */}
             {totalPages > 1 && (
@@ -790,7 +903,14 @@ export default function App() {
         )}
       </main>
 
-      {selectedImage && <ImageModal image={selectedImage} onClose={() => setSelectedImage(null)} />}
+      {selectedImage && (
+        <ImageModal 
+          image={selectedImage} 
+          onClose={() => setSelectedImage(null)}
+          onImageDeleted={handleImageDeleted}
+          onImageRenamed={handleImageRenamed}
+        />
+      )}
     </div>
   );
 }

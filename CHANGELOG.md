@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2025-09-17
+
+### Added
+- **Multi-Selection**: Added Ctrl+click support for selecting multiple images similar to Windows Explorer
+- **Bulk Operations**: Added ability to delete multiple selected images at once from the main grid
+- **Selection Toolbar**: Added selection counter and bulk action toolbar when images are selected
+- **Visual Feedback**: Selected images now show blue ring and checkmark overlay
+
+### UI Improvements
+- **Simplified Modal Controls**: Redesigned image modal with cleaner interface
+- **Inline File Actions**: Rename and delete buttons now appear as small icons next to filename
+- **Export Dropdown**: Combined TXT and JSON export into a single dropdown menu
+- **Better Visual Hierarchy**: Improved spacing and visual organization of modal elements
+- **Keyboard Navigation**: Enhanced keyboard shortcuts and dropdown interactions
+
+### User Experience
+- **Windows-like Selection**: Familiar multi-selection behavior matching Windows file explorer
+- **Quick Actions**: Faster access to common file operations with simplified UI
+- **Bulk Management**: Efficient handling of multiple images for organization workflows
+- **Cleaner Interface**: Reduced visual clutter while maintaining all functionality
+
+## [1.4.0] - 2025-09-17
+
+### Added
+- **File Management**: Added rename and delete functionality for image files (Electron app only)
+- **Rename Files**: Click rename button in image modal to change filename with validation
+- **Delete Files**: Delete images with confirmation dialog, files are moved to system trash/recycle bin
+- **File Operations**: Added secure IPC communication between renderer and main process for file operations
+
+### UI Improvements
+- Added rename and delete buttons in image detail modal with clear icons and colors
+- Rename dialog with inline text input and validation feedback
+- Confirmation dialogs for destructive operations
+- Disabled state management during operations to prevent conflicts
+
+### Technical
+- Created fileOperations service for handling file management
+- Enhanced Electron IPC handlers with proper file path resolution
+- Added proper error handling and user feedback for file operations
+- File operations are desktop-only for security reasons
+
 ## [1.3.0] - 2025-09-17
 
 ### Added

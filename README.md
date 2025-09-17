@@ -6,14 +6,18 @@ A fast, local web application for browsing and organizing AI-generated images fr
 
 ## Features
 
-### Current Features (v1.3)
+### Current Features (v1.5)
 - **Local-First**: Browse images directly from your local folders - no uploads required
 - **Smart Caching**: Intelligent IndexedDB caching with incremental updates for fast subsequent loads
 - **Advanced Search**: Full-text search across all metadata including prompts, models, and settings
 - **Comprehensive Filtering**: Filter by AI models, LoRA models, and schedulers with auto-detection
+- **Multi-Selection**: Windows Explorer-like Ctrl+click selection for bulk operations
+- **File Management**: Rename and delete images directly from the app (desktop version only)
+- **Bulk Operations**: Delete multiple selected images at once with confirmation
 - **Metadata Export**: Export individual image metadata as readable TXT or structured JSON files
 - **Thumbnail Support**: Automatic WebP thumbnail detection and display
 - **Responsive Design**: Works on desktop and mobile devices
+- **Auto-Updates**: Automatic update notifications and installation (desktop version)
 - **Privacy First**: Everything runs locally - no data leaves your machine
 - **InvokeAI Optimized**: Deep metadata extraction from InvokeAI PNG files
 
@@ -22,11 +26,23 @@ A fast, local web application for browsing and organizing AI-generated images fr
 - **Memory Efficient**: Handles 17,000+ images without performance degradation
 - **Background Processing**: Non-blocking file indexing with progress indicators
 - **Lazy Loading**: Images loaded on-demand for optimal performance
+- **Smart Selection**: Visual feedback and efficient multi-selection handling
+- **Secure File Operations**: Safe file management through Electron IPC
 
 ## Installation
 
 **Prerequisites:** Node.js 16+ (LTS recommended) and a modern browser
 
+### Option 1: Download Installer (Recommended) 🚀
+1. Go to [Releases](https://github.com/LuqP2/local-image-browser-for-invokeai/releases)
+2. Download the installer for your OS:
+   - **Windows**: `.exe` installer
+   - **macOS**: `.dmg` file  
+   - **Linux**: `.AppImage` file
+3. Run the installer and follow the setup wizard
+4. Launch "Local Image Browser for InvokeAI" from your applications
+
+### Option 2: Run from Source 🔧
 ```bash
 # Clone the repository
 git clone https://github.com/LuqP2/local-image-browser-for-invokeai.git
@@ -36,6 +52,28 @@ cd local-image-browser-for-invokeai
 npm install
 
 # Start development server
+npm run dev
+```
+
+### Option 3: Desktop App (Development)
+```bash
+# Run as desktop app
+npm run electron-dev
+
+# Build installer
+npm run electron-pack
+```
+
+## Updating
+
+### If you installed via installer:
+The app will automatically check for updates and notify you when new versions are available.
+
+### If you're running from source:
+```bash
+cd local-image-browser-for-invokeai
+git pull origin main
+npm install  # In case of new dependencies
 npm run dev
 ```
 
@@ -50,15 +88,24 @@ npm run dev
 
 ## Roadmap
 
-### Short Term (v1.1)
-- Enhanced Filters: Scheduler, Steps slider, CFG Scale slider
-- Dimension Filtering: Filter by image dimensions (512x512, 1024x1024, etc.)
-- Performance Optimizations: Virtual scrolling for massive collections
+### Recently Completed ✅
+- ~~Enhanced Filters: Scheduler filtering with auto-detection~~
+- ~~File Management: Rename and delete operations~~
+- ~~Multi-Selection: Ctrl+click selection like Windows Explorer~~
+- ~~Bulk Operations: Delete multiple images at once~~
+- ~~Desktop App: Electron wrapper with auto-updater~~
+- ~~Metadata Export: TXT and JSON export functionality~~
 
-### Medium Term (v1.5)
+### Short Term (v1.6)
+- Dimension Filtering: Filter by image dimensions (512x512, 1024x1024, etc.)
+- Advanced Filters: Steps slider, CFG Scale slider
+- Performance Optimizations: Virtual scrolling for massive collections
+- Keyboard Shortcuts: Navigation and selection hotkeys
+
+### Medium Term (v1.8)
 - Multi-Platform Support: ComfyUI and Automatic1111 metadata parsing
 - Tag System: Custom tagging and organization
-- Batch Operations: Move, delete, export multiple images
+- Image Comparison: Side-by-side view for selected images
 - Analytics Dashboard: Usage statistics and trends
 
 ### Long Term (v2.0)
@@ -71,17 +118,21 @@ npm run dev
 
 1. **Select Folder**: Click "Change Folder" and select your InvokeAI outputs directory
 2. **Wait for Indexing**: First-time indexing takes a few minutes (cached afterwards)
-3. **Search & Filter**: Use the search bar and filters to find specific images
-4. **View Details**: Click any image to see full metadata and larger preview
+3. **Browse & Select**: Use Ctrl+click to select multiple images like Windows Explorer
+4. **Search & Filter**: Use the search bar and filters to find specific images
+5. **Manage Files**: Rename, delete, or export metadata for selected images
+6. **View Details**: Click any image to see full metadata and larger preview
 
 ## Usage Tips
 
 - **First Load**: Initial indexing of large collections (17k+ images) takes 3-4 minutes
 - **Subsequent Loads**: Cached data loads in ~10 seconds
 - **New Images**: Only new images are processed, maintaining fast performance
+- **Multi-Selection**: Use Ctrl+click to select multiple images for bulk operations
+- **File Management**: Rename and delete operations available in desktop app only
 - **Search**: Use word-boundary search (e.g., "city" won't match "opacity")
 - **Thumbnails**: Place your InvokeAI thumbnails directory alongside images for faster loading
-- **Export Metadata**: Click any image to open details and use export buttons for TXT/JSON files
+- **Export Metadata**: Click any image to open details and use export dropdown for TXT/JSON files
 - **Filtering**: Combine multiple filters (model + LoRA + scheduler) for precise searches
 
 ## Technical Architecture
@@ -89,9 +140,11 @@ npm run dev
 Built with modern web technologies for optimal performance:
 
 - **Frontend**: React 18 + TypeScript 5.2
+- **Desktop**: Electron 38 with auto-updater
 - **Build Tool**: Vite 5.0
 - **Storage**: IndexedDB for persistent caching
-- **File Access**: File System Access API (Chrome/Edge)
+- **File Access**: File System Access API + Electron File System
+- **IPC**: Secure inter-process communication for file operations
 - **Styling**: Tailwind CSS (responsive design)
 
 For detailed technical documentation, see [ARCHITECTURE.md](./ARCHITECTURE.md).
