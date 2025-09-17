@@ -34,8 +34,10 @@ export default function App() {
   // Filter states
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [availableLoras, setAvailableLoras] = useState<string[]>([]);
+  const [availableSchedulers, setAvailableSchedulers] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedLora, setSelectedLora] = useState<string>('');
+  const [selectedScheduler, setSelectedScheduler] = useState<string>('');
 
   // Load persisted settings on component mount
   useEffect(() => {
@@ -72,6 +74,7 @@ export default function App() {
   const updateFilterOptions = useCallback((images: IndexedImage[]) => {
     const allModels = new Set<string>();
     const allLoras = new Set<string>();
+    const allSchedulers = new Set<string>();
     
     // // console.log removed for production
     
@@ -80,8 +83,10 @@ export default function App() {
         name: image.name,
         models: image.models,
         loras: image.loras,
+        scheduler: image.scheduler,
         modelsType: typeof image.models,
         lorasType: typeof image.loras,
+        schedulerType: typeof image.scheduler,
         modelsIsArray: Array.isArray(image.models),
         lorasIsArray: Array.isArray(image.loras),
         modelsKeys: image.models ? Object.keys(image.models) : [],
@@ -199,16 +204,26 @@ export default function App() {
           // console.log removed for production
         }
       });
+      
+      // Handle scheduler
+      if (image.scheduler && typeof image.scheduler === 'string') {
+        const schedulerName = image.scheduler.trim();
+        if (schedulerName.length > 0) {
+          allSchedulers.add(schedulerName);
+        }
+      }
     });
     
     const finalModels = Array.from(allModels).sort();
     const finalLoras = Array.from(allLoras).sort();
+    const finalSchedulers = Array.from(allSchedulers).sort();
     
     // console.log removed for production
     // console.log removed for production
     
     setAvailableModels(finalModels);
     setAvailableLoras(finalLoras);
+    setAvailableSchedulers(finalSchedulers);
   }, []);
 
   // Function to sort images
@@ -303,6 +318,7 @@ export default function App() {
           lastModified: metadata.lastModified,
           models: metadata.models,
           loras: metadata.loras,
+          scheduler: metadata.scheduler,
         });
       }
     }
@@ -447,9 +463,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, imagesCount: images.length });
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, imagesCount: images.length });
     
-    if (!searchQuery && !selectedModel && !selectedLora) {
+    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler) {
       console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
@@ -499,10 +515,29 @@ export default function App() {
       console.log('🔍 TOTAL IMAGES AFTER LORA FILTER:', results.length);
     }
 
+    // Apply scheduler filter
+    if (selectedScheduler) {
+      console.log('🔍 APPLYING SCHEDULER FILTER:', selectedScheduler);
+      console.log('🔍 TOTAL IMAGES BEFORE SCHEDULER FILTER:', results.length);
+      
+      results = results.filter(image => {
+        const match = image.scheduler && 
+                      image.scheduler.toLowerCase().includes(selectedScheduler.toLowerCase());
+        console.log('🔍 Scheduler match check:', { 
+          scheduler: image.scheduler, 
+          selectedScheduler, 
+          match 
+        });
+        return match;
+      });
+      
+      console.log('🔍 TOTAL IMAGES AFTER SCHEDULER FILTER:', results.length);
+    }
+
     const sortedResults = sortImages(results);
     setFilteredImages(sortedResults);
     setCurrentPage(1); // Reset to first page when searching/filtering
-  }, [searchQuery, images, selectedModel, selectedLora, sortImages]);
+  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, sortImages]);
 
   // Calculate paginated images
   const paginatedImages = itemsPerPage === 'all' 
@@ -528,7 +563,7 @@ export default function App() {
           {directoryHandle && <SearchBar value={searchQuery} onChange={setSearchQuery} />}
           
           {/* Model and LoRA Filters */}
-          {directoryHandle && (availableModels.length > 0 || availableLoras.length > 0) && (
+          {directoryHandle && (availableModels.length > 0 || availableLoras.length > 0 || availableSchedulers.length > 0) && (
             <div className="mb-6 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
               <h3 className="text-gray-300 text-sm font-medium mb-3">Filters</h3>
               <div className="flex flex-col sm:flex-row gap-4">
@@ -576,13 +611,36 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Scheduler Filter */}
+                {availableSchedulers.length > 0 && (
+                  <div className="flex-1">
+                    <label htmlFor="schedulerFilter" className="text-gray-400 text-sm mb-2 block">Filter by Scheduler:</label>
+                    <select
+                      id="schedulerFilter"
+                      value={selectedScheduler}
+                      onChange={(e) => setSelectedScheduler(e.target.value)}
+                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                      aria-describedby="scheduler-filter-description"
+                    >
+                      <option value="">All Schedulers ({availableSchedulers.length})</option>
+                      {availableSchedulers.map((scheduler, index) => (
+                        <option key={`scheduler-${index}-${scheduler}`} value={scheduler}>
+                          {scheduler}
+                        </option>
+                      ))}
+                    </select>
+                    <span id="scheduler-filter-description" className="sr-only">Filter images by the sampling scheduler used to generate them</span>
+                  </div>
+                )}
+
                 {/* Clear Filters Button */}
-                {(selectedModel || selectedLora) && (
+                {(selectedModel || selectedLora || selectedScheduler) && (
                   <div className="flex items-end">
                     <button
                       onClick={() => {
                         setSelectedModel('');
                         setSelectedLora('');
+                        setSelectedScheduler('');
                       }}
                       className="bg-gray-600 hover:bg-gray-500 text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
                       aria-label="Clear all filters"
@@ -622,11 +680,6 @@ export default function App() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div className="text-gray-300">
                   Found <span className="text-blue-400 font-bold text-lg">{filteredImages.length}</span> of <span className="text-green-400 font-bold text-lg">{images.length}</span> images
-                  {(selectedModel || selectedLora || searchQuery) && (
-                    <span className="text-yellow-400 text-sm ml-2">
-                      (filtered{searchQuery && ' by search'}{selectedModel && ' by model'}{selectedLora && ' by LoRA'})
-                    </span>
-                  )}
                 </div>
                 <div className="text-sm text-gray-400">
                   Searching in <span className="font-mono text-blue-300 bg-gray-800 px-2 py-1 rounded border border-gray-600">{directoryHandle.name}</span>
@@ -637,8 +690,24 @@ export default function App() {
               {(selectedModel || selectedLora) && (
                 <div className="mt-2 text-xs text-gray-400">
                   Active filters: 
-                  {selectedModel && <span className="ml-1 bg-blue-600 text-blue-100 px-2 py-1 rounded">Model: {selectedModel}</span>}
-                  {selectedLora && <span className="ml-1 bg-purple-600 text-purple-100 px-2 py-1 rounded">LoRA: {selectedLora}</span>}
+                  {selectedModel && (
+                    <button 
+                      onClick={() => setSelectedModel('')}
+                      className="ml-1 bg-blue-600 text-blue-100 px-2 py-1 rounded hover:bg-blue-700 transition-colors cursor-pointer"
+                      title="Click to remove model filter"
+                    >
+                      Model: {selectedModel} ×
+                    </button>
+                  )}
+                  {selectedLora && (
+                    <button 
+                      onClick={() => setSelectedLora('')}
+                      className="ml-1 bg-purple-600 text-purple-100 px-2 py-1 rounded hover:bg-purple-700 transition-colors cursor-pointer"
+                      title="Click to remove LoRA filter"
+                    >
+                      LoRA: {selectedLora} ×
+                    </button>
+                  )}
                 </div>
               )}
             </div>

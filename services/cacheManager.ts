@@ -14,6 +14,7 @@ interface CacheEntry {
     lastModified: number;
     models: string[];
     loras: string[];
+    scheduler: string;
   }[];
   thumbnails: Map<string, Blob>; // Store thumbnail blobs
 }
@@ -89,6 +90,7 @@ class CacheManager {
         lastModified: img.lastModified,
         models: img.models,
         loras: img.loras,
+        scheduler: img.scheduler,
       })),
       thumbnails: new Map()
     };
@@ -234,6 +236,7 @@ class CacheManager {
           lastModified: img.lastModified,
           models: img.models,
           loras: img.loras,
+          scheduler: img.scheduler,
         }))];
 
         cachedData.metadata = updatedMetadata;

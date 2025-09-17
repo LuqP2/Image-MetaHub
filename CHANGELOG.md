@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-09-17
+
+### Added
+- **Metadata Export**: Added export buttons in image modal to save metadata as TXT or JSON files
+- **TXT Export**: Readable text format with organized sections for models, LoRAs, scheduler, and complete metadata
+- **JSON Export**: Structured JSON format with export info, extracted data, and raw metadata
+
+### UI Improvements
+- Added export buttons with distinctive icons and colors in image detail modal
+- Enhanced modal layout to accommodate new export functionality
+
+## [1.2.0] - 2025-09-17
+
+### Added
+- **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, EulerDiscreteScheduler, etc.)
+
+### UI Improvements
+- Added scheduler dropdown filter alongside model and LoRA filters
+- Enhanced filter extraction system to parse scheduler metadata from images
+- Improved filter layout and accessibility
+
 ## [1.1.0] - 2025-09-17
 
 ### Added
