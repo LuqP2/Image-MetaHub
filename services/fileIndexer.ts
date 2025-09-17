@@ -176,7 +176,7 @@ async function parseInvokeAIMetadata(file: File): Promise<InvokeAIMetadata | nul
   }
 }
 
-async function getFileHandlesRecursive(
+export async function getFileHandlesRecursive(
   directoryHandle: FileSystemDirectoryHandle,
   path: string = ''
 ): Promise<{handle: FileSystemFileHandle, path: string}[]> {
@@ -196,25 +196,37 @@ async function getFileHandlesRecursive(
 }
 
 // Function to filter out InvokeAI intermediate images
-function isIntermediateImage(filename: string): boolean {
+export function isIntermediateImage(filename: string): boolean {
+  // DISABLED - showing all images for now
+  return false;
+  
   const name = filename.toLowerCase();
   
-  // Common patterns for InvokeAI intermediate images
+  // ONLY specific intermediate patterns - not normal InvokeAI images
   const intermediatePatterns = [
-    /^intermediate_/, // Files starting with "intermediate_"
-    /_intermediate_/, // Files containing "_intermediate_"
-    /^canvas_/, // Canvas intermediate images
-    /_canvas_/, // Canvas related files
-    /^controlnet_/, // ControlNet intermediate images
-    /_controlnet_/, // ControlNet related files
-    /^inpaint_/, // Inpainting intermediate images
-    /_inpaint_/, // Inpainting related files
-    /^tmp_/, // Temporary files
-    /_tmp_/, // Temporary files
-    /^temp_/, // Temp files
-    /_temp_/, // Temp files
-    /\.tmp\.png$/, // Files ending with .tmp.png
-    /\.temp\.png$/, // Files ending with .temp.png
+    // Classic intermediate patterns
+    /^intermediate_/, 
+    /_intermediate_/, 
+    /^canvas_/, 
+    /_canvas_/, 
+    /^controlnet_/, 
+    /_controlnet_/, 
+    /^inpaint_/, 
+    /_inpaint_/, 
+    /^tmp_/, 
+    /_tmp_/, 
+    /^temp_/, 
+    /_temp_/, 
+    /\.tmp\.png$/, 
+    /\.temp\.png$/,
+    
+    // Only very specific intermediate patterns
+    /^step_\d+_/, // step_001_something.png (not just step_)
+    /^preview_step/, // preview_step images
+    /^progress_/, // progress images
+    /^mask_temp/, // temporary masks only
+    /^noise_sample/, // noise samples
+    /^guidance_preview/, // guidance previews
   ];
   
   return intermediatePatterns.some(pattern => pattern.test(name));
@@ -222,9 +234,10 @@ function isIntermediateImage(filename: string): boolean {
 
 export async function processDirectory(
   directoryHandle: FileSystemDirectoryHandle,
-  setProgress: (progress: { current: number; total: number }) => void
+  setProgress: (progress: { current: number; total: number }) => void,
+  specificFiles?: { handle: FileSystemFileHandle; path: string }[]
 ): Promise<IndexedImage[]> {
-  const allFileEntries = await getFileHandlesRecursive(directoryHandle);
+  const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
   const pngFiles = allFileEntries.filter(entry => 
     entry.handle.name.toLowerCase().endsWith('.png') && 
     !isIntermediateImage(entry.handle.name)

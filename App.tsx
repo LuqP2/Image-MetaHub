@@ -7,7 +7,7 @@ declare global {
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from './types';
-import { processDirectory } from './services/fileIndexer';
+import { processDirectory, isIntermediateImage } from './services/fileIndexer';
 import { cacheManager } from './services/cacheManager';
 import FolderSelector from './components/FolderSelector';
 import SearchBar from './components/SearchBar';
@@ -307,27 +307,45 @@ export default function App() {
 
   // Function to filter out InvokeAI intermediate images  
   const isIntermediateImage = (filename: string): boolean => {
+    // TEMPORARILY DISABLED - let's see what we're dealing with
+    return false;
+    
     const name = filename.toLowerCase();
     
-    // Common patterns for InvokeAI intermediate images
+    // ONLY specific intermediate patterns - not normal InvokeAI images
     const intermediatePatterns = [
-      /^intermediate_/, // Files starting with "intermediate_"
-      /_intermediate_/, // Files containing "_intermediate_"
-      /^canvas_/, // Canvas intermediate images
-      /_canvas_/, // Canvas related files
-      /^controlnet_/, // ControlNet intermediate images
-      /_controlnet_/, // ControlNet related files
-      /^inpaint_/, // Inpainting intermediate images
-      /_inpaint_/, // Inpainting related files
-      /^tmp_/, // Temporary files
-      /_tmp_/, // Temporary files
-      /^temp_/, // Temp files
-      /_temp_/, // Temp files
-      /\.tmp\.png$/, // Files ending with .tmp.png
-      /\.temp\.png$/, // Files ending with .temp.png
+      // Classic intermediate patterns
+      /^intermediate_/, 
+      /_intermediate_/, 
+      /^canvas_/, 
+      /_canvas_/, 
+      /^controlnet_/, 
+      /_controlnet_/, 
+      /^inpaint_/, 
+      /_inpaint_/, 
+      /^tmp_/, 
+      /_tmp_/, 
+      /^temp_/, 
+      /_temp_/, 
+      /\.tmp\.png$/, 
+      /\.temp\.png$/,
+      
+      // Only very specific intermediate patterns
+      /^step_\d+_/, // step_001_something.png (not just step_)
+      /^preview_step/, // preview_step images
+      /^progress_/, // progress images
+      /^mask_temp/, // temporary masks only
+      /^noise_sample/, // noise samples
+      /^guidance_preview/, // guidance previews
     ];
     
-    return intermediatePatterns.some(pattern => pattern.test(name));
+    const isIntermediate = intermediatePatterns.some(pattern => pattern.test(name));
+    
+    if (isIntermediate) {
+      console.log(`🗑️ FILTERING OUT: ${filename}`);
+    }
+    
+    return isIntermediate;
   };
 
   const handleSelectFolder = async () => {
@@ -355,29 +373,14 @@ export default function App() {
       
       // Quick count of PNG files to determine if we should use cache
       const allFiles = await getAllFileHandles(handle);
-      const pngCount = allFiles.filter(f => 
-        f.handle.name.toLowerCase().endsWith('.png') && 
-        !isIntermediateImage(f.handle.name)
-      ).length;
+      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
       
       // Check if we should use cached data
       const cacheResult = await cacheManager.shouldRefreshCache(handle.name, pngCount);
       
-      // Handle cache check and processing
-      if (!cacheResult.shouldRefresh) {
-        // console.log removed for production
-        const cachedData = await cacheManager.getCachedData(handle.name);
-        if (cachedData) {
-          // Reconstruct IndexedImage objects from cached metadata
-          const reconstructedImages = await reconstructImagesFromCache(handle, cachedData);
-          setImages(reconstructedImages);
-          setFilteredImages(reconstructedImages);
-          updateFilterOptions(reconstructedImages);
-          setIsLoading(false);
-          // console.log removed for production
-          return;
-        }
-      }
+      // RESET: Clear cache to start fresh since we had consistency issues
+      // console.log('🧹 CLEARING CACHE: Starting fresh to fix consistency issues');
+      // await cacheManager.clearCache();
       
       // Process directory and cache the results
       // console.log removed for production
@@ -390,6 +393,34 @@ export default function App() {
       await cacheManager.cacheData(handle.name, indexedImages);
       // console.log removed for production
       
+      if (!cacheResult.shouldRefresh) {
+        console.log('✅ USING EXISTING CACHE');
+        const cachedData = await cacheManager.getCachedData(handle.name);
+        if (cachedData) {
+          const reconstructedImages = await reconstructImagesFromCache(handle, cachedData);
+          setImages(reconstructedImages);
+          setFilteredImages(reconstructedImages);
+          updateFilterOptions(reconstructedImages);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        console.log('🔄 UPDATING CACHE INCREMENTALLY');
+        const allFiles = await getAllFileHandles(handle);
+        const pngFiles = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png'));
+        const cachedData = await cacheManager.getCachedData(handle.name);
+        const cachedFileNames = cachedData ? cachedData.metadata.map(meta => meta.name) : [];
+        const newFiles = pngFiles.filter(f => !cachedFileNames.includes(f.handle.name));
+
+        if (newFiles.length > 0) {
+          const indexedNewImages = await processDirectory(handle, setProgress, newFiles);
+          await cacheManager.updateCacheIncrementally(handle.name, indexedNewImages);
+          const updatedImages = [...images, ...indexedNewImages];
+          setImages(updatedImages);
+          setFilteredImages(updatedImages);
+          updateFilterOptions(updatedImages);
+        }
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         // console.log removed for production

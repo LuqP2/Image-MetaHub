@@ -59,7 +59,15 @@ class CacheManager {
       const request = store.get(directoryName);
 
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || null);
+      request.onsuccess = () => {
+        const result = request.result || null;
+        if (result) {
+          console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Found ${result.imageCount} images (saved ${new Date(result.lastScan).toLocaleString()})`);
+        } else {
+          console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Not found`);
+        }
+        resolve(result);
+      };
     });
   }
 
@@ -90,9 +98,12 @@ class CacheManager {
       const store = transaction.objectStore('cache');
       const request = store.put(cacheEntry);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('❌ CACHE SAVE FAILED:', request.error);
+        reject(request.error);
+      };
       request.onsuccess = () => {
-        // console.log removed
+        console.log(`✅ CACHE SAVED: ${directoryName} with ${images.length} images`);
         resolve();
       };
     });
@@ -158,25 +169,79 @@ class CacheManager {
   ): Promise<{ shouldRefresh: boolean }> {
     const cached = await this.getCachedData(directoryName);
     
-    if (!cached) return { shouldRefresh: true };
+    if (!cached) {
+      console.log(`❌ NO CACHE FOUND for "${directoryName}"`);
+      return { shouldRefresh: true };
+    }
+    
+    const cacheAge = Date.now() - cached.lastScan;
+    const ageMinutes = Math.round(cacheAge / (1000 * 60));
+    
+    console.log(`🔍 CACHE ANALYSIS:`);
+    console.log(`   Directory: "${directoryName}"`);
+    console.log(`   Cached count: ${cached.imageCount}`);
+    console.log(`   Current count: ${currentImageCount}`);
+    console.log(`   Cache age: ${ageMinutes} minutes`);
+    console.log(`   Cache timestamp: ${new Date(cached.lastScan).toLocaleString()}`);
     
     // Check if image count changed
     const countDiff = Math.abs(cached.imageCount - currentImageCount);
     
     // If count changed, refresh cache
     if (countDiff > 0) {
+      console.log(`🔄 COUNT CHANGED: ${cached.imageCount} -> ${currentImageCount} (diff: ${countDiff})`);
       return { shouldRefresh: true };
     }
 
     // Refresh if cache is older than 1 hour
-    const cacheAge = Date.now() - cached.lastScan;
     const maxAge = 60 * 60 * 1000; // 1 hour
     
     if (cacheAge > maxAge) {
+      console.log(`⏰ CACHE EXPIRED: ${ageMinutes} minutes old (max: 60 minutes)`);
       return { shouldRefresh: true };
     }
 
+    console.log(`✅ CACHE VALID: Using cached data`);
     return { shouldRefresh: false };
+  }
+
+  async updateCacheIncrementally(
+    directoryName: string,
+    newImages: IndexedImage[]
+  ): Promise<void> {
+    if (!this.db) await this.init();
+
+    const transaction = this.db!.transaction(['cache'], 'readwrite');
+    const store = transaction.objectStore('cache');
+
+    const request = store.get(directoryName);
+    request.onerror = () => {
+      console.error('❌ CACHE UPDATE FAILED:', request.error);
+    };
+    request.onsuccess = () => {
+      const cachedData: CacheEntry = request.result;
+      if (cachedData) {
+        // Merge new images with existing cache
+        const updatedMetadata = [...cachedData.metadata, ...newImages.map(img => ({
+          id: img.id,
+          name: img.name,
+          metadataString: img.metadataString,
+          lastModified: img.lastModified,
+          models: img.models,
+          loras: img.loras,
+        }))];
+
+        cachedData.metadata = updatedMetadata;
+        cachedData.imageCount = updatedMetadata.length;
+        cachedData.lastScan = Date.now();
+
+        // Save updated cache
+        store.put(cachedData);
+        console.log(`✅ CACHE UPDATED INCREMENTALLY: ${newImages.length} new images added`);
+      } else {
+        console.warn('⚠️ CACHE ENTRY NOT FOUND FOR INCREMENTAL UPDATE');
+      }
+    };
   }
 }
 
