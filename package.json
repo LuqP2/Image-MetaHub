@@ -28,9 +28,11 @@
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.2.1",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8"
+    "vite": "^5.0.8",
+    "wait-on": "^9.0.0"
   }
 }

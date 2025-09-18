@@ -37,11 +37,10 @@ export default function App() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [availableLoras, setAvailableLoras] = useState<string[]>([]);
   const [availableSchedulers, setAvailableSchedulers] = useState<string[]>([]);
-  const [availableBoards, setAvailableBoards] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedLora, setSelectedLora] = useState<string>('');
   const [selectedScheduler, setSelectedScheduler] = useState<string>('');
-  const [selectedBoard, setSelectedBoard] = useState<string>('');
+
 
   // Load persisted settings on component mount
   useEffect(() => {
@@ -235,15 +234,14 @@ export default function App() {
     const finalModels = Array.from(allModels).sort();
     const finalLoras = Array.from(allLoras).sort();
     const finalSchedulers = Array.from(allSchedulers).sort();
-    const finalBoards = Array.from(allBoards).sort();
+  const finalBoards = Array.from(allBoards).sort();
     
-    // console.log removed for production
-    // console.log removed for production
+  // console.log removed for production
+  // console.log removed for production
     
-    setAvailableModels(finalModels);
-    setAvailableLoras(finalLoras);
-    setAvailableSchedulers(finalSchedulers);
-    setAvailableBoards(finalBoards);
+  setAvailableModels(finalModels);
+  setAvailableLoras(finalLoras);
+  setAvailableSchedulers(finalSchedulers);
   }, []);
 
   // Function to sort images
@@ -406,7 +404,6 @@ export default function App() {
       setSelectedModel('');
       setSelectedLora('');
       setSelectedScheduler('');
-      setSelectedBoard('');
       setProgress({ current: 0, total: 0 });
       
       // Save directory name for user reference
@@ -486,9 +483,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, selectedBoard, imagesCount: images.length });
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, imagesCount: images.length });
     
-    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler && !selectedBoard) {
+    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler) {
       console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
@@ -557,29 +554,12 @@ export default function App() {
       console.log('🔍 TOTAL IMAGES AFTER SCHEDULER FILTER:', results.length);
     }
 
-    // Apply board filter
-    if (selectedBoard) {
-      console.log('🔍 APPLYING BOARD FILTER:', selectedBoard);
-      console.log('🔍 TOTAL IMAGES BEFORE BOARD FILTER:', results.length);
-      
-      results = results.filter(image => {
-        const match = image.board && 
-                      image.board.toLowerCase().includes(selectedBoard.toLowerCase());
-        console.log('🔍 Board match check:', { 
-          board: image.board, 
-          selectedBoard, 
-          match 
-        });
-        return match;
-      });
-      
-      console.log('🔍 TOTAL IMAGES AFTER BOARD FILTER:', results.length);
-    }
+    // Board filter removed — board info is not reliably available in image metadata
 
     const sortedResults = sortImages(results);
     setFilteredImages(sortedResults);
     setCurrentPage(1); // Reset to first page when searching/filtering
-  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, selectedBoard, sortImages]);
+  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, sortImages]);
 
   // Calculate paginated images
   const paginatedImages = itemsPerPage === 'all' 
@@ -776,37 +756,16 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Board Filter */}
-                {availableBoards.length > 0 && (
-                  <div className="flex-1">
-                    <label htmlFor="boardFilter" className="text-gray-400 text-sm mb-2 block">Filter by Board:</label>
-                    <select
-                      id="boardFilter"
-                      value={selectedBoard}
-                      onChange={(e) => setSelectedBoard(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                      aria-describedby="board-filter-description"
-                    >
-                      <option value="">All Boards ({availableBoards.length})</option>
-                      {availableBoards.map((board, index) => (
-                        <option key={`board-${index}-${board}`} value={board}>
-                          {board}
-                        </option>
-                      ))}
-                    </select>
-                    <span id="board-filter-description" className="sr-only">Filter images by the InvokeAI board they belong to</span>
-                  </div>
-                )}
+                {/* Board filter removed (not reliable in metadata) */}
 
                 {/* Clear Filters Button */}
-                {(selectedModel || selectedLora || selectedScheduler || selectedBoard) && (
+                {(selectedModel || selectedLora || selectedScheduler) && (
                   <div className="flex items-end">
                     <button
                       onClick={() => {
                         setSelectedModel('');
                         setSelectedLora('');
                         setSelectedScheduler('');
-                        setSelectedBoard('');
                       }}
                       className="bg-gray-600 hover:bg-gray-500 text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
                       aria-label="Clear all filters"
@@ -853,7 +812,7 @@ export default function App() {
                   <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
                 </div>
               </div>
-              {(selectedModel || selectedLora || selectedScheduler || selectedBoard) && (
+              {(selectedModel || selectedLora || selectedScheduler) && (
                 <div className="mt-2 text-xs text-gray-400">
                   Active filters: 
                   {selectedModel && (
@@ -883,15 +842,7 @@ export default function App() {
                       Scheduler: {selectedScheduler} ×
                     </button>
                   )}
-                  {selectedBoard && (
-                    <button 
-                      onClick={() => setSelectedBoard('')}
-                      className="ml-1 bg-orange-600 text-orange-100 px-2 py-1 rounded hover:bg-orange-700 transition-colors cursor-pointer"
-                      title="Click to remove board filter"
-                    >
-                      Board: {selectedBoard} ×
-                    </button>
-                  )}
+                  {/* Board filter removed */}
                 </div>
               )}
             </div>
