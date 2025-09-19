@@ -15,6 +15,7 @@ import SearchBar from './components/SearchBar';
 import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
 import Loader from './components/Loader';
+import AdvancedFilters from './src/components/AdvancedFilters';
 
 export default function App() {
   const [images, setImages] = useState<IndexedImage[]>([]);
@@ -40,6 +41,7 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedLora, setSelectedLora] = useState<string>('');
   const [selectedScheduler, setSelectedScheduler] = useState<string>('');
+  const [advancedFilters, setAdvancedFilters] = useState<any>({});
 
 
   // Load persisted settings on component mount
@@ -483,9 +485,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, imagesCount: images.length });
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, advancedFilters, imagesCount: images.length });
     
-    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler) {
+    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler && Object.keys(advancedFilters).length === 0) {
       console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
@@ -554,12 +556,44 @@ export default function App() {
       console.log('🔍 TOTAL IMAGES AFTER SCHEDULER FILTER:', results.length);
     }
 
+    // Apply advanced filters
+    if (advancedFilters.dimension) {
+      results = results.filter(image => {
+        const key = `${image.metadata.width}×${image.metadata.height}`;
+        return key === advancedFilters.dimension;
+      });
+    }
+
+    if (advancedFilters.steps) {
+      const { min, max } = advancedFilters.steps;
+      results = results.filter(image => {
+        const steps = image.metadata?.steps || image.metadata?.num_inference_steps;
+        return steps >= min && steps <= max;
+      });
+    }
+
+    if (advancedFilters.cfg) {
+      const { min, max } = advancedFilters.cfg;
+      results = results.filter(image => {
+        const cfg = image.metadata?.cfg_scale || image.metadata?.guidance_scale;
+        return cfg >= min && cfg <= max;
+      });
+    }
+
+    if (advancedFilters.date) {
+      const { from, to } = advancedFilters.date;
+      results = results.filter(image => {
+        const imageDate = new Date(image.lastModified).toISOString().split('T')[0];
+        return imageDate >= from && imageDate <= to;
+      });
+    }
+
     // Board filter removed — board info is not reliably available in image metadata
 
     const sortedResults = sortImages(results);
     setFilteredImages(sortedResults);
     setCurrentPage(1); // Reset to first page when searching/filtering
-  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, sortImages]);
+  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, advancedFilters, sortImages]);
 
   // Calculate paginated images
   const paginatedImages = itemsPerPage === 'all' 
@@ -756,8 +790,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Board filter removed (not reliable in metadata) */}
-
                 {/* Clear Filters Button */}
                 {(selectedModel || selectedLora || selectedScheduler) && (
                   <div className="flex items-end">
@@ -777,14 +809,18 @@ export default function App() {
               </div>
             </div>
           )}
-          <button
-            onClick={handleSelectFolder}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 shadow-md whitespace-nowrap focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-            aria-label={directoryHandle ? 'Change InvokeAI folder location' : 'Select InvokeAI folder to browse images'}
-          >
-            {directoryHandle ? 'Change Folder' : 'Select InvokeAI Folder'}
-          </button>
         </div>
+
+        {/* Advanced Filters */}
+        {directoryHandle && images.length > 0 && (
+          <div className="mt-4 w-full">
+            <AdvancedFilters
+              images={images}
+              onFiltersChange={setAdvancedFilters}
+              currentFilters={advancedFilters}
+            />
+          </div>
+        )}
       </header>
 
       <main className="container mx-auto p-4 sm:p-6">
