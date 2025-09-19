@@ -7,6 +7,7 @@ const fs = require('fs').promises;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow;
+let skippedVersions = new Set(); // Store versions user wants to skip
 
 // Configure auto-updater
 // Remove checkForUpdatesAndNotify to avoid duplicate dialogs
@@ -26,25 +27,45 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
+
+  // Check if user previously skipped this version
+  if (skippedVersions.has(info.version)) {
+    console.log('User previously skipped version', info.version, '- not showing dialog');
+    return;
+  }
+
   if (mainWindow) {
     dialog.showMessageBox(mainWindow, {
       type: 'question',
       title: 'Update Available',
       message: `A new version (${info.version}) is available.`,
-      detail: 'Would you like to download and install it now?',
-      buttons: ['Download Now', 'Later'],
+      detail: 'Would you like to download this update?',
+      buttons: ['Download Now', 'Download Later', 'Skip this version'],
       defaultId: 0,
-      cancelId: 1
+      cancelId: 2
     }).then((result) => {
       if (result.response === 0) {
         // User chose to download
         console.log('User accepted update download');
         // The download will start automatically
+      } else if (result.response === 1) {
+        // User chose "Download Later"
+        console.log('User postponed download - will ask again later');
+        // Don't download now, but we can check again later
       } else {
-        // User chose "Later"
-        console.log('User postponed update');
+        // User chose "Skip this version"
+        console.log('User skipped version', info.version);
+        skippedVersions.add(info.version);
+        // Don't bother them with this version again during this session
       }
+    }).catch((error) => {
+      console.error('Error showing update dialog:', error);
+      // If dialog fails, don't download automatically - respect user choice
+      console.log('Dialog failed - not downloading update');
     });
+  } else {
+    console.log('Main window not available - not downloading update');
+    // Don't download if we can't ask for permission
   }
 });
 
@@ -80,29 +101,36 @@ autoUpdater.on('update-downloaded', (info) => {
   if (mainWindow) {
     dialog.showMessageBox(mainWindow, {
       type: 'question',
-      title: 'Update Ready',
-      message: `Update downloaded successfully!`,
-      detail: `Version ${info.version} is ready to install. The application will restart to apply the update.`,
-      buttons: ['Install Now', 'Install on Next Start'],
+      title: 'Update Downloaded',
+      message: `Update ${info.version} downloaded successfully!`,
+      detail: 'The update is ready to install. When would you like to apply it?',
+      buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
       defaultId: 0,
-      cancelId: 1
+      cancelId: 2
     }).then((result) => {
       if (result.response === 0) {
         // Install now
         console.log('User chose to install update now');
         autoUpdater.quitAndInstall();
-      } else {
-        // Install on next start
+      } else if (result.response === 1) {
+        // Install on next start - don't restart now
         console.log('User chose to install update on next start');
+        // The update will be installed automatically on next app launch
+        // No need to call quitAndInstall() here
+      } else {
+        // Cancel - user changed their mind
+        console.log('User cancelled update installation');
+        // Update remains downloaded but not installed
+        // User can still install it later if they change their mind
       }
     }).catch((error) => {
-      console.error('Error showing update dialog:', error);
-      // Fallback: just install the update
-      autoUpdater.quitAndInstall();
+      console.error('Error showing installation dialog:', error);
+      // If dialog fails, don't force install - respect user choice
+      console.log('Installation dialog failed - update will install on next start');
     });
   } else {
-    console.log('Main window not available, installing update automatically');
-    autoUpdater.quitAndInstall();
+    console.log('Main window not available - update will install on next start');
+    // Don't force restart if window is not available
   }
 });
 
@@ -272,6 +300,29 @@ function setupFileOperationHandlers() {
       console.error('Error checking for updates:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  // Handle getting skipped versions
+  ipcMain.handle('get-skipped-versions', () => {
+    return { success: true, skippedVersions: Array.from(skippedVersions) };
+  });
+
+  // Handle clearing skipped versions
+  ipcMain.handle('clear-skipped-versions', () => {
+    const count = skippedVersions.size;
+    skippedVersions.clear();
+    console.log('Cleared', count, 'skipped versions');
+    return { success: true, clearedCount: count };
+  });
+
+  // Handle skipping a specific version
+  ipcMain.handle('skip-version', (event, version) => {
+    if (version) {
+      skippedVersions.add(version);
+      console.log('Manually skipped version:', version);
+      return { success: true };
+    }
+    return { success: false, error: 'Version not provided' };
   });
 }
 
