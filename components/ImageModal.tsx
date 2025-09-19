@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { type IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import DropdownMenu from './DropdownMenu';
+import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -31,6 +32,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showNavigationControls, setShowNavigationControls] = useState(false);
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState({x: 0, y: 0});
 
   // Function to export metadata as TXT
   const exportToTxt = () => {
@@ -184,20 +187,94 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setNewName('');
   };
 
+  // Context menu actions
+  const copyImage = async () => {
+    const result = await copyImageToClipboard(image);
+    if (!result.success) {
+      alert('Failed to copy image: ' + result.error);
+    }
+    setShowContextMenu(false);
+  };
+
+  const showInFileExplorer = async () => {
+    const result = await showInExplorer(image);
+    if (!result.success) {
+      alert('Failed to show in file explorer: ' + result.error);
+    }
+    setShowContextMenu(false);
+  };
+
+  const copyFilePath = async () => {
+    const result = await copyFilePathToClipboard(image);
+    if (!result.success) {
+      alert('Failed to copy file path: ' + result.error);
+    }
+    setShowContextMenu(false);
+  };
+
+  const setAsWallpaper = () => {
+    alert('Set as wallpaper not implemented yet');
+    setShowContextMenu(false);
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Skip keyboard shortcuts if user is typing in an input
+      const activeElement = document.activeElement;
+      const isInputFocused = activeElement && 
+        (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || 
+         (activeElement as HTMLElement).contentEditable === 'true');
+      
+      if (isInputFocused) {
+        return;
+      }
+
       if (event.key === 'Escape') {
+        if (showContextMenu) {
+          setShowContextMenu(false);
+          return;
+        }
         if (showExportDropdown) {
           setShowExportDropdown(false);
-        } else {
-          onClose();
+          return;
         }
+        onClose();
       } else if (event.key === 'ArrowLeft' && onNavigatePrevious) {
         event.preventDefault();
         onNavigatePrevious();
       } else if (event.key === 'ArrowRight' && onNavigateNext) {
         event.preventDefault();
         onNavigateNext();
+      } else if (event.key === 'Home' && totalImages > 1) {
+        event.preventDefault();
+        // Navigate to first image
+        if (onNavigatePrevious) {
+          for (let i = 0; i < currentIndex; i++) {
+            onNavigatePrevious();
+          }
+        }
+      } else if (event.key === 'End' && totalImages > 1) {
+        event.preventDefault();
+        // Navigate to last image
+        if (onNavigateNext) {
+          for (let i = currentIndex; i < totalImages - 1; i++) {
+            onNavigateNext();
+          }
+        }
+      } else if (event.key === 'Delete') {
+        event.preventDefault();
+        handleDelete();
+      } else if (event.key === 'F2') {
+        event.preventDefault();
+        if (!isRenaming) {
+          handleRename();
+        }
+      } else if (event.ctrlKey && event.key === 'c') {
+        event.preventDefault();
+        copyImage();
+      } else if (event.ctrlKey && event.key === 'e') {
+        event.preventDefault();
+        showInFileExplorer();
       }
     };
 
@@ -206,6 +283,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
         const target = event.target as Element;
         if (!target.closest('[data-dropdown="export"]')) {
           setShowExportDropdown(false);
+        }
+      }
+      if (showContextMenu) {
+        const target = event.target as Element;
+        if (!target.closest('[data-context-menu]')) {
+          setShowContextMenu(false);
         }
       }
     };
@@ -230,7 +313,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [image.handle, onClose, showExportDropdown]);
+  }, [image.handle, onClose, showExportDropdown, showContextMenu]);
   
   const renderMetadataValue = (value: any): string => {
     if (typeof value === 'object' && value !== null) {
@@ -252,7 +335,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
              onMouseEnter={() => setShowNavigationControls(true)}
              onMouseLeave={() => setShowNavigationControls(false)}>
           {imageUrl ? (
-            <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" />
+            <img 
+              src={imageUrl} 
+              alt={image.name} 
+              className="max-w-full max-h-full object-contain" 
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setShowContextMenu(true);
+                setContextMenuPos({x: e.clientX, y: e.clientY});
+              }}
+            />
           ) : (
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
           )}
@@ -416,6 +508,42 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
         </div>
       </div>
+      
+      {/* Context Menu */}
+      {showContextMenu && (
+        <div 
+          className="fixed bg-gray-700 border border-gray-600 rounded-md shadow-lg z-50 min-w-[200px]"
+          style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          onClick={(e) => e.stopPropagation()}
+          data-context-menu
+        >
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            onClick={copyImage}
+          >
+            Copy Image
+          </button>
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            onClick={showInFileExplorer}
+          >
+            Show in File Explorer
+          </button>
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            onClick={copyFilePath}
+          >
+            Copy File Path
+          </button>
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            onClick={setAsWallpaper}
+          >
+            Set as Wallpaper
+          </button>
+        </div>
+      )}
+      
       <button
         className="absolute top-4 right-4 text-white text-3xl hover:text-gray-400 transition-colors"
         onClick={onClose}

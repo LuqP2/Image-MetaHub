@@ -1,10 +1,3 @@
-// Fix: Augment Window interface to include showDirectoryPicker for File System Access API.
-declare global {
-  interface Window {
-    showDirectoryPicker(): Promise<FileSystemDirectoryHandle>;
-  }
-}
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from './types';
 import { processDirectory, isIntermediateImage } from './services/fileIndexer';
@@ -15,12 +8,14 @@ import SearchBar from './components/SearchBar';
 import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
 import Loader from './components/Loader';
-import AdvancedFilters from './src/components/AdvancedFilters';
+import Sidebar from './components/Sidebar';
+import { SearchField } from './components/SearchBar';
 
 export default function App() {
   const [images, setImages] = useState<IndexedImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<IndexedImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('any');
   const [selectedImage, setSelectedImage] = useState<IndexedImage | null>(null);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
 
@@ -38,9 +33,9 @@ export default function App() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [availableLoras, setAvailableLoras] = useState<string[]>([]);
   const [availableSchedulers, setAvailableSchedulers] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedLora, setSelectedLora] = useState<string>('');
-  const [selectedScheduler, setSelectedScheduler] = useState<string>('');
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
+  const [selectedSchedulers, setSelectedSchedulers] = useState<string[]>([]);
   const [advancedFilters, setAdvancedFilters] = useState<any>({});
 
 
@@ -403,9 +398,9 @@ export default function App() {
       setImages([]);
       setFilteredImages([]);
       setSearchQuery('');
-      setSelectedModel('');
-      setSelectedLora('');
-      setSelectedScheduler('');
+      setSelectedModels([]);
+      setSelectedLoras([]);
+      setSelectedSchedulers([]);
       setProgress({ current: 0, total: 0 });
       
       // Save directory name for user reference
@@ -485,9 +480,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModel, selectedLora, selectedScheduler, advancedFilters, imagesCount: images.length });
+    console.log('🔍 FILTER EFFECT TRIGGERED:', { searchQuery, selectedModels, selectedLoras, selectedSchedulers, advancedFilters, imagesCount: images.length });
     
-    if (!searchQuery && !selectedModel && !selectedLora && !selectedScheduler && Object.keys(advancedFilters).length === 0) {
+    if (!searchQuery && selectedModels.length === 0 && selectedLoras.length === 0 && selectedSchedulers.length === 0 && Object.keys(advancedFilters).length === 0) {
       console.log('📄 NO FILTERS - SHOWING ALL IMAGES');
       const sortedImages = sortImages(images);
       setFilteredImages(sortedImages);
@@ -497,39 +492,89 @@ export default function App() {
     console.log('🎯 APPLYING FILTERS...');
     let results = images;
 
-    // Apply search filter
+    // Apply search filter based on selected field
     if (searchQuery) {
       const lowerCaseQuery = searchQuery.toLowerCase();
-      // Use word boundary regex to match whole words only
-      const searchRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-      results = results.filter(image => 
-        searchRegex.test(image.metadataString)
-      );
+
+      results = results.filter(image => {
+        switch (searchField) {
+          case 'any':
+            // Search in all fields (original behavior) - use word boundary for precision
+            const anyRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            return anyRegex.test(image.metadataString);
+
+          case 'prompt':
+            // Search only in prompt field - use substring matching for flexibility
+            const promptText = image.metadata?.prompt;
+            if (typeof promptText === 'string') {
+              return promptText.toLowerCase().includes(lowerCaseQuery);
+            } else if (Array.isArray(promptText)) {
+              return promptText.some((p: any) => typeof p === 'string' && p.toLowerCase().includes(lowerCaseQuery));
+            }
+            return false;
+
+          case 'model':
+            // Search only in models array - use substring search for flexibility
+            return image.models.some(model => {
+              const modelString = typeof model === 'string' ? model : String(model);
+              return modelString.toLowerCase().includes(lowerCaseQuery);
+            });
+
+          case 'lora':
+            // Search only in loras array - use substring search for flexibility
+            return image.loras.some(lora => {
+              const loraString = typeof lora === 'string' ? lora : String(lora);
+              return loraString.toLowerCase().includes(lowerCaseQuery);
+            });
+
+          case 'seed':
+            // Search only in seed field - exact match for precision
+            const seedString = String(image.metadata?.seed || '');
+            return seedString.includes(lowerCaseQuery);
+
+          case 'settings':
+            // Search in CFG, steps, and scheduler - use substring for flexibility
+            const cfgString = String(image.metadata?.cfg_scale || image.metadata?.guidance_scale || '');
+            const stepsString = String(image.metadata?.steps || image.metadata?.num_inference_steps || '');
+            const schedulerString = String(image.scheduler || '');
+
+            return cfgString.includes(lowerCaseQuery) ||
+                   stepsString.includes(lowerCaseQuery) ||
+                   schedulerString.toLowerCase().includes(lowerCaseQuery);
+
+          default:
+            return false;
+        }
+      });
     }
 
     // Apply model filter
-    if (selectedModel) {
+    if (selectedModels.length > 0) {
       results = results.filter(image => 
         image.models.some(model => {
           // Ensure model is a string before calling toLowerCase
           const modelString = typeof model === 'string' ? model : String(model);
-          return modelString.toLowerCase().includes(selectedModel.toLowerCase());
+          return selectedModels.some(selectedModel => 
+            modelString.toLowerCase().includes(selectedModel.toLowerCase())
+          );
         })
       );
     }
 
     // Apply LoRA filter
-    if (selectedLora) {
-      console.log('🔍 APPLYING LORA FILTER:', selectedLora);
+    if (selectedLoras.length > 0) {
+      console.log('🔍 APPLYING LORA FILTER:', selectedLoras);
       console.log('🔍 TOTAL IMAGES BEFORE LORA FILTER:', results.length);
       
       results = results.filter(image => {
-        console.log('🔍 Filtering by LoRA:', { selectedLora, imageLoras: image.loras });
+        console.log('🔍 Filtering by LoRA:', { selectedLoras, imageLoras: image.loras });
         return image.loras.some(lora => {
           // Ensure lora is a string before calling toLowerCase
           const loraString = typeof lora === 'string' ? lora : String(lora);
-          const match = loraString.toLowerCase().includes(selectedLora.toLowerCase());
-          console.log('🔍 LoRA match check:', { lora: loraString, selectedLora, match });
+          const match = selectedLoras.some(selectedLora => 
+            loraString.toLowerCase().includes(selectedLora.toLowerCase())
+          );
+          console.log('🔍 LoRA match check:', { lora: loraString, selectedLoras, match });
           return match;
         });
       });
@@ -538,16 +583,17 @@ export default function App() {
     }
 
     // Apply scheduler filter
-    if (selectedScheduler) {
-      console.log('🔍 APPLYING SCHEDULER FILTER:', selectedScheduler);
+    if (selectedSchedulers.length > 0) {
+      console.log('🔍 APPLYING SCHEDULER FILTER:', selectedSchedulers);
       console.log('🔍 TOTAL IMAGES BEFORE SCHEDULER FILTER:', results.length);
       
       results = results.filter(image => {
-        const match = image.scheduler && 
-                      image.scheduler.toLowerCase().includes(selectedScheduler.toLowerCase());
+        const match = image.scheduler && selectedSchedulers.some(selectedScheduler => 
+          image.scheduler.toLowerCase().includes(selectedScheduler.toLowerCase())
+        );
         console.log('🔍 Scheduler match check:', { 
           scheduler: image.scheduler, 
-          selectedScheduler, 
+          selectedSchedulers, 
           match 
         });
         return match;
@@ -593,7 +639,7 @@ export default function App() {
     const sortedResults = sortImages(results);
     setFilteredImages(sortedResults);
     setCurrentPage(1); // Reset to first page when searching/filtering
-  }, [searchQuery, images, selectedModel, selectedLora, selectedScheduler, advancedFilters, sortImages]);
+  }, [searchQuery, images, selectedModels, selectedLoras, selectedSchedulers, advancedFilters, sortImages]);
 
   // Calculate paginated images
   const paginatedImages = itemsPerPage === 'all' 
@@ -708,306 +754,234 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
-      <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
-        <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M11.83 2.17C11.42 1.41 10.58 1.41 10.17 2.17L2.17 16.17C1.76 16.93 2.23 18 3 18H21C21.77 18 22.24 16.93 21.83 16.17L13.83 2.17C13.42 1.41 12.58 1.41 12.17 2.17L11.83 2.17Z" fillOpacity="0.01"/>
-              <path d="M12 2L3 18H21L12 2ZM12 5.5L18.6 16H5.4L12 5.5Z"/>
-            </svg>
-            <h1 className="text-2xl font-bold tracking-wider">Local Image Browser</h1>
-          </div>
-          {directoryHandle && <SearchBar value={searchQuery} onChange={setSearchQuery} />}
-          
-          {/* Model and LoRA Filters */}
-          {directoryHandle && (availableModels.length > 0 || availableLoras.length > 0 || availableSchedulers.length > 0) && (
-            <div className="mb-6 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
-              <h3 className="text-gray-300 text-sm font-medium mb-3">Filters</h3>
-              <div className="flex flex-col sm:flex-row gap-4">
-                {/* Model Filter */}
-                {availableModels.length > 0 && (
-                  <div className="flex-1">
-                    <label htmlFor="modelFilter" className="text-gray-400 text-sm mb-2 block">Filter by Model:</label>
-                    <select
-                      id="modelFilter"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                      aria-describedby="model-filter-description"
-                    >
-                      <option value="">All Models ({availableModels.length})</option>
-                      {availableModels.map((model, index) => (
-                        <option key={`model-${index}-${model}`} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                    <span id="model-filter-description" className="sr-only">Filter images by the AI model used to generate them</span>
-                  </div>
-                )}
-
-                {/* LoRA Filter */}
-                {availableLoras.length > 0 && (
-                  <div className="flex-1">
-                    <label htmlFor="loraFilter" className="text-gray-400 text-sm mb-2 block">Filter by LoRA:</label>
-                    <select
-                      id="loraFilter"
-                      value={selectedLora}
-                      onChange={(e) => setSelectedLora(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                      aria-describedby="lora-filter-description"
-                    >
-                      <option value="">All LoRAs ({availableLoras.length})</option>
-                      {availableLoras.map((lora, index) => (
-                        <option key={`lora-${index}-${lora}`} value={lora}>
-                          {lora}
-                        </option>
-                      ))}
-                    </select>
-                    <span id="lora-filter-description" className="sr-only">Filter images by the LoRA (Low-Rank Adaptation) models used</span>
-                  </div>
-                )}
-
-                {/* Scheduler Filter */}
-                {availableSchedulers.length > 0 && (
-                  <div className="flex-1">
-                    <label htmlFor="schedulerFilter" className="text-gray-400 text-sm mb-2 block">Filter by Scheduler:</label>
-                    <select
-                      id="schedulerFilter"
-                      value={selectedScheduler}
-                      onChange={(e) => setSelectedScheduler(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                      aria-describedby="scheduler-filter-description"
-                    >
-                      <option value="">All Schedulers ({availableSchedulers.length})</option>
-                      {availableSchedulers.map((scheduler, index) => (
-                        <option key={`scheduler-${index}-${scheduler}`} value={scheduler}>
-                          {scheduler}
-                        </option>
-                      ))}
-                    </select>
-                    <span id="scheduler-filter-description" className="sr-only">Filter images by the sampling scheduler used to generate them</span>
-                  </div>
-                )}
-
-                {/* Clear Filters Button */}
-                {(selectedModel || selectedLora || selectedScheduler) && (
-                  <div className="flex items-end">
-                    <button
-                      onClick={() => {
-                        setSelectedModel('');
-                        setSelectedLora('');
-                        setSelectedScheduler('');
-                      }}
-                      className="bg-gray-600 hover:bg-gray-500 text-gray-200 px-4 py-2 rounded-lg text-sm transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
-                      aria-label="Clear all filters"
-                    >
-                      Clear Filters
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Advanced Filters */}
-        {directoryHandle && images.length > 0 && (
-          <div className="mt-4 w-full">
-            <AdvancedFilters
-              images={images}
-              onFiltersChange={setAdvancedFilters}
-              currentFilters={advancedFilters}
-            />
-          </div>
-        )}
-      </header>
-
-      <main className="container mx-auto p-4 sm:p-6">
-        {error && (
-          <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative my-4" role="alert">
-            <strong className="font-bold">Error: </strong>
-            <span className="block sm:inline">{error}</span>
-          </div>
-        )}
-
-        {isLoading && <Loader progress={progress} />}
-
-        {!isLoading && !directoryHandle && <FolderSelector onSelectFolder={handleSelectFolder} />}
-
-        {directoryHandle && !isLoading && (
-          <>
-            <div className="mb-6 p-4 bg-gradient-to-r from-gray-800/50 to-gray-700/50 rounded-lg border border-gray-600" role="status" aria-live="polite">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="text-gray-300">
-                  Found <span className="text-blue-400 font-bold text-lg">{filteredImages.length}</span> of <span className="text-green-400 font-bold text-lg">{images.length}</span> images
-                </div>
-                <div className="text-sm text-gray-400">
-                  Searching in <span className="font-mono text-blue-300 bg-gray-800 px-2 py-1 rounded border border-gray-600">{directoryHandle.name}</span>
-                  <br />
-                  <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
-                </div>
-              </div>
-              {(selectedModel || selectedLora || selectedScheduler) && (
-                <div className="mt-2 text-xs text-gray-400">
-                  Active filters: 
-                  {selectedModel && (
-                    <button 
-                      onClick={() => setSelectedModel('')}
-                      className="ml-1 bg-blue-600 text-blue-100 px-2 py-1 rounded hover:bg-blue-700 transition-colors cursor-pointer"
-                      title="Click to remove model filter"
-                    >
-                      Model: {selectedModel} ×
-                    </button>
-                  )}
-                  {selectedLora && (
-                    <button 
-                      onClick={() => setSelectedLora('')}
-                      className="ml-1 bg-purple-600 text-purple-100 px-2 py-1 rounded hover:bg-purple-700 transition-colors cursor-pointer"
-                      title="Click to remove LoRA filter"
-                    >
-                      LoRA: {selectedLora} ×
-                    </button>
-                  )}
-                  {selectedScheduler && (
-                    <button 
-                      onClick={() => setSelectedScheduler('')}
-                      className="ml-1 bg-green-600 text-green-100 px-2 py-1 rounded hover:bg-green-700 transition-colors cursor-pointer"
-                      title="Click to remove scheduler filter"
-                    >
-                      Scheduler: {selectedScheduler} ×
-                    </button>
-                  )}
-                  {/* Board filter removed */}
-                </div>
-              )}
-            </div>
-            
-            {/* Sort and Pagination Controls */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-              <div className="flex items-center gap-4">
-                <label htmlFor="sortOrder" className="text-gray-300 text-sm font-medium">Sort By:</label>
-                <select
-                  id="sortOrder"
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc' | 'date-asc' | 'date-desc')}
-                  className="bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                  aria-describedby="sort-description"
-                >
-                  <option value="asc">A-Z (Ascending)</option>
-                  <option value="desc">Z-A (Descending)</option>
-                  <option value="date-asc">Date (Oldest First)</option>
-                  <option value="date-desc">Date (Newest First)</option>
-                </select>
-                <span id="sort-description" className="sr-only">Choose how to sort the images</span>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <label htmlFor="itemsPerPage" className="text-gray-300 text-sm font-medium">Items Per Page:</label>
-                <select
-                  id="itemsPerPage"
-                  value={itemsPerPage}
-                  onChange={(e) => {
-                    const value = e.target.value === 'all' ? 'all' : Number(e.target.value);
-                    setItemsPerPage(value);
-                    setCurrentPage(1); // Reset to first page
-                  }}
-                  className="bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
-                  aria-describedby="pagination-description"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value="all">All</option>
-                </select>
-                <span id="pagination-description" className="sr-only">Choose how many images to display per page</span>
-              </div>
-            </div>
-            
-            {/* Selection Toolbar */}
-            {selectedImages.size > 0 && (
-              <div className="flex items-center justify-between bg-gray-800/50 border border-gray-700/30 rounded-md p-3 mb-4 text-sm">
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-300">
-                    {selectedImages.size} selected
-                  </span>
-                  <button
-                    onClick={clearSelection}
-                    className="text-gray-500 hover:text-gray-300 transition-colors duration-200 text-xs"
-                    title="Clear selection"
-                  >
-                    Clear
-                  </button>
-                </div>
-                <button
-                  onClick={handleDeleteSelectedImages}
-                  className="text-gray-400 hover:text-red-400 transition-colors duration-200 flex items-center gap-1 text-xs"
-                  title={`Delete ${selectedImages.size} selected image${selectedImages.size !== 1 ? 's' : ''}`}
-                >
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  Delete
-                </button>
-              </div>
-            )}
-            
-            <ImageGrid 
-              images={paginatedImages} 
-              onImageClick={handleImageSelection}
-              selectedImages={selectedImages}
-            />
-            
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-gray-100 px-5 py-2 rounded-lg transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 shadow-md disabled:shadow-none"
-                    aria-label="Go to previous page"
-                  >
-                    ← Previous
-                  </button>
-                  
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 rounded-lg border border-gray-600">
-                    <span className="text-gray-300 text-sm font-medium" aria-live="polite" aria-atomic="true">
-                      Page <span className="text-blue-400 font-bold">{currentPage}</span> of <span className="text-green-400 font-bold">{totalPages}</span>
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-gray-100 px-5 py-2 rounded-lg transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 shadow-md disabled:shadow-none"
-                    aria-label="Go to next page"
-                  >
-                    Next →
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </main>
-
-      {selectedImage && (
-        <ImageModal 
-          image={selectedImage} 
-          onClose={() => {
-            setSelectedImage(null);
-            setSelectedImages(new Set());
+      {/* Sidebar */}
+      {directoryHandle && (
+        <Sidebar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchField={searchField}
+          onSearchFieldChange={setSearchField}
+          availableModels={availableModels}
+          availableLoras={availableLoras}
+          availableSchedulers={availableSchedulers}
+          selectedModels={selectedModels}
+          selectedLoras={selectedLoras}
+          selectedSchedulers={selectedSchedulers}
+          onModelChange={setSelectedModels}
+          onLoraChange={setSelectedLoras}
+          onSchedulerChange={setSelectedSchedulers}
+          advancedFilters={advancedFilters}
+          onAdvancedFiltersChange={setAdvancedFilters}
+          onClearAllFilters={() => {
+            setSelectedModels([]);
+            setSelectedLoras([]);
+            setSelectedSchedulers([]);
+            setAdvancedFilters({});
           }}
-          onImageDeleted={handleImageDeleted}
-          onImageRenamed={handleImageRenamed}
-          currentIndex={getCurrentImageIndex()}
-          totalImages={filteredImages.length}
-          onNavigateNext={handleNavigateNext}
-          onNavigatePrevious={handleNavigatePrevious}
+          images={images}
         />
       )}
+
+      {/* Main Content */}
+      <div className={`${directoryHandle ? 'ml-80' : ''} min-h-screen`}>
+        <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
+          <div className="container mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M11.83 2.17C11.42 1.41 10.58 1.41 10.17 2.17L2.17 16.17C1.76 16.93 2.23 18 3 18H21C21.77 18 22.24 16.93 21.83 16.17L13.83 2.17C13.42 1.41 12.58 1.41 12.17 2.17L11.83 2.17Z" fillOpacity="0.01"/>
+                <path d="M12 2L3 18H21L12 2ZM12 5.5L18.6 16H5.4L12 5.5Z"/>
+              </svg>
+              <h1 className="text-2xl font-bold tracking-wider">Local Image Browser</h1>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className="container mx-auto p-4">
+          {error && (
+            <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg relative my-4" role="alert">
+              <strong className="font-bold">Error: </strong>
+              <span className="block sm:inline">{error}</span>
+            </div>
+          )}
+
+          {isLoading && <Loader progress={progress} />}
+
+          {!isLoading && !directoryHandle && <FolderSelector onSelectFolder={handleSelectFolder} />}
+
+          {directoryHandle && !isLoading && (
+            <>
+              <div className="mb-6 p-4 bg-gradient-to-r from-gray-800/50 to-gray-700/50 rounded-lg border border-gray-600" role="status" aria-live="polite">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="text-gray-300">
+                    Found <span className="text-blue-400 font-bold text-lg">{filteredImages.length}</span> of <span className="text-green-400 font-bold text-lg">{images.length}</span> images
+                  </div>
+                  <div className="text-sm text-gray-400">
+                    Searching in <span className="font-mono text-blue-300 bg-gray-800 px-2 py-1 rounded border border-gray-600">{directoryHandle.name}</span>
+                    <br />
+                    <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
+                  </div>
+                </div>
+                {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    Active filters:
+                    {selectedModels.length > 0 && (
+                      <button
+                        onClick={() => setSelectedModels([])}
+                        className="ml-1 bg-blue-600 text-blue-100 px-2 py-1 rounded hover:bg-blue-700 transition-colors cursor-pointer"
+                        title="Click to remove all model filters"
+                      >
+                        Models ({selectedModels.length}) ×
+                      </button>
+                    )}
+                    {selectedLoras.length > 0 && (
+                      <button
+                        onClick={() => setSelectedLoras([])}
+                        className="ml-1 bg-purple-600 text-purple-100 px-2 py-1 rounded hover:bg-purple-700 transition-colors cursor-pointer"
+                        title="Click to remove all LoRA filters"
+                      >
+                        LoRAs ({selectedLoras.length}) ×
+                      </button>
+                    )}
+                    {selectedSchedulers.length > 0 && (
+                      <button
+                        onClick={() => setSelectedSchedulers([])}
+                        className="ml-1 bg-green-600 text-green-100 px-2 py-1 rounded hover:bg-green-700 transition-colors cursor-pointer"
+                        title="Click to remove all scheduler filters"
+                      >
+                        Schedulers ({selectedSchedulers.length}) ×
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Sort and Pagination Controls */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+                <div className="flex items-center gap-4">
+                  <label htmlFor="sortOrder" className="text-gray-300 text-sm font-medium">Sort By:</label>
+                  <select
+                    id="sortOrder"
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc' | 'date-asc' | 'date-desc')}
+                    className="bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                    aria-describedby="sort-description"
+                  >
+                    <option value="asc">A-Z (Ascending)</option>
+                    <option value="desc">Z-A (Descending)</option>
+                    <option value="date-asc">Date (Oldest First)</option>
+                    <option value="date-desc">Date (Newest First)</option>
+                  </select>
+                  <span id="sort-description" className="sr-only">Choose how to sort the images</span>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <label htmlFor="itemsPerPage" className="text-gray-300 text-sm font-medium">Items Per Page:</label>
+                  <select
+                    id="itemsPerPage"
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      const value = e.target.value === 'all' ? 'all' : Number(e.target.value);
+                      setItemsPerPage(value);
+                      setCurrentPage(1); // Reset to first page
+                    }}
+                    className="bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                    aria-describedby="pagination-description"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value="all">All</option>
+                  </select>
+                  <span id="pagination-description" className="sr-only">Choose how many images to display per page</span>
+                </div>
+              </div>
+
+              {/* Selection Toolbar */}
+              {selectedImages.size > 0 && (
+                <div className="flex items-center justify-between bg-gray-800/50 border border-gray-700/30 rounded-md p-3 mb-4 text-sm">
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-300">
+                      {selectedImages.size} selected
+                    </span>
+                    <button
+                      onClick={clearSelection}
+                      className="text-gray-500 hover:text-gray-300 transition-colors duration-200 text-xs"
+                      title="Clear selection"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleDeleteSelectedImages}
+                    className="text-gray-400 hover:text-red-400 transition-colors duration-200 flex items-center gap-1 text-xs"
+                    title={`Delete ${selectedImages.size} selected image${selectedImages.size !== 1 ? 's' : ''}`}
+                  >
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
+              )}
+
+              <ImageGrid
+                images={paginatedImages}
+                onImageClick={handleImageSelection}
+                selectedImages={selectedImages}
+              />
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mt-8 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-gray-100 px-5 py-2 rounded-lg transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 shadow-md disabled:shadow-none"
+                      aria-label="Go to previous page"
+                    >
+                      ← Previous
+                    </button>
+
+                    <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 rounded-lg border border-gray-600">
+                      <span className="text-gray-300 text-sm font-medium" aria-live="polite" aria-atomic="true">
+                        Page <span className="text-blue-400 font-bold">{currentPage}</span> of <span className="text-green-400 font-bold">{totalPages}</span>
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 disabled:from-gray-800 disabled:to-gray-800 disabled:text-gray-500 text-gray-100 px-5 py-2 rounded-lg transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 shadow-md disabled:shadow-none"
+                      aria-label="Go to next page"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </main>
+
+        {selectedImage && (
+          <ImageModal
+            image={selectedImage}
+            onClose={() => {
+              setSelectedImage(null);
+              setSelectedImages(new Set());
+            }}
+            onImageDeleted={handleImageDeleted}
+            onImageRenamed={handleImageRenamed}
+            currentIndex={getCurrentImageIndex()}
+            totalImages={filteredImages.length}
+            onNavigateNext={handleNavigateNext}
+            onNavigatePrevious={handleNavigatePrevious}
+          />
+        )}
+      </div>
     </div>
   );
 }

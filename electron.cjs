@@ -200,6 +200,17 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Handle show item in folder
+  ipcMain.handle('show-item-in-folder', async (event, filePath) => {
+    try {
+      shell.showItemInFolder(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Error showing item in folder:', error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 app.on('window-all-closed', () => {
