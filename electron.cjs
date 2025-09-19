@@ -9,7 +9,15 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow;
 
 // Configure auto-updater
-autoUpdater.checkForUpdatesAndNotify();
+// Remove checkForUpdatesAndNotify to avoid duplicate dialogs
+// autoUpdater.checkForUpdatesAndNotify();
+
+// Check for updates manually
+setTimeout(() => {
+  if (!isDev) {
+    autoUpdater.checkForUpdates();
+  }
+}, 3000); // Wait 3 seconds after app start
 
 // Auto-updater events
 autoUpdater.on('checking-for-update', () => {
@@ -18,12 +26,26 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
   console.log('Update available:', info.version);
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Available',
-    message: `A new version (${info.version}) is available. It will be downloaded in the background.`,
-    buttons: ['OK']
-  });
+  if (mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Update Available',
+      message: `A new version (${info.version}) is available.`,
+      detail: 'Would you like to download and install it now?',
+      buttons: ['Download Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1
+    }).then((result) => {
+      if (result.response === 0) {
+        // User chose to download
+        console.log('User accepted update download');
+        // The download will start automatically
+      } else {
+        // User chose "Later"
+        console.log('User postponed update');
+      }
+    });
+  }
 });
 
 autoUpdater.on('update-not-available', (info) => {
@@ -32,6 +54,13 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   console.log('Error in auto-updater:', err);
+  dialog.showMessageBox(mainWindow, {
+    type: 'error',
+    title: 'Update Error',
+    message: 'Failed to check for updates.',
+    detail: err.message || 'Please try again later.',
+    buttons: ['OK']
+  });
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
@@ -39,21 +68,42 @@ autoUpdater.on('download-progress', (progressObj) => {
   log_message = log_message + ` - Downloaded ${progressObj.percent}%`;
   log_message = log_message + ` (${progressObj.transferred}/${progressObj.total})`;
   console.log(log_message);
+
+  // Optional: Send progress to renderer process for UI feedback
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('update-progress', progressObj);
+  }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded');
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Ready',
-    message: `Update downloaded. Version ${info.version} will be installed on restart.`,
-    buttons: ['Restart Now', 'Later'],
-    defaultId: 0
-  }).then((result) => {
-    if (result.response === 0) {
+  console.log('Update downloaded:', info.version);
+  if (mainWindow) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Update Ready',
+      message: `Update downloaded successfully!`,
+      detail: `Version ${info.version} is ready to install. The application will restart to apply the update.`,
+      buttons: ['Install Now', 'Install on Next Start'],
+      defaultId: 0,
+      cancelId: 1
+    }).then((result) => {
+      if (result.response === 0) {
+        // Install now
+        console.log('User chose to install update now');
+        autoUpdater.quitAndInstall();
+      } else {
+        // Install on next start
+        console.log('User chose to install update on next start');
+      }
+    }).catch((error) => {
+      console.error('Error showing update dialog:', error);
+      // Fallback: just install the update
       autoUpdater.quitAndInstall();
-    }
-  });
+    });
+  } else {
+    console.log('Main window not available, installing update automatically');
+    autoUpdater.quitAndInstall();
+  }
 });
 
 function createWindow() {
@@ -208,6 +258,18 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Error showing item in folder:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle manual update check
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      console.log('Manual update check requested');
+      const result = await autoUpdater.checkForUpdates();
+      return { success: true, updateInfo: result.updateInfo };
+    } catch (error) {
+      console.error('Error checking for updates:', error);
       return { success: false, error: error.message };
     }
   });

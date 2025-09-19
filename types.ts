@@ -48,5 +48,7 @@ declare global {
       showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
       showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     };
+    // File System Access API
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   }
 }
