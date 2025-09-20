@@ -53,12 +53,12 @@ autoUpdater.on('update-available', (info) => {
       } else if (result.response === 1) {
         // User chose "Download Later"
         console.log('User postponed download - will ask again later');
-        // Don't download now, but we can check again later
+        // Ensure no download starts automatically
       } else {
         // User chose "Skip this version"
         console.log('User skipped version', info.version);
         skippedVersions.add(info.version);
-        // Don't bother them with this version again during this session
+        // Ensure no download starts automatically
       }
     }).catch((error) => {
       console.error('Error showing update dialog:', error);
