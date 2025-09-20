@@ -18,6 +18,8 @@ All processing and indexing are performed locally on the user's machine. The app
 - Incremental indexing (processes only new or changed files)
 - Background indexing with progress updates
 - Lazy loading to reduce memory usage
+- **Performance optimizations**: Caching system to prevent repeated file discovery calls
+- **Reduced logging**: Eliminated excessive console output for better performance
 
 ## Installation
 
@@ -84,13 +86,18 @@ npm run dev
 - Desktop app wrapper with auto-updater
 - Metadata export (TXT, JSON)
 
-### Short Term (v1.6)
+### Current (v1.7.0)
+- ✅ **Performance Optimizations**: Caching system and reduced logging for better performance
+- ✅ **Electron Detection**: Fixed Electron environment detection for proper file operations
+- ✅ **Stability Improvements**: Resolved infinite logging loops and improved error handling
+
+### Short Term (v1.8)
 - Dimension Filtering: Filter by image dimensions (512x512, 1024x1024, etc.)
 - Advanced Filters: Steps slider, CFG Scale slider
-- Performance Optimizations: Virtual scrolling for massive collections
+- Virtual Scrolling: Efficient rendering for massive collections
 - Keyboard Shortcuts: Navigation and selection hotkeys
 
-### Medium Term (v1.8)
+### Medium Term (v1.9)
 - Multi-Platform Support: ComfyUI and Automatic1111 metadata parsing
 - Tag System: Custom tagging and organization
 - Image Comparison: Side-by-side view for selected images
@@ -112,8 +119,9 @@ npm run dev
 ## Usage notes
 
 - First load: initial indexing can take minutes for large collections
-- Subsequent loads: cached data loads quickly
+- Subsequent loads: cached data loads quickly with performance optimizations
 - New images: only new or changed files are processed during indexing
+- Performance: optimized caching prevents repeated file discovery operations
 - Multi-selection: Ctrl+click for selecting multiple items
 - File management: renaming and deletion are available in the desktop app
 - Search: word-boundary matching is used for precise results

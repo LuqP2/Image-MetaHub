@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-09-20
+
+### Fixed
+- **Performance Issue**: Fixed infinite console logging loop that was generating thousands of log entries during file discovery
+- **Electron Detection**: Corrected Electron environment detection in `getAllFileHandles` function to properly use Electron APIs instead of browser APIs
+- **Caching System**: Added caching mechanism to prevent repeated file discovery calls and improve performance
+
+### Technical
+- Enhanced file discovery performance with useRef-based caching
+- Reduced excessive console logging in file reading operations
+- Improved Electron API detection and usage patterns
+- Maintained backward compatibility with browser File System Access API
+
 ## [1.6.1] - 2025-09-19
 
 ### Added

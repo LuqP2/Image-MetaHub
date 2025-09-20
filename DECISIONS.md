@@ -106,3 +106,24 @@ This file documents significant architectural decisions, design choices, and imp
 **Impact:** Better user experience in right-click context menu, clearer feedback about file locations, improved cross-platform compatibility.
 
 **Testing:** Verified improved messaging, clipboard functionality, and Electron file explorer integration.
+
+## 2025-09-20: PERF - Performance Optimization with Caching System
+
+**Decision:** Implemented useRef-based caching system and reduced excessive logging to fix infinite console logging loop and improve file discovery performance.
+
+**Context:** File discovery was generating thousands of console.log messages and repeatedly calling expensive file operations without caching, causing severe performance degradation with large image collections.
+
+**Rationale:** Added useRef-based caching to prevent repeated file discovery calls and removed excessive console.log statements. This approach provides immediate performance benefits while maintaining functionality and debugging capabilities when needed.
+
+**Alternatives Considered:**
+- No caching (rejected: causes repeated expensive operations)
+- Local storage caching (rejected: overkill for session-based operations)
+- Debounced logging (rejected: doesn't solve root performance issue)
+
+**Impact:** Eliminates infinite logging loop, significantly improves file discovery performance, reduces console noise while preserving essential debugging information.
+
+**Testing:** Verified with 17,000+ image collections, confirmed logging reduced from thousands to minimal messages, file discovery performance optimized with caching.
+
+---
+
+## Recent Decisions
