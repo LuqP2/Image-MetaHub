@@ -321,9 +321,20 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory path provided' };
       }
 
-      const files = await fs.readdir(dirPath);
-      // Filter for PNG files only
-      const pngFiles = files.filter(file => file.toLowerCase().endsWith('.png'));
+      const files = await fs.readdir(dirPath, { withFileTypes: true });
+      // Filter for PNG files only and get their stats
+      const pngFiles = [];
+
+      for (const file of files) {
+        if (file.isFile() && file.name.toLowerCase().endsWith('.png')) {
+          const filePath = path.join(dirPath, file.name);
+          const stats = await fs.stat(filePath);
+          pngFiles.push({
+            name: file.name,
+            lastModified: stats.mtime.getTime() // Convert to timestamp
+          });
+        }
+      }
 
       // console.log('Listed files in directory:', dirPath); // Commented out to reduce console noise
       // console.log('Found PNG files:', pngFiles.length); // Commented out to reduce console noise

@@ -505,6 +505,7 @@ export async function processDirectory(
         console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
     }
 
+
     processedCount++;
     if (processedCount % 20 === 0 || processedCount === total) { // Update progress in batches
       setProgress({ current: processedCount, total });

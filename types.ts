@@ -48,7 +48,7 @@ declare global {
       setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean }>;
       showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
       showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-      listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+      listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: {name: string; lastModified: number}[]; error?: string }>;
       readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
     };
     // File System Access API

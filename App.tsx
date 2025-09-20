@@ -11,6 +11,43 @@ import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
 import { SearchField } from './components/SearchBar';
 
+// Helper function to extract dimensions consistently
+function extractDimensions(image: IndexedImage): { width: number | string, height: number | string } {
+  const width = image.metadata?.width || 
+                image.metadata?.image?.width || 
+                image.metadata?.controlLayers?.find(layer => layer.image)?.image?.width || 
+                'undefined';
+  const height = image.metadata?.height || 
+                 image.metadata?.image?.height || 
+                 image.metadata?.controlLayers?.find(layer => layer.image)?.image?.height || 
+                 'undefined';
+  return { width, height };
+}
+
+// Helper function to extract prompt text consistently
+function extractPromptText(image: IndexedImage): string {
+  const promptData = image.metadata?.prompt;
+  if (!promptData) return '';
+
+  if (typeof promptData === 'string') {
+    return promptData;
+  }
+
+  if (Array.isArray(promptData)) {
+    const prompts = promptData
+      .map(p => {
+        if (typeof p === 'string') return p;
+        if (p && typeof p === 'object' && p.prompt) return p.prompt;
+        return '';
+      })
+      .filter(p => p !== null && p !== undefined && p !== '');
+
+    return prompts.join(' ');
+  }
+
+  return '';
+}
+
 export default function App() {
   // console.log('🚀 App component initialized');
   // console.log('📊 localStorage no início do App:', Object.keys(localStorage));
@@ -330,32 +367,41 @@ export default function App() {
         // console.log('📋 Electron API result:', result);
         if (result.success && result.files) {
           // console.log('✅ Found', result.files.length, 'PNG files in Electron');
-          for (const fileName of result.files) {
+          for (const fileInfo of result.files) {
             // Create a mock file handle for Electron
             const mockHandle = {
-              name: fileName,
+              name: fileInfo.name,
               kind: 'file' as const,
               getFile: async () => {
                 try {
                   // Use Electron API to read the actual file
-                  const fullPath = electronPath + '\\' + fileName; // Simple path joining for Windows
+                  const fullPath = electronPath + '\\' + fileInfo.name; // Simple path joining for Windows
                   const fileResult = await window.electronAPI.readFile(fullPath);
                   if (fileResult.success) {
-                    // Create a proper File object from the buffer
+                    // Create a proper File object from the buffer with lastModified date
                     const uint8Array = new Uint8Array(fileResult.data);
-                    return new File([uint8Array], fileName, { type: 'image/png' });
+                    return new File([uint8Array], fileInfo.name, {
+                      type: 'image/png',
+                      lastModified: fileInfo.lastModified
+                    });
                   } else {
-                    console.error('❌ Failed to read file:', fileName, fileResult.error);
-                    // Return empty file as fallback
-                    return new File([], fileName, { type: 'image/png' });
+                    console.error('❌ Failed to read file:', fileInfo.name, fileResult.error);
+                    // Return empty file as fallback with lastModified
+                    return new File([], fileInfo.name, {
+                      type: 'image/png',
+                      lastModified: fileInfo.lastModified
+                    });
                   }
                 } catch (error) {
-                  console.error('❌ Error reading file in Electron:', fileName, error);
-                  return new File([], fileName, { type: 'image/png' });
+                  console.error('❌ Error reading file in Electron:', fileInfo.name, error);
+                  return new File([], fileInfo.name, {
+                    type: 'image/png',
+                    lastModified: fileInfo.lastModified
+                  });
                 }
               }
             };
-            entries.push({ handle: mockHandle, path: fileName });
+            entries.push({ handle: mockHandle, path: fileInfo.name });
           }
         } else {
           console.error('❌ Electron API failed:', result.error);
@@ -806,16 +852,12 @@ export default function App() {
           currentFilteredImages = currentFilteredImages.filter(image => {
             switch (searchField) {
               case 'any':
+                // Search in all fields using word boundary for precision
                 const anyRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
                 return anyRegex.test(image.metadataString);
               case 'prompt':
-                const promptText = image.metadata?.prompt;
-                if (typeof promptText === 'string') {
-                  return promptText.toLowerCase().includes(lowerCaseQuery);
-                } else if (Array.isArray(promptText)) {
-                  return promptText.some((p: any) => typeof p === 'string' && p.toLowerCase().includes(lowerCaseQuery));
-                }
-                return false;
+                const promptText = extractPromptText(image);
+                return promptText.toLowerCase().includes(lowerCaseQuery);
               case 'model':
                 return image.models.some(model => {
                   const modelString = typeof model === 'string' ? model : String(model);
@@ -874,7 +916,8 @@ export default function App() {
         // Apply advanced filters
         if (advancedFilters.dimension) {
           currentFilteredImages = currentFilteredImages.filter(image => {
-            const key = `${image.metadata.width}×${image.metadata.height}`;
+            const { width, height } = extractDimensions(image);
+            const key = `${width}×${height}`;
             return key === advancedFilters.dimension;
           });
         }
@@ -961,13 +1004,8 @@ export default function App() {
 
           case 'prompt':
             // Search only in prompt field - use substring matching for flexibility
-            const promptText = image.metadata?.prompt;
-            if (typeof promptText === 'string') {
-              return promptText.toLowerCase().includes(lowerCaseQuery);
-            } else if (Array.isArray(promptText)) {
-              return promptText.some((p: any) => typeof p === 'string' && p.toLowerCase().includes(lowerCaseQuery));
-            }
-            return false;
+            const promptText = extractPromptText(image);
+            return promptText.toLowerCase().includes(lowerCaseQuery);
 
           case 'model':
             // Search only in models array - use substring search for flexibility
@@ -1006,12 +1044,13 @@ export default function App() {
 
     // Apply model filter
     if (selectedModels.length > 0) {
-      results = results.filter(image => 
+      const lowerSelectedModels = selectedModels.map(m => m.toLowerCase());
+      results = results.filter(image =>
         image.models.some(model => {
-          // Ensure model is a string before calling toLowerCase
           const modelString = typeof model === 'string' ? model : String(model);
-          return selectedModels.some(selectedModel => 
-            modelString.toLowerCase().includes(selectedModel.toLowerCase())
+          const lowerModel = modelString.toLowerCase();
+          return lowerSelectedModels.some(selectedModel =>
+            lowerModel.includes(selectedModel)
           );
         })
       );
@@ -1019,49 +1058,33 @@ export default function App() {
 
     // Apply LoRA filter
     if (selectedLoras.length > 0) {
-      console.log('🔍 APPLYING LORA FILTER:', selectedLoras);
-      console.log('🔍 TOTAL IMAGES BEFORE LORA FILTER:', results.length);
-      
-      results = results.filter(image => {
-        console.log('🔍 Filtering by LoRA:', { selectedLoras, imageLoras: image.loras });
-        return image.loras.some(lora => {
-          // Ensure lora is a string before calling toLowerCase
+      const lowerSelectedLoras = selectedLoras.map(l => l.toLowerCase());
+      results = results.filter(image =>
+        image.loras.some(lora => {
           const loraString = typeof lora === 'string' ? lora : String(lora);
-          const match = selectedLoras.some(selectedLora => 
-            loraString.toLowerCase().includes(selectedLora.toLowerCase())
+          const lowerLora = loraString.toLowerCase();
+          return lowerSelectedLoras.some(selectedLora =>
+            lowerLora.includes(selectedLora)
           );
-          console.log('🔍 LoRA match check:', { lora: loraString, selectedLoras, match });
-          return match;
-        });
-      });
-      
-      console.log('🔍 TOTAL IMAGES AFTER LORA FILTER:', results.length);
+        })
+      );
     }
 
     // Apply scheduler filter
     if (selectedSchedulers.length > 0) {
-      console.log('🔍 APPLYING SCHEDULER FILTER:', selectedSchedulers);
-      console.log('🔍 TOTAL IMAGES BEFORE SCHEDULER FILTER:', results.length);
-      
-      results = results.filter(image => {
-        const match = image.scheduler && selectedSchedulers.some(selectedScheduler => 
-          image.scheduler.toLowerCase().includes(selectedScheduler.toLowerCase())
-        );
-        console.log('🔍 Scheduler match check:', { 
-          scheduler: image.scheduler, 
-          selectedSchedulers, 
-          match 
-        });
-        return match;
-      });
-      
-      console.log('🔍 TOTAL IMAGES AFTER SCHEDULER FILTER:', results.length);
+      const lowerSelectedSchedulers = selectedSchedulers.map(s => s.toLowerCase());
+      results = results.filter(image =>
+        image.scheduler && lowerSelectedSchedulers.some(selectedScheduler =>
+          image.scheduler.toLowerCase().includes(selectedScheduler)
+        )
+      );
     }
 
     // Apply advanced filters
     if (advancedFilters.dimension) {
       results = results.filter(image => {
-        const key = `${image.metadata.width}×${image.metadata.height}`;
+        const { width, height } = extractDimensions(image);
+        const key = `${width}×${height}`;
         return key === advancedFilters.dimension;
       });
     }
