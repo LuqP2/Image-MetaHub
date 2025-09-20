@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2025-09-20
+
+### Added
+- **Fullscreen Viewing**: Added fullscreen functionality to ImageModal with dedicated button, ESC key support, and hover controls
+- **Refresh Folder**: Added incremental indexing capability with "Update" button for processing only new images without re-indexing entire collections
+- **Enhanced Image Viewing**: Improved image viewing experience with fullscreen mode and clean UI controls
+
+### Technical
+- Implemented fullscreen state management in ImageModal component
+- Added keyboard event handling for ESC key to exit fullscreen
+- Enhanced UI with hover-based controls for better user experience
+- Added handleUpdateIndexing function for incremental image processing
+- Maintained responsive layout and sidebar visibility in fullscreen mode
+- Preserved existing filters and pagination state during incremental updates
+
 ## [1.7.0] - 2025-09-20
 
 ### Fixed

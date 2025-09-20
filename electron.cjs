@@ -24,7 +24,7 @@ setTimeout(() => {
 
 // Auto-updater events
 autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for update...');
+  // console.log('Checking for update...');
 });
 
 autoUpdater.on('update-available', (info) => {
@@ -72,7 +72,7 @@ autoUpdater.on('update-available', (info) => {
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  console.log('Update not available');
+  // console.log('Update not available');
 });
 
 autoUpdater.on('error', (err) => {
@@ -163,9 +163,9 @@ function createWindow() {
     startUrl = `file://${path.join(__dirname, 'dist', 'index.html')}`;
   }
   
-  console.log('Loading URL:', startUrl);
-  console.log('Is Dev:', isDev);
-  console.log('App path:', __dirname);
+  // console.log('Loading URL:', startUrl);
+  // console.log('Is Dev:', isDev);
+  // console.log('App path:', __dirname);
   
   mainWindow.loadURL(startUrl);
 
@@ -210,7 +210,7 @@ function setupFileOperationHandlers() {
   // Handle setting current directory
   ipcMain.handle('set-current-directory', async (event, dirPath) => {
     currentDirectoryPath = dirPath;
-    console.log('Current directory set to:', dirPath);
+    // console.log('Current directory set to:', dirPath);
     return { success: true };
   });
 
@@ -325,8 +325,8 @@ function setupFileOperationHandlers() {
       // Filter for PNG files only
       const pngFiles = files.filter(file => file.toLowerCase().endsWith('.png'));
 
-      console.log('Listed files in directory:', dirPath);
-      console.log('Found PNG files:', pngFiles.length);
+      // console.log('Listed files in directory:', dirPath); // Commented out to reduce console noise
+      // console.log('Found PNG files:', pngFiles.length); // Commented out to reduce console noise
 
       return { success: true, files: pngFiles };
     } catch (error) {
@@ -343,7 +343,7 @@ function setupFileOperationHandlers() {
       }
 
       const data = await fs.readFile(filePath);
-      console.log('Read file:', filePath, 'Size:', data.length);
+      // console.log('Read file:', filePath, 'Size:', data.length); // Commented out to reduce console noise
 
       return { success: true, data: data };
     } catch (error) {

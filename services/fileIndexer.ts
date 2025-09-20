@@ -218,18 +218,18 @@ function extractBoard(metadata: InvokeAIMetadata): string {
   // NEW: Check canvas_v2_metadata for board information
   if (metadata.canvas_v2_metadata && typeof metadata.canvas_v2_metadata === 'object') {
     const canvasData = metadata.canvas_v2_metadata as any;
-    console.log('🔍 FULL canvas_v2_metadata:', JSON.stringify(canvasData, null, 2));
+    // console.log('🔍 FULL canvas_v2_metadata:', JSON.stringify(canvasData, null, 2));
     // Look for board_id in canvas metadata
     if (canvasData.board_id) {
       const boardId = canvasData.board_id;
-      console.log('🔍 Found board_id in canvas_v2_metadata:', boardId);
+      // console.log('🔍 Found board_id in canvas_v2_metadata:', boardId);
       return getFriendlyBoardName(boardId);
     }
     // Look for board object in canvas metadata
     if (canvasData.board && typeof canvasData.board === 'object') {
       const boardObj = canvasData.board;
       if (boardObj.board_id) {
-        console.log('🔍 Found board.board_id in canvas_v2_metadata:', boardObj.board_id);
+        // console.log('🔍 Found board.board_id in canvas_v2_metadata:', boardObj.board_id);
         return getFriendlyBoardName(boardObj.board_id);
       }
     }
@@ -337,26 +337,26 @@ async function parseInvokeAIMetadata(file: File): Promise<InvokeAIMetadata | nul
         if (keyword === 'invokeai_metadata' && text) {
           const metadata = JSON.parse(text);
           // Temporary debug: log first few characters of each field to understand structure
-          console.log('🔍 METADATA FIELDS DEBUG:', {
-            filename: file.name,
-            availableFields: Object.keys(metadata),
-            fieldTypes: Object.fromEntries(
-              Object.entries(metadata).map(([key, value]) => [
-                key, 
-                typeof value + (typeof value === 'string' ? ` (${value.length} chars)` : '')
-              ])
-            ),
-            hasWorkflow: 'workflow' in metadata,
-            workflowType: typeof metadata.workflow,
-            sampleFields: Object.fromEntries(
-              Object.entries(metadata).slice(0, 5).map(([key, value]) => [
-                key,
-                typeof value === 'string' 
-                  ? value.substring(0, 100) + (value.length > 100 ? '...' : '')
-                  : value
-              ])
-            )
-          });
+          // console.log('🔍 METADATA FIELDS DEBUG:', {
+          //   filename: file.name,
+          //   availableFields: Object.keys(metadata),
+          //   fieldTypes: Object.fromEntries(
+          //     Object.entries(metadata).map(([key, value]) => [
+          //       key, 
+          //       typeof value + (typeof value === 'string' ? ` (${value.length} chars)` : '')
+          //     ])
+          //   ),
+          //   hasWorkflow: 'workflow' in metadata,
+          //   workflowType: typeof metadata.workflow,
+          //   sampleFields: Object.fromEntries(
+          //     Object.entries(metadata).slice(0, 5).map(([key, value]) => [
+          //       key,
+          //       typeof value === 'string' 
+          //         ? value.substring(0, 100) + (value.length > 100 ? '...' : '')
+          //         : value
+          //     ])
+          //   )
+          // });
           return metadata;
         }
       }

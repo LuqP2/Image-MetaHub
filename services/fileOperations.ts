@@ -2,7 +2,7 @@
 import { IndexedImage } from '../types';
 
 // Check if we're running in Electron
-const isElectron = typeof window !== 'undefined' && window.process && window.process.type;
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
 export interface FileOperationsResult {
   success: boolean;
@@ -77,7 +77,7 @@ export class FileOperations {
         // In Electron environment with File System Access API, we need to get the path
         // Since FileSystemDirectoryHandle doesn't expose path directly, 
         // we'll need to handle this differently
-        console.log('Setting current directory for file operations');
+        // console.log('Setting current directory for file operations');
         // For now, we'll rely on the app to manage this
       } catch (error) {
         console.error('Error setting current directory:', error);

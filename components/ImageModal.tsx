@@ -36,6 +36,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showNavigationControls, setShowNavigationControls] = useState(false);
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({x: 0, y: 0});
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Function to export metadata as TXT
   const exportToTxt = () => {
@@ -199,10 +200,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const showInFileExplorer = async () => {
-    console.log('directoryPath:', directoryPath);
-    console.log('image.name:', image.name);
+    // console.log('directoryPath:', directoryPath);
+    // console.log('image.name:', image.name);
     const fullPath = directoryPath ? `${directoryPath}/${image.name}` : image.name;
-    console.log('fullPath:', fullPath);
+    // console.log('fullPath:', fullPath);
     
     const result = await showInExplorer(fullPath);
     if (!result.success) {
@@ -222,6 +223,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const setAsWallpaper = () => {
     alert('Set as wallpaper not implemented yet');
     setShowContextMenu(false);
+  };
+
+  // Function to toggle fullscreen mode
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
   };
 
   // Function to copy current information based on context
@@ -291,6 +297,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
         if (showExportDropdown) {
           setShowExportDropdown(false);
+          return;
+        }
+        if (isFullscreen) {
+          setIsFullscreen(false);
           return;
         }
         onClose();
@@ -501,14 +511,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm"
+      className={`fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm ${isFullscreen ? 'p-0' : ''}`}
       onClick={onClose}
     >
       <div
-        className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col md:flex-row overflow-hidden"
+        className={`bg-gray-800 rounded-lg shadow-2xl w-full ${isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-full md:w-2/3 h-1/2 md:h-full bg-black flex items-center justify-center p-4 relative"
+        <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-4'} relative`}
              onMouseEnter={() => setShowNavigationControls(true)}
              onMouseLeave={() => setShowNavigationControls(false)}>
           {imageUrl ? (
@@ -569,8 +579,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {currentIndex + 1} / {totalImages}
             </div>
           )}
+
+          {/* Fullscreen Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFullscreen();
+            }}
+            className={`absolute top-4 right-4 bg-black/60 hover:bg-black/80 text-white rounded-full p-3 transition-all duration-200 backdrop-blur-sm border border-white/20 hover:border-white/40 shadow-lg ${showNavigationControls ? 'opacity-100' : 'opacity-0'} hover:opacity-100`}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Exit fullscreen (ESC)" : "Enter fullscreen"}
+          >
+            {isFullscreen ? (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.5 3.5M15 9h4.5M15 9V4.5M15 9l5.5-5.5M9 15v4.5M9 15H4.5M9 15l-5.5 5.5M15 15h4.5M15 15v4.5m0-4.5l5.5 5.5" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 3l-6 6m0 0V4m0 5h5M3 21l6-6m0 0v5m0-5H4" />
+              </svg>
+            )}
+          </button>
         </div>
-        <div className="w-full md:w-1/3 h-1/2 md:h-full p-6 overflow-y-auto">
+        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto`}>
           <div className="flex flex-col gap-3 mb-4">
             {/* File name with inline edit */}
             <div className="flex items-center gap-2">
@@ -754,7 +785,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       )}
       
       <button
-        className="absolute top-4 right-4 text-white text-3xl hover:text-gray-400 transition-colors"
+        className={`absolute top-4 right-4 text-white text-3xl hover:text-gray-400 transition-colors ${isFullscreen ? 'opacity-100' : showNavigationControls ? 'opacity-100' : 'opacity-0'} hover:opacity-100`}
         onClick={onClose}
       >
         &times;

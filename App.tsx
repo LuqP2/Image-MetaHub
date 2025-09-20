@@ -12,9 +12,9 @@ import Sidebar from './components/Sidebar';
 import { SearchField } from './components/SearchBar';
 
 export default function App() {
-  console.log('🚀 App component initialized');
-  console.log('📊 localStorage no início do App:', Object.keys(localStorage));
-  console.log('🔍 Directory path no início:', localStorage.getItem('invokeai-electron-directory-path'));
+  // console.log('🚀 App component initialized');
+  // console.log('📊 localStorage no início do App:', Object.keys(localStorage));
+  // console.log('🔍 Directory path no início:', localStorage.getItem('invokeai-electron-directory-path'));
   
   const [images, setImages] = useState<IndexedImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<IndexedImage[]>([]);
@@ -26,6 +26,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [directoryPath, setDirectoryPath] = useState('');
   
@@ -46,15 +47,15 @@ export default function App() {
 
   // Load persisted settings on component mount
   useEffect(() => {
-    console.log('🔄 useEffect executado - carregando configurações persistidas');
-    console.log('📊 localStorage completo no início:', Object.keys(localStorage));
+    // console.log('🔄 useEffect executado - carregando configurações persistidas');
+    // console.log('📊 localStorage completo no início:', Object.keys(localStorage));
     
     const savedSortOrder = localStorage.getItem('invokeai-sort-order');
     const savedItemsPerPage = localStorage.getItem('invokeai-items-per-page');
     const savedDirectoryPath = localStorage.getItem('invokeai-electron-directory-path');
     
-    console.log('🔍 localStorage key:', 'invokeai-electron-directory-path');
-    console.log('🔍 storedPath from localStorage:', savedDirectoryPath);
+    // console.log('🔍 localStorage key:', 'invokeai-electron-directory-path');
+    // console.log('🔍 storedPath from localStorage:', savedDirectoryPath);
     
     if (savedSortOrder) {
       setSortOrder(savedSortOrder as 'asc' | 'desc' | 'date-asc' | 'date-desc');
@@ -69,15 +70,15 @@ export default function App() {
     }
     if (savedDirectoryPath) {
       setDirectoryPath(savedDirectoryPath);
-      console.log('✅ directoryPath set to:', savedDirectoryPath);
+      // console.log('✅ directoryPath set to:', savedDirectoryPath);
     } else {
-      console.log('❌ No path found in localStorage');
+      // console.log('❌ No path found in localStorage');
     }
     
     // Verificar novamente após um pequeno delay para ver se há problema de timing
     setTimeout(() => {
       const delayedCheck = localStorage.getItem('invokeai-electron-directory-path');
-      console.log('⏰ Delayed check (100ms) - storedPath:', delayedCheck);
+      // console.log('⏰ Delayed check (100ms) - storedPath:', delayedCheck);
     }, 100);
   }, []);
 
@@ -108,20 +109,20 @@ export default function App() {
     // // console.log removed for production
     
     images.forEach((image, index) => {
-      console.log(`Image ${index}:`, {
-        name: image.name,
-        models: image.models,
-        loras: image.loras,
-        scheduler: image.scheduler,
-        board: image.board,
-        modelsType: typeof image.models,
-        lorasType: typeof image.loras,
-        schedulerType: typeof image.scheduler,
-        modelsIsArray: Array.isArray(image.models),
-        lorasIsArray: Array.isArray(image.loras),
-        modelsKeys: image.models ? Object.keys(image.models) : [],
-        lorasKeys: image.loras ? Object.keys(image.loras) : []
-      });
+      // console.log(`Image ${index}:`, {
+      //   name: image.name,
+      //   models: image.models,
+      //   loras: image.loras,
+      //   scheduler: image.scheduler,
+      //   board: image.board,
+      //   modelsType: typeof image.models,
+      //   lorasType: typeof image.loras,
+      //   schedulerType: typeof image.scheduler,
+      //   modelsIsArray: Array.isArray(image.models),
+      //   lorasIsArray: Array.isArray(image.loras),
+      //   modelsKeys: image.models ? Object.keys(image.models) : [],
+      //   lorasKeys: image.loras ? Object.keys(image.loras) : []
+      // });
       
       // Force conversion to array - handle both arrays and objects
       let imageModels = [];
@@ -302,7 +303,7 @@ export default function App() {
     
     // Check cache first
     if (fileHandlesCache.current.has(cacheKey)) {
-      console.log('📋 Using cached file handles for:', cacheKey);
+      // console.log('📋 Using cached file handles for:', cacheKey);
       return fileHandlesCache.current.get(cacheKey)!;
     }
 
@@ -311,10 +312,10 @@ export default function App() {
 
     // Check if we're running in Electron
     const isElectron = typeof window.electronAPI !== 'undefined';
-    console.log('🔧 getAllFileHandles called, isElectron (FIXED):', isElectron);
+    // console.log('🔧 getAllFileHandles called, isElectron (FIXED):', isElectron);
 
     if (isElectron) {
-      console.log('⚡ Using Electron file system APIs (FIXED)');
+      // console.log('⚡ Using Electron file system APIs (FIXED)');
       // Use Electron/Node.js file system APIs
       try {
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
@@ -324,11 +325,11 @@ export default function App() {
         }
 
         // Use Electron API to list files
-        console.log('📂 Listing files in Electron directory:', electronPath);
+        // console.log('📂 Listing files in Electron directory:', electronPath);
         const result = await window.electronAPI.listDirectoryFiles(electronPath);
-        console.log('📋 Electron API result:', result);
+        // console.log('📋 Electron API result:', result);
         if (result.success && result.files) {
-          console.log('✅ Found', result.files.length, 'PNG files in Electron');
+          // console.log('✅ Found', result.files.length, 'PNG files in Electron');
           for (const fileName of result.files) {
             // Create a mock file handle for Electron
             const mockHandle = {
@@ -369,7 +370,7 @@ export default function App() {
       }
     } else {
       // Use browser File System Access API
-      console.log('🌐 Using browser File System Access API (fallback)');
+      // console.log('🌐 Using browser File System Access API (fallback)');
       for await (const entry of dirHandle.values()) {
         const newPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
@@ -488,21 +489,24 @@ export default function App() {
 
   const handleSelectFolder = async () => {
     try {
+      setError(null);
+      setSuccess(null);
       let handle: any;
 
       // Check if we're running in Electron
       const isElectron = typeof window.electronAPI !== 'undefined';
-      console.log('🔍 isElectron detection (FIXED):', isElectron);
+      // console.log('🔍 isElectron detection (FIXED):', isElectron);
 
       if (isElectron) {
         // Use Electron's directory picker
-        console.log('🔍 Opening Electron directory dialog...');
+        // console.log('🔍 Opening Electron directory dialog...');
         const result = await window.electronAPI.showDirectoryDialog();
-        console.log('📁 Directory dialog result:', result);
+        // console.log('📁 Directory dialog result:', result);
 
         if (result.canceled || !result.success) {
-          console.log('❌ Directory selection cancelled or failed:', result.error);
+          // console.log('❌ Directory selection cancelled or failed:', result.error);
           setError(result.error || 'Directory selection was cancelled');
+          setSuccess(null);
           return;
         }
 
@@ -510,6 +514,7 @@ export default function App() {
           console.error('❌ No path returned from directory dialog');
           console.log('🔍 Full result object:', result);
           setError('No directory path received from dialog');
+          setSuccess(null);
           return;
         }
 
@@ -546,6 +551,7 @@ export default function App() {
         // Use browser's File System Access API
         if (!window.showDirectoryPicker) {
           setError("Your browser does not support the File System Access API. Please use a modern browser like Chrome or Edge.");
+          setSuccess(null);
           return;
         }
         handle = await window.showDirectoryPicker();
@@ -635,9 +641,234 @@ export default function App() {
       } else {
         console.error("Error selecting directory:", err);
         setError("Failed to process the directory. See console for details.");
+        setSuccess(null);
       }
     } finally {
       console.log('🏁 handleSelectFolder FINAL - localStorage check:', localStorage.getItem('invokeai-electron-directory-path'));
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateIndexing = async () => {
+    if (!directoryHandle && !directoryPath) {
+      setError('No directory selected. Please select a directory first.');
+      setSuccess(null);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      // Initialize cache manager
+      await cacheManager.init();
+
+      // Get all current files
+      const allFiles = await getAllFileHandles(directoryHandle);
+      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
+
+      // Check if we should use cached data
+      const cacheResult = await cacheManager.shouldRefreshCache(directoryHandle.name, pngCount);
+
+      if (!cacheResult.shouldRefresh) {
+        console.log('✅ CACHE IS UP TO DATE');
+        setError('All images are already indexed. No new images found.');
+        setSuccess(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // Get existing cache
+      const cachedData = await cacheManager.getCachedData(directoryHandle.name);
+
+      if (!cachedData) {
+        setError('No existing cache found. Please use "Change Folder" to perform a full index.');
+        setSuccess(null);
+        setIsLoading(false);
+        return;
+      }
+
+      // Find new files that aren't in cache
+      const cachedFileNames = cachedData.metadata.map(meta => meta.name);
+      const newFiles = allFiles.filter(f =>
+        f.handle.name.toLowerCase().endsWith('.png') &&
+        !isIntermediateImage(f.handle.name) &&
+        !cachedFileNames.includes(f.handle.name)
+      );
+
+      if (newFiles.length === 0) {
+        console.log('📄 NO NEW IMAGES FOUND');
+        
+        // Check if any images were deleted
+        const cachedFileCount = cachedData.metadata.length;
+        const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
+        const deletedCount = cachedFileCount - currentFileCount;
+        
+        if (deletedCount > 0) {
+          const successMessage = `Removed ${deletedCount} deleted image${deletedCount === 1 ? '' : 's'} from index.`;
+          console.log(`✅ ${successMessage.toUpperCase()}`);
+          setSuccess(successMessage);
+        } else {
+          setError('No new images found. All images are already indexed.');
+        }
+        
+        setIsLoading(false);
+        return;
+      }
+
+      console.log(`🆕 FOUND ${newFiles.length} NEW IMAGES TO INDEX`);
+
+      // Process only new images
+      const indexedNewImages = await processDirectory(directoryHandle, setProgress, newFiles, directoryHandle.name);
+
+      // Update cache incrementally
+      await cacheManager.updateCacheIncrementally(directoryHandle.name, indexedNewImages);
+
+      // Get updated cache and reconstruct all images
+      const updatedCachedData = await cacheManager.getCachedData(directoryHandle.name);
+      if (updatedCachedData) {
+        const allReconstructedImages = await reconstructImagesFromCache(directoryHandle, updatedCachedData);
+        const sortedImages = sortImages(allReconstructedImages);
+
+        // Update state while preserving current filters and pagination
+        setImages(sortedImages);
+        updateFilterOptions(sortedImages);
+
+        // Re-apply current filters to the updated image list
+        let currentFilteredImages = sortedImages;
+        
+        // Apply current search filter if exists
+        if (searchQuery) {
+          const lowerCaseQuery = searchQuery.toLowerCase();
+          currentFilteredImages = currentFilteredImages.filter(image => {
+            switch (searchField) {
+              case 'any':
+                const anyRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+                return anyRegex.test(image.metadataString);
+              case 'prompt':
+                const promptText = image.metadata?.prompt;
+                if (typeof promptText === 'string') {
+                  return promptText.toLowerCase().includes(lowerCaseQuery);
+                } else if (Array.isArray(promptText)) {
+                  return promptText.some((p: any) => typeof p === 'string' && p.toLowerCase().includes(lowerCaseQuery));
+                }
+                return false;
+              case 'model':
+                return image.models.some(model => {
+                  const modelString = typeof model === 'string' ? model : String(model);
+                  return modelString.toLowerCase().includes(lowerCaseQuery);
+                });
+              case 'lora':
+                return image.loras.some(lora => {
+                  const loraString = typeof lora === 'string' ? lora : String(lora);
+                  return loraString.toLowerCase().includes(lowerCaseQuery);
+                });
+              case 'seed':
+                const seedString = String(image.metadata?.seed || '');
+                return seedString.includes(lowerCaseQuery);
+              case 'settings':
+                const cfgString = String(image.metadata?.cfg_scale || image.metadata?.guidance_scale || '');
+                const stepsString = String(image.metadata?.steps || image.metadata?.num_inference_steps || '');
+                const schedulerString = String(image.scheduler || '');
+                return cfgString.includes(lowerCaseQuery) || stepsString.includes(lowerCaseQuery) || schedulerString.toLowerCase().includes(lowerCaseQuery);
+              default:
+                return true;
+            }
+          });
+        }
+
+        // Apply model filters
+        if (selectedModels.length > 0) {
+          currentFilteredImages = currentFilteredImages.filter(image =>
+            selectedModels.some(selectedModel =>
+              image.models.some(model =>
+                typeof model === 'string' && model.toLowerCase().includes(selectedModel.toLowerCase())
+              )
+            )
+          );
+        }
+
+        // Apply LoRA filters
+        if (selectedLoras.length > 0) {
+          currentFilteredImages = currentFilteredImages.filter(image =>
+            selectedLoras.some(selectedLora =>
+              image.loras.some(lora =>
+                typeof lora === 'string' && lora.toLowerCase().includes(selectedLora.toLowerCase())
+              )
+            )
+          );
+        }
+
+        // Apply scheduler filters
+        if (selectedSchedulers.length > 0) {
+          currentFilteredImages = currentFilteredImages.filter(image =>
+            selectedSchedulers.some(selectedScheduler =>
+              image.scheduler.toLowerCase().includes(selectedScheduler.toLowerCase())
+            )
+          );
+        }
+
+        // Apply advanced filters
+        if (advancedFilters.dimension) {
+          currentFilteredImages = currentFilteredImages.filter(image => {
+            const key = `${image.metadata.width}×${image.metadata.height}`;
+            return key === advancedFilters.dimension;
+          });
+        }
+
+        if (advancedFilters.steps) {
+          const { min, max } = advancedFilters.steps;
+          currentFilteredImages = currentFilteredImages.filter(image => {
+            const steps = image.metadata?.steps || image.metadata?.num_inference_steps;
+            return steps >= min && steps <= max;
+          });
+        }
+
+        if (advancedFilters.cfg) {
+          const { min, max } = advancedFilters.cfg;
+          currentFilteredImages = currentFilteredImages.filter(image => {
+            const cfg = image.metadata?.cfg_scale || image.metadata?.guidance_scale;
+            return cfg >= min && cfg <= max;
+          });
+        }
+
+        if (advancedFilters.date) {
+          const { from, to } = advancedFilters.date;
+          currentFilteredImages = currentFilteredImages.filter(image => {
+            const imageDate = new Date(image.lastModified).toISOString().split('T')[0];
+            return imageDate >= from && imageDate <= to;
+          });
+        }
+
+        setFilteredImages(sortImages(currentFilteredImages));
+
+        // Calculate summary of changes
+        const cachedFileCount = cachedData.metadata.length;
+        const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
+        const deletedCount = cachedFileCount - (currentFileCount - newFiles.length);
+
+        // Create descriptive success message
+        let successMessage = '';
+        if (newFiles.length > 0 && deletedCount > 0) {
+          successMessage = `Indexed ${newFiles.length} new images. Removed ${deletedCount} deleted images.`;
+        } else if (newFiles.length > 0) {
+          successMessage = `Indexed ${newFiles.length} new image${newFiles.length === 1 ? '' : 's'}.`;
+        } else if (deletedCount > 0) {
+          successMessage = `Removed ${deletedCount} deleted image${deletedCount === 1 ? '' : 's'} from index.`;
+        } else {
+          successMessage = 'Index is up to date. No changes detected.';
+        }
+
+        console.log(`✅ ${successMessage.toUpperCase()}`);
+        setSuccess(successMessage);
+      }
+
+    } catch (err) {
+      console.error("Error updating index:", err);
+      setError("Failed to update index. See console for details.");
+      setSuccess(null);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -968,6 +1199,13 @@ export default function App() {
             </div>
           )}
 
+          {success && (
+            <div className="bg-green-900/50 border border-green-700 text-green-300 px-4 py-3 rounded-lg relative my-4" role="alert">
+              <strong className="font-bold">Success: </strong>
+              <span className="block sm:inline">{success}</span>
+            </div>
+          )}
+
           {isLoading && <Loader progress={progress} />}
 
           {!isLoading && !directoryHandle && <FolderSelector onSelectFolder={handleSelectFolder} />}
@@ -981,13 +1219,6 @@ export default function App() {
                   </div>
                   <div className="text-sm text-gray-400">
                     Searching in <span className="font-mono text-blue-300 bg-gray-800 px-2 py-1 rounded border border-gray-600">{directoryHandle.name}</span>
-                    <button
-                      onClick={handleSelectFolder}
-                      className="ml-2 text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
-                      title="Select a different folder"
-                    >
-                      Change Folder
-                    </button>
                     <br />
                     <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
                   </div>

@@ -62,11 +62,11 @@ class CacheManager {
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const result = request.result || null;
-        if (result) {
-          console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Found ${result.imageCount} images (saved ${new Date(result.lastScan).toLocaleString()})`);
-        } else {
-          console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Not found`);
-        }
+        // if (result) {
+        //   console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Found ${result.imageCount} images (saved ${new Date(result.lastScan).toLocaleString()})`);
+        // } else {
+        //   console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Not found`);
+        // }
         resolve(result);
       };
     });
@@ -105,7 +105,7 @@ class CacheManager {
         reject(request.error);
       };
       request.onsuccess = () => {
-        console.log(`✅ CACHE SAVED: ${directoryName} with ${images.length} images`);
+        // console.log(`✅ CACHE SAVED: ${directoryName} with ${images.length} images`);
         resolve();
       };
     });
@@ -172,26 +172,26 @@ class CacheManager {
     const cached = await this.getCachedData(directoryName);
     
     if (!cached) {
-      console.log(`❌ NO CACHE FOUND for "${directoryName}"`);
+      // console.log(`❌ NO CACHE FOUND for "${directoryName}"`);
       return { shouldRefresh: true };
     }
     
     const cacheAge = Date.now() - cached.lastScan;
     const ageMinutes = Math.round(cacheAge / (1000 * 60));
     
-    console.log(`🔍 CACHE ANALYSIS:`);
-    console.log(`   Directory: "${directoryName}"`);
-    console.log(`   Cached count: ${cached.imageCount}`);
-    console.log(`   Current count: ${currentImageCount}`);
-    console.log(`   Cache age: ${ageMinutes} minutes`);
-    console.log(`   Cache timestamp: ${new Date(cached.lastScan).toLocaleString()}`);
+    // console.log(`🔍 CACHE ANALYSIS:`);
+    // console.log(`   Directory: "${directoryName}"`);
+    // console.log(`   Cached count: ${cached.imageCount}`);
+    // console.log(`   Current count: ${currentImageCount}`);
+    // console.log(`   Cache age: ${ageMinutes} minutes`);
+    // console.log(`   Cache timestamp: ${new Date(cached.lastScan).toLocaleString()}`);
     
     // Check if image count changed
     const countDiff = Math.abs(cached.imageCount - currentImageCount);
     
     // If count changed, refresh cache
     if (countDiff > 0) {
-      console.log(`🔄 COUNT CHANGED: ${cached.imageCount} -> ${currentImageCount} (diff: ${countDiff})`);
+      // console.log(`🔄 COUNT CHANGED: ${cached.imageCount} -> ${currentImageCount} (diff: ${countDiff})`);
       return { shouldRefresh: true };
     }
 

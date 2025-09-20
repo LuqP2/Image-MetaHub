@@ -12,6 +12,8 @@ All processing and indexing are performed locally on the user's machine. The app
 - Filters for model, LoRA, and scheduler
 - Multi-selection and bulk operations (desktop only)
 - Metadata export (TXT / JSON)
+- **Fullscreen image viewing** with ESC key support
+- **Refresh folder** for incremental indexing of new images
 
 ### Performance
 
@@ -86,7 +88,9 @@ npm run dev
 - Desktop app wrapper with auto-updater
 - Metadata export (TXT, JSON)
 
-### Current (v1.7.0)
+### Current (v1.7.1)
+- ✅ **Fullscreen Image Viewing**: Added fullscreen functionality with ESC key support and hover controls
+- ✅ **Refresh Folder**: Incremental indexing capability for processing only new images
 - ✅ **Performance Optimizations**: Caching system and reduced logging for better performance
 - ✅ **Electron Detection**: Fixed Electron environment detection for proper file operations
 - ✅ **Stability Improvements**: Resolved infinite logging loops and improved error handling

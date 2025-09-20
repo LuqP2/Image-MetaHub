@@ -40,6 +40,32 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-20: FEATURE - Update Button for Incremental Indexing
+
+**Decision:** Added "Update" button for incremental indexing of new images without full re-indexing.
+
+**Context:** Users needed a way to index only newly added images without re-processing the entire collection, which was time-consuming for large image sets.
+
+**Rationale:** Implemented `handleUpdateIndexing` function that:
+- Checks for new PNG files not present in cache
+- Processes only new images using existing `processDirectory` function
+- Updates cache incrementally without affecting existing data
+- Preserves current filters, search queries, and pagination state
+- Shows progress only for new images being indexed
+
+**Alternatives Considered:**
+- Auto-update on folder change (rejected: violates user control, could be disruptive)
+- Background indexing (rejected: adds complexity, potential performance issues)
+- Manual cache refresh (rejected: less user-friendly than dedicated button)
+
+**Impact:** 
+- Improves user experience for large image collections
+- Reduces indexing time for incremental updates
+- Maintains all existing functionality and state
+- UI layout: [Change Folder] [Update] in status area
+
+**Testing:** Build successful, function integrated with existing cache and filtering systems.
+
 ## 2025-09-20: CONFIG - Dual Logging Architecture
 
 **Decision:** Implemented dual logging system separating development scratch pad from architectural decisions.
@@ -140,6 +166,26 @@ This file documents significant architectural decisions, design choices, and imp
 **Impact:** Users now have complete control over update downloads, prevents unwanted automatic downloads, maintains update functionality with user consent.
 
 **Testing:** Verified dialog appears correctly, download only starts on user confirmation, no automatic downloads occur.
+
+## 2025-09-20: FIX - Environment Detection Consistency
+
+**Decision:** Standardized environment detection logic across all services to use window.electronAPI check instead of window.process.type.
+
+**Context:** File deletion functionality was incorrectly showing "only available in desktop version" even when running in Electron due to inconsistent environment detection patterns.
+
+**Rationale:** Different files were using different methods to detect Electron environment:
+- fileOperations.ts: `window.process && window.process.type` (broken)
+- imageUtils.ts: `(window as any).electronAPI` (working)
+Standardized on the working pattern that checks for electronAPI existence, which is more reliable and consistent with how the Electron API is exposed via preload.js.
+
+**Alternatives Considered:**
+- Keep inconsistent detection methods (rejected: leads to bugs and confusion)
+- Use only window.process.type (rejected: doesn't work reliably in Electron)
+- Complex environment detection with fallbacks (rejected: over-engineering)
+
+**Impact:** Ensures consistent environment detection across all file operations, fixes delete functionality in Electron, improves code maintainability.
+
+**Testing:** Verified Electron app detects environment correctly, delete functionality now works as expected.
 
 ---
 
