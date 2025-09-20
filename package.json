@@ -3,7 +3,7 @@
   "description": "Local image browser for browsing InvokeAI outputs (unaffiliated)",
   "author": "LuqP2 <github.com/LuqP2>",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.7.0",
   "type": "module",
   "main": "electron.cjs",
   "homepage": "./",
