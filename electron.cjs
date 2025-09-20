@@ -10,6 +10,8 @@ let mainWindow;
 let skippedVersions = new Set(); // Store versions user wants to skip
 
 // Configure auto-updater
+autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
+
 // Remove checkForUpdatesAndNotify to avoid duplicate dialogs
 // autoUpdater.checkForUpdatesAndNotify();
 
@@ -45,9 +47,9 @@ autoUpdater.on('update-available', (info) => {
       cancelId: 2
     }).then((result) => {
       if (result.response === 0) {
-        // User chose to download
-        console.log('User accepted update download');
-        // The download will start automatically
+        // User chose to download - START DOWNLOAD NOW
+        console.log('User accepted update download - starting download...');
+        autoUpdater.downloadUpdate();
       } else if (result.response === 1) {
         // User chose "Download Later"
         console.log('User postponed download - will ask again later');
@@ -171,12 +173,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
-    // Check for updates in production
-    if (!isDev) {
-      setTimeout(() => {
-        autoUpdater.checkForUpdatesAndNotify();
-      }, 3000); // Wait 3 seconds after app opens
-    }
+    // Check for updates in production (REMOVED checkForUpdatesAndNotify to prevent auto-download)
+    // Update check is handled in the setTimeout above with checkForUpdates()
   });
 
   // Open DevTools in development

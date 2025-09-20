@@ -124,6 +124,23 @@ This file documents significant architectural decisions, design choices, and imp
 
 **Testing:** Verified with 17,000+ image collections, confirmed logging reduced from thousands to minimal messages, file discovery performance optimized with caching.
 
+## 2025-09-20: SEC - Auto-Updater Security Fix
+
+**Decision:** Disabled automatic downloads in auto-updater and implemented user-controlled update process.
+
+**Context:** Auto-updater was downloading updates automatically without user consent, violating user control over their system and potentially causing unwanted interruptions.
+
+**Rationale:** Added `autoUpdater.autoDownload = false` and replaced `checkForUpdatesAndNotify()` with `checkForUpdates()`. Implemented manual download trigger that only starts download when user explicitly chooses "Download Now" from dialog.
+
+**Alternatives Considered:**
+- Keep automatic downloads (rejected: violates user consent and control)
+- Remove auto-updater entirely (rejected: users should have update option)
+- Only notify without download option (rejected: reduces user experience)
+
+**Impact:** Users now have complete control over update downloads, prevents unwanted automatic downloads, maintains update functionality with user consent.
+
+**Testing:** Verified dialog appears correctly, download only starts on user confirmation, no automatic downloads occur.
+
 ---
 
 ## Recent Decisions
