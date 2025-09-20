@@ -649,6 +649,68 @@ export default function App() {
     }
   };
 
+  const handleUpdateFolder = async () => {
+    if (!directoryHandle) {
+      setError('No directory selected to refresh');
+      return;
+    }
+
+    try {
+      setError(null);
+      setSuccess(null);
+      setIsLoading(true);
+      setImages([]);
+      setFilteredImages([]);
+      setSearchQuery('');
+      setSelectedModels([]);
+      setSelectedLoras([]);
+      setSelectedSchedulers([]);
+      setProgress({ current: 0, total: 0 });
+
+      // Clear file handles cache
+      fileHandlesCache.current.clear();
+
+      // Force full re-indexing by clearing cache
+      await cacheManager.clearCache();
+      
+      // Full indexing
+      const indexedImages = await processDirectory(directoryHandle, setProgress, undefined, directoryHandle.name);
+      setImages(indexedImages);
+      setFilteredImages(indexedImages);
+      updateFilterOptions(indexedImages);
+      await cacheManager.cacheData(directoryHandle.name, indexedImages);
+      
+      setSuccess('Folder refreshed successfully!');
+    } catch (err) {
+      console.error("Error refreshing directory:", err);
+      setError("Failed to refresh the directory. See console for details.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleChangeFolder = async () => {
+    // Reset everything and call handleSelectFolder
+    setDirectoryHandle(null);
+    setDirectoryPath('');
+    setImages([]);
+    setFilteredImages([]);
+    setSearchQuery('');
+    setSelectedModels([]);
+    setSelectedLoras([]);
+    setSelectedSchedulers([]);
+    setError(null);
+    setSuccess(null);
+    
+    // Clear localStorage
+    localStorage.removeItem('invokeai-electron-directory-path');
+    localStorage.removeItem('invokeai-directory-name');
+    sessionStorage.removeItem('invokeai-electron-directory-path');
+    
+    // Call handleSelectFolder to choose new directory
+    await handleSelectFolder();
+  };
+
   const handleUpdateIndexing = async () => {
     if (!directoryHandle && !directoryPath) {
       setError('No directory selected. Please select a directory first.');
@@ -1187,6 +1249,24 @@ export default function App() {
               </svg>
               <h1 className="text-2xl font-bold tracking-wider">Local Image Browser</h1>
             </div>
+            {directoryHandle && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleUpdateFolder}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+                  title="Refresh current folder"
+                >
+                  Refresh Folder
+                </button>
+                <button
+                  onClick={handleChangeFolder}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+                  title="Change folder"
+                >
+                  Change Folder
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
