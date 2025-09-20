@@ -1,3 +1,9 @@
+# Development files
+development-changelog.md
+log-change.js
+decision-template.md
+*.dev.log
+
 # Logs
 logs
 *.log

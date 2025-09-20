@@ -282,10 +282,24 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
+      console.log('📂 Attempting to show item in folder:', filePath);
+
+      // Verify the file exists before trying to show it
+      const fs = require('fs').promises;
+      try {
+        await fs.access(filePath);
+        console.log('✅ File exists:', filePath);
+      } catch (accessError) {
+        console.error('❌ File does not exist:', filePath, accessError);
+        return { success: false, error: `File does not exist: ${filePath}` };
+      }
+
       shell.showItemInFolder(filePath);
+      console.log('✅ shell.showItemInFolder called for:', filePath);
+
       return { success: true };
     } catch (error) {
-      console.error('Error showing item in folder:', error);
+      console.error('❌ Error showing item in folder:', error);
       return { success: false, error: error.message };
     }
   });
@@ -298,6 +312,44 @@ function setupFileOperationHandlers() {
       return { success: true, updateInfo: result.updateInfo };
     } catch (error) {
       console.error('Error checking for updates:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle listing directory files
+  ipcMain.handle('list-directory-files', async (event, dirPath) => {
+    try {
+      if (!dirPath) {
+        return { success: false, error: 'No directory path provided' };
+      }
+
+      const files = await fs.readdir(dirPath);
+      // Filter for PNG files only
+      const pngFiles = files.filter(file => file.toLowerCase().endsWith('.png'));
+
+      console.log('Listed files in directory:', dirPath);
+      console.log('Found PNG files:', pngFiles.length);
+
+      return { success: true, files: pngFiles };
+    } catch (error) {
+      console.error('Error listing directory files:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle reading file content
+  ipcMain.handle('read-file', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      const data = await fs.readFile(filePath);
+      console.log('Read file:', filePath, 'Size:', data.length);
+
+      return { success: true, data: data };
+    } catch (error) {
+      console.error('Error reading file:', error);
       return { success: false, error: error.message };
     }
   });

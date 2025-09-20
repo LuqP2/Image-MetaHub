@@ -5,7 +5,7 @@
 **Local Image Browser for InvokeAI** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.5.0
+- **Version**: 1.6.1
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
 - **Desktop**: Electron 38 with auto-updater
@@ -48,18 +48,68 @@ src/
 ## Core Systems
 
 ### 1. **File System Integration**
-- **File System Access API**: Direct browser access to local directories (web)
-- **Electron File System**: Native file access for desktop app
-- **Recursive Directory Traversal**: Scans subdirectories for PNG files
+- **Browser Environment**: File System Access API for direct local directory access
+- **Electron Environment**: Native Node.js file system APIs via IPC communication
+- **Cross-Platform Compatibility**: Automatic environment detection and API switching
+- **Recursive Directory Traversal**: Scans subdirectories for PNG files in both environments
 - **File Handle Management**: Maintains references to files without copying data
-- **Secure File Operations**: IPC-based file management (rename/delete)
+- **Secure File Operations**: IPC-based file management (rename/delete) in Electron
+
+#### Environment Detection & API Switching
+```typescript
+// Automatic environment detection
+const isElectron = typeof window !== 'undefined' && window.process && window.process.type;
+
+if (isElectron && window.electronAPI) {
+  // Use Electron IPC APIs
+  const result = await window.electronAPI.listDirectoryFiles(electronPath);
+} else {
+  // Use browser File System Access API
+  for await (const entry of directoryHandle.values()) {
+    // Process files using browser APIs
+  }
+}
+```
+
+#### Electron IPC Bridge
+```typescript
+// preload.js - Secure API exposure
+contextBridge.exposeInMainWorld('electronAPI', {
+  listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
+  // ... other APIs
+});
+
+// electron.cjs - IPC handlers
+ipcMain.handle('list-directory-files', async (event, dirPath) => {
+  const files = await fs.readdir(dirPath);
+  return { success: true, files: files.filter(f => f.endsWith('.png')) };
+});
+```
 
 ### 2. **Desktop Application (Electron)**
 - **Auto-Updater**: Automatic update notifications and installation
 - **IPC Communication**: Secure bridge between renderer and main process
 - **File Operations**: Native file system operations (rename, delete, trash)
 - **Cross-Platform**: Windows, macOS, and Linux support
+- **Environment Detection**: Automatic switching between browser and Electron APIs
+- **Mock File Handles**: Compatible file handle objects for Electron environment
 - **Code Signing**: Signed executables for security
+
+#### Electron-Specific Implementation
+```typescript
+// Mock file handle for Electron compatibility
+const mockHandle = {
+  name: fileName,
+  kind: 'file' as const,
+  getFile: async () => {
+    const fileResult = await window.electronAPI.readFile(fullPath);
+    const uint8Array = new Uint8Array(fileResult.data);
+    return new File([uint8Array], fileName, { type: 'image/png' });
+  }
+};
+```
 
 ### 2. **Metadata Extraction System**
 - **PNG Chunk Parsing**: Extracts metadata from PNG tEXt chunks
@@ -238,13 +288,34 @@ Preload Script (preload.js)
 
 ### 2. **IPC Communication**
 ```typescript
-// Main Process Handlers
-ipcMain.handle('trash-file', async (event, filename) => {
-  return await shell.trashItem(filePath);
+// Main Process Handlers (electron.cjs)
+ipcMain.handle('list-directory-files', async (event, dirPath) => {
+  const files = await fs.readdir(dirPath);
+  const pngFiles = files.filter(file => file.toLowerCase().endsWith('.png'));
+  return { success: true, files: pngFiles };
+});
+
+ipcMain.handle('read-file', async (event, filePath) => {
+  const data = await fs.readFile(filePath);
+  return { success: true, data: data };
+});
+
+ipcMain.handle('show-directory-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory']
+  });
+  return {
+    success: !result.canceled,
+    path: result.filePaths[0],
+    name: path.basename(result.filePaths[0]),
+    canceled: result.canceled
+  };
 });
 
 // Renderer Process Calls
-const result = await window.electronAPI.trashFile(filename);
+const dirResult = await window.electronAPI.listDirectoryFiles(electronPath);
+const fileResult = await window.electronAPI.readFile(filePath);
+const dialogResult = await window.electronAPI.showDirectoryDialog();
 ```
 
 ### 3. **Auto-Updater Integration**
@@ -254,7 +325,27 @@ const result = await window.electronAPI.trashFile(filename);
 - Background downloads
 - Restart and install process
 
-### 4. **Security Model**
+### 4. **Cross-Platform Compatibility**
+- **Environment Detection**: Runtime detection of Electron vs browser environment
+- **API Abstraction**: Unified interface for file operations across platforms
+- **Mock Objects**: Browser-compatible file handle objects for Electron
+- **Error Handling**: Platform-specific error handling and fallbacks
+- **Performance Optimization**: Optimized file access patterns for each platform
+
+#### Platform-Specific Optimizations
+```typescript
+// Browser: Direct File System Access API
+const handle = await window.showDirectoryPicker();
+for await (const entry of handle.values()) {
+  // Direct file access
+}
+
+// Electron: IPC-based file system access
+const result = await window.electronAPI.listDirectoryFiles(path);
+const mockHandle = createMockFileHandle(result.files[0]);
+```
+
+### 5. **Security Model**
 - Context isolation enabled
 - Node integration disabled in renderer
 - Secure IPC communication

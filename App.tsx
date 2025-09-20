@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { type IndexedImage } from './types';
 import { processDirectory, isIntermediateImage } from './services/fileIndexer';
 import { cacheManager } from './services/cacheManager';
@@ -12,6 +12,10 @@ import Sidebar from './components/Sidebar';
 import { SearchField } from './components/SearchBar';
 
 export default function App() {
+  console.log('🚀 App component initialized');
+  console.log('📊 localStorage no início do App:', Object.keys(localStorage));
+  console.log('🔍 Directory path no início:', localStorage.getItem('invokeai-electron-directory-path'));
+  
   const [images, setImages] = useState<IndexedImage[]>([]);
   const [filteredImages, setFilteredImages] = useState<IndexedImage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +27,7 @@ export default function App() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [directoryPath, setDirectoryPath] = useState('');
   
   // States for sorting and pagination
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'date-asc' | 'date-desc'>('date-desc');
@@ -41,8 +46,15 @@ export default function App() {
 
   // Load persisted settings on component mount
   useEffect(() => {
+    console.log('🔄 useEffect executado - carregando configurações persistidas');
+    console.log('📊 localStorage completo no início:', Object.keys(localStorage));
+    
     const savedSortOrder = localStorage.getItem('invokeai-sort-order');
     const savedItemsPerPage = localStorage.getItem('invokeai-items-per-page');
+    const savedDirectoryPath = localStorage.getItem('invokeai-electron-directory-path');
+    
+    console.log('🔍 localStorage key:', 'invokeai-electron-directory-path');
+    console.log('🔍 storedPath from localStorage:', savedDirectoryPath);
     
     if (savedSortOrder) {
       setSortOrder(savedSortOrder as 'asc' | 'desc' | 'date-asc' | 'date-desc');
@@ -55,6 +67,18 @@ export default function App() {
       const items = savedItemsPerPage === 'all' ? 'all' : Number(savedItemsPerPage);
       setItemsPerPage(items);
     }
+    if (savedDirectoryPath) {
+      setDirectoryPath(savedDirectoryPath);
+      console.log('✅ directoryPath set to:', savedDirectoryPath);
+    } else {
+      console.log('❌ No path found in localStorage');
+    }
+    
+    // Verificar novamente após um pequeno delay para ver se há problema de timing
+    setTimeout(() => {
+      const delayedCheck = localStorage.getItem('invokeai-electron-directory-path');
+      console.log('⏰ Delayed check (100ms) - storedPath:', delayedCheck);
+    }, 100);
   }, []);
 
   // Try to restore previous directory on app load
@@ -266,22 +290,99 @@ export default function App() {
     localStorage.setItem('invokeai-items-per-page', itemsPerPage.toString());
   }, [itemsPerPage]);
 
+  // Cache for file handles to avoid repeated calls
+  const fileHandlesCache = useRef<Map<string, {handle: FileSystemFileHandle, path: string}[]>>(new Map());
+
   // Helper function to get all file handles recursively
   const getAllFileHandles = async (
     directoryHandle: FileSystemDirectoryHandle,
     path: string = ''
   ): Promise<{handle: FileSystemFileHandle, path: string}[]> => {
+    const cacheKey = directoryHandle.name + (path ? `_${path}` : '');
+    
+    // Check cache first
+    if (fileHandlesCache.current.has(cacheKey)) {
+      console.log('📋 Using cached file handles for:', cacheKey);
+      return fileHandlesCache.current.get(cacheKey)!;
+    }
+
     const entries = [];
     const dirHandle = directoryHandle as any;
-    for await (const entry of dirHandle.values()) {
-      const newPath = path ? `${path}/${entry.name}` : entry.name;
-      if (entry.kind === 'file') {
-        entries.push({handle: entry, path: newPath});
-      } else if (entry.kind === 'directory') {
-        entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
+
+    // Check if we're running in Electron
+    const isElectron = typeof window.electronAPI !== 'undefined';
+    console.log('🔧 getAllFileHandles called, isElectron (FIXED):', isElectron);
+
+    if (isElectron) {
+      console.log('⚡ Using Electron file system APIs (FIXED)');
+      // Use Electron/Node.js file system APIs
+      try {
+        const electronPath = localStorage.getItem('invokeai-electron-directory-path');
+        if (!electronPath) {
+          console.error('❌ No Electron directory path stored');
+          return entries;
+        }
+
+        // Use Electron API to list files
+        console.log('📂 Listing files in Electron directory:', electronPath);
+        const result = await window.electronAPI.listDirectoryFiles(electronPath);
+        console.log('📋 Electron API result:', result);
+        if (result.success && result.files) {
+          console.log('✅ Found', result.files.length, 'PNG files in Electron');
+          for (const fileName of result.files) {
+            // Create a mock file handle for Electron
+            const mockHandle = {
+              name: fileName,
+              kind: 'file' as const,
+              getFile: async () => {
+                try {
+                  // Use Electron API to read the actual file
+                  const fullPath = electronPath + '\\' + fileName; // Simple path joining for Windows
+                  const fileResult = await window.electronAPI.readFile(fullPath);
+                  if (fileResult.success) {
+                    // Create a proper File object from the buffer
+                    const uint8Array = new Uint8Array(fileResult.data);
+                    return new File([uint8Array], fileName, { type: 'image/png' });
+                  } else {
+                    console.error('❌ Failed to read file:', fileName, fileResult.error);
+                    // Return empty file as fallback
+                    return new File([], fileName, { type: 'image/png' });
+                  }
+                } catch (error) {
+                  console.error('❌ Error reading file in Electron:', fileName, error);
+                  return new File([], fileName, { type: 'image/png' });
+                }
+              }
+            };
+            entries.push({ handle: mockHandle, path: fileName });
+          }
+        } else {
+          console.error('❌ Electron API failed:', result.error);
+        }
+        
+        // Cache the result
+        fileHandlesCache.current.set(cacheKey, entries);
+        return entries;
+      } catch (error) {
+        console.error('❌ Error listing files in Electron:', error);
+        return entries;
       }
+    } else {
+      // Use browser File System Access API
+      console.log('🌐 Using browser File System Access API (fallback)');
+      for await (const entry of dirHandle.values()) {
+        const newPath = path ? `${path}/${entry.name}` : entry.name;
+        if (entry.kind === 'file') {
+          entries.push({handle: entry, path: newPath});
+        } else if (entry.kind === 'directory') {
+          entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
+        }
+      }
+      
+      // Cache the result
+      fileHandlesCache.current.set(cacheKey, entries);
+      return entries;
     }
-    return entries;
   };
 
   // Helper function to reconstruct images from cached data
@@ -387,11 +488,69 @@ export default function App() {
 
   const handleSelectFolder = async () => {
     try {
-      if (!window.showDirectoryPicker) {
-        setError("Your browser does not support the File System Access API. Please use a modern browser like Chrome or Edge.");
-        return;
+      let handle: any;
+
+      // Check if we're running in Electron
+      const isElectron = typeof window.electronAPI !== 'undefined';
+      console.log('🔍 isElectron detection (FIXED):', isElectron);
+
+      if (isElectron) {
+        // Use Electron's directory picker
+        console.log('🔍 Opening Electron directory dialog...');
+        const result = await window.electronAPI.showDirectoryDialog();
+        console.log('📁 Directory dialog result:', result);
+
+        if (result.canceled || !result.success) {
+          console.log('❌ Directory selection cancelled or failed:', result.error);
+          setError(result.error || 'Directory selection was cancelled');
+          return;
+        }
+
+        if (!result.path) {
+          console.error('❌ No path returned from directory dialog');
+          console.log('🔍 Full result object:', result);
+          setError('No directory path received from dialog');
+          return;
+        }
+
+        console.log('✅ Directory selected, result.path:', result.path);
+
+        console.log('✅ Directory selected:', result.path);
+
+        // Create a mock handle for Electron environment
+        handle = {
+          name: result.name || 'Selected Folder',
+          path: result.path,
+          kind: 'directory',
+          // Add methods that getAllFileHandles expects
+          values: async function* () {
+            // This will be implemented differently for Electron
+            yield* [];
+          }
+        };
+
+        // Store the actual path for Electron - ensure it's stored before proceeding
+        console.log('🔍 ANTES do localStorage.setItem, result.path:', result.path);
+        localStorage.setItem('invokeai-electron-directory-path', result.path);
+        console.log('🔍 APÓS localStorage.setItem');
+        console.log('🔍 Verificação imediata:', localStorage.getItem('invokeai-electron-directory-path'));
+        console.log('� IMMEDIATE CHECK após setItem:', localStorage.getItem('invokeai-electron-directory-path'));
+        console.log('�💾 Stored directory path in localStorage:', result.path);
+        console.log('🔍 APÓS localStorage.setItem');
+        console.log('🔍 Verificação imediata:', localStorage.getItem('invokeai-electron-directory-path'));
+
+        // Also store in sessionStorage as backup
+        sessionStorage.setItem('invokeai-electron-directory-path', result.path);
+        console.log('💾 Also stored directory path in sessionStorage:', result.path);
+      } else {
+        // Use browser's File System Access API
+        if (!window.showDirectoryPicker) {
+          setError("Your browser does not support the File System Access API. Please use a modern browser like Chrome or Edge.");
+          return;
+        }
+        handle = await window.showDirectoryPicker();
       }
-      const handle = await window.showDirectoryPicker();
+
       setDirectoryHandle(handle);
       setIsLoading(true);
       setError(null);
@@ -402,10 +561,13 @@ export default function App() {
       setSelectedLoras([]);
       setSelectedSchedulers([]);
       setProgress({ current: 0, total: 0 });
-      
+
+      // Clear file handles cache when selecting new directory
+      fileHandlesCache.current.clear();
+
       // Save directory name for user reference
       localStorage.setItem('invokeai-directory-name', handle.name);
-      
+
       // Initialize cache manager
       await cacheManager.init();
       
@@ -441,7 +603,7 @@ export default function App() {
 
           if (newFiles.length > 0) {
             console.log(`🆕 FOUND ${newFiles.length} NEW IMAGES`);
-            const indexedNewImages = await processDirectory(handle, setProgress, newFiles);
+            const indexedNewImages = await processDirectory(handle, setProgress, newFiles, handle.name);
             await cacheManager.updateCacheIncrementally(handle.name, indexedNewImages);
             
             // Reconstruct all images from updated cache
@@ -460,7 +622,7 @@ export default function App() {
           }
         } else {
           console.log('🔄 NO CACHE FOUND, FULL INDEXING');
-          const indexedImages = await processDirectory(handle, setProgress);
+          const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
           setImages(indexedImages);
           setFilteredImages(indexedImages);
           updateFilterOptions(indexedImages);
@@ -475,6 +637,7 @@ export default function App() {
         setError("Failed to process the directory. See console for details.");
       }
     } finally {
+      console.log('🏁 handleSelectFolder FINAL - localStorage check:', localStorage.getItem('invokeai-electron-directory-path'));
       setIsLoading(false);
     }
   };
@@ -818,6 +981,13 @@ export default function App() {
                   </div>
                   <div className="text-sm text-gray-400">
                     Searching in <span className="font-mono text-blue-300 bg-gray-800 px-2 py-1 rounded border border-gray-600">{directoryHandle.name}</span>
+                    <button
+                      onClick={handleSelectFolder}
+                      className="ml-2 text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition-colors cursor-pointer"
+                      title="Select a different folder"
+                    >
+                      Change Folder
+                    </button>
                     <br />
                     <span className="text-xs">Models: {availableModels.length}, LoRAs: {availableLoras.length}</span>
                   </div>
@@ -979,6 +1149,7 @@ export default function App() {
             totalImages={filteredImages.length}
             onNavigateNext={handleNavigateNext}
             onNavigatePrevious={handleNavigatePrevious}
+            directoryPath={directoryPath}
           />
         )}
       </div>

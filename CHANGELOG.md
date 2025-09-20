@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2025-09-19
+
+### Added
+- **Privacy-First Auto-Updates**: Enhanced auto-updater with user choice controls and manual update checks
+- **User Control**: Better update notifications with skip options and user preferences
+
+### Fixed
+- **Electron Compatibility**: Fixed "UnknownError: Internal error" when selecting directories in Electron app
+- **Cross-Platform File Access**: Implemented proper file system handling for both browser and desktop environments
+- **IPC Communication**: Added missing preload.js functions for directory listing and file reading
+
+### Technical
+- Enhanced Electron environment detection in `getAllFileHandles` function
+- Added `listDirectoryFiles` and `readFile` IPC handlers
+- Improved error handling for file system operations
+- Maintained backward compatibility with browser File System Access API
+
+## [1.6.0] - 2025-09-19
+
+### Added
+- **Enhanced Auto-Updater**: Manual update check functionality with user prompts
+- **Show in Folder**: Added ability to show selected images in system file explorer
+- **File Explorer Integration**: Cross-platform file explorer opening functionality
+
+### Technical
+- Integrated `showItemInFolder` functionality in Electron
+- Enhanced UI integration for file operations
+- Improved user experience for file management
+
+## [1.5.3] - 2025-09-18
+
+### Added
+- **Advanced Filtering**: Steps range slider for precise filtering by inference steps
+- **Range Filtering**: CFG Scale and Steps range filtering components
+- **Enhanced Filtering UI**: Improved filtering interface with range controls
+
+### Fixed
+- **Documentation**: Clarified privacy policies and removed duplicate content in README
+- **Board Filtering**: Removed unreliable board filtering due to inconsistent metadata
+
+### Technical
+- Implemented `StepsRangeSlider` component for advanced filtering
+- Enhanced filtering system with range-based controls
+- Improved documentation clarity and organization
+
+## [1.5.2] - 2025-09-17
+
+### Added
+- **Board Filtering**: Added filtering by board/workspace information
+- **Navigation Controls**: Enhanced image navigation and browsing controls
+
+### Fixed
+- **Board Metadata**: Removed board filtering due to unreliable metadata availability
+- **Package Dependencies**: Updated and cleaned up package dependencies
+
+### Technical
+- Enhanced image browsing functionality
+- Improved metadata handling for board information
+- Updated dependency management
+
+## [1.5.1] - 2025-09-17
+
+### Added
+- **File System Access API**: Enhanced browser compatibility with File System Access API
+- **Electron Integration**: Improved Electron app integration and scripts
+- **Scheduler Filtering**: Added scheduler type filtering (DPMSolverMultistepScheduler, etc.)
+- **Metadata Export**: TXT and JSON export functionality for image metadata
+
+### Fixed
+- **Selection Behavior**: Fixed image selection and interaction behavior
+- **Documentation**: Updated documentation for new features
+
+### Technical
+- Enhanced Window interface for File System Access API support
+- Updated package.json with new Electron scripts
+- Improved metadata extraction and filtering systems
+- Enhanced caching mechanisms and LoRA extraction
+
 ## [1.5.0] - 2025-09-17
 
 ### Added

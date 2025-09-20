@@ -14,6 +14,7 @@ interface ImageModalProps {
   totalImages?: number;
   onNavigateNext?: () => void;
   onNavigatePrevious?: () => void;
+  directoryPath?: string;
 }
 
 const ImageModal: React.FC<ImageModalProps> = ({ 
@@ -24,7 +25,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   currentIndex = 0,
   totalImages = 0,
   onNavigateNext,
-  onNavigatePrevious
+  onNavigatePrevious,
+  directoryPath
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -197,7 +199,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const showInFileExplorer = async () => {
-    const result = await showInExplorer(image);
+    console.log('directoryPath:', directoryPath);
+    console.log('image.name:', image.name);
+    const fullPath = directoryPath ? `${directoryPath}/${image.name}` : image.name;
+    console.log('fullPath:', fullPath);
+    
+    const result = await showInExplorer(fullPath);
     if (!result.success) {
       alert('Failed to show in file explorer: ' + result.error);
     }
@@ -217,6 +224,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setShowContextMenu(false);
   };
 
+  // Function to copy current information based on context
+  const copyCurrentInfo = async () => {
+    try {
+      // Try to copy image first
+      const imageResult = await copyImageToClipboard(image);
+      if (imageResult.success) {
+        // Show feedback
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+        notification.textContent = 'Image copied to clipboard!';
+        document.body.appendChild(notification);
+        setTimeout(() => document.body.removeChild(notification), 2000);
+        return;
+      }
+
+      // If image copy fails, try to copy file path
+      const pathResult = await copyFilePathToClipboard(image);
+      if (pathResult.success) {
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+        notification.textContent = 'File path copied to clipboard!';
+        document.body.appendChild(notification);
+        setTimeout(() => document.body.removeChild(notification), 2000);
+        return;
+      }
+
+      // If both fail, show error
+      alert('Failed to copy information to clipboard');
+    } catch (error) {
+      console.error('Error copying to clipboard:', error);
+      alert('Failed to copy to clipboard');
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Skip keyboard shortcuts if user is typing in an input
@@ -226,6 +267,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
          (activeElement as HTMLElement).contentEditable === 'true');
       
       if (isInputFocused) {
+        return;
+      }
+
+      // Ctrl+C to copy current metadata field or image info
+      if (event.ctrlKey && event.key === 'c') {
+        event.preventDefault();
+        copyCurrentInfo();
+        return;
+      }
+
+      // Ctrl+V to paste (if applicable)
+      if (event.ctrlKey && event.key === 'v') {
+        event.preventDefault();
+        // Could implement paste functionality if needed
         return;
       }
 
@@ -269,12 +324,41 @@ const ImageModal: React.FC<ImageModalProps> = ({
         if (!isRenaming) {
           handleRename();
         }
-      } else if (event.ctrlKey && event.key === 'c') {
+      }
+      
+      // Ctrl+C to copy image
+      if (event.ctrlKey && event.key === 'c' && !event.shiftKey) {
         event.preventDefault();
         copyImage();
-      } else if (event.ctrlKey && event.key === 'e') {
+        return;
+      }
+
+      // Ctrl+Shift+C to copy metadata
+      if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+        event.preventDefault();
+        copyMetadata();
+        return;
+      }
+
+      // Ctrl+P to copy prompt
+      if (event.ctrlKey && event.key === 'p') {
+        event.preventDefault();
+        copyPrompt();
+        return;
+      }
+
+      // Ctrl+E to show in explorer
+      if (event.ctrlKey && event.key === 'e') {
         event.preventDefault();
         showInFileExplorer();
+        return;
+      }
+
+      // Ctrl+F to copy file path
+      if (event.ctrlKey && event.key === 'f') {
+        event.preventDefault();
+        copyFilePath();
+        return;
       }
     };
 
@@ -314,6 +398,99 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [image.handle, onClose, showExportDropdown, showContextMenu]);
+  
+  // Function to copy metadata to clipboard
+  const copyMetadata = async () => {
+    try {
+      const metadataText = Object.entries(image.metadata)
+        .map(([key, value]) => `${key}: ${renderMetadataValue(value)}`)
+        .join('\n');
+
+      // Ensure document has focus before clipboard operation
+      if (document.hidden || !document.hasFocus()) {
+        // Try to focus the document
+        window.focus();
+        // Small delay to ensure focus is established
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      await navigator.clipboard.writeText(metadataText);
+
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.textContent = 'Metadata copied to clipboard!';
+      document.body.appendChild(notification);
+      setTimeout(() => document.body.removeChild(notification), 2000);
+    } catch (error) {
+      console.error('Error copying metadata:', error);
+      alert('Failed to copy metadata to clipboard');
+    }
+    setShowContextMenu(false);
+  };
+
+  // Function to copy prompt specifically
+  const copyPrompt = async () => {
+    try {
+      // Try different possible prompt locations in InvokeAI metadata
+      let prompt = '';
+
+      // Direct prompt field
+      if (image.metadata?.prompt) {
+        if (typeof image.metadata.prompt === 'string') {
+          prompt = image.metadata.prompt;
+        } else if (Array.isArray(image.metadata.prompt)) {
+          // Handle array of prompts (some InvokeAI versions)
+          prompt = image.metadata.prompt
+            .map(p => typeof p === 'string' ? p : (p as any)?.prompt || '')
+            .filter(p => p.trim())
+            .join(' ');
+        } else if (typeof image.metadata.prompt === 'object' && (image.metadata.prompt as any).prompt) {
+          // Handle object with prompt property
+          prompt = (image.metadata.prompt as any).prompt;
+        }
+      }
+
+      // Alternative prompt fields (case variations)
+      if (!prompt) {
+        const possiblePromptFields = ['Prompt', 'prompt_text', 'positive_prompt', 'text_prompt'];
+        for (const field of possiblePromptFields) {
+          if (image.metadata?.[field]) {
+            if (typeof image.metadata[field] === 'string') {
+              prompt = image.metadata[field];
+              break;
+            }
+          }
+        }
+      }
+
+      // Clean up the prompt (remove extra whitespace)
+      prompt = prompt.trim();
+
+      if (prompt) {
+        // Ensure document has focus before clipboard operation
+        if (document.hidden || !document.hasFocus()) {
+          // Try to focus the document
+          window.focus();
+          // Small delay to ensure focus is established
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        await navigator.clipboard.writeText(prompt);
+
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+        notification.textContent = 'Prompt copied to clipboard!';
+        document.body.appendChild(notification);
+        setTimeout(() => document.body.removeChild(notification), 2000);
+      } else {
+        alert('No prompt found in image metadata');
+      }
+    } catch (error) {
+      console.error('Error copying prompt:', error);
+      alert('Failed to copy prompt to clipboard');
+    }
+    setShowContextMenu(false);
+  };
   
   const renderMetadataValue = (value: any): string => {
     if (typeof value === 'object' && value !== null) {
@@ -518,27 +695,59 @@ const ImageModal: React.FC<ImageModalProps> = ({
           data-context-menu
         >
           <button 
-            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
             onClick={copyImage}
           >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+              <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+            </svg>
             Copy Image
           </button>
           <button 
-            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
-            onClick={showInFileExplorer}
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
+            onClick={copyPrompt}
           >
-            Show in File Explorer
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+            Copy Prompt
           </button>
           <button 
-            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
+            onClick={copyMetadata}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+            </svg>
+            Copy All Metadata
+          </button>
+          <div className="border-t border-gray-600 my-1"></div>
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
             onClick={copyFilePath}
           >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+            </svg>
             Copy File Path
           </button>
           <button 
-            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200"
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
+            onClick={showInFileExplorer}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h4a2 2 0 012 2v2a2 2 0 01-2 2h-4a2 2 0 01-2-2V6zm-5 8a2 2 0 012-2h4a2 2 0 012 2v2a2 2 0 01-2 2H9a2 2 0 01-2-2v-2z" clipRule="evenodd" />
+            </svg>
+            Show in File Explorer
+          </button>
+          <button 
+            className="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-600 transition-colors duration-200 flex items-center gap-2"
             onClick={setAsWallpaper}
           >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+            </svg>
             Set as Wallpaper
           </button>
         </div>

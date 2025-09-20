@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renameFile: (oldName, newName) => ipcRenderer.invoke('rename-file', oldName, newName),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
-  showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath)
+  showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
+  listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath)
 });

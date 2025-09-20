@@ -434,7 +434,8 @@ export function isIntermediateImage(filename: string): boolean {
 export async function processDirectory(
   directoryHandle: FileSystemDirectoryHandle,
   setProgress: (progress: { current: number; total: number }) => void,
-  specificFiles?: { handle: FileSystemFileHandle; path: string }[]
+  specificFiles?: { handle: FileSystemFileHandle; path: string }[],
+  directoryName?: string
 ): Promise<IndexedImage[]> {
   const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
   const pngFiles = allFileEntries.filter(entry => 
@@ -497,6 +498,7 @@ export async function processDirectory(
           loras,
           scheduler,
           board,
+          directoryName,
         });
       }
     } catch (error) {

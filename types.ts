@@ -27,6 +27,7 @@ export interface IndexedImage {
   loras: string[]; // Extracted LoRAs from metadata
   scheduler: string; // Extracted scheduler from metadata
   board?: string; // Extracted board name from metadata
+  directoryName?: string; // Name of the selected directory for context
 }
 
 export interface FilterOptions {
@@ -47,6 +48,8 @@ declare global {
       setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean }>;
       showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
       showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+      listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+      readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
     };
     // File System Access API
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
