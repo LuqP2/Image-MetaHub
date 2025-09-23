@@ -190,3 +190,74 @@ Standardized on the working pattern that checks for electronAPI existence, which
 ---
 
 ## Recent Decisions
+
+## 2025-09-23: FEATURE - Click-to-Edit Pagination
+
+**Decision:** Implemented click-to-edit functionality for page numbers in pagination controls.
+
+**Context:** Users needed a more intuitive way to jump to specific pages without using a separate input field.
+
+**Rationale:** Added interactive page number editing with visual cues (cursor pointer, subtle hover background), keyboard support (Enter/Escape), and accessibility features. Users can click any page number to edit it directly inline.
+
+**Alternatives Considered:**
+- Separate jump-to-page input field (rejected: less intuitive, takes more space)
+- Dropdown page selector (rejected: not suitable for large page counts)
+- No direct page editing (rejected: poor UX for large collections)
+
+**Impact:** Significantly improves navigation UX for large image collections, reduces clicks needed to reach specific pages.
+
+**Testing:** Verified mouse and keyboard interaction, accessibility, error handling, and visual feedback.
+
+## 2025-09-23: PERF - Smart Cache Cleanup System
+
+**Decision:** Implemented intelligent cache cleanup instead of full reindexing when refreshing folders.
+
+**Context:** Cache contained stale entries for deleted files, causing refresh operations to fail and requiring expensive full reindexing.
+
+**Rationale:** Added `cleanStaleCacheEntries` method that compares cached files against actual directory contents and removes only stale entries, preserving valid cache data. This provides fast incremental updates while maintaining cache integrity.
+
+**Alternatives Considered:**
+- Full reindexing on every refresh (rejected: too slow for large collections)
+- Time-based cache invalidation only (rejected: doesn't handle file deletions)
+- Manual cache clearing (rejected: poor user experience)
+
+**Impact:** Refresh operations now complete in seconds instead of minutes, new images appear immediately without full reindexing.
+
+**Testing:** Verified with collections containing 17,000+ images, confirmed stale entries are removed while valid cache is preserved.
+
+## 2025-09-23: FIX - Consistent PNG Filtering in File Detection
+
+**Decision:** Standardized PNG filtering logic across all file detection operations.
+
+**Context:** New images weren't appearing on refresh because file detection used different filtering logic than PNG counting, missing intermediate images that should be excluded.
+
+**Rationale:** Applied consistent `!isIntermediateImage` filtering throughout the codebase, ensuring new file detection matches the same criteria used for initial indexing and PNG counting.
+
+**Alternatives Considered:**
+- Include all PNG files (rejected: would show intermediate/temporary images)
+- Complex filtering rules (rejected: over-engineering, hard to maintain)
+
+**Impact:** New images now appear correctly after refresh folder operations, maintains clean image display without intermediate files.
+
+**Testing:** Added debug logging to verify directory vs cache file comparison, confirmed filtering consistency.
+
+## 2025-09-23: UI - Modernized Pagination Jump-to-Page
+
+**Decision:** Enhanced the jump-to-page input field with modern web conventions and accessibility.
+
+**Context:** The existing page jump functionality was not user-friendly and lacked proper feedback.
+
+**Rationale:** Redesigned the input field to be compact, added Enter key support, error feedback with visual shake animation, accessibility labels, and responsive design. Integrated visually with pagination controls.
+
+**Alternatives Considered:**
+- Large modal dialog (rejected: disruptive to workflow)
+- Separate page navigation panel (rejected: takes too much space)
+- No jump functionality (rejected: poor UX for large collections)
+
+**Impact:** Users can now jump to any page quickly and intuitively with proper error feedback and accessibility support.
+
+**Testing:** Verified in both browser and Electron environments, tested input validation and keyboard navigation.
+
+---
+
+## Recent Decisions

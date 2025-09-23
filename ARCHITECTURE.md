@@ -5,7 +5,7 @@
 **Local Image Browser for InvokeAI** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.6.1
+- **Version**: 1.7.3
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
 - **Desktop**: Electron 38 with auto-updater
@@ -138,6 +138,7 @@ interface IndexedImage {
 - **Incremental Updates**: Only processes new/changed files
 - **Cache Invalidation**: Time-based and count-based validation
 - **Thumbnail Caching**: Separate storage for image thumbnails
+- **Smart Cleanup**: Automatic removal of stale cache entries for deleted files
 
 #### Cache Strategy:
 ```typescript
@@ -155,6 +156,7 @@ interface CacheEntry {
 - Refresh if image count changes
 - Refresh if cache is older than 1 hour
 - Incremental updates for new images
+- Smart cleanup of stale entries without full reindexing
 
 ### 4. **Search and Filtering Engine**
 - **Full-text Search**: Regex-based metadata searching
@@ -163,7 +165,7 @@ interface CacheEntry {
 - **Scheduler Filtering**: Filter by scheduler type (DPM, Euler, etc.)
 - **Multi-Selection**: Windows Explorer-like Ctrl+click selection
 - **Sorting Options**: Alphabetical and date-based sorting
-- **Pagination**: Configurable items per page
+- **Pagination**: Configurable items per page with click-to-edit page numbers
 
 ### 5. **File Management System**
 - **Rename Operations**: In-place file renaming with validation
@@ -192,7 +194,7 @@ interface CacheEntry {
 ### Implemented ✅
 - [x] Directory selection and recursive scanning
 - [x] PNG metadata extraction (InvokeAI format)
-- [x] Smart caching with incremental updates
+- [x] Smart caching with incremental updates and automatic cleanup
 - [x] Full-text search across metadata
 - [x] Model and LoRA filtering
 - [x] Scheduler filtering with auto-detection
@@ -206,7 +208,7 @@ interface CacheEntry {
 - [x] Auto-updater functionality
 - [x] Responsive grid layout
 - [x] Image modal with metadata display
-- [x] Pagination and sorting
+- [x] Pagination and sorting with click-to-edit page numbers
 - [x] Intermediate image filtering
 
 ### In Progress 🚧
@@ -215,7 +217,7 @@ interface CacheEntry {
 
 ## Planned Features
 
-### Short Term (v1.6)
+### Short Term (v1.8)
 - Dimension filtering (512x512, 1024x1024, etc.)
 - Steps slider filter (range selection)
 - CFG Scale slider filter
@@ -249,6 +251,7 @@ interface CacheEntry {
 - File handles instead of blob storage
 - Incremental cache updates
 - Lazy loading and pagination
+- Smart cache cleanup for stale entries
 
 ### 2. **Complex Metadata Parsing**
 **Challenge**: LoRA objects stored as `[object Object]`
@@ -263,6 +266,13 @@ interface CacheEntry {
 - Feature detection and graceful fallbacks
 - Progressive enhancement approach
 - Electron wrapper for full desktop functionality
+
+### 4. **Cache Management**
+**Challenge**: Stale cache entries causing refresh failures and requiring expensive full reindexing
+**Solution**:
+- Intelligent cache cleanup comparing cached files against directory contents
+- Selective removal of stale entries while preserving valid cache data
+- Fast incremental updates instead of full reindexing
 
 ## Electron Architecture
 

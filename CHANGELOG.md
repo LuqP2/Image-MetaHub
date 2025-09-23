@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] - 2025-09-23
+
+### Added
+- **Click-to-Edit Pagination**: Click any page number to jump directly to that page for instant navigation
+- **Smart Cache Cleanup**: Automatic removal of stale cache entries without full reindexing for faster refresh operations
+- **Enhanced Refresh Folder**: Improved incremental indexing that detects new images reliably without performance degradation
+
+### UI Improvements
+- **Modern Pagination UI**: Redesigned pagination controls with better error feedback, accessibility, and user experience
+- **Complete README Overhaul**: Restructured documentation to emphasize offline-first desktop application with clearer feature organization
+- **Streamlined Installation**: Simplified installation instructions focusing on desktop app usage
+
+### Technical Improvements
+- **Intelligent Cache Management**: Smart cleanup system that preserves valid cache while removing stale entries for deleted files
+- **Consistent PNG Filtering**: Standardized filtering logic across all file detection operations to prevent refresh issues
+- **Enhanced User Experience**: Improved navigation and feedback throughout the application
+
+### Fixed
+- **Refresh Folder Reliability**: Fixed inconsistent behavior where new images weren't appearing after folder refresh
+- **Cache Stale Entry Handling**: Resolved issues with cache containing references to deleted files causing performance problems
+
+## [1.7.2] - 2025-09-23
+
+### Fixed
+- **Refresh Folder Bug**: Fixed critical issue where clicking "Refresh Folder" would return 0 results on first click due to stale cache data
+- **Cache Validation**: Improved cache validation logic to detect when cached data doesn't match current folder contents
+- **Cache Fallback**: Added automatic fallback to full reindexing when cache reconstruction fails but PNG files exist
+
+### Technical Improvements
+- Enhanced cache management to prevent showing empty results when folder contents change
+- Improved error handling for cache reconstruction failures
+- Better user feedback during folder refresh operations
+- Optimized refresh logic to use incremental updates when possible instead of full reindexing
+
 ## [1.7.1] - 2025-09-20
 
 ### Added
