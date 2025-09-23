@@ -238,9 +238,7 @@ interface CacheEntry {
 - Image similarity search
 - Cloud sync integration
 - Plugin system for custom parsers
-- Image similarity search
 - Workflow integration
-- Plugin system for custom parsers
 - Cloud sync capabilities
 
 ## Technical Challenges & Solutions
