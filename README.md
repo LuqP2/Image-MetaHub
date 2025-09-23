@@ -1,7 +1,9 @@
 # Local Image Browser for InvokeAI
 
 An offline-first desktop application for browsing, searching, and organizing AI-generated images. It is designed for performance with large local collections, focusing on powerful metadata filtering and user privacy.
+An offline-first desktop application for browsing, searching, and organizing AI-generated images. It is designed for performance with large local collections, focusing on powerful metadata filtering and user privacy.
 
+All processing is performed locally. The application has no built-in upload, sharing, or synchronization features; no data is sent to external services.
 All processing is performed locally. The application has no built-in upload, sharing, or synchronization features; no data is sent to external services.
 
 *For a detailed list of recent changes, please see the [Releases page](https://github.com/LuqP2/local-image-browser-for-invokeai/releases).*
@@ -26,12 +28,18 @@ All processing is performed locally. The application has no built-in upload, sha
 ## Installation
 
 **Prerequisites:** Node.js 16+ (LTS recommended)
+**Prerequisites:** Node.js 16+ (LTS recommended)
 
 ### Installer (Recommended)
 1.  Navigate to the [**Releases**](https://github.com/LuqP2/local-image-browser-for-invokeai/releases) page.
 2.  Download the appropriate installer for your operating system (`.exe`, `.dmg`, `.AppImage`).
 3.  Run the installer and launch the application.
+### Installer (Recommended)
+1.  Navigate to the [**Releases**](https://github.com/LuqP2/local-image-browser-for-invokeai/releases) page.
+2.  Download the appropriate installer for your operating system (`.exe`, `.dmg`, `.AppImage`).
+3.  Run the installer and launch the application.
 
+### Run from Source
 ### Run from Source
 ```bash
 # Clone the repository
@@ -42,9 +50,25 @@ cd local-image-browser-for-invokeai
 npm install
 
 # Start the development server
+# Start the development server
 npm run dev
 ```
 
+## Quick Start
+1.  Launch the application and select the root folder containing your InvokeAI images.
+2.  Allow the initial indexing to complete. This may take several minutes for large collections.
+3.  Use the sidebar controls to search and filter your collection.
+4.  Click any image to open a detailed view with its full metadata and management options.
+
+## Technical Overview
+
+*   **Frontend**: React 18 with TypeScript
+*   **Desktop Wrapper**: Electron 38 with an integrated auto-updater
+*   **Build Tool**: Vite
+*   **Storage**: IndexedDB for persistent client-side caching
+*   **File Access**: Uses the File System Access API in browsers and Node.js `fs` APIs in Electron for native file handling.
+
+For comprehensive technical details, please see the [**ARCHITECTURE.md**](./ARCHITECTURE.md) document.
 ## Quick Start
 1.  Launch the application and select the root folder containing your InvokeAI images.
 2.  Allow the initial indexing to complete. This may take several minutes for large collections.
@@ -84,8 +108,20 @@ This application is local-only by design.
 *   All file processing, metadata extraction, and caching occurs on your machine.
 *   No user accounts are required, and no telemetry data is collected.
 *   File system access is granted explicitly by the user for each session via the browser/OS security prompts. All data remains on the user's device.
+This application is local-only by design.
+*   All file processing, metadata extraction, and caching occurs on your machine.
+*   No user accounts are required, and no telemetry data is collected.
+*   File system access is granted explicitly by the user for each session via the browser/OS security prompts. All data remains on the user's device.
 
 ## Contributing
+
+Contributions are welcome. Please feel free to submit a Pull Request. For major architectural changes, please open an issue first to initiate a discussion.
+
+## License & Disclaimer
+
+This project is licensed under the [MIT License](LICENSE).
+
+This is an independent, community-built tool and is not affiliated with or endorsed by Invoke AI, Inc. "InvokeAI" is a trademark of Invoke AI, Inc.
 
 Contributions are welcome. Please feel free to submit a Pull Request. For major architectural changes, please open an issue first to initiate a discussion.
 

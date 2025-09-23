@@ -358,7 +358,10 @@ function setupFileOperationHandlers() {
 
       return { success: true, data: data };
     } catch (error) {
-      console.error('Error reading file:', error);
+      // Only log errors that aren't "file not found" to avoid spam when cache is stale
+      if (!error.message?.includes('ENOENT') && !error.message?.includes('no such file')) {
+        console.error('Error reading file:', error);
+      }
       return { success: false, error: error.message };
     }
   });

@@ -49,6 +49,9 @@ function extractPromptText(image: IndexedImage): string {
 }
 
 export default function App() {
+  // State for click-to-edit pagination
+  const [isEditingPage, setIsEditingPage] = useState(false);
+  const [editPageValue, setEditPageValue] = useState<string>('');
   // console.log('🚀 App component initialized');
   // console.log('📊 localStorage no início do App:', Object.keys(localStorage));
   // console.log('🔍 Directory path no início:', localStorage.getItem('invokeai-electron-directory-path'));
@@ -385,7 +388,10 @@ export default function App() {
                       lastModified: fileInfo.lastModified
                     });
                   } else {
-                    console.error('❌ Failed to read file:', fileInfo.name, fileResult.error);
+                    // Only log errors that aren't "file not found" to avoid spam when cache is stale
+                    if (!fileResult.error?.includes('ENOENT') && !fileResult.error?.includes('no such file')) {
+                      console.error('❌ Failed to read file:', fileInfo.name, fileResult.error);
+                    }
                     // Return empty file as fallback with lastModified
                     return new File([], fileInfo.name, {
                       type: 'image/png',
@@ -393,7 +399,10 @@ export default function App() {
                     });
                   }
                 } catch (error) {
-                  console.error('❌ Error reading file in Electron:', fileInfo.name, error);
+                  // Only log errors that aren't "file not found" to avoid spam when cache is stale
+                  if (!error?.message?.includes('ENOENT') && !error?.message?.includes('no such file')) {
+                    console.error('❌ Error reading file in Electron:', fileInfo.name, error);
+                  }
                   return new File([], fileInfo.name, {
                     type: 'image/png',
                     lastModified: fileInfo.lastModified
@@ -701,6 +710,10 @@ export default function App() {
       return;
     }
 
+    // Clear only the file handles cache (NOT the image metadata cache)
+    // This ensures getAllFileHandles sees new files, but does not lose cached image metadata
+    fileHandlesCache.current.clear();
+
     try {
       setError(null);
       setSuccess(null);
@@ -713,20 +726,141 @@ export default function App() {
       setSelectedSchedulers([]);
       setProgress({ current: 0, total: 0 });
 
-      // Clear file handles cache
+      // Clear file handles cache to ensure new files are detected
       fileHandlesCache.current.clear();
 
-      // Force full re-indexing by clearing cache
-      await cacheManager.clearCache();
+      // Initialize cache manager
+      await cacheManager.init();
+
+      // Quick count of PNG files to determine if we should use cache
+      const allFiles = await getAllFileHandles(directoryHandle);
+      // FIX: Count only non-intermediate PNG files to match cached data
+      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
       
-      // Full indexing
-      const indexedImages = await processDirectory(directoryHandle, setProgress, undefined, directoryHandle.name);
-      setImages(indexedImages);
-      setFilteredImages(indexedImages);
-      updateFilterOptions(indexedImages);
-      await cacheManager.cacheData(directoryHandle.name, indexedImages);
-      
-      setSuccess('Folder refreshed successfully!');
+      console.log('🔍 REFRESH DEBUG:');
+      console.log('   Total files found:', allFiles.length);
+      console.log('   PNG files (non-intermediate):', pngCount);
+      console.log('   All PNG files:', allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length);
+
+      // Check if we should use cached data
+      const cacheResult = await cacheManager.shouldRefreshCache(directoryHandle.name, pngCount);
+
+      if (!cacheResult.shouldRefresh) {
+        console.log('✅ USING EXISTING CACHE');
+        const cachedData = await cacheManager.getCachedData(directoryHandle.name);
+        if (cachedData) {
+          const reconstructedImages = await reconstructImagesFromCache(directoryHandle, cachedData);
+          if (reconstructedImages.length > 0 || pngCount === 0) {
+            setImages(reconstructedImages);
+            setFilteredImages(reconstructedImages);
+            updateFilterOptions(reconstructedImages);
+            setIsLoading(false);
+            setSuccess('Folder refreshed successfully!');
+            return;
+          } else {
+            console.log('🔄 CACHE RECONSTRUCTION FAILED, REINDEXING');
+            // Fall through to full indexing
+          }
+        }
+      } else {
+        console.log('🔄 UPDATING CACHE INCREMENTALLY');
+        const cachedData = await cacheManager.getCachedData(directoryHandle.name);
+
+        if (cachedData) {
+          // Check if cache has significantly more files than directory (stale cache)
+          const cacheCount = cachedData.metadata.length;
+          
+          if (cacheCount > pngCount + 100) {
+            console.log(`🔄 CACHE STALE: cache has ${cacheCount} files, directory has ${pngCount} files. Cleaning up stale entries...`);
+            
+            // Get all current PNG filenames (same logic as pngCount)
+            const currentFileNames = allFiles
+              .filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name))
+              .map(f => f.handle.name);
+            
+            // Clean stale entries from cache
+            const removedCount = await cacheManager.cleanStaleCacheEntries(directoryHandle.name, currentFileNames);
+            
+            // Now check for new files after cleanup
+            const updatedCachedData = await cacheManager.getCachedData(directoryHandle.name);
+            const cachedFileNames = updatedCachedData ? updatedCachedData.metadata.map(meta => meta.name) : [];
+            
+            // Get all PNG files in directory (same logic as pngCount)
+            const allPngFiles = allFiles.filter(f => 
+              f.handle.name.toLowerCase().endsWith('.png') && 
+              !isIntermediateImage(f.handle.name)
+            );
+            
+            const newFiles = allPngFiles.filter(f => !cachedFileNames.includes(f.handle.name));
+            
+            if (newFiles.length > 0) {
+              console.log(`🆕 FOUND ${newFiles.length} NEW IMAGES AFTER CLEANUP`);
+              const indexedNewImages = await processDirectory(directoryHandle, setProgress, newFiles);
+              await cacheManager.updateCacheIncrementally(directoryHandle.name, indexedNewImages);
+            }
+            
+            // Use cleaned cache
+            const finalCachedData = await cacheManager.getCachedData(directoryHandle.name);
+            if (finalCachedData) {
+              const allReconstructedImages = await reconstructImagesFromCache(directoryHandle, finalCachedData);
+              const sortedImages = sortImages(allReconstructedImages);
+              setImages(sortedImages);
+              setFilteredImages(sortedImages);
+              updateFilterOptions(sortedImages);
+              setSuccess('Folder refreshed successfully!');
+            }
+            return;
+          }
+
+          // Use existing cache and add only new images
+          const cachedFileNames = cachedData.metadata.map(meta => meta.name);
+          console.log('📋 CACHED FILES:', cachedFileNames.length, cachedFileNames.slice(0, 5), '...');
+          
+          // Get all PNG files in directory (same logic as pngCount)
+          const allPngFiles = allFiles.filter(f => 
+            f.handle.name.toLowerCase().endsWith('.png') && 
+            !isIntermediateImage(f.handle.name)
+          );
+          console.log('📁 DIRECTORY PNG FILES:', allPngFiles.length, allPngFiles.slice(0, 5).map(f => f.handle.name), '...');
+          
+          const newFiles = allPngFiles.filter(f => !cachedFileNames.includes(f.handle.name));
+          
+          console.log('🔍 NEW FILES DETECTED:', newFiles.length);
+          if (newFiles.length > 0) {
+            console.log('   New file names:', newFiles.map(f => f.handle.name));
+          }
+
+          if (newFiles.length > 0) {
+            console.log(`🆕 FOUND ${newFiles.length} NEW IMAGES`);
+            const indexedNewImages = await processDirectory(directoryHandle, setProgress, newFiles);
+            await cacheManager.updateCacheIncrementally(directoryHandle.name, indexedNewImages);
+
+            // Reconstruct all images from updated cache
+            const updatedCachedData = await cacheManager.getCachedData(directoryHandle.name);
+            const allReconstructedImages = await reconstructImagesFromCache(directoryHandle, updatedCachedData);
+            const sortedImages = sortImages(allReconstructedImages);
+            setImages(sortedImages);
+            setFilteredImages(sortedImages);
+            updateFilterOptions(sortedImages);
+            setSuccess('Folder refreshed successfully!');
+          } else {
+            console.log('📄 NO NEW IMAGES FOUND, USING EXISTING CACHE');
+            const reconstructedImages = await reconstructImagesFromCache(directoryHandle, cachedData);
+            setImages(reconstructedImages);
+            setFilteredImages(reconstructedImages);
+            updateFilterOptions(reconstructedImages);
+            setSuccess('Folder refreshed successfully!');
+          }
+        } else {
+          console.log('🔄 NO CACHE FOUND, FULL INDEXING');
+          const indexedImages = await processDirectory(directoryHandle, setProgress);
+          setImages(indexedImages);
+          setFilteredImages(indexedImages);
+          updateFilterOptions(indexedImages);
+          await cacheManager.cacheData(directoryHandle.name, indexedImages);
+          setSuccess('Folder refreshed successfully!');
+        }
+      }
     } catch (err) {
       console.error("Error refreshing directory:", err);
       setError("Failed to refresh the directory. See console for details.");
@@ -805,14 +939,13 @@ export default function App() {
         !cachedFileNames.includes(f.handle.name)
       );
 
+      // Calculate deletedCount for use in success message
+      const cachedFileCount = cachedData.metadata.length;
+      const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
+      const deletedCount = cachedFileCount - currentFileCount;
+
       if (newFiles.length === 0) {
         console.log('📄 NO NEW IMAGES FOUND');
-        
-        // Check if any images were deleted
-        const cachedFileCount = cachedData.metadata.length;
-        const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
-        const deletedCount = cachedFileCount - currentFileCount;
-        
         if (deletedCount > 0) {
           const successMessage = `Removed ${deletedCount} deleted image${deletedCount === 1 ? '' : 's'} from index.`;
           console.log(`✅ ${successMessage.toUpperCase()}`);
@@ -820,7 +953,6 @@ export default function App() {
         } else {
           setError('No new images found. All images are already indexed.');
         }
-        
         setIsLoading(false);
         return;
       }
@@ -853,7 +985,7 @@ export default function App() {
             switch (searchField) {
               case 'any':
                 // Search in all fields using word boundary for precision
-                const anyRegex = new RegExp(`\\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+                const anyRegex = new RegExp(`\b${lowerCaseQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\b`, 'i');
                 return anyRegex.test(image.metadataString);
               case 'prompt':
                 const promptText = extractPromptText(image);
@@ -947,11 +1079,6 @@ export default function App() {
         }
 
         setFilteredImages(sortImages(currentFilteredImages));
-
-        // Calculate summary of changes
-        const cachedFileCount = cachedData.metadata.length;
-        const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
-        const deletedCount = cachedFileCount - (currentFileCount - newFiles.length);
 
         // Create descriptive success message
         let successMessage = '';
@@ -1451,7 +1578,60 @@ export default function App() {
 
                     <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 rounded-lg border border-gray-600">
                       <span className="text-gray-300 text-sm font-medium" aria-live="polite" aria-atomic="true">
-                        Page <span className="text-blue-400 font-bold">{currentPage}</span> of <span className="text-green-400 font-bold">{totalPages}</span>
+                        Page{' '}
+                        {isEditingPage ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={totalPages}
+                            value={editPageValue}
+                            autoFocus
+                            aria-label="Go to page"
+                            onFocus={e => e.target.select()}
+                            onChange={e => setEditPageValue(e.target.value.replace(/[^0-9]/g, ''))}
+                            onBlur={() => {
+                              let page = parseInt(editPageValue, 10);
+                              if (!isNaN(page) && page >= 1 && page <= totalPages) {
+                                setCurrentPage(page);
+                              }
+                              setIsEditingPage(false);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                let page = parseInt(editPageValue, 10);
+                                if (!isNaN(page) && page >= 1 && page <= totalPages) {
+                                  setCurrentPage(page);
+                                  setIsEditingPage(false);
+                                } else {
+                                  (e.target as HTMLInputElement).classList.add('ring-2', 'ring-red-500');
+                                  setTimeout(() => (e.target as HTMLInputElement).classList.remove('ring-2', 'ring-red-500'), 800);
+                                }
+                              } else if (e.key === 'Escape') {
+                                setIsEditingPage(false);
+                              }
+                            }}
+                            className="w-14 px-2 py-1 rounded bg-gray-800 border border-blue-500 text-blue-300 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            style={{ minWidth: '2.5rem' }}
+                          />
+                        ) : (
+                          <span
+                            className="text-blue-400 font-bold cursor-pointer transition-all duration-100 select-none px-2 py-0.5 rounded hover:bg-white/10"
+                            tabIndex={0}
+                            onClick={() => {
+                              setEditPageValue(String(currentPage));
+                              setIsEditingPage(true);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                setEditPageValue(String(currentPage));
+                                setIsEditingPage(true);
+                              }
+                            }}
+                          >
+                            {currentPage}
+                          </span>
+                        )}
+                        {' '}of <span className="text-green-400 font-bold">{totalPages}</span>
                       </span>
                     </div>
 

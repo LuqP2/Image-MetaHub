@@ -251,6 +251,41 @@ class CacheManager {
       }
     };
   }
+
+  async cleanStaleCacheEntries(
+    directoryName: string,
+    validFileNames: string[]
+  ): Promise<number> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['cache'], 'readwrite');
+      const store = transaction.objectStore('cache');
+
+      const request = store.get(directoryName);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cachedData: CacheEntry = request.result;
+        if (cachedData) {
+          const originalCount = cachedData.metadata.length;
+          const validMetadata = cachedData.metadata.filter(meta => validFileNames.includes(meta.name));
+          const removedCount = originalCount - validMetadata.length;
+
+          if (removedCount > 0) {
+            cachedData.metadata = validMetadata;
+            cachedData.imageCount = validMetadata.length;
+            cachedData.lastScan = Date.now();
+            store.put(cachedData);
+            console.log(`🧹 CLEANED ${removedCount} STALE CACHE ENTRIES`);
+          }
+
+          resolve(removedCount);
+        } else {
+          resolve(0);
+        }
+      };
+    });
+  }
 }
 
 // Export cache manager instance

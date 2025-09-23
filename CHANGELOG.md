@@ -5,27 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.7.2] - 2025-09-20
+## [1.7.3] - 2025-09-23
+
+### Added
+- **Click-to-Edit Pagination**: Click any page number to jump directly to that page for instant navigation
+- **Smart Cache Cleanup**: Automatic removal of stale cache entries without full reindexing for faster refresh operations
+- **Enhanced Refresh Folder**: Improved incremental indexing that detects new images reliably without performance degradation
+
+### UI Improvements
+- **Modern Pagination UI**: Redesigned pagination controls with better error feedback, accessibility, and user experience
+- **Complete README Overhaul**: Restructured documentation to emphasize offline-first desktop application with clearer feature organization
+- **Streamlined Installation**: Simplified installation instructions focusing on desktop app usage
+
+### Technical Improvements
+- **Intelligent Cache Management**: Smart cleanup system that preserves valid cache while removing stale entries for deleted files
+- **Consistent PNG Filtering**: Standardized filtering logic across all file detection operations to prevent refresh issues
+- **Enhanced User Experience**: Improved navigation and feedback throughout the application
 
 ### Fixed
-- **Critical Search Bug**: Fixed complete search functionality failure where no images were being found
-- **Dimension Filter Accuracy**: Fixed dimension filtering to find ALL images (was only finding partial matches)
-- **Search Performance**: Optimized search operations with 3-5x performance improvement
-- **Date Sorting in Electron**: Fixed date sorting that wasn't working due to missing file modification dates
-- **Electron Header Buttons**: Fixed missing "Change Folder" and "Update" buttons in Electron app header
-- **Drag Sensitivity**: Improved image drag sensitivity with proper bounds checking
+- **Refresh Folder Reliability**: Fixed inconsistent behavior where new images weren't appearing after folder refresh
+- **Cache Stale Entry Handling**: Resolved issues with cache containing references to deleted files causing performance problems
 
-### Performance
-- **Search Optimization**: Removed excessive logging that was slowing down filter operations
-- **Unified Extraction Logic**: Created consistent helper functions for data extraction across components
-- **Filter Pre-processing**: Optimized lowercase conversions to run once instead of per-image
-- **Memory Efficiency**: Reduced memory usage in filter operations
+## [1.7.2] - 2025-09-23
 
-### Technical
-- **Search Logic Unification**: Standardized search implementation across all search types
-- **Environment Detection**: Improved Electron vs browser compatibility
-- **Error Handling**: Enhanced error handling for file operations
-- **Code Consistency**: Unified data extraction patterns across components
+### Fixed
+- **Refresh Folder Bug**: Fixed critical issue where clicking "Refresh Folder" would return 0 results on first click due to stale cache data
+- **Cache Validation**: Improved cache validation logic to detect when cached data doesn't match current folder contents
+- **Cache Fallback**: Added automatic fallback to full reindexing when cache reconstruction fails but PNG files exist
+
+### Technical Improvements
+- Enhanced cache management to prevent showing empty results when folder contents change
+- Improved error handling for cache reconstruction failures
+- Better user feedback during folder refresh operations
+- Optimized refresh logic to use incremental updates when possible instead of full reindexing
 
 ## [1.7.1] - 2025-09-20
 
