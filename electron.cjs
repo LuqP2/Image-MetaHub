@@ -12,6 +12,11 @@ let skippedVersions = new Set(); // Store versions user wants to skip
 // Configure auto-updater
 autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
 
+// Configure for macOS specifically
+if (process.platform === 'darwin') {
+  autoUpdater.forceDevUpdateConfig = true; // Allow updates in development
+}
+
 // Remove checkForUpdatesAndNotify to avoid duplicate dialogs
 // autoUpdater.checkForUpdatesAndNotify();
 
@@ -77,6 +82,12 @@ autoUpdater.on('update-not-available', (info) => {
 
 autoUpdater.on('error', (err) => {
   console.log('Error in auto-updater:', err);
+  
+  // Special handling for macOS
+  if (process.platform === 'darwin') {
+    console.log('macOS auto-updater error - this may be due to code signing requirements');
+  }
+  
   dialog.showMessageBox(mainWindow, {
     type: 'error',
     title: 'Update Error',
@@ -338,6 +349,9 @@ function setupFileOperationHandlers() {
 
       // console.log('Listed files in directory:', dirPath); // Commented out to reduce console noise
       // console.log('Found PNG files:', pngFiles.length); // Commented out to reduce console noise
+
+      console.log('📂 Electron listDirectoryFiles called for:', dirPath);
+      console.log('📋 Found PNG files:', pngFiles.length);
 
       return { success: true, files: pngFiles };
     } catch (error) {

@@ -343,33 +343,45 @@ export default function App() {
     
     // Check cache first
     if (fileHandlesCache.current.has(cacheKey)) {
-      // console.log('📋 Using cached file handles for:', cacheKey);
       return fileHandlesCache.current.get(cacheKey)!;
     }
+
+    console.log('🔍 Scanning directory for files, cache miss for:', cacheKey);
 
     const entries = [];
     const dirHandle = directoryHandle as any;
 
-    // Check if we're running in Electron
-    const isElectron = typeof window.electronAPI !== 'undefined';
-    // console.log('🔧 getAllFileHandles called, isElectron (FIXED):', isElectron);
-
+    // IMPROVED: More robust Electron detection with multiple checks
+    const isElectron = typeof window !== 'undefined' && 
+                      window.electronAPI && 
+                      typeof window.electronAPI.listDirectoryFiles === 'function';
+    
+    console.log('🔧 getAllFileHandles called for Electron:', isElectron);
     if (isElectron) {
-      // console.log('⚡ Using Electron file system APIs (FIXED)');
-      // Use Electron/Node.js file system APIs
       try {
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
+        
         if (!electronPath) {
-          console.error('❌ No Electron directory path stored');
+          console.error('❌ No Electron directory path stored in localStorage');
           return entries;
         }
 
-        // Use Electron API to list files
-        // console.log('📂 Listing files in Electron directory:', electronPath);
         const result = await window.electronAPI.listDirectoryFiles(electronPath);
-        // console.log('📋 Electron API result:', result);
+        
+        // Validate result object exists and has expected structure
+        if (!result) {
+          console.error('❌ listDirectoryFiles returned undefined/null');
+          return entries;
+        }
+        
+        if (!result.success) {
+          console.error('❌ Electron API failed:', result.error || 'Unknown error');
+          return entries;
+        }
+        
         if (result.success && result.files) {
-          // console.log('✅ Found', result.files.length, 'PNG files in Electron');
+          console.log('✅ Found', result.files.length, 'PNG files in Electron directory');
+          
           for (const fileInfo of result.files) {
             // Create a mock file handle for Electron
             const mockHandle = {
@@ -377,8 +389,11 @@ export default function App() {
               kind: 'file' as const,
               getFile: async () => {
                 try {
-                  // Use Electron API to read the actual file
-                  const fullPath = electronPath + '\\' + fileInfo.name; // Simple path joining for Windows
+                  // FIX: Cross-platform path joining - use forward slash for both Windows and macOS
+                  // Node.js path.join would be better, but we can't use it in renderer
+                  // Forward slashes work on both platforms in file paths
+                  const fullPath = electronPath + '/' + fileInfo.name;
+                  
                   const fileResult = await window.electronAPI.readFile(fullPath);
                   if (fileResult.success) {
                     // Create a proper File object from the buffer with lastModified date
@@ -425,7 +440,7 @@ export default function App() {
       }
     } else {
       // Use browser File System Access API
-      // console.log('🌐 Using browser File System Access API (fallback)');
+      console.log('🌐 Using browser File System Access API (fallback)');
       for await (const entry of dirHandle.values()) {
         const newPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
@@ -548,15 +563,23 @@ export default function App() {
       setSuccess(null);
       let handle: any;
 
-      // Check if we're running in Electron
-      const isElectron = typeof window.electronAPI !== 'undefined';
-      // console.log('🔍 isElectron detection (FIXED):', isElectron);
+      // IMPROVED: More robust Electron detection
+      const isElectron = typeof window !== 'undefined' && 
+                        window.electronAPI && 
+                        typeof window.electronAPI.showDirectoryDialog === 'function';
+      
+      console.log('🔍 Directory selection - Electron detection:', {
+        windowDefined: typeof window !== 'undefined',
+        electronAPIExists: typeof window.electronAPI !== 'undefined',
+        showDirectoryDialogExists: typeof window.electronAPI?.showDirectoryDialog === 'function',
+        isElectron: isElectron
+      });
 
       if (isElectron) {
         // Use Electron's directory picker
-        // console.log('🔍 Opening Electron directory dialog...');
+        console.log('🔍 Opening Electron directory dialog...');
         const result = await window.electronAPI.showDirectoryDialog();
-        // console.log('📁 Directory dialog result:', result);
+        console.log('📁 Directory dialog result:', result);
 
         if (result.canceled || !result.success) {
           // console.log('❌ Directory selection cancelled or failed:', result.error);

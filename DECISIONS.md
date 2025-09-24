@@ -40,6 +40,31 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-24: FIX - macOS Electron Environment Detection & Path Handling
+
+**Decision:** Implemented robust cross-platform Electron detection and fixed path joining issues causing "zero images found" on macOS.
+
+**Context:** macOS users reported Electron desktop app scans folder but shows "zero images found" while browser version works. Root cause was inadequate Electron detection and Windows-specific path joining.
+
+**Rationale:** 
+- Enhanced Electron detection with multiple checks (window.electronAPI existence + method availability)
+- Fixed path joining to use forward slashes (works on Windows/macOS/Linux) instead of backslashes
+- Added comprehensive debug logging to help diagnose future issues
+- Created debug script for troubleshooting environment detection
+
+**Alternatives Considered:**
+- Using Node.js `path.join()` in renderer (rejected: not available in renderer process)
+- Platform detection via user agent (rejected: unreliable for Electron)
+- Single boolean check for Electron (rejected: too fragile)
+
+**Impact:** 
+- Fixes macOS Electron app file scanning
+- Improves cross-platform compatibility
+- Better error diagnostics for future issues
+- No breaking changes to existing functionality
+
+**Testing:** Manual testing on Windows, validation of path joining logic for macOS compatibility.
+
 ## 2025-09-20: FIX - Critical Search Functionality Restoration
 
 **Decision:** Restored and optimized search functionality with consistent extraction logic across all search types.

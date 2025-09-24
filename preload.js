@@ -11,3 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath)
 });
+
+// DEBUG: Log that preload script has loaded
+console.log('🔌 Preload script loaded successfully');
+console.log('🔍 electronAPI exposed:', typeof window !== 'undefined' ? 'window object available' : 'no window object');
+console.log('🔍 Available electronAPI methods:', Object.keys(window.electronAPI || {}));
