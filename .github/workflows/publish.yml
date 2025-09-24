@@ -29,12 +29,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate release notes
+        run: |
+          # Extract version from tag (remove 'v' prefix)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Generating release notes for version $VERSION"
+          node generate-release.js $VERSION
+
       - name: Build and publish installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm run release
+
+      - name: Create GitHub Release
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          RELEASE_NOTES_FILE="release-v$VERSION.md"
+
+          if [ -f "$RELEASE_NOTES_FILE" ]; then
+            echo "Creating GitHub release with generated notes..."
+            gh release create ${{ github.ref_name }} \
+              --title "Local Image Browser for InvokeAI ${{ github.ref_name }}" \
+              --notes-file "$RELEASE_NOTES_FILE" \
+              --generate-notes
+          else
+            echo "Release notes file not found, creating basic release..."
+            gh release create ${{ github.ref_name }} \
+              --title "Local Image Browser for InvokeAI ${{ github.ref_name }}" \
+              --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List dist-electron contents (for debug)
         if: always()
