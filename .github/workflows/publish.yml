@@ -41,24 +41,43 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm run release
+          echo "Starting build process..."
+          npm run build
+          echo "Build completed, checking dist folder..."
+          ls -la dist/
+          echo "Starting electron-builder..."
+          npx electron-builder --publish=never
 
       - name: Create GitHub Release
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           RELEASE_NOTES_FILE="release-v$VERSION.md"
 
-          if [ -f "$RELEASE_NOTES_FILE" ]; then
-            echo "Creating GitHub release with generated notes..."
-            gh release create ${{ github.ref_name }} \
-              --title "Local Image Browser for InvokeAI ${{ github.ref_name }}" \
-              --notes-file "$RELEASE_NOTES_FILE" \
-              --generate-notes
+          echo "Checking if release v$VERSION already exists..."
+          if gh release view v$VERSION >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists. Uploading assets to existing release..."
+            # Upload assets to existing release
+            if [ -d "dist-electron" ]; then
+              for file in dist-electron/*; do
+                if [ -f "$file" ]; then
+                  echo "Uploading $file to existing release..."
+                  gh release upload v$VERSION "$file" --clobber
+                fi
+              done
+            fi
           else
-            echo "Release notes file not found, creating basic release..."
-            gh release create ${{ github.ref_name }} \
-              --title "Local Image Browser for InvokeAI ${{ github.ref_name }}" \
-              --generate-notes
+            echo "Creating new release v$VERSION..."
+            if [ -f "$RELEASE_NOTES_FILE" ]; then
+              gh release create v$VERSION \
+                --title "Local Image Browser for InvokeAI v$VERSION" \
+                --notes-file "$RELEASE_NOTES_FILE" \
+                --generate-notes
+            else
+              echo "Release notes file not found, creating basic release..."
+              gh release create v$VERSION \
+                --title "Local Image Browser for InvokeAI v$VERSION" \
+                --generate-notes
+            fi
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,8 +85,15 @@ jobs:
       - name: List dist-electron contents (for debug)
         if: always()
         run: |
-          echo "== dist-electron files =="
-          dir dist-electron
+          echo "== Build artifacts =="
+          if [ -d "dist-electron" ]; then
+            echo "dist-electron contents:"
+            ls -lh dist-electron/
+          else
+            echo "dist-electron directory not found!"
+            echo "Checking if dist exists:"
+            ls -la dist/ 2>/dev/null || echo "dist directory also not found!"
+          fi
 
   build-and-publish-mac:
     name: Build and publish (macOS)
