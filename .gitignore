@@ -19,6 +19,9 @@ dist-electron
 dist-ssr
 *.local
 
+# TypeScript build cache
+tsconfig.tsbuildinfo
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -29,3 +32,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+release-v1.7.4.md
