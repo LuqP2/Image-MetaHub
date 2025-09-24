@@ -5,7 +5,7 @@
 **Local Image Browser for InvokeAI** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.7.3
+- **Version**: 1.7.4
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
 - **Desktop**: Electron 38 with auto-updater

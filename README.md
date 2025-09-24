@@ -6,6 +6,17 @@ All processing is performed locally on your machine. No data is sent to external
 
 *For detailed changes and updates, see the [Releases page](https://github.com/LuqP2/local-image-browser-for-invokeai/releases).*
 
+## Releases & Updates
+
+This project uses automated release management to ensure consistent, informative release notes:
+
+- **📦 Cross-platform builds** for Windows, macOS, and Linux
+- **📋 Rich release notes** generated from CHANGELOG.md
+- **🔄 Auto-updates** available in the desktop application
+- **📖 Release guide** available in [RELEASE-GUIDE.md](RELEASE-GUIDE.md)
+
+For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated release workflow.
+
 ## Key Features
 
 **Advanced Search & Filtering**

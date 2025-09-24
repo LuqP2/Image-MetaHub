@@ -9,6 +9,7 @@ import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
 import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
+import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import { SearchField } from './components/SearchBar';
 
 // Helper function to extract dimensions consistently
@@ -1383,6 +1384,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
+      {/* Browser Compatibility Warning */}
+      <BrowserCompatibilityWarning />
+
       {/* Sidebar */}
       {directoryHandle && (
         <Sidebar

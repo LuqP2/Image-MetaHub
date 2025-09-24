@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.4] - 2025-09-24
+
+### Fixed
+- **Critical macOS Electron Bug**: Fixed "zero images found" issue on macOS by implementing robust Electron detection and cross-platform path joining
+- **IPC Handler Bug**: Fixed critical bug where `listDirectoryFiles` handler wasn't returning success object, causing "Cannot read properties of undefined" errors
+- **Excessive Console Logging**: Reduced thousands of repetitive "reading file" messages to essential diagnostic logs only
+- **Cross-Platform Path Handling**: Fixed Windows-style path joining (`\`) that broke file access on macOS and Linux
+
+### Added
+- **macOS Auto-Updater Configuration**: Added proper entitlements, hardened runtime, and platform-specific error handling for macOS auto-updates
+- **Robust Error Handling**: Enhanced validation in frontend to prevent crashes when IPC calls fail
+- **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for Windows, macOS, and Linux
+
+### Technical Improvements
+- **Electron Detection**: More robust detection using multiple checks (`window.electronAPI` + method existence)
+- **Path Joining**: Cross-platform compatible path construction using `/` separator
+- **Build System**: Verified and corrected electron-builder configuration for all 3 platforms
+- **Code Quality**: Improved error handling and validation throughout the application
+
+### Platforms
+- **Windows**: NSIS installer with desktop/start menu shortcuts
+- **macOS**: DMG packages for Intel and Apple Silicon with proper entitlements
+- **Linux**: AppImage for portable distribution
+
 ## [1.7.3] - 2025-09-23
 
 ### Added
