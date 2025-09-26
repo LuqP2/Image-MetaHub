@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2025-09-24
+
+### Added
+- **Multi-Format Metadata Support**: Added comprehensive support for Automatic1111 and ComfyUI image metadata alongside existing InvokeAI support
+- **Automatic1111 Integration**: Parse PNG metadata from Automatic1111's "parameters" chunk with model, LoRA, and generation parameter extraction
+- **ComfyUI Integration**: Parse complex workflow and prompt JSON metadata from ComfyUI-generated images
+- **Universal Metadata Parser**: Intelligent detection and parsing of different metadata formats based on PNG chunk keywords
+- **Enhanced Model Filtering**: Improved model extraction and filtering that works across all supported AI image generation tools
+
+### Technical Improvements
+- **Type-Safe Metadata Handling**: New TypeScript interfaces for Automatic1111Metadata and ComfyUIMetadata with proper type guards
+- **Dynamic Metadata Extraction**: Re-extraction of models, LoRAs, and schedulers during cache reconstruction for data consistency
+- **Backward Compatibility**: Maintained full compatibility with existing InvokeAI metadata and caching system
+- **Cross-Format Filtering**: Unified filtering system that works seamlessly with images from different generation tools
+
+### Fixed
+- **Model Filter Issues**: Resolved problem where InvokeAI model filters weren't working due to cache reconstruction using stale metadata
+- **Cache Data Consistency**: Fixed cache loading to dynamically re-extract metadata fields instead of using potentially outdated cached values
+
+## [1.7.4] - 2025-09-24
+
 ## [1.7.4] - 2025-09-24
 
 ### Fixed

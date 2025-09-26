@@ -9,6 +9,8 @@ import { readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 
 const VERSION = process.argv[2];
+// Extract base version (remove any suffix like -complete, -final, etc.)
+const baseVersion = VERSION.split('-')[0];
 if (!VERSION) {
   console.error('Usage: node generate-release.js <version>');
   console.error('Example: node generate-release.js 1.7.4');
@@ -24,7 +26,7 @@ let inVersion = false;
 let versionContent = [];
 
 for (const line of lines) {
-  if (line.startsWith(`## [${VERSION}]`)) {
+  if (line.startsWith(`## [${baseVersion}]`)) {
     inVersion = true;
     versionContent.push(line);
   } else if (inVersion && line.startsWith('## [')) {
@@ -36,7 +38,7 @@ for (const line of lines) {
 }
 
 if (versionContent.length === 0) {
-  console.error(`Version ${VERSION} not found in CHANGELOG.md`);
+  console.error(`Version ${baseVersion} not found in CHANGELOG.md`);
   console.error('Available versions:');
   const versions = changelog.match(/## \[\d+\.\d+\.\d+\]/g);
   if (versions) {

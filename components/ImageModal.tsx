@@ -707,6 +707,72 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
           
           <div className="space-y-3 text-sm">
+            {/* Structured Metadata Fields */}
+            {image.models && image.models.length > 0 && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Models</p>
+                <div className="text-gray-200 font-mono text-xs mt-1">
+                  {image.models.map((model, idx) => (
+                    <div key={idx} className="break-words">{model}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {image.loras && image.loras.length > 0 && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">LoRAs</p>
+                <div className="text-gray-200 font-mono text-xs mt-1">
+                  {image.loras.map((lora, idx) => (
+                    <div key={idx} className="break-words">{lora}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {image.scheduler && image.scheduler !== 'Unknown' && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Scheduler</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.scheduler}</pre>
+              </div>
+            )}
+            
+            {image.prompt && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Prompt</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.prompt}</pre>
+              </div>
+            )}
+            
+            {image.cfgScale !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">CFG Scale</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.cfgScale}</pre>
+              </div>
+            )}
+            
+            {image.steps !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Steps</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.steps}</pre>
+              </div>
+            )}
+            
+            {image.seed !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Seed</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.seed}</pre>
+              </div>
+            )}
+            
+            {image.dimensions && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Dimensions</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.dimensions}</pre>
+              </div>
+            )}
+            
+            {/* Raw metadata fields */}
             {Object.entries(image.metadata).map(([key, value]) => (
               <div key={key} className="bg-gray-900 p-3 rounded-md">
                 <p className="font-semibold text-gray-400 capitalize">{key.replace(/_/g, ' ')}</p>

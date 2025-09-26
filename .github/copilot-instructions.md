@@ -11,9 +11,9 @@ This is a React + TypeScript + Electron application that provides local browsing
 - **Storage**: IndexedDB for client-side caching, localStorage for UI preferences
 - **File Access**: File System Access API (browser) + Node.js fs APIs (Electron)
 
-### Key Components (`src/`)
+### Key Components
 - `App.tsx` - Main application with state management and filtering logic
-- `components/` - Reusable UI components (ImageGrid, SearchBar, ImageModal, etc.)
+- `components/` - Reusable UI components (ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
 - `services/` - Business logic (fileIndexer, cacheManager, fileOperations)
 - `types.ts` - TypeScript interfaces for InvokeAI metadata and file handles
 
@@ -28,10 +28,13 @@ This is a React + TypeScript + Electron application that provides local browsing
 ### Development Commands
 ```bash
 npm run dev              # Start Vite dev server (port 5173)
-npm run electron-dev     # Run desktop app in development
-npm run build           # TypeScript compilation + Vite build
-npm run electron-pack   # Build desktop installer
-npm run release         # Build + publish release
+npm run build            # TypeScript compilation + Vite build
+npm run electron-dev     # Run desktop app in development (concurrent with dev server)
+npm run electron-pack    # Build desktop installer (all platforms)
+npm run electron-dist    # Build desktop installer without publishing
+npm run release          # Build + publish release (automated)
+npm run generate-release # Generate release notes from CHANGELOG.md
+npm run release-workflow # Advanced release workflow script
 ```
 
 ### Environment Detection Pattern
@@ -55,47 +58,6 @@ if (isElectron && window.electronAPI) {
 - **Production**: `npm run build` compiles TypeScript and bundles with Vite
 - **Desktop**: `npm run electron-pack` creates platform-specific installers
 - **Auto-updater**: Integrated with user choice controls (skip, download later, etc.)
-
-### Automated Release Workflow
-The project uses GitHub Actions for automated building and publishing:
-
-**Trigger Conditions:**
-- Manual trigger via GitHub UI (`workflow_dispatch`)
-- Automatic trigger on version tags (`v*` pattern)
-
-**Build Process:**
-```bash
-npm run release  # This runs: npm run build && electron-builder --publish=always
-```
-
-**What happens automatically:**
-1. **Checkout**: Gets latest code from repository
-2. **Setup**: Installs Node.js 22 and caches npm dependencies  
-3. **Build**: Compiles TypeScript and bundles with Vite
-4. **Package**: Creates platform-specific installers using electron-builder
-5. **Publish**: Automatically uploads to GitHub Releases
-
-**Generated Artifacts:**
-- Windows: `LocalImageBrowser-InvokeAI-Setup-{version}.exe` (NSIS installer)
-- macOS: `.dmg` files for Intel and Apple Silicon
-- Linux: `.AppImage` files
-
-**Publishing Configuration:**
-```json
-{
-  "publish": {
-    "provider": "github",
-    "owner": "LuqP2", 
-    "repo": "local-image-browser-for-invokeai",
-    "releaseType": "release"
-  }
-}
-```
-
-**To trigger a release:**
-1. Create and push a version tag: `git tag v1.6.2 && git push origin v1.6.2`
-2. Or manually trigger via GitHub Actions UI
-3. The workflow runs on `windows-latest` and publishes to GitHub Releases
 
 ## Development Workflow & Best Practices
 
@@ -180,6 +142,32 @@ node log-change.js FIX "Fixed clipboard operations in ImageModal"
 **File Locations:**
 - `development-changelog.md` (added to .gitignore - local only)
 - `DECISIONS.md` (versioned in Git - permanent record)
+
+### Instructions Maintenance
+**CRITICAL: Update this file (.github/copilot-instructions.md) after significant changes**
+
+**When to update copilot-instructions.md:**
+- ✅ **MAJOR** architectural changes (new folders, moved files, renamed components)
+- ✅ **BREAKING** changes (API changes, removed features, renamed functions)
+- ✅ **NEW** components or services added
+- ✅ **BUILD** process changes (new scripts, workflow updates, release process changes)
+- ✅ **DEPENDENCY** updates that affect development workflow
+- ✅ **CROSS-PLATFORM** changes (new browser/Electron compatibility issues)
+- ✅ **RELEASE** process changes (new manual steps, workflow fixes)
+
+**How to update:**
+1. Review what changed in the codebase
+2. Update relevant sections (file paths, component names, scripts, workflows)
+3. Test that new contributors could understand the current state
+4. Commit with message: "docs: update copilot-instructions.md for [change description]"
+
+**What to check when updating:**
+- File structure references still accurate?
+- Component names and locations current?
+- npm scripts match package.json?
+- Build/release process reflects reality?
+- Common issues section covers current problems?
+- New features documented in appropriate sections?
 
 ### Metadata Extraction (`services/fileIndexer.ts`)
 ```typescript
@@ -311,6 +299,8 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - `services/fileIndexer.ts` - Metadata extraction patterns
 - `services/cacheManager.ts` - IndexedDB caching implementation
 - `components/ImageGrid.tsx` - Lazy loading and selection patterns
+- `components/ImageModal.tsx` - Image viewing and clipboard operations
+- `components/BrowserCompatibilityWarning.tsx` - Browser compatibility detection
 
 ### Configuration Files
 - `package.json` - Build scripts and dependencies
@@ -323,8 +313,14 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 ### Adding New Filters
 1. Add filter state to `App.tsx`
 2. Update `updateFilterOptions()` function
-3. Add UI controls in `SearchBar.tsx` or `Sidebar.tsx`
+3. Add UI controls in `SearchBar.tsx`, `Sidebar.tsx`, or create new component
 4. Implement filtering logic in search/filter functions
+
+### Adding New Components
+1. Create component in `components/` directory
+2. Add TypeScript interfaces to `types.ts` if needed
+3. Import and use in `App.tsx` or parent component
+4. Handle both browser and Electron environments if needed
 
 ### Adding File Operations
 1. Add IPC handler in `electron.cjs`
@@ -336,7 +332,12 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 1. Update `InvokeAIMetadata` interface in `types.ts`
 2. Add extraction logic in `services/fileIndexer.ts`
 3. Update caching in `services/cacheManager.ts`
-4. Add display in `ImageModal.tsx`
+4. Add display in `ImageModal.tsx` or create new component
+
+### Browser Compatibility Features
+- `BrowserCompatibilityWarning.tsx` - Detects and warns about unsupported browsers
+- File System Access API fallback for modern browsers
+- Graceful degradation for older browsers
 
 ## Testing & Debugging
 
@@ -374,43 +375,48 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 
 ## Release Management
 
-### Automated Release Workflow (`.github/workflows/publish.yml`)
+### Release Management
+
+**Current Approach**: Manual builds with GitHub Actions support
 
 **How to Create a New Release:**
 
 1. **Update Version**: Modify `version` in `package.json`
-2. **Create Git Tag**: 
+2. **Test Build Locally**: 
    ```bash
-   git tag v1.6.2
-   git push origin v1.6.2
+   npm run build
+   npx electron-builder --publish=never
    ```
-3. **Automatic Build**: GitHub Actions automatically:
-   - Builds the application for all platforms
-   - Creates installers (.exe, .dmg, .AppImage)
-   - Publishes to GitHub Releases
-   - Makes downloads available to users
-
-**Manual Release Trigger:**
-- Go to GitHub → Actions → "Build and publish release" → "Run workflow"
+3. **Create Git Tag**: 
+   ```bash
+   git tag v1.7.4
+   git push origin v1.7.4
+   ```
+4. **GitHub Actions**: The workflow will attempt automated builds, but manual intervention may be needed
+5. **Manual Upload**: If automated workflow fails, upload installers manually:
+   ```bash
+   gh release upload v1.7.4 "dist-electron\LocalImageBrowser-InvokeAI-Setup-1.7.4.exe" --clobber
+   gh release upload v1.7.4 "dist-electron\latest.yml" --clobber
+   ```
 
 **Release Artifacts:**
-- **Windows**: NSIS installer with desktop/start menu shortcuts
-- **macOS**: DMG files for both Intel and Apple Silicon
-- **Linux**: AppImage files for distribution-independent installation
+- **Windows**: `LocalImageBrowser-InvokeAI-Setup-{version}.exe` + `latest.yml`
+- **macOS**: `.dmg` files for Intel and Apple Silicon + `latest-mac.yml`
+- **Linux**: `.AppImage` files + `latest-linux.yml`
 
-**Publishing Configuration** (`electron-builder.json`):
-```json
-{
-  "publish": {
-    "provider": "github",
-    "releaseType": "release"
-  }
-}
-```
-
-This automated workflow ensures consistent, cross-platform releases with minimal manual intervention.
+**Note**: The automated workflow often requires manual fixes for Windows builds. Always verify all platforms have their installers and latest.yml files before considering a release complete.
 
 ## Common Issues & Solutions
+
+### GitHub Actions Windows Build Failures
+**Problem**: Windows builds fail in GitHub Actions despite working locally
+**Solution**: Build manually and upload to releases:
+```bash
+npm run build
+npx electron-builder --publish=never
+gh release upload v{version} "dist-electron\LocalImageBrowser-InvokeAI-Setup-{version}.exe" --clobber
+gh release upload v{version} "dist-electron\latest.yml" --clobber
+```
 
 ### Clipboard Operations in Modals
 **Problem**: "Document is not focused" error when copying from modal context menus
@@ -420,6 +426,14 @@ if (document.hidden || !document.hasFocus()) {
   window.focus();
   await new Promise(resolve => setTimeout(resolve, 100));
 }
+```
+
+### Browser Compatibility Issues
+**Problem**: App doesn't work in older browsers or unsupported environments
+**Solution**: Check for required APIs and show compatibility warning:
+```typescript
+const isCompatible = 'showDirectoryPicker' in window || 
+                    (typeof window !== 'undefined' && window.process && window.process.type);
 ```
 
 ### InvokeAI Metadata Variations

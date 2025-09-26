@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { type IndexedImage } from './types';
-import { processDirectory, isIntermediateImage } from './services/fileIndexer';
+import { processDirectory, isIntermediateImage, extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard } from './services/fileIndexer';
 import { cacheManager } from './services/cacheManager';
 import { FileOperations } from './services/fileOperations';
 import FolderSelector from './components/FolderSelector';
@@ -27,26 +27,7 @@ function extractDimensions(image: IndexedImage): { width: number | string, heigh
 
 // Helper function to extract prompt text consistently
 function extractPromptText(image: IndexedImage): string {
-  const promptData = image.metadata?.prompt;
-  if (!promptData) return '';
-
-  if (typeof promptData === 'string') {
-    return promptData;
-  }
-
-  if (Array.isArray(promptData)) {
-    const prompts = promptData
-      .map(p => {
-        if (typeof p === 'string') return p;
-        if (p && typeof p === 'object' && p.prompt) return p.prompt;
-        return '';
-      })
-      .filter(p => p !== null && p !== undefined && p !== '');
-
-    return prompts.join(' ');
-  }
-
-  return '';
+  return extractPrompt(image.metadata);
 }
 
 export default function App() {
@@ -496,18 +477,24 @@ export default function App() {
       if (fileHandle) {
         const thumbnailHandle = thumbnailMap.get(metadata.name);
         
+        const parsedMetadata = JSON.parse(metadata.metadataString);
+        const models = extractModels(parsedMetadata);
+        const loras = extractLoras(parsedMetadata);
+        const scheduler = extractScheduler(parsedMetadata);
+        const board = extractBoard(parsedMetadata);
+        
         reconstructedImages.push({
           id: metadata.id,
           name: metadata.name,
           handle: fileHandle,
           thumbnailHandle,
-          metadata: JSON.parse(metadata.metadataString),
+          metadata: parsedMetadata,
           metadataString: metadata.metadataString,
           lastModified: metadata.lastModified,
-          models: metadata.models,
-          loras: metadata.loras,
-          scheduler: metadata.scheduler,
-          board: metadata.board || 'Uncategorized',
+          models,
+          loras,
+          scheduler,
+          board: board || 'Uncategorized',
         });
       }
     }
