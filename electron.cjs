@@ -7,7 +7,27 @@ const fs = require('fs').promises;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow;
-let skippedVersions = new Set(); // Store versions user wants to skip
+let skippedVersions = new Set();       console.log('📂 Electron listDirectoryFiles called for:', dirPath);
+      console.log('📋 Total files found:', files.length);
+
+      for (const file of files) {
+        if (file.isFile()) {
+          const name = file.name.toLowerCase();
+          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+            const filePath = path.join(dirPath, file.name);
+            const stats = await fs.stat(filePath);
+            imageFiles.push({
+              name: file.name,
+              lastModified: stats.mtime.getTime() // Convert to timestamp
+            });
+            console.log(`✅ Including image file: ${file.name}`);
+          } else {
+            console.log(`⏭️ Skipping non-image file: ${file.name}`);
+          }
+        }
+      }
+
+      console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
@@ -333,27 +353,30 @@ function setupFileOperationHandlers() {
       }
 
       const files = await fs.readdir(dirPath, { withFileTypes: true });
-      // Filter for PNG files only and get their stats
-      const pngFiles = [];
+      // Filter for PNG, JPG, and JPEG files only and get their stats
+      const imageFiles = [];
 
       for (const file of files) {
-        if (file.isFile() && file.name.toLowerCase().endsWith('.png')) {
-          const filePath = path.join(dirPath, file.name);
-          const stats = await fs.stat(filePath);
-          pngFiles.push({
-            name: file.name,
-            lastModified: stats.mtime.getTime() // Convert to timestamp
-          });
+        if (file.isFile()) {
+          const name = file.name.toLowerCase();
+          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+            const filePath = path.join(dirPath, file.name);
+            const stats = await fs.stat(filePath);
+            imageFiles.push({
+              name: file.name,
+              lastModified: stats.mtime.getTime() // Convert to timestamp
+            });
+          }
         }
       }
 
       // console.log('Listed files in directory:', dirPath); // Commented out to reduce console noise
-      // console.log('Found PNG files:', pngFiles.length); // Commented out to reduce console noise
+      // console.log('Found image files:', imageFiles.length); // Commented out to reduce console noise
 
       console.log('📂 Electron listDirectoryFiles called for:', dirPath);
-      console.log('📋 Found PNG files:', pngFiles.length);
+      console.log('�️ Found image files:', imageFiles.length);
 
-      return { success: true, files: pngFiles };
+      return { success: true, files: imageFiles };
     } catch (error) {
       console.error('Error listing directory files:', error);
       return { success: false, error: error.message };

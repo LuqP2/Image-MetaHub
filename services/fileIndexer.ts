@@ -2,6 +2,7 @@
 /// <reference lib="dom.iterable" />
 
 import { type IndexedImage, type ImageMetadata, type InvokeAIMetadata, type Automatic1111Metadata, type ComfyUIMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata } from '../types';
+import { parse } from 'exifr';
 
 // Function to extract models from metadata
 function extractModels(metadata: ImageMetadata): string[] {
@@ -732,127 +733,202 @@ function getFriendlyBoardName(boardId: string): string {
   return friendlyName;
 }
 
-async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
-  try {
-    const buffer = await file.arrayBuffer();
-    const view = new DataView(buffer);
+// Parse PNG metadata from tEXt chunks
+async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageMetadata | null> {
+  const view = new DataView(buffer);
+  let offset = 8;
+  const decoder = new TextDecoder();
 
-    // Check PNG signature
-    if (view.getUint32(0) !== 0x89504E47 || view.getUint32(4) !== 0x0D0A1A0A) {
-      return null; // Not a PNG file
+  // Collect all relevant chunks first
+  const chunks: { [key: string]: string } = {};
+
+  while (offset < buffer.byteLength) {
+    const length = view.getUint32(offset);
+    const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
+
+    if (type === 'tEXt') {
+      const chunkData = buffer.slice(offset + 8, offset + 8 + length);
+      const chunkString = decoder.decode(chunkData);
+      const [keyword, text] = chunkString.split('\0');
+
+      // Collect relevant metadata chunks
+      if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
+        chunks[keyword] = text;
+      }
     }
 
-    let offset = 8;
-    const decoder = new TextDecoder();
-
-    // Collect all relevant chunks first
-    const chunks: { [key: string]: string } = {};
-
-    while (offset < buffer.byteLength) {
-      const length = view.getUint32(offset);
-      const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
-
-      if (type === 'tEXt') {
-        const chunkData = buffer.slice(offset + 8, offset + 8 + length);
-        const chunkString = decoder.decode(chunkData);
-        const [keyword, text] = chunkString.split('\0');
-
-        // Collect relevant metadata chunks
-        if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
-          chunks[keyword] = text;
-        }
-      }
-
-      if (type === 'IEND') {
-        break; // End of file
-      }
-
-      offset += 12 + length; // 4 for length, 4 for type, length for data, 4 for CRC
+    if (type === 'IEND') {
+      break; // End of file
     }
 
-    // Determine format based on priority:
-    // 1. workflow → ComfyUI (highest priority)
-    // 2. invokeai_metadata → InvokeAI
-    // 3. parameters → Automatic1111
-    // 4. prompt only → ComfyUI
+    offset += 12 + length; // 4 for length, 4 for type, length for data, 4 for CRC
+  }
 
-    if (chunks.workflow) {
-      // ComfyUI format (highest priority)
-      let workflowData: any;
-      let promptData: any = null;
+  // Determine format based on priority:
+  // 1. workflow → ComfyUI (highest priority)
+  // 2. invokeai_metadata → InvokeAI
+  // 3. parameters → Automatic1111
+  // 4. prompt only → ComfyUI
 
-      try {
-        workflowData = JSON.parse(chunks.workflow);
-      } catch {
-        workflowData = chunks.workflow; // Keep as string if not valid JSON
-      }
+  if (chunks.workflow) {
+    // ComfyUI format (highest priority)
+    let workflowData: any;
+    let promptData: any = null;
 
-      if (chunks.prompt) {
-        try {
-          promptData = JSON.parse(chunks.prompt);
-        } catch {
-          promptData = chunks.prompt; // Keep as string if not valid JSON
-        }
-      }
+    try {
+      workflowData = JSON.parse(chunks.workflow);
+    } catch {
+      workflowData = chunks.workflow; // Keep as string if not valid JSON
+    }
 
-      const comfyMetadata: ComfyUIMetadata = {
-        workflow: workflowData,
-        prompt: promptData
-      };
-
-      // Add normalized metadata for enhanced filtering
-      try {
-        comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
-      } catch (error) {
-        console.warn('Failed to parse normalized metadata for ComfyUI:', error);
-      }
-
-      return comfyMetadata;
-
-    } else if (chunks.invokeai_metadata) {
-      // InvokeAI format
-      const metadata = JSON.parse(chunks.invokeai_metadata);
-      return metadata as InvokeAIMetadata;
-
-    } else if (chunks.parameters) {
-      // Automatic1111 format
-      const a1111Metadata = {
-        parameters: chunks.parameters
-      } as Automatic1111Metadata;
-
-      // Add normalized metadata for enhanced filtering
-      try {
-        a1111Metadata.normalizedMetadata = parseA1111Metadata(chunks.parameters);
-      } catch (error) {
-        console.warn('Failed to parse normalized metadata for Automatic1111:', error);
-      }
-
-      return a1111Metadata;
-
-    } else if (chunks.prompt) {
-      // ComfyUI prompt-only format
-      let promptData: any;
+    if (chunks.prompt) {
       try {
         promptData = JSON.parse(chunks.prompt);
       } catch {
         promptData = chunks.prompt; // Keep as string if not valid JSON
       }
-
-      const comfyMetadata: ComfyUIMetadata = {
-        prompt: promptData
-      };
-
-      // Add normalized metadata for enhanced filtering
-      try {
-        comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
-      } catch (error) {
-        console.warn('Failed to parse normalized metadata for ComfyUI:', error);
-      }
-
-      return comfyMetadata;
     }
 
+    const comfyMetadata: ComfyUIMetadata = {
+      workflow: workflowData,
+      prompt: promptData
+    };
+
+    // Add normalized metadata for enhanced filtering
+    try {
+      comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
+    } catch (error) {
+      console.warn('Failed to parse normalized metadata for ComfyUI:', error);
+    }
+
+    return comfyMetadata;
+
+  } else if (chunks.invokeai_metadata) {
+    // InvokeAI format
+    const metadata = JSON.parse(chunks.invokeai_metadata);
+    return metadata as InvokeAIMetadata;
+
+  } else if (chunks.parameters) {
+    // Automatic1111 format
+    const a1111Metadata = {
+      parameters: chunks.parameters
+    } as Automatic1111Metadata;
+
+    // Add normalized metadata for enhanced filtering
+    try {
+      a1111Metadata.normalizedMetadata = parseA1111Metadata(chunks.parameters);
+    } catch (error) {
+      console.warn('Failed to parse normalized metadata for Automatic1111:', error);
+    }
+
+    return a1111Metadata;
+
+  } else if (chunks.prompt) {
+    // ComfyUI prompt-only format
+    let promptData: any;
+    try {
+      promptData = JSON.parse(chunks.prompt);
+    } catch {
+      promptData = chunks.prompt; // Keep as string if not valid JSON
+    }
+
+    const comfyMetadata: ComfyUIMetadata = {
+      prompt: promptData
+    };
+
+    // Add normalized metadata for enhanced filtering
+    try {
+      comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
+    } catch (error) {
+      console.warn('Failed to parse normalized metadata for ComfyUI:', error);
+    }
+
+    return comfyMetadata;
+  }
+
+  return null;
+}
+
+// Parse JPEG metadata from EXIF data
+async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageMetadata | null> {
+  console.log(`� Processing JPEG file: ${file.name}`);
+  
+  try {
+    // Use exifr to extract EXIF data
+    const exifData = await parse(buffer, {
+      // Extract specific EXIF fields that might contain metadata
+      pick: ['UserComment', 'ImageDescription', 'Description', 'XPComment', 'XPTitle']
+    });
+
+    console.log(`🔍 EXIF data extracted for ${file.name}:`, exifData);
+
+    let metadataText = null;
+    let sourceField = null;
+
+    // Priority order for metadata fields
+    const fieldsToCheck = ['userComment', 'imageDescription', 'description', 'xpComment', 'xpTitle'];
+
+    for (const field of fieldsToCheck) {
+      if (exifData && exifData[field] && typeof exifData[field] === 'string' && exifData[field].trim()) {
+        metadataText = exifData[field].trim();
+        sourceField = field;
+        console.log(`📝 Found metadata in ${field} field for ${file.name}: ${metadataText.substring(0, 100)}...`);
+        break;
+      }
+    }
+
+    if (metadataText) {
+      // Try to parse as JSON first (for structured metadata like InvokeAI)
+      try {
+        const parsedMetadata = JSON.parse(metadataText);
+        console.log(`✅ Successfully parsed JSON metadata from JPEG ${sourceField}: ${file.name}`);
+        return parsedMetadata as ImageMetadata;
+      } catch (jsonError) {
+        console.log(`🔄 JSON parsing failed for ${file.name}, trying A1111 format...`);
+        
+        // If not JSON, try to parse as Automatic1111 format
+        try {
+          const normalized = parseA1111Metadata(metadataText);
+          console.log(`✅ Successfully parsed A1111 metadata from JPEG ${sourceField}: ${file.name}`);
+          return {
+            parameters: metadataText,
+            normalizedMetadata: normalized
+          } as Automatic1111Metadata;
+        } catch (a1111Error) {
+          console.log(`⚠️ Could not parse metadata format in JPEG ${sourceField}: ${file.name}`, a1111Error);
+          return null;
+        }
+      }
+    } else {
+      console.log(`❌ No metadata found in EXIF fields for JPEG: ${file.name}`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`❌ Failed to parse JPEG EXIF metadata for ${file.name}:`, error);
     return null;
+  }
+}
+
+async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
+  try {
+    const buffer = await file.arrayBuffer();
+    const view = new DataView(buffer);
+    const fileName = file.name.toLowerCase();
+
+    // Check if it's a PNG file
+    if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+      console.log(`🖼️ Detected PNG format for: ${file.name}`);
+      return parsePNGMetadata(buffer, file);
+    }
+
+    // Check if it's a JPEG file
+    if (view.getUint16(0) === 0xFFD8) {
+      console.log(`�️ Detected JPEG format for: ${file.name}`);
+      return parseJPEGMetadata(buffer, file);
+    }
+
+    console.log(`❓ Unknown file format for: ${file.name} (first 4 bytes: ${view.getUint32(0).toString(16)})`);
+    return null; // Not a supported image format
   } catch (error) {
     console.error(`Failed to parse metadata for ${file.name}:`, error);
     return null;
@@ -922,10 +998,26 @@ export async function processDirectory(
   directoryName?: string
 ): Promise<IndexedImage[]> {
   const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
-  const pngFiles = allFileEntries.filter(entry => 
-    entry.handle.name.toLowerCase().endsWith('.png') && 
-    !isIntermediateImage(entry.handle.name)
-  );
+  console.log(`📂 Found ${allFileEntries.length} total files in directory`);
+  
+  const imageFiles = allFileEntries.filter(entry => {
+    const name = entry.handle.name.toLowerCase();
+    const isImageFile = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg');
+    const isIntermediate = isIntermediateImage(entry.handle.name);
+    
+    if (isImageFile && !isIntermediate) {
+      console.log(`✅ Including image file: ${entry.handle.name}`);
+      return true;
+    } else if (isImageFile && isIntermediate) {
+      console.log(`⏭️ Skipping intermediate image file: ${entry.handle.name}`);
+      return false;
+    } else {
+      console.log(`⏭️ Skipping non-image file: ${entry.handle.name}`);
+      return false;
+    }
+  });
+  
+  console.log(`🖼️ Filtered to ${imageFiles.length} valid image files (.png, .jpg, .jpeg)`);
 
   // Try to find thumbnails directory
   let thumbnailsDir: FileSystemDirectoryHandle | null = null;
@@ -950,13 +1042,13 @@ export async function processDirectory(
     // console.log removed
   }
 
-  const total = pngFiles.length;
+  const total = imageFiles.length;
   setProgress({ current: 0, total });
 
   const indexedImages: IndexedImage[] = [];
   let processedCount = 0;
 
-  for (const fileEntry of pngFiles) {
+  for (const fileEntry of imageFiles) {
     try {
       const file = await fileEntry.handle.getFile();
       const metadata = await parseImageMetadata(file);
