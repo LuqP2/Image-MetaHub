@@ -478,10 +478,19 @@ export default function App() {
         const thumbnailHandle = thumbnailMap.get(metadata.name);
         
         const parsedMetadata = JSON.parse(metadata.metadataString);
+        console.log(`🔄 RECONSTRUCTING: ${metadata.name}`);
+        console.log(`   - File exists: ${!!fileHandle}`);
+        console.log(`   - Thumbnail exists: ${!!thumbnailHandle}`);
+        console.log(`   - Metadata keys:`, Object.keys(parsedMetadata));
+        
         const models = extractModels(parsedMetadata);
         const loras = extractLoras(parsedMetadata);
         const scheduler = extractScheduler(parsedMetadata);
         const board = extractBoard(parsedMetadata);
+        
+        console.log(`   - Extracted models:`, models);
+        console.log(`   - Extracted loras:`, loras);
+        console.log(`   - Extracted scheduler:`, scheduler);
         
         reconstructedImages.push({
           id: metadata.id,

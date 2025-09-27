@@ -6,6 +6,13 @@ import { parse } from 'exifr';
 
 // Function to extract models from metadata
 function extractModels(metadata: ImageMetadata): string[] {
+  // Log metadata format detection
+  console.log('🔍 DETECTING METADATA FORMAT:');
+  console.log('  - isInvokeAI:', isInvokeAIMetadata(metadata));
+  console.log('  - isAutomatic1111:', isAutomatic1111Metadata(metadata));
+  console.log('  - isComfyUI:', isComfyUIMetadata(metadata));
+  console.log('  - Raw metadata keys:', Object.keys(metadata));
+
   // First check if normalized metadata is available (faster path)
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
@@ -36,8 +43,9 @@ function extractModels(metadata: ImageMetadata): string[] {
     return extractModelsFromComfyUI(metadata);
   }
 
-  console.log('❌ Unknown metadata format for models');
-  return models;
+  // Fallback: try to extract from raw metadata for unknown formats
+  console.log('⚠️ Unknown metadata format for models, attempting fallback extraction');
+  return extractModelsFromRawMetadata(metadata);
 }
 
 // Extract models from InvokeAI metadata
@@ -173,6 +181,33 @@ function extractModelsFromComfyUI(metadata: ComfyUIMetadata): string[] {
   return models.filter(Boolean);
 }
 
+// Fallback function to extract models from raw metadata for unknown formats
+function extractModelsFromRawMetadata(metadata: any): string[] {
+  const models: string[] = [];
+
+  // Try common model field names across different formats
+  const possibleModelFields = ['model', 'model_name', 'ckpt_name', 'checkpoint', 'model_hash'];
+
+  for (const field of possibleModelFields) {
+    if (metadata[field]) {
+      const modelName = extractModelName(metadata[field]);
+      if (modelName) models.push(modelName);
+    }
+  }
+
+  // Try to extract from nested objects (ComfyUI style)
+  if (metadata.workflow?.nodes) {
+    for (const node of metadata.workflow.nodes) {
+      if (node.class_type === 'CheckpointLoaderSimple' && node.inputs?.ckpt_name) {
+        const modelName = extractModelName(node.inputs.ckpt_name);
+        if (modelName) models.push(modelName);
+      }
+    }
+  }
+
+  return models;
+}
+
 // Helper function to extract readable model name
 function extractModelName(modelData: any): string | null {
   if (typeof modelData === 'string') {
@@ -240,7 +275,9 @@ function extractLoras(metadata: ImageMetadata): string[] {
     return extractLorasFromComfyUI(metadata);
   }
 
-  return loras;
+  // Fallback: try to extract from raw metadata for unknown formats
+  console.log('⚠️ Unknown metadata format for LoRAs, attempting fallback extraction');
+  return extractLorasFromRawMetadata(metadata);
 }
 
 // Extract LoRAs from InvokeAI metadata
@@ -426,6 +463,37 @@ function extractLorasFromComfyUI(metadata: ComfyUIMetadata): string[] {
   return loras.filter(Boolean);
 }
 
+// Fallback function to extract LoRAs from raw metadata for unknown formats
+function extractLorasFromRawMetadata(metadata: any): string[] {
+  const loras: string[] = [];
+
+  // Try common LoRA field names across different formats
+  const possibleLoraFields = ['loras', 'lora', 'lora_name', 'lyco', 'lyco_name'];
+
+  for (const field of possibleLoraFields) {
+    if (metadata[field]) {
+      if (Array.isArray(metadata[field])) {
+        loras.push(...metadata[field].filter((l: any) => typeof l === 'string' && l.trim()));
+      } else if (typeof metadata[field] === 'string') {
+        loras.push(metadata[field].trim());
+      }
+    }
+  }
+
+  // Try to extract from nested objects (ComfyUI style)
+  if (metadata.workflow?.nodes) {
+    for (const node of metadata.workflow.nodes) {
+      if (node.class_type && (node.class_type.toLowerCase().includes('lora') || node.class_type.toLowerCase().includes('lyco'))) {
+        if (node.inputs?.lora_name) {
+          loras.push(node.inputs.lora_name);
+        }
+      }
+    }
+  }
+
+  return loras;
+}
+
 // Function to extract scheduler from metadata
 function extractScheduler(metadata: ImageMetadata): string {
   // First check if normalized metadata is available (faster path)
@@ -453,7 +521,9 @@ function extractScheduler(metadata: ImageMetadata): string {
     return extractSchedulerFromComfyUI(metadata);
   }
 
-  return 'Unknown';
+  // Fallback: try to extract from raw metadata for unknown formats
+  console.log('⚠️ Unknown metadata format for scheduler, attempting fallback extraction');
+  return extractSchedulerFromRawMetadata(metadata);
 }
 
 // Extract scheduler from Automatic1111 metadata
@@ -496,6 +566,31 @@ function extractSchedulerFromComfyUI(metadata: ComfyUIMetadata): string {
 
   } catch (error) {
     console.warn('Failed to parse ComfyUI prompt for scheduler extraction:', error);
+  }
+
+  return 'Unknown';
+}
+
+// Fallback function to extract scheduler from raw metadata for unknown formats
+function extractSchedulerFromRawMetadata(metadata: any): string {
+  // Try common scheduler field names across different formats
+  const possibleSchedulerFields = ['scheduler', 'sampler', 'sampler_name', 'sampling_method'];
+
+  for (const field of possibleSchedulerFields) {
+    if (metadata[field] && typeof metadata[field] === 'string') {
+      return metadata[field].trim();
+    }
+  }
+
+  // Try to extract from nested objects (ComfyUI style)
+  if (metadata.workflow?.nodes) {
+    for (const node of metadata.workflow.nodes) {
+      if (node.class_type && node.class_type.toLowerCase().includes('sampler')) {
+        if (node.inputs?.sampler_name) {
+          return node.inputs.sampler_name;
+        }
+      }
+    }
   }
 
   return 'Unknown';

@@ -97,6 +97,8 @@ node log-change.js FEATURE "Favorites working with IndexedDB + Set approach"
 
 **CRITICAL RULE: NEVER REPLACE EXISTING LOGS**
 - ❌ **NEVER** use replace_string_in_file to modify existing log entries
+- ❌ **NEVER** delete or remove any existing log entries
+- ❌ **NEVER** overwrite or replace log content
 - ✅ **ALWAYS** add NEW log entries at the top of the "Recent Changes" section
 - ✅ **ALWAYS** preserve the complete chronological history
 - ✅ **ALWAYS** keep failed attempts and debugging history for future reference
