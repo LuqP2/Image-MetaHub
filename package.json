@@ -5,7 +5,7 @@
   "private": true,
   "version": "1.7.4",
   "type": "module",
-  "main": "electron.cjs",
+  "main": "electron.mjs",
   "homepage": "./",
   "scripts": {
     "dev": "vite",

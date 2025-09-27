@@ -1,171 +1,169 @@
-const { app, BrowserWindow, shell, dialog, ipcMain } = require('electron');
-const { autoUpdater } = require('electron-updater');
-const path = require('path');
-const fs = require('fs').promises;
+import electron from 'electron';
+const { app, BrowserWindow, shell, dialog, ipcMain } = electron;
+console.log('📦 Loaded electron module');
+
+import electronUpdater from 'electron-updater';
+const { autoUpdater } = electronUpdater;
+console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
+
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow;
-let skippedVersions = new Set();       console.log('📂 Electron listDirectoryFiles called for:', dirPath);
-      console.log('📋 Total files found:', files.length);
-
-      for (const file of files) {
-        if (file.isFile()) {
-          const name = file.name.toLowerCase();
-          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-            const filePath = path.join(dirPath, file.name);
-            const stats = await fs.stat(filePath);
-            imageFiles.push({
-              name: file.name,
-              lastModified: stats.mtime.getTime() // Convert to timestamp
-            });
-            console.log(`✅ Including image file: ${file.name}`);
-          } else {
-            console.log(`⏭️ Skipping non-image file: ${file.name}`);
-          }
-        }
-      }
-
-      console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
+let skippedVersions = new Set();
 
 // Configure auto-updater
-autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
+if (autoUpdater) {
+  autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
 
-// Configure for macOS specifically
-if (process.platform === 'darwin') {
-  autoUpdater.forceDevUpdateConfig = true; // Allow updates in development
+  // Configure for macOS specifically
+  if (process.platform === 'darwin') {
+    autoUpdater.forceDevUpdateConfig = true; // Allow updates in development
+  }
+
+  // Remove checkForUpdatesAndNotify to avoid duplicate dialogs
+  // autoUpdater.checkForUpdatesAndNotify();
+
+  // Check for updates manually
+  setTimeout(() => {
+    if (!isDev) {
+      autoUpdater.checkForUpdates();
+    }
+  }, 3000); // Wait 3 seconds after app start
+} else {
+  console.log('⚠️ Auto-updater not available, skipping update configuration');
 }
 
-// Remove checkForUpdatesAndNotify to avoid duplicate dialogs
-// autoUpdater.checkForUpdatesAndNotify();
-
-// Check for updates manually
-setTimeout(() => {
-  if (!isDev) {
-    autoUpdater.checkForUpdates();
-  }
-}, 3000); // Wait 3 seconds after app start
-
 // Auto-updater events
-autoUpdater.on('checking-for-update', () => {
-  // console.log('Checking for update...');
-});
-
-autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-
-  // Check if user previously skipped this version
-  if (skippedVersions.has(info.version)) {
-    console.log('User previously skipped version', info.version, '- not showing dialog');
-    return;
-  }
-
-  if (mainWindow) {
-    dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      title: 'Update Available',
-      message: `A new version (${info.version}) is available.`,
-      detail: 'Would you like to download this update?',
-      buttons: ['Download Now', 'Download Later', 'Skip this version'],
-      defaultId: 0,
-      cancelId: 2
-    }).then((result) => {
-      if (result.response === 0) {
-        // User chose to download - START DOWNLOAD NOW
-        console.log('User accepted update download - starting download...');
-        autoUpdater.downloadUpdate();
-      } else if (result.response === 1) {
-        // User chose "Download Later"
-        console.log('User postponed download - will ask again later');
-        // Ensure no download starts automatically
-      } else {
-        // User chose "Skip this version"
-        console.log('User skipped version', info.version);
-        skippedVersions.add(info.version);
-        // Ensure no download starts automatically
-      }
-    }).catch((error) => {
-      console.error('Error showing update dialog:', error);
-      // If dialog fails, don't download automatically - respect user choice
-      console.log('Dialog failed - not downloading update');
-    });
-  } else {
-    console.log('Main window not available - not downloading update');
-    // Don't download if we can't ask for permission
-  }
-});
-
-autoUpdater.on('update-not-available', (info) => {
-  // console.log('Update not available');
-});
-
-autoUpdater.on('error', (err) => {
-  console.log('Error in auto-updater:', err);
-  
-  // Special handling for macOS
-  if (process.platform === 'darwin') {
-    console.log('macOS auto-updater error - this may be due to code signing requirements');
-  }
-  
-  dialog.showMessageBox(mainWindow, {
-    type: 'error',
-    title: 'Update Error',
-    message: 'Failed to check for updates.',
-    detail: err.message || 'Please try again later.',
-    buttons: ['OK']
+if (autoUpdater) {
+  autoUpdater.on('checking-for-update', () => {
+    // console.log('Checking for update...');
   });
-});
 
-autoUpdater.on('download-progress', (progressObj) => {
-  let log_message = `Download speed: ${progressObj.bytesPerSecond}`;
-  log_message = log_message + ` - Downloaded ${progressObj.percent}%`;
-  log_message = log_message + ` (${progressObj.transferred}/${progressObj.total})`;
-  console.log(log_message);
+  autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
 
-  // Optional: Send progress to renderer process for UI feedback
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-progress', progressObj);
-  }
-});
+    // Check if user previously skipped this version
+    if (skippedVersions.has(info.version)) {
+      console.log('User previously skipped version', info.version, '- not showing dialog');
+      return;
+    }
 
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  if (mainWindow) {
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Update Available',
+        message: `A new version (${info.version}) is available.`,
+        detail: 'Would you like to download this update?',
+        buttons: ['Download Now', 'Download Later', 'Skip this version'],
+        defaultId: 0,
+        cancelId: 2
+      }).then((result) => {
+        if (result.response === 0) {
+          // User chose to download - START DOWNLOAD NOW
+          console.log('User accepted update download - starting download...');
+          autoUpdater.downloadUpdate();
+        } else if (result.response === 1) {
+          // User chose "Download Later"
+          console.log('User postponed download - will ask again later');
+          // Ensure no download starts automatically
+        } else {
+          // User chose "Skip this version"
+          console.log('User skipped version', info.version);
+          skippedVersions.add(info.version);
+          // Ensure no download starts automatically
+        }
+      }).catch((error) => {
+        console.error('Error showing update dialog:', error);
+        // If dialog fails, don't download automatically - respect user choice
+        console.log('Dialog failed - not downloading update');
+      });
+    } else {
+      console.log('Main window not available - not downloading update');
+      // Don't download if we can't ask for permission
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    // console.log('Update not available');
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.log('Error in auto-updater:', err);
+    
+    // Special handling for macOS
+    if (process.platform === 'darwin') {
+      console.log('macOS auto-updater error - this may be due to code signing requirements');
+    }
+    
     dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      title: 'Update Downloaded',
-      message: `Update ${info.version} downloaded successfully!`,
-      detail: 'The update is ready to install. When would you like to apply it?',
-      buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
-      defaultId: 0,
-      cancelId: 2
-    }).then((result) => {
-      if (result.response === 0) {
-        // Install now
-        console.log('User chose to install update now');
-        autoUpdater.quitAndInstall();
-      } else if (result.response === 1) {
-        // Install on next start - don't restart now
-        console.log('User chose to install update on next start');
-        // The update will be installed automatically on next app launch
-        // No need to call quitAndInstall() here
-      } else {
-        // Cancel - user changed their mind
-        console.log('User cancelled update installation');
-        // Update remains downloaded but not installed
-        // User can still install it later if they change their mind
-      }
-    }).catch((error) => {
-      console.error('Error showing installation dialog:', error);
-      // If dialog fails, don't force install - respect user choice
-      console.log('Installation dialog failed - update will install on next start');
+      type: 'error',
+      title: 'Update Error',
+      message: 'Failed to check for updates.',
+      detail: err.message || 'Please try again later.',
+      buttons: ['OK']
     });
-  } else {
-    console.log('Main window not available - update will install on next start');
-    // Don't force restart if window is not available
-  }
-});
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    let log_message = `Download speed: ${progressObj.bytesPerSecond}`;
+    log_message = log_message + ` - Downloaded ${progressObj.percent}%`;
+    log_message = log_message + ` (${progressObj.transferred}/${progressObj.total})`;
+    console.log(log_message);
+
+    // Optional: Send progress to renderer process for UI feedback
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('update-progress', progressObj);
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded:', info.version);
+    if (mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Update Downloaded',
+        message: `Update ${info.version} downloaded successfully!`,
+        detail: 'The update is ready to install. When would you like to apply it?',
+        buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
+        defaultId: 0,
+        cancelId: 2
+      }).then((result) => {
+        if (result.response === 0) {
+          // Install now
+          console.log('User chose to install update now');
+          autoUpdater.quitAndInstall();
+        } else if (result.response === 1) {
+          // Install on next start - don't restart now
+          console.log('User chose to install update on next start');
+          // The update will be installed automatically on next app launch
+          // No need to call quitAndInstall() here
+        } else {
+          // Cancel - user changed their mind
+          console.log('User cancelled update installation');
+          // Update remains downloaded but not installed
+          // User can still install it later if they change their mind
+        }
+      }).catch((error) => {
+        console.error('Error showing installation dialog:', error);
+        // If dialog fails, don't force install - respect user choice
+        console.log('Installation dialog failed - update will install on next start');
+      });
+    } else {
+      console.log('Main window not available - update will install on next start');
+      // Don't force restart if window is not available
+    }
+  });
+} else {
+  console.log('⚠️ Auto-updater not available, skipping event handlers');
+}
 
 function createWindow() {
   // Create the browser window
@@ -314,7 +312,7 @@ function setupFileOperationHandlers() {
       console.log('📂 Attempting to show item in folder:', filePath);
 
       // Verify the file exists before trying to show it
-      const fs = require('fs').promises;
+      const { promises: fs } = await import('fs');
       try {
         await fs.access(filePath);
         console.log('✅ File exists:', filePath);
@@ -335,6 +333,9 @@ function setupFileOperationHandlers() {
 
   // Handle manual update check
   ipcMain.handle('check-for-updates', async () => {
+    if (!autoUpdater) {
+      return { success: false, error: 'Auto-updater not available' };
+    }
     try {
       console.log('Manual update check requested');
       const result = await autoUpdater.checkForUpdates();
@@ -374,7 +375,26 @@ function setupFileOperationHandlers() {
       // console.log('Found image files:', imageFiles.length); // Commented out to reduce console noise
 
       console.log('📂 Electron listDirectoryFiles called for:', dirPath);
-      console.log('�️ Found image files:', imageFiles.length);
+      console.log('📋 Total files found:', files.length);
+
+      for (const file of files) {
+        if (file.isFile()) {
+          const name = file.name.toLowerCase();
+          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+            const filePath = path.join(dirPath, file.name);
+            const stats = await fs.stat(filePath);
+            imageFiles.push({
+              name: file.name,
+              lastModified: stats.mtime.getTime() // Convert to timestamp
+            });
+            console.log(`✅ Including image file: ${file.name}`);
+          } else {
+            console.log(`⏭️ Skipping non-image file: ${file.name}`);
+          }
+        }
+      }
+
+      console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
 
       return { success: true, files: imageFiles };
     } catch (error) {
