@@ -6,7 +6,7 @@
   },
   "files": [
     "dist/**/*",
-    "electron.cjs",
+    "electron.mjs",
     "preload.js"
   ],
   "win": {

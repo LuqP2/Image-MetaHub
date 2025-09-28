@@ -2,6 +2,9 @@ name: Build and publish Linux AppImage
 
 on:
   workflow_dispatch: {}
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build-and-publish-linux:
@@ -44,10 +47,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Extract version from tag
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Uploading AppImage for version v$VERSION"
+          
           # Find and upload the AppImage file
           APPIMAGE_FILE=$(ls dist-electron/*.AppImage)
           echo "Found AppImage: $APPIMAGE_FILE"
-          gh release upload v1.7.3 "$APPIMAGE_FILE" --clobber
+          gh release upload v$VERSION "$APPIMAGE_FILE" --clobber
 
       - name: List dist-electron contents (for debug)
         if: always()

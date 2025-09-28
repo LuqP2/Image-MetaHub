@@ -99,76 +99,16 @@ jobs:
             ls -la dist/ 2>/dev/null || echo "dist directory also not found!"
           fi
 
-  build-and-publish-mac:
-    name: Build and publish (macOS)
-    runs-on: macos-latest
-    permissions:
-      contents: write
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build and publish DMG
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm run release
-
       - name: List dist-electron contents (for debug)
+        shell: bash
         if: always()
         run: |
-          echo "== dist-electron files =="
-          ls -lh dist-electron
-
-  build-and-publish-linux:
-    name: Build and publish (Linux)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install system dependencies for AppImage
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse2
-
-      - name: Build and publish AppImage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm run release
-
-      - name: List dist-electron contents (for debug)
-        if: always()
-        run: |
-          echo "== dist-electron files =="
-          ls -lh dist-electron
+          echo "== Build artifacts =="
+          if [ -d "dist-electron" ]; then
+            echo "dist-electron contents:"
+            ls -lh dist-electron/
+          else
+            echo "dist-electron directory not found!"
+            echo "Checking if dist exists:"
+            ls -la dist/ 2>/dev/null || echo "dist directory also not found!"
+          fi
