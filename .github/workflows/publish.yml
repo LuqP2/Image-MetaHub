@@ -13,6 +13,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    outputs:
+      release-created: true
 
     steps:
       - name: Checkout repository
@@ -45,6 +47,35 @@ jobs:
           echo "Windows build completed!"
           ls -la dist-electron/
 
+      - name: Generate release notes
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Generating release notes for version $VERSION"
+          node generate-release.js $VERSION
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          RELEASE_NOTES_FILE="release-v$VERSION.md"
+
+          echo "Creating release v$VERSION..."
+          if [ -f "$RELEASE_NOTES_FILE" ]; then
+            gh release create v$VERSION \
+              --title "Local Image Browser for InvokeAI v$VERSION" \
+              --notes-file "$RELEASE_NOTES_FILE" \
+              --latest
+          else
+            echo "Release notes file not found, creating basic release..."
+            gh release create v$VERSION \
+              --title "Local Image Browser for InvokeAI v$VERSION" \
+              --generate-notes \
+              --latest
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload Windows assets
         shell: bash
         run: |
@@ -62,6 +93,7 @@ jobs:
   build-macos:
     name: Build macOS
     runs-on: macos-latest
+    needs: build-windows
     permissions:
       contents: write
       packages: write
@@ -88,23 +120,28 @@ jobs:
           npx electron-builder --mac --publish=never
           echo "macOS build completed!"
           ls -la dist-electron/
+        continue-on-error: true
 
       - name: Upload macOS assets
+        if: success()
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading macOS assets for v$VERSION"
-          for file in dist-electron/*; do
-            if [[ "$file" == *".dmg" ]] || [[ "$file" == *"mac.yml" ]]; then
-              echo "Uploading $file..."
-              gh release upload v$VERSION "$file" --clobber
-            fi
-          done
+          if [ -d "dist-electron" ]; then
+            for file in dist-electron/*; do
+              if [[ "$file" == *".dmg" ]]; then
+                echo "Uploading $file..."
+                gh release upload v$VERSION "$file" --clobber
+              fi
+            done
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
+    needs: build-windows
     permissions:
       contents: write
       packages: write
@@ -131,77 +168,18 @@ jobs:
           npx electron-builder --linux --publish=never
           echo "Linux build completed!"
           ls -la dist-electron/
+        continue-on-error: true
 
       - name: Upload Linux assets
+        if: success()
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading Linux assets for v$VERSION"
           for file in dist-electron/*; do
-            if [[ "$file" == *".AppImage" ]] || [[ "$file" == *"linux.yml" ]]; then
+            if [[ "$file" == *".AppImage" ]]; then
               echo "Uploading $file..."
               gh release upload v$VERSION "$file" --clobber
             fi
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build-windows, build-macos, build-linux]
-    permissions:
-      contents: write
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Generate release notes
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Generating release notes for version $VERSION"
-          node generate-release.js $VERSION
-
-      - name: Create GitHub Release
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          RELEASE_NOTES_FILE="release-v$VERSION.md"
-
-          echo "Creating release v$VERSION..."
-          if [ -f "$RELEASE_NOTES_FILE" ]; then
-            gh release create v$VERSION \
-              --title "Local Image Browser for InvokeAI v$VERSION" \
-              --notes-file "$RELEASE_NOTES_FILE" \
-              --latest
-          else
-            echo "Release notes file not found, creating basic release..."
-            gh release create v$VERSION \
-              --title "Local Image Browser for InvokeAI v$VERSION" \
-              --generate-notes \
-              --latest
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List dist-electron contents (for debug)
-        shell: bash
-        if: always()
-        run: |
-          echo "== Build artifacts =="
-          if [ -d "dist-electron" ]; then
-            echo "dist-electron contents:"
-            ls -lh dist-electron/
-          else
-            echo "dist-electron directory not found!"
-            echo "Checking if dist exists:"
-            ls -la dist/ 2>/dev/null || echo "dist directory also not found!"
-          fi

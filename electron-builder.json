@@ -22,14 +22,15 @@
     "target": [
       {
         "target": "dmg",
-        "arch": ["x64", "arm64"]
+        "arch": ["x64"]
       }
     ],
     "category": "public.app-category.productivity",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
-    "hardenedRuntime": true,
-    "gatekeeperAssess": false
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "identity": null
   },
   "linux": {
     "target": [
@@ -37,7 +38,9 @@
         "target": "AppImage",
         "arch": ["x64"]
       }
-    ]
+    ],
+    "category": "Utility",
+    "synopsis": "Local image browser for InvokeAI outputs"
   },
   "nsis": {
     "oneClick": false,
