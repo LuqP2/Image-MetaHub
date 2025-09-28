@@ -90,7 +90,7 @@ export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMe
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
-  format: 'invokeai' | 'automatic1111' | 'comfyui' | 'unknown';
+  format?: 'invokeai' | 'automatic1111' | 'comfyui' | 'unknown';
   prompt: string;
   negativePrompt?: string;
   model: string;
@@ -98,7 +98,7 @@ export interface BaseMetadata {
   height: number;
   seed?: number;
   steps: number;
-  cfgScale?: number;
+  cfg_scale?: number;
   scheduler: string;
   sampler?: string;
   loras?: string[];
@@ -205,6 +205,7 @@ export interface IndexedImage {
   thumbnailHandle?: FileSystemFileHandle; // Handle to .webp thumbnail
   thumbnailUrl?: string; // Blob URL for thumbnail
   metadata: ImageMetadata;
+  normalizedMetadata?: BaseMetadata; // Standardized metadata for consistent display
   metadataString: string; // For faster searching
   lastModified: number; // File's last modified date
   models: string[]; // Extracted models from metadata
