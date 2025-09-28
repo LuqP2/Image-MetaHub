@@ -1525,34 +1525,19 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       }
     }
 
-    // Determine which data source to use (prefer workflow over prompt)
-    const dataSource = workflow || prompt;
+    // Determine which data source to use (prefer prompt over workflow, as it has the executed values)
+    const dataSource = prompt || workflow;
     if (!dataSource) {
       console.warn('❌ No valid workflow or prompt data found in ComfyUI metadata');
       return result;
     }
 
-    // UNIFY NODE HANDLING: Check for API-style workflow ('nodes' array) vs. prompt-style (direct map)
-    let nodeMap: { [key: string]: any } = {};
-    const isApiFormat = Array.isArray(dataSource.nodes);
-
-    if (isApiFormat) {
-      console.log('🔍 Detected ComfyUI API/Workflow format');
-      for (const node of dataSource.nodes) {
-        // The API format uses numeric IDs, but we'll use strings for consistency
-        nodeMap[String(node.id)] = node;
-      }
-    } else {
-      console.log('🔍 Detected ComfyUI Prompt format');
-      nodeMap = dataSource; // It's already a map
-    }
-
-    console.log('🔍 Processing ComfyUI data source with', Object.keys(nodeMap).length, 'nodes');
+    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
 
     // Log all node types found for debugging
     const nodeTypes = new Set<string>();
     const allNodes = [];
-    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
       const classType = node.class_type || node.type || '';
       if (classType) nodeTypes.add(classType);
@@ -1562,7 +1547,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     console.log('🔍 All nodes summary:', allNodes);
 
     // Extract data from nodes - handle both workflow format (with class_type) and prompt format
-    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
 
       if (!node || typeof node !== 'object') continue;
@@ -1930,56 +1915,56 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
 }
 
 // Helper function to determine if a text node is for positive or negative prompt
-function determinePromptType(nodeId: string, workflow: any, classType: string): boolean {
+function determinePromptType(nodeId: string, workflowOrPrompt: any, classType: string): boolean {
   try {
-    const isApiFormat = Array.isArray(workflow.links) && Array.isArray(workflow.nodes);
+    // In API format, the full workflow is passed; in prompt format, just the prompt object is.
+    const isApiFormat = Array.isArray(workflowOrPrompt.nodes) && Array.isArray(workflowOrPrompt.links);
 
     if (isApiFormat) {
       // API/Workflow format: Use the 'links' array to find connections
-      for (const link of workflow.links) {
+      const links = workflowOrPrompt.links;
+      for (const link of links) {
+        // link format: [link_id, source_node_id, source_slot, target_node_id, target_slot, type]
         const sourceNodeId = String(link[1]);
+
         if (sourceNodeId === nodeId) {
           const targetNodeId = link[3];
-          const connectedNode = workflow.nodes.find((n: any) => n.id === targetNodeId);
-          if (connectedNode) {
-            const connectedNodeClass = connectedNode.type || '';
-            if (connectedNodeClass.toLowerCase().includes('conditioning') || connectedNodeClass.toLowerCase().includes('positive')) {
-              return true; // Positive prompt
-            }
-            if (connectedNodeClass.toLowerCase().includes('negative')) {
-              return false; // Negative prompt
-            }
+          const targetSlotIndex = link[4];
+          const targetNode = workflowOrPrompt.nodes.find((n: any) => n.id === targetNodeId);
+
+          if (targetNode && targetNode.inputs && targetNode.inputs[targetSlotIndex]) {
+            const inputName = targetNode.inputs[targetSlotIndex].name;
+            if (inputName.toLowerCase().includes('positive')) return true;
+            if (inputName.toLowerCase().includes('negative')) return false;
           }
         }
       }
     } else {
-      // Prompt format: Use the existing logic of checking input references
-      for (const otherNodeData of Object.values(workflow)) {
-        const otherNode = otherNodeData as any;
-        if (!otherNode || !otherNode.inputs) continue;
+      // Prompt format: Iterate through nodes and check their inputs
+      for (const otherNode of Object.values(workflowOrPrompt)) {
+        const node = otherNode as any;
+        if (!node.inputs) continue;
 
-        for (const inputValue of Object.values(otherNode.inputs)) {
+        for (const [inputName, inputValue] of Object.entries(node.inputs)) {
           if (Array.isArray(inputValue) && String(inputValue[0]) === nodeId) {
-            const connectedNodeClass = otherNode.class_type || '';
-            if (connectedNodeClass.toLowerCase().includes('conditioning') || connectedNodeClass.toLowerCase().includes('positive')) {
-              return true;
-            }
-            if (connectedNodeClass.toLowerCase().includes('negative')) {
-              return false;
-            }
+            // Found connection. Check the input name.
+            if (inputName.toLowerCase().includes('positive')) return true;
+            if (inputName.toLowerCase().includes('negative')) return false;
           }
         }
       }
     }
 
-    // Fallback: check the node's own class type for hints
+    // Fallback: check the node's own class type for hints if connection logic fails
     if (classType.toLowerCase().includes('positive')) return true;
     if (classType.toLowerCase().includes('negative')) return false;
 
   } catch (error) {
     console.warn('Failed to determine prompt type:', error);
   }
-  return true; // Default to positive if we can't determine
+
+  // Default to positive if no definitive connection found
+  return true;
 }
 
 // Function to parse Automatic1111 parameters string and extract normalized metadata
