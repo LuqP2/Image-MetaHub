@@ -316,6 +316,12 @@ export default function App() {
   // Cache for file handles to avoid repeated calls
   const fileHandlesCache = useRef<Map<string, {handle: FileSystemFileHandle, path: string}[]>>(new Map());
 
+  // Helper function to check if file is a supported image format
+  const isSupportedImageFile = (fileName: string): boolean => {
+    const name = fileName.toLowerCase();
+    return name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg');
+  };
+
   // Helper function to get all file handles recursively
   const getAllFileHandles = async (
     directoryHandle: FileSystemDirectoryHandle,
@@ -430,7 +436,14 @@ export default function App() {
         for await (const entry of dirHandle.values()) {
           const newPath = path ? `${path}/${entry.name}` : entry.name;
           if (entry.kind === 'file') {
-            entries.push({handle: entry, path: newPath});
+            // Check if file has supported image extension (case-insensitive)
+            const name = entry.name.toLowerCase();
+            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+              entries.push({handle: entry, path: newPath});
+              console.log(`✅ Browser: Including image file: ${entry.name}`);
+            } else {
+              console.log(`⏭️ Browser: Skipping non-image file: ${entry.name}`);
+            }
           } else if (entry.kind === 'directory') {
             entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
           }
@@ -766,7 +779,7 @@ export default function App() {
       console.log('🔧 About to call getAllFileHandles...');
       const allFiles = await getAllFileHandles(handle);
       console.log('✅ getAllFileHandles completed, found', allFiles.length, 'files');
-      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
+      const pngCount = allFiles.filter(f => isSupportedImageFile(f.handle.name)).length;
       
       // Check if user might have selected a thumbnails directory by mistake
       if (pngCount === 0 && handle.name.toLowerCase().includes('thumbnail')) {
@@ -801,7 +814,7 @@ export default function App() {
           // Use existing cache and add only new images
           const cachedFileNames = cachedData.metadata.map(meta => meta.name);
           const newFiles = allFiles.filter(f => 
-            f.handle.name.toLowerCase().endsWith('.png') && 
+            isSupportedImageFile(f.handle.name) && 
             !cachedFileNames.includes(f.handle.name)
           );
 
@@ -881,14 +894,14 @@ export default function App() {
       // Initialize cache manager
       await cacheManager.init();
 
-      // Quick count of PNG files to determine if we should use cache
+      // Quick count of image files to determine if we should use cache
       const allFiles = await getAllFileHandles(directoryHandle);
-      // FIX: Count only non-intermediate PNG files to match cached data
-      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
+      // FIX: Count only non-intermediate image files to match cached data
+      const pngCount = allFiles.filter(f => isSupportedImageFile(f.handle.name) && !isIntermediateImage(f.handle.name)).length;
       
       console.log('🔍 REFRESH DEBUG:');
       console.log('   Total files found:', allFiles.length);
-      console.log('   PNG files (non-intermediate):', pngCount);
+      console.log('   Image files (non-intermediate):', pngCount);
       console.log('   All PNG files:', allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length);
 
       // Check if we should use cached data
@@ -922,9 +935,9 @@ export default function App() {
           if (cacheCount > pngCount + 100) {
             console.log(`🔄 CACHE STALE: cache has ${cacheCount} files, directory has ${pngCount} files. Cleaning up stale entries...`);
             
-            // Get all current PNG filenames (same logic as pngCount)
+            // Get all current image filenames (same logic as pngCount)
             const currentFileNames = allFiles
-              .filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name))
+              .filter(f => isSupportedImageFile(f.handle.name) && !isIntermediateImage(f.handle.name))
               .map(f => f.handle.name);
             
             // Clean stale entries from cache
@@ -934,9 +947,9 @@ export default function App() {
             const updatedCachedData = await cacheManager.getCachedData(directoryHandle.name);
             const cachedFileNames = updatedCachedData ? updatedCachedData.metadata.map(meta => meta.name) : [];
             
-            // Get all PNG files in directory (same logic as pngCount)
+            // Get all image files in directory (same logic as pngCount)
             const allPngFiles = allFiles.filter(f => 
-              f.handle.name.toLowerCase().endsWith('.png') && 
+              isSupportedImageFile(f.handle.name) && 
               !isIntermediateImage(f.handle.name)
             );
             
@@ -965,9 +978,9 @@ export default function App() {
           const cachedFileNames = cachedData.metadata.map(meta => meta.name);
           console.log('📋 CACHED FILES:', cachedFileNames.length, cachedFileNames.slice(0, 5), '...');
           
-          // Get all PNG files in directory (same logic as pngCount)
+          // Get all image files in directory (same logic as pngCount)
           const allPngFiles = allFiles.filter(f => 
-            f.handle.name.toLowerCase().endsWith('.png') && 
+            isSupportedImageFile(f.handle.name) && 
             !isIntermediateImage(f.handle.name)
           );
           console.log('📁 DIRECTORY PNG FILES:', allPngFiles.length, allPngFiles.slice(0, 5).map(f => f.handle.name), '...');
@@ -1057,7 +1070,7 @@ export default function App() {
 
       // Get all current files
       const allFiles = await getAllFileHandles(directoryHandle);
-      const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
+      const pngCount = allFiles.filter(f => isSupportedImageFile(f.handle.name)).length;
 
       // Check if we should use cached data
       const cacheResult = await cacheManager.shouldRefreshCache(directoryHandle.name, pngCount);
@@ -1090,7 +1103,7 @@ export default function App() {
 
       // Calculate deletedCount for use in success message
       const cachedFileCount = cachedData.metadata.length;
-      const currentFileCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png') && !isIntermediateImage(f.handle.name)).length;
+      const currentFileCount = allFiles.filter(f => isSupportedImageFile(f.handle.name) && !isIntermediateImage(f.handle.name)).length;
       const deletedCount = cachedFileCount - currentFileCount;
 
       if (newFiles.length === 0) {
