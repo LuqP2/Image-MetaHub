@@ -1,4 +1,3 @@
-
 export interface InvokeAIMetadata {
   // Core generation fields
   positive_prompt?: string;
@@ -132,16 +131,8 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = parsed && typeof parsed === 'object' && parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - workflow string parsed, hasValidStructure:', hasValidStructure);
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - parsed workflow.nodes exists:', !!(parsed && parsed.nodes));
-        console.log('🔍 ComfyUI detection - parsed workflow.nodes isArray:', Array.isArray(parsed?.nodes));
-        if (parsed?.nodes && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
-          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(parsed.nodes[0]));
-          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(parsed.nodes[0]).substring(0, 200));
-        } else {
-          console.log('🔍 ComfyUI detection - workflow content:', JSON.stringify(parsed).substring(0, 200) + '...');
-        }
+        // console.log removed for brevity
       }
       return hasValidStructure;
     }
@@ -153,9 +144,8 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       )) || Object.values(parsed).some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       ));
-      console.log('🔍 ComfyUI detection - prompt string parsed, hasValidStructure:', hasValidStructure);
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - prompt content:', JSON.stringify(parsed).substring(0, 200) + '...');
+        // console.log removed for brevity
       }
       return hasValidStructure;
     }
@@ -165,14 +155,8 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - workflow object, hasValidStructure:', hasValidStructure);
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - workflow.nodes exists:', !!workflow.nodes);
-        console.log('🔍 ComfyUI detection - workflow.nodes isArray:', Array.isArray(workflow.nodes));
-        if (workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.length > 0) {
-          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(workflow.nodes[0]));
-          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(workflow.nodes[0]).substring(0, 200));
-        }
+        // console.log removed for brevity
       }
       return hasValidStructure;
     }
@@ -181,16 +165,13 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = Object.values(metadata.prompt).some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - prompt object, hasValidStructure:', hasValidStructure);
       return hasValidStructure;
     }
   } catch (error) {
     // If parsing fails, it's not valid ComfyUI format
-    console.log('🔍 ComfyUI detection - parsing failed:', error);
     return false;
   }
 
-  console.log('🔍 ComfyUI detection - reached end, returning true');
   return true;
 }
 
@@ -201,19 +182,9 @@ export interface IndexedImage {
   thumbnailHandle?: FileSystemFileHandle; // Handle to .webp thumbnail
   thumbnailUrl?: string; // Blob URL for thumbnail
   metadata: ImageMetadata;
-  normalizedMetadata?: BaseMetadata; // Standardized metadata for consistent display
+  normalizedMetadata?: BaseMetadata;
   metadataString: string; // For faster searching
   lastModified: number; // File's last modified date
-  models: string[]; // Extracted models from metadata
-  loras: string[]; // Extracted LoRAs from metadata
-  scheduler: string; // Extracted scheduler from metadata
-  board?: string; // Extracted board name from metadata
-  prompt?: string; // Extracted prompt from metadata
-  negativePrompt?: string; // Extracted negative prompt from metadata
-  cfgScale?: number; // Extracted CFG scale from metadata
-  steps?: number; // Extracted steps from metadata
-  seed?: number; // Extracted seed from metadata
-  dimensions?: string; // Extracted dimensions (width x height) from metadata
   directoryName?: string; // Name of the selected directory for context
 }
 
