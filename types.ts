@@ -104,10 +104,32 @@ export interface BaseMetadata {
 
 // Type guard functions
 export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeAIMetadata {
-  // Check for InvokeAI-specific fields
-  return ('positive_prompt' in metadata && 'generation_mode' in metadata) ||
-         ('positive_prompt' in metadata && 'app_version' in metadata) ||
-         ('prompt' in metadata && ('model' in metadata || 'width' in metadata || 'height' in metadata));
+  // More permissive detection - check for common InvokeAI fields
+  const hasInvokeAIFields = ('positive_prompt' in metadata) ||
+                           ('negative_prompt' in metadata) ||
+                           ('generation_mode' in metadata) ||
+                           ('app_version' in metadata) ||
+                           ('model_name' in metadata) ||
+                           ('cfg_scale' in metadata) ||
+                           ('scheduler' in metadata);
+
+  // Also check for legacy prompt field with generation parameters
+  const hasLegacyFields = ('prompt' in metadata) &&
+                         (('model' in metadata) || ('width' in metadata) || ('height' in metadata) || ('steps' in metadata));
+
+  // Check if it has InvokeAI-specific structure (not ComfyUI or A1111)
+  const notComfyUI = !('workflow' in metadata) && !('prompt' in metadata && typeof metadata.prompt === 'object');
+  const notA1111 = !('parameters' in metadata && typeof metadata.parameters === 'string');
+
+  console.log('🔍 isInvokeAIMetadata check:', {
+    hasInvokeAIFields,
+    hasLegacyFields,
+    notComfyUI,
+    notA1111,
+    result: (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111
+  });
+
+  return (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111;
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {

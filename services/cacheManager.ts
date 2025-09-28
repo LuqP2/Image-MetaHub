@@ -227,6 +227,74 @@ class CacheManager {
     });
   }
 
+  async validateAndCleanCache(): Promise<number> {
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, skipping cache validation');
+        return;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, skipping cache validation');
+      return;
+    }
+
+    console.log('🔍 Validating cache for normalizedMetadata...');
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(['cache'], 'readwrite');
+      const store = transaction.objectStore('cache');
+
+      const request = store.getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cacheEntries: CacheEntry[] = request.result;
+        let cleanedCount = 0;
+
+        for (const entry of cacheEntries) {
+          const invalidImages = entry.metadata.filter(meta => {
+            try {
+              const parsed = JSON.parse(meta.metadataString);
+              return !parsed.normalizedMetadata;
+            } catch (error) {
+              console.warn(`❌ Invalid metadata JSON for ${meta.name}, removing from cache`);
+              return true; // Remove invalid JSON entries
+            }
+          });
+
+          if (invalidImages.length > 0) {
+            console.log(`🗑️ Removing ${invalidImages.length} invalid cache entries from ${entry.directoryName}`);
+            entry.metadata = entry.metadata.filter(meta => {
+              try {
+                const parsed = JSON.parse(meta.metadataString);
+                return !!parsed.normalizedMetadata;
+              } catch {
+                return false;
+              }
+            });
+            entry.imageCount = entry.metadata.length;
+            entry.lastScan = Date.now();
+
+            // Update the cache entry
+            store.put(entry);
+            cleanedCount += invalidImages.length;
+          }
+        }
+
+        if (cleanedCount > 0) {
+          console.log(`✅ Cache validation complete: ${cleanedCount} invalid entries removed`);
+        } else {
+          console.log('✅ Cache validation complete: All entries valid');
+        }
+
+        resolve(cleanedCount);
+      };
+    });
+  }
+
   async clearCache(): Promise<void> {
     if (!this.db) {
       try {

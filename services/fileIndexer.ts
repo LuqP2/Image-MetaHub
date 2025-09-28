@@ -930,7 +930,16 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
   // 3. parameters → Automatic1111
   // 4. prompt only → ComfyUI
 
+  console.log('🔍 Determining format from chunks:', Object.keys(chunks));
+  console.log('🔍 Chunk details:', {
+    hasWorkflow: !!chunks.workflow,
+    hasInvokeAI: !!chunks.invokeai_metadata,
+    hasParameters: !!chunks.parameters,
+    hasPrompt: !!chunks.prompt
+  });
+
   if (chunks.workflow) {
+    console.log('🔍 Detected ComfyUI format (workflow chunk present)');
     // ComfyUI format (highest priority)
     let workflowData: any;
     let promptData: any = null;
@@ -956,7 +965,15 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
     // Add normalized metadata for enhanced filtering
     try {
-      comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
+      console.log('🔍 Creating normalized metadata for ComfyUI...');
+      const normalized = parseComfyUIMetadata(comfyMetadata);
+      console.log('✅ Normalized metadata created for ComfyUI:', {
+        hasPrompt: !!normalized.prompt,
+        hasModel: !!normalized.model,
+        models: normalized.models,
+        loras: normalized.loras
+      });
+      comfyMetadata.normalizedMetadata = normalized;
     } catch (error) {
       console.warn('Failed to parse normalized metadata for ComfyUI:', error);
     }
@@ -964,12 +981,21 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return comfyMetadata;
 
   } else if (chunks.invokeai_metadata) {
+    console.log('🔍 Detected InvokeAI format (invokeai_metadata chunk present)');
     // InvokeAI format
     const metadata = JSON.parse(chunks.invokeai_metadata) as InvokeAIMetadata;
 
     // Add normalized metadata for enhanced filtering
     try {
-      metadata.normalizedMetadata = parseInvokeAIMetadata(metadata);
+      console.log('🔍 Creating normalized metadata for InvokeAI...');
+      const normalized = parseInvokeAIMetadata(metadata);
+      console.log('✅ Normalized metadata created:', {
+        hasPrompt: !!normalized.prompt,
+        hasModel: !!normalized.model,
+        models: normalized.models,
+        loras: normalized.loras
+      });
+      metadata.normalizedMetadata = normalized;
     } catch (error) {
       console.warn('Failed to parse normalized metadata for InvokeAI:', error);
     }
@@ -977,6 +1003,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return metadata;
 
   } else if (chunks.parameters) {
+    console.log('🔍 Detected Automatic1111 format (parameters chunk present)');
     // Automatic1111 format
     const a1111Metadata = {
       parameters: chunks.parameters
@@ -992,6 +1019,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return a1111Metadata;
 
   } else if (chunks.prompt) {
+    console.log('🔍 Detected ComfyUI format (prompt-only chunk present)');
     // ComfyUI prompt-only format
     let promptData: any;
     try {
@@ -1435,32 +1463,6 @@ export async function processDirectory(
           directoryName,
         });
 
-        // DEBUG: Verificar se IndexedImage está sendo povoado
-        const indexedImage = {
-          id: fileEntry.path,
-          name: fileEntry.handle.name,
-          handle: fileEntry.handle,
-          thumbnailHandle,
-          metadata,
-          metadataString,
-          lastModified: file.lastModified,
-          models,
-          loras,
-          scheduler,
-          board,
-          prompt: extractPrompt(metadata),
-          negativePrompt: extractNegativePrompt(metadata),
-          cfgScale: extractCfgScale(metadata),
-          steps: extractSteps(metadata),
-          seed: extractSeed(metadata),
-          dimensions: extractDimensions(metadata),
-          directoryName,
-        };
-        console.log('DEBUG indexedImage.cfgScale:', indexedImage.cfgScale);
-        console.log('DEBUG indexedImage.steps:', indexedImage.steps);
-        console.log('DEBUG indexedImage.seed:', indexedImage.seed);
-        console.log('DEBUG indexedImage.dimensions:', indexedImage.dimensions);
-        console.log('DEBUG indexedImage.prompt:', indexedImage.prompt);
       }
     } catch (error) {
         console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
@@ -1550,27 +1552,20 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       return result;
     }
 
-    // UNIFY NODE HANDLING: Check for API-style workflow ('nodes' array) vs. prompt-style (direct map)
-    let nodeMap: { [key: string]: any } = {};
-    const isApiFormat = Array.isArray(dataSource.nodes);
+    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
 
-    if (isApiFormat) {
-      console.log('🔍 Detected ComfyUI API/Workflow format');
-      for (const node of dataSource.nodes) {
-        // The API format uses numeric IDs, but we'll use strings for consistency
-        nodeMap[String(node.id)] = node;
-      }
-    } else {
-      console.log('🔍 Detected ComfyUI Prompt format');
-      nodeMap = dataSource; // It's already a map
-    }
-
-    console.log('🔍 Processing ComfyUI data source with', Object.keys(nodeMap).length, 'nodes');
+    // DEBUG: Log first few nodes to understand structure
+    const firstFewNodes = Object.entries(dataSource).slice(0, 3);
+    console.log('🔍 First few nodes structure:');
+    firstFewNodes.forEach(([nodeId, nodeData]) => {
+      const node = nodeData as any;
+      console.log(`  Node ${nodeId}: class_type=${node.class_type}, type=${node.type}, inputs keys:`, Object.keys(node.inputs || {}));
+    });
 
     // Log all node types found for debugging
     const nodeTypes = new Set<string>();
     const allNodes = [];
-    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
       const classType = node.class_type || node.type || '';
       if (classType) nodeTypes.add(classType);
@@ -1580,7 +1575,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     console.log('🔍 All nodes summary:', allNodes);
 
     // Extract data from nodes - handle both workflow format (with class_type) and prompt format
-    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
 
       if (!node || typeof node !== 'object') continue;
@@ -1645,13 +1640,20 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
           (classType.toLowerCase().includes('encode') || classType === 'CLIPTextEncode' || classType === 'CLIPTextEncodeSDXL')) {
         const text = inputs.text || inputs.prompt || inputs.string;
         if (text && typeof text === 'string') {
-          const isPositive = determinePromptType(nodeId, dataSource, classType);
-          if (isPositive && !result.prompt) {
-            result.prompt = text;
-            console.log(`✅ Found positive prompt: ${text.substring(0, 50)}...`);
-          } else if (!isPositive && !result.negativePrompt) {
+          // Simple heuristic: check if text contains negative keywords
+          const isNegative = text.toLowerCase().includes('blur') ||
+                           text.toLowerCase().includes('deform') ||
+                           text.toLowerCase().includes('ugly') ||
+                           text.toLowerCase().includes('worst') ||
+                           text.toLowerCase().includes('low quality') ||
+                           text.toLowerCase().includes('bad') ||
+                           text.toLowerCase().includes('negative');
+          if (isNegative && !result.negativePrompt) {
             result.negativePrompt = text;
             console.log(`✅ Found negative prompt: ${text.substring(0, 50)}...`);
+          } else if (!isNegative && !result.prompt) {
+            result.prompt = text;
+            console.log(`✅ Found positive prompt: ${text.substring(0, 50)}...`);
           }
         }
       }
@@ -2108,20 +2110,9 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
     }
   }
 
-  // DEBUG: Test parseA1111Metadata isoladamente
-  const testParameters = "Steps: 14, Sampler: DPM2_beta, CFG scale: 3.5, Seed: 816785282215760";
-  const testResult = parseA1111Metadata(testParameters);
-  console.log('DEBUG parseA1111 test:', testResult);
-
-  // DEBUG: Verificar se metadata.parameters existe
-  console.log('DEBUG metadata.parameters:', metadata.parameters);
-  console.log('DEBUG typeof metadata.parameters:', typeof metadata.parameters);
-
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
   if (metadata.parameters && typeof metadata.parameters === 'string') {
     const a1111Data = parseA1111Metadata(metadata.parameters);
-    console.log('DEBUG a1111Data:', a1111Data);
-    console.log('DEBUG a1111Data.cfgScale:', a1111Data.cfgScale);
     if (a1111Data.cfgScale) return a1111Data.cfgScale;
   }
 
@@ -2417,9 +2408,9 @@ function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
     } else if (Array.isArray(metadata.prompt)) {
       result.prompt = metadata.prompt
         .map(p => (typeof p === 'string' ? p : p.prompt || ''))
+        .filter(p => p.trim())
         .join(' ');
     }
-
 
     // Extract negative prompt
     if (typeof metadata.negative_prompt === 'string') {
@@ -2438,8 +2429,10 @@ function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
     // Extract models and LoRAs
     result.models = extractModelsFromInvokeAI(metadata);
     result.loras = extractLorasFromInvokeAI(metadata);
-    if(result.models.length > 0) result.model = result.models[0]
 
+    if(result.models.length > 0) {
+      result.model = result.models[0];
+    }
 
   } catch (error) {
     console.warn('Failed to parse InvokeAI parameters:', error);

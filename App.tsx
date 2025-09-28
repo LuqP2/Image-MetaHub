@@ -570,9 +570,10 @@ export default function App() {
         console.log(`   - Has normalizedMetadata:`, !!parsedMetadata.normalizedMetadata);
         
         // Use normalized metadata if available, otherwise extract from raw metadata
-        // For ComfyUI images, always re-extract to ensure latest parsing logic is used
+        // For ComfyUI and InvokeAI images, always re-extract to ensure latest parsing logic is used
         const isComfyUI = parsedMetadata.workflow || (parsedMetadata.prompt && !parsedMetadata.invokeai_metadata && !parsedMetadata.parameters);
-        const forceReExtract = isComfyUI; // Always re-extract ComfyUI metadata to use latest parsing
+        const isInvokeAI = parsedMetadata.invokeai_metadata || parsedMetadata.positive_prompt;
+        const forceReExtract = isComfyUI || isInvokeAI; // Always re-extract ComfyUI and InvokeAI metadata to use latest parsing
         
         const normalized = parsedMetadata.normalizedMetadata;
         const models = forceReExtract ? extractModels(parsedMetadata) : (normalized?.models || extractModels(parsedMetadata));
@@ -790,6 +791,13 @@ export default function App() {
       try {
         await cacheManager.init();
         console.log('✅ cacheManager.init() completed');
+        
+        // Validate and clean cache after initialization
+        console.log('🔧 About to validate and clean cache...');
+        const cleanedCount = await cacheManager.validateAndCleanCache();
+        if (cleanedCount > 0) {
+          console.log(`🧹 Cleaned ${cleanedCount} invalid cache entries`);
+        }
       } catch (cacheError) {
         console.error('❌ cacheManager.init() failed:', cacheError);
         console.log('⚠️ Continuing without cache functionality');
