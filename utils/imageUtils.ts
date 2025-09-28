@@ -53,9 +53,9 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         }
 
         console.log('🔍 Show in explorer - directory path:', directoryPath);
-        console.log('🔍 Show in explorer - image.id:', imageOrPath.id);
+        console.log('🔍 Show in explorer - image.name:', imageOrPath.name);
 
-        fullPath = directoryPath ? `${directoryPath}\\${imageOrPath.id}` : imageOrPath.id;
+        fullPath = directoryPath ? `${directoryPath}\\${imageOrPath.name}` : imageOrPath.name;
       }
       
       console.log('🔍 Show in explorer - full path:', fullPath);
@@ -154,9 +154,9 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
       }
 
       console.log('📋 Directory path from storage:', directoryPath);
-      console.log('📋 Image ID:', image.id);
+      console.log('📋 Image name:', image.name);
 
-      pathToCopy = directoryPath ? `${directoryPath}\\${image.id}` : image.id;
+      pathToCopy = directoryPath ? `${directoryPath}\\${image.name}` : image.name;
       console.log('📋 Electron full path to copy:', pathToCopy);
     } else {
       // In browser, use relative path

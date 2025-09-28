@@ -3,6 +3,19 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 
+// Interface for ImageModal props
+interface ImageModalProps {
+  image: IndexedImage;
+  onClose: () => void;
+  onImageDeleted?: (imageId: string) => void;
+  onImageRenamed?: (imageId: string, newName: string) => void;
+  currentIndex?: number;
+  totalImages?: number;
+  onNavigateNext?: () => void;
+  onNavigatePrevious?: () => void;
+  directoryPath?: string;
+}
+
 // Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -199,7 +212,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Prompt</button>
             <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Raw Metadata</button>
-            <button onClick={() => showInExplorer(image.id)} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
+            <button onClick={() => showInExplorer(image)} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
           </div>
 
           <div>
