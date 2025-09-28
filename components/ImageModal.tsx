@@ -37,7 +37,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({x: 0, y: 0});
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showRawMetadata, setShowRawMetadata] = useState(false);
 
   // Function to export metadata as TXT
   const exportToTxt = () => {
@@ -413,33 +412,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // Function to copy metadata to clipboard
   const copyMetadata = async () => {
     try {
-      let metadataText = '';
-      if (image.normalizedMetadata) {
-        // Prioritize normalized metadata, but exclude 'format' from the copied text
-        const { prompt, negativePrompt, format, ...rest } = image.normalizedMetadata;
-        metadataText += `Prompt: ${prompt}\n`;
-        if (negativePrompt) {
-          metadataText += `Negative Prompt: ${negativePrompt}\n`;
-        }
-        for (const [key, value] of Object.entries(rest)) {
-          if (value !== undefined && value !== null && value !== '' && key !== 'models') { // 'models' is often just the main model, already displayed
-            const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            metadataText += `${formattedKey}: ${renderMetadataValue(value)}\n`;
-          }
-        }
-      } else {
-        // Fallback to raw metadata if normalized is not available
-        metadataText = Object.entries(image.metadata)
-          .map(([key, value]) => `${key}: ${renderMetadataValue(value)}`)
-          .join('\n');
-      }
+      const metadataText = Object.entries(image.metadata)
+        .map(([key, value]) => `${key}: ${renderMetadataValue(value)}`)
+        .join('\n');
 
+      // Ensure document has focus before clipboard operation
       if (document.hidden || !document.hasFocus()) {
+        // Try to focus the document
         window.focus();
+        // Small delay to ensure focus is established
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      await navigator.clipboard.writeText(metadataText.trim());
+      await navigator.clipboard.writeText(metadataText);
 
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
@@ -456,27 +441,31 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // Function to copy prompt specifically
   const copyPrompt = async () => {
     try {
-      // Prioritize normalized prompt, but fallback to robust extraction
-      let prompt = image.normalizedMetadata?.prompt || '';
+      // Try different possible prompt locations in InvokeAI metadata
+      let prompt = '';
 
-      if (!prompt) {
-        // Fallback to old robust logic if normalized prompt is not found
-        if (image.metadata?.prompt) {
-          if (typeof image.metadata.prompt === 'string') {
-            prompt = image.metadata.prompt;
-          } else if (Array.isArray(image.metadata.prompt)) {
-            prompt = image.metadata.prompt
-              .map(p => typeof p === 'string' ? p : (p as any)?.prompt || '')
-              .filter(p => p.trim())
-              .join(' ');
-          } else if (typeof image.metadata.prompt === 'object' && (image.metadata.prompt as any).prompt) {
-            prompt = (image.metadata.prompt as any).prompt;
-          }
+      // Direct prompt field
+      if (image.metadata?.prompt) {
+        if (typeof image.metadata.prompt === 'string') {
+          prompt = image.metadata.prompt;
+        } else if (Array.isArray(image.metadata.prompt)) {
+          // Handle array of prompts (some InvokeAI versions)
+          prompt = image.metadata.prompt
+            .map(p => typeof p === 'string' ? p : (p as any)?.prompt || '')
+            .filter(p => p.trim())
+            .join(' ');
+        } else if (typeof image.metadata.prompt === 'object' && (image.metadata.prompt as any).prompt) {
+          // Handle object with prompt property
+          prompt = (image.metadata.prompt as any).prompt;
         }
-        if (!prompt) {
-          const possiblePromptFields = ['Prompt', 'prompt_text', 'positive_prompt', 'text_prompt'];
-          for (const field of possiblePromptFields) {
-            if (image.metadata?.[field] && typeof image.metadata[field] === 'string') {
+      }
+
+      // Alternative prompt fields (case variations)
+      if (!prompt) {
+        const possiblePromptFields = ['Prompt', 'prompt_text', 'positive_prompt', 'text_prompt'];
+        for (const field of possiblePromptFields) {
+          if (image.metadata?.[field]) {
+            if (typeof image.metadata[field] === 'string') {
               prompt = image.metadata[field];
               break;
             }
@@ -484,11 +473,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       }
 
+      // Clean up the prompt (remove extra whitespace)
       prompt = prompt.trim();
 
       if (prompt) {
+        // Ensure document has focus before clipboard operation
         if (document.hidden || !document.hasFocus()) {
+          // Try to focus the document
           window.focus();
+          // Small delay to ensure focus is established
           await new Promise(resolve => setTimeout(resolve, 100));
         }
 
@@ -713,91 +706,91 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
 
-          <div className="space-y-4 text-sm text-gray-300">
-            {image.normalizedMetadata ? (
-              <>
-                {/* Standardized Metadata Section */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-100 mb-2 flex items-center gap-2">
-                    <span role="img" aria-label="clipboard">📋</span>
-                    Metadata
-                  </h3>
-                  <div className="space-y-2 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                    {image.normalizedMetadata.format && (
-                      <p><span className="font-semibold text-gray-400">Format:</span> <span className="font-mono bg-gray-700 px-2 py-1 rounded text-xs capitalize">{image.normalizedMetadata.format}</span></p>
-                    )}
-                    {image.normalizedMetadata.prompt && (
-                      <div>
-                        <p className="font-semibold text-gray-400">Prompt</p>
-                        <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1 p-2 bg-gray-800 rounded">{image.normalizedMetadata.prompt}</pre>
-                      </div>
-                    )}
-                    {image.normalizedMetadata.negativePrompt && (
-                      <div>
-                        <p className="font-semibold text-gray-400">Negative Prompt</p>
-                        <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1 p-2 bg-gray-800 rounded">{image.normalizedMetadata.negativePrompt}</pre>
-                      </div>
-                    )}
-                    {image.normalizedMetadata.model && (
-                      <p><span className="font-semibold text-gray-400">Model:</span> {image.normalizedMetadata.model}</p>
-                    )}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                      {image.normalizedMetadata.steps ? <p><span className="font-semibold text-gray-400">Steps:</span> {image.normalizedMetadata.steps}</p> : null}
-                      {image.normalizedMetadata.cfgScale ? <p><span className="font-semibold text-gray-400">CFG:</span> {image.normalizedMetadata.cfgScale}</p> : null}
-                      {image.normalizedMetadata.seed ? <p><span className="font-semibold text-gray-400">Seed:</span> {image.normalizedMetadata.seed}</p> : null}
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                      {image.normalizedMetadata.width && image.normalizedMetadata.height ? <p><span className="font-semibold text-gray-400">Dimensions:</span> {image.normalizedMetadata.width}x{image.normalizedMetadata.height}</p> : null}
-                      {image.normalizedMetadata.scheduler ? <p><span className="font-semibold text-gray-400">Sampler:</span> {image.normalizedMetadata.scheduler}</p> : null}
-                    </div>
-                  </div>
+          <div className="space-y-3 text-sm">
+            {/* Structured Metadata Fields */}
+            {image.models && image.models.length > 0 && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Models</p>
+                <div className="text-gray-200 font-mono text-xs mt-1">
+                  {image.models.map((model, idx) => (
+                    <div key={idx} className="break-words">{model}</div>
+                  ))}
                 </div>
-
-                {/* Additional Details Section */}
-                {(image.normalizedMetadata.loras && image.normalizedMetadata.loras.length > 0) && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-100 mb-2 flex items-center gap-2">
-                      <span role="img" aria-label="palette">🎨</span>
-                      Additional Details
-                    </h3>
-                    <div className="space-y-2 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                      {image.normalizedMetadata.loras.length > 0 && (
-                        <p><span className="font-semibold text-gray-400">LoRAs:</span> {image.normalizedMetadata.loras.join(', ')}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700 text-center">
-                <p className="text-gray-400">No normalized metadata available.</p>
-                <p className="text-xs text-gray-500">Displaying raw metadata below.</p>
               </div>
             )}
 
-            {/* Raw Metadata Section (Collapsible) */}
-            <div>
-              <button
-                onClick={() => setShowRawMetadata(!showRawMetadata)}
-                className="w-full text-left text-lg font-semibold text-gray-100 mt-4 mb-2 flex items-center gap-2"
-              >
-                <span role="img" aria-label="document">📄</span>
-                Raw Metadata
-                <svg className={`w-5 h-5 ml-auto transition-transform duration-200 ${showRawMetadata ? 'rotate-180' : ''}`} fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-              {showRawMetadata && (
-                <div className="space-y-2 bg-gray-900/50 p-4 rounded-lg border border-gray-700 max-h-64 overflow-y-auto">
-                  {Object.entries(image.metadata).map(([key, value]) => (
-                    <div key={key}>
-                      <p className="font-semibold text-gray-400 capitalize">{key.replace(/_/g, ' ')}</p>
-                      <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{renderMetadataValue(value)}</pre>
-                    </div>
+            {image.loras && image.loras.length > 0 && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">LoRAs</p>
+                <div className="text-gray-200 font-mono text-xs mt-1">
+                  {image.loras.map((lora, idx) => (
+                    <div key={idx} className="break-words">{lora}</div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {image.scheduler && image.scheduler !== 'Unknown' && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Scheduler</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.scheduler}</pre>
+              </div>
+            )}
+
+            {image.prompt && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Prompt</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.prompt}</pre>
+              </div>
+            )}
+
+            {image.cfgScale !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">CFG Scale</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.cfgScale}</pre>
+              </div>
+            )}
+
+            {image.steps !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Steps</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.steps}</pre>
+              </div>
+            )}
+
+            {image.seed !== undefined && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Seed</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.seed}</pre>
+              </div>
+            )}
+
+            {image.dimensions && (
+              <div className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400">Dimensions</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{image.dimensions}</pre>
+              </div>
+            )}
+
+            {/* Raw metadata fields - exclude internal/raw data that shouldn't be displayed */}
+            {Object.entries(image.metadata).filter(([key, value]) => {
+              // Skip fields that are already displayed as structured data
+              const structuredFields = ['workflow', 'prompt', 'normalizedMetadata'];
+              if (structuredFields.includes(key)) return false;
+
+              // Skip empty/null values
+              if (value === null || value === undefined || value === '') return false;
+
+              // Skip empty objects/arrays
+              if (typeof value === 'object' && (Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0)) return false;
+
+              return true;
+            }).map(([key, value]) => (
+              <div key={key} className="bg-gray-900 p-3 rounded-md">
+                <p className="font-semibold text-gray-400 capitalize">{key.replace(/_/g, ' ')}</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{renderMetadataValue(value)}</pre>
+              </div>
+            ))}
           </div>
         </div>
       </div>

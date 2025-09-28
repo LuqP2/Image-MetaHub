@@ -91,7 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     const minSteps = steps.length ? Math.min(...steps) : 0;
     const maxSteps = steps.length ? Math.max(...steps) : 100;
 
-    const cfgScales = images.map(img => img.metadata?.cfgScale || img.metadata?.guidance_scale).filter(Boolean);
+    const cfgScales = images.map(img => img.metadata?.cfg_scale || img.metadata?.guidance_scale).filter(Boolean);
     const minCfg = cfgScales.length ? Math.min(...cfgScales) : 1;
     const maxCfg = cfgScales.length ? Math.max(...cfgScales) : 20;
 

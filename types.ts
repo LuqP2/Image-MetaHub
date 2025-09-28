@@ -1,3 +1,4 @@
+
 export interface InvokeAIMetadata {
   // Core generation fields
   positive_prompt?: string;
@@ -7,7 +8,7 @@ export interface InvokeAIMetadata {
   height?: number;
   seed?: number;
   steps?: number;
-  cfgScale?: number;
+  cfg_scale?: number;
   cfg_rescale_multiplier?: number;
   scheduler?: string;
   seamless_x?: boolean;
@@ -86,7 +87,7 @@ export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMe
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
-  format?: 'invokeai' | 'automatic1111' | 'comfyui' | 'unknown';
+  format: 'invokeai' | 'automatic1111' | 'comfyui' | 'unknown';
   prompt: string;
   negativePrompt?: string;
   model: string;
@@ -95,10 +96,9 @@ export interface BaseMetadata {
   seed?: number;
   steps: number;
   cfgScale?: number;
-  scheduler: string;
+  scheduler?: string;
   sampler?: string;
   loras?: string[];
-  // Additional normalized fields
   [key: string]: any;
 }
 

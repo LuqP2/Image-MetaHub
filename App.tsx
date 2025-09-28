@@ -1187,7 +1187,7 @@ export default function App() {
                 const seedString = String(image.metadata?.seed || '');
                 return seedString.includes(lowerCaseQuery);
               case 'settings':
-                const cfgString = String(image.metadata?.cfgScale || image.metadata?.guidance_scale || '');
+                const cfgString = String(image.metadata?.cfg_scale || image.metadata?.guidance_scale || '');
                 const stepsString = String(image.metadata?.steps || image.metadata?.num_inference_steps || '');
                 const schedulerString = String(image.scheduler || '');
                 return cfgString.includes(lowerCaseQuery) || stepsString.includes(lowerCaseQuery) || schedulerString.toLowerCase().includes(lowerCaseQuery);
@@ -1248,7 +1248,7 @@ export default function App() {
         if (advancedFilters.cfg) {
           const { min, max } = advancedFilters.cfg;
           currentFilteredImages = currentFilteredImages.filter(image => {
-            const cfg = image.metadata?.cfgScale || image.metadata?.guidance_scale;
+            const cfg = image.metadata?.cfg_scale || image.metadata?.guidance_scale;
             return cfg >= min && cfg <= max;
           });
         }
@@ -1338,7 +1338,7 @@ export default function App() {
 
           case 'settings':
             // Search in CFG, steps, and scheduler - use substring for flexibility
-            const cfgString = String(image.metadata?.cfgScale || image.metadata?.guidance_scale || '');
+            const cfgString = String(image.metadata?.cfg_scale || image.metadata?.guidance_scale || '');
             const stepsString = String(image.metadata?.steps || image.metadata?.num_inference_steps || '');
             const schedulerString = String(image.scheduler || '');
 
@@ -1410,7 +1410,7 @@ export default function App() {
     if (advancedFilters.cfg) {
       const { min, max } = advancedFilters.cfg;
       results = results.filter(image => {
-            const cfg = image.metadata?.cfgScale || image.metadata?.guidance_scale;
+        const cfg = image.metadata?.cfg_scale || image.metadata?.guidance_scale;
         return cfg >= min && cfg <= max;
       });
     }
