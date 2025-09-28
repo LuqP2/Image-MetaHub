@@ -772,8 +772,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             )}
             
-            {/* Raw metadata fields */}
-            {Object.entries(image.metadata).map(([key, value]) => (
+            {/* Raw metadata fields - exclude internal/raw data that shouldn't be displayed */}
+            {Object.entries(image.metadata).filter(([key, value]) => {
+              // Skip fields that are already displayed as structured data
+              const structuredFields = ['workflow', 'prompt', 'normalizedMetadata'];
+              if (structuredFields.includes(key)) return false;
+              
+              // Skip empty/null values
+              if (value === null || value === undefined || value === '') return false;
+              
+              // Skip empty objects/arrays
+              if (typeof value === 'object' && (Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0)) return false;
+              
+              return true;
+            }).map(([key, value]) => (
               <div key={key} className="bg-gray-900 p-3 rounded-md">
                 <p className="font-semibold text-gray-400 capitalize">{key.replace(/_/g, ' ')}</p>
                 <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-xs mt-1">{renderMetadataValue(value)}</pre>

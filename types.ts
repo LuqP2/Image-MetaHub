@@ -115,8 +115,83 @@ export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Au
 }
 
 export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {
-  return ('workflow' in metadata || 'prompt' in metadata) &&
-         (typeof metadata.workflow === 'object' || typeof metadata.prompt === 'object');
+  // Check for workflow or prompt fields (can be objects or strings)
+  const hasWorkflow = 'workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string');
+  const hasPrompt = 'prompt' in metadata && (typeof metadata.prompt === 'object' || typeof metadata.prompt === 'string');
+
+  // Must have at least one of workflow or prompt
+  if (!hasWorkflow && !hasPrompt) {
+    return false;
+  }
+
+  // Additional check: try to validate the content looks like ComfyUI format
+  try {
+    if (hasWorkflow && typeof metadata.workflow === 'string') {
+      const parsed = JSON.parse(metadata.workflow);
+      // Check if it looks like a ComfyUI workflow (has nodes array with nodes that have class_type)
+      const hasValidStructure = parsed && typeof parsed === 'object' && parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
+        node && typeof node === 'object' && (node.class_type || node.type)
+      );
+      console.log('🔍 ComfyUI detection - workflow string parsed, hasValidStructure:', hasValidStructure);
+      if (!hasValidStructure) {
+        console.log('🔍 ComfyUI detection - parsed workflow.nodes exists:', !!(parsed && parsed.nodes));
+        console.log('🔍 ComfyUI detection - parsed workflow.nodes isArray:', Array.isArray(parsed?.nodes));
+        if (parsed?.nodes && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
+          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(parsed.nodes[0]));
+          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(parsed.nodes[0]).substring(0, 200));
+        } else {
+          console.log('🔍 ComfyUI detection - workflow content:', JSON.stringify(parsed).substring(0, 200) + '...');
+        }
+      }
+      return hasValidStructure;
+    }
+    if (hasPrompt && typeof metadata.prompt === 'string') {
+      const parsed = JSON.parse(metadata.prompt);
+      // Check if it looks like a ComfyUI prompt (has nodes with class_type)
+      const hasValidStructure = parsed && typeof parsed === 'object' && ((parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
+        node && typeof node === 'object' && (node.class_type || node.type)
+      )) || Object.values(parsed).some((node: any) =>
+        node && typeof node === 'object' && (node.class_type || node.type)
+      ));
+      console.log('🔍 ComfyUI detection - prompt string parsed, hasValidStructure:', hasValidStructure);
+      if (!hasValidStructure) {
+        console.log('🔍 ComfyUI detection - prompt content:', JSON.stringify(parsed).substring(0, 200) + '...');
+      }
+      return hasValidStructure;
+    }
+    if (hasWorkflow && typeof metadata.workflow === 'object') {
+      // Check if object format looks like ComfyUI - check the nodes array
+      const workflow = metadata.workflow as any;
+      const hasValidStructure = workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.some((node: any) =>
+        node && typeof node === 'object' && (node.class_type || node.type)
+      );
+      console.log('🔍 ComfyUI detection - workflow object, hasValidStructure:', hasValidStructure);
+      if (!hasValidStructure) {
+        console.log('🔍 ComfyUI detection - workflow.nodes exists:', !!workflow.nodes);
+        console.log('🔍 ComfyUI detection - workflow.nodes isArray:', Array.isArray(workflow.nodes));
+        if (workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.length > 0) {
+          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(workflow.nodes[0]));
+          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(workflow.nodes[0]).substring(0, 200));
+        }
+      }
+      return hasValidStructure;
+    }
+    if (hasPrompt && typeof metadata.prompt === 'object') {
+      // Check if object format looks like ComfyUI
+      const hasValidStructure = Object.values(metadata.prompt).some((node: any) =>
+        node && typeof node === 'object' && (node.class_type || node.type)
+      );
+      console.log('🔍 ComfyUI detection - prompt object, hasValidStructure:', hasValidStructure);
+      return hasValidStructure;
+    }
+  } catch (error) {
+    // If parsing fails, it's not valid ComfyUI format
+    console.log('🔍 ComfyUI detection - parsing failed:', error);
+    return false;
+  }
+
+  console.log('🔍 ComfyUI detection - reached end, returning true');
+  return true;
 }
 
 export interface IndexedImage {
@@ -133,6 +208,7 @@ export interface IndexedImage {
   scheduler: string; // Extracted scheduler from metadata
   board?: string; // Extracted board name from metadata
   prompt?: string; // Extracted prompt from metadata
+  negativePrompt?: string; // Extracted negative prompt from metadata
   cfgScale?: number; // Extracted CFG scale from metadata
   steps?: number; // Extracted steps from metadata
   seed?: number; // Extracted seed from metadata

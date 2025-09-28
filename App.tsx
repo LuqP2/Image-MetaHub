@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { type IndexedImage } from './types';
-import { processDirectory, isIntermediateImage, extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard } from './services/fileIndexer';
+import { processDirectory, isIntermediateImage, extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions as extractDimensionsFromMetadata, extractNegativePrompt } from './services/fileIndexer';
 import { cacheManager } from './services/cacheManager';
 import { FileOperations } from './services/fileOperations';
 import FolderSelector from './components/FolderSelector';
@@ -567,15 +567,30 @@ export default function App() {
         console.log(`   - File exists: ${!!fileHandle}`);
         console.log(`   - Thumbnail exists: ${!!thumbnailHandle}`);
         console.log(`   - Metadata keys:`, Object.keys(parsedMetadata));
+        console.log(`   - Has normalizedMetadata:`, !!parsedMetadata.normalizedMetadata);
         
-        const models = extractModels(parsedMetadata);
-        const loras = extractLoras(parsedMetadata);
-        const scheduler = extractScheduler(parsedMetadata);
-        const board = extractBoard(parsedMetadata);
+        // Use normalized metadata if available, otherwise extract from raw metadata
+        // For ComfyUI images, always re-extract to ensure latest parsing logic is used
+        const isComfyUI = parsedMetadata.workflow || (parsedMetadata.prompt && !parsedMetadata.invokeai_metadata && !parsedMetadata.parameters);
+        const forceReExtract = isComfyUI; // Always re-extract ComfyUI metadata to use latest parsing
         
+        const normalized = parsedMetadata.normalizedMetadata;
+        const models = forceReExtract ? extractModels(parsedMetadata) : (normalized?.models || extractModels(parsedMetadata));
+        const loras = forceReExtract ? extractLoras(parsedMetadata) : (normalized?.loras || extractLoras(parsedMetadata));
+        const scheduler = forceReExtract ? extractScheduler(parsedMetadata) : (normalized?.scheduler || extractScheduler(parsedMetadata));
+        const board = forceReExtract ? extractBoard(parsedMetadata) : (normalized?.board || extractBoard(parsedMetadata));
+        const prompt = forceReExtract ? extractPrompt(parsedMetadata) : (normalized?.prompt || extractPrompt(parsedMetadata));
+        const negativePrompt = forceReExtract ? extractNegativePrompt(parsedMetadata) : (normalized?.negativePrompt || extractNegativePrompt(parsedMetadata));
+        const cfgScale = forceReExtract ? extractCfgScale(parsedMetadata) : (normalized?.cfgScale ?? extractCfgScale(parsedMetadata));
+        const steps = forceReExtract ? extractSteps(parsedMetadata) : (normalized?.steps ?? extractSteps(parsedMetadata));
+        const seed = forceReExtract ? extractSeed(parsedMetadata) : (normalized?.seed ?? extractSeed(parsedMetadata));
+        const dimensions = forceReExtract ? extractDimensionsFromMetadata(parsedMetadata) : (normalized ? `${normalized.width || 0}x${normalized.height || 0}` : extractDimensionsFromMetadata(parsedMetadata));
+        
+        console.log(`   - Using normalized metadata:`, !!normalized);
         console.log(`   - Extracted models:`, models);
         console.log(`   - Extracted loras:`, loras);
         console.log(`   - Extracted scheduler:`, scheduler);
+        console.log(`   - Extracted prompt:`, prompt ? prompt.substring(0, 50) + '...' : 'none');
         
         reconstructedImages.push({
           id: metadata.id,
@@ -589,6 +604,12 @@ export default function App() {
           loras,
           scheduler,
           board: board || 'Uncategorized',
+          prompt,
+          negativePrompt,
+          cfgScale,
+          steps,
+          seed,
+          dimensions,
         });
       }
     }

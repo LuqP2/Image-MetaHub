@@ -43,6 +43,20 @@ function extractModels(metadata: ImageMetadata): string[] {
     return extractModelsFromComfyUI(metadata);
   }
 
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction');
+    if (normalized.models && Array.isArray(normalized.models)) {
+      return normalized.models;
+    }
+    // Try to extract from the original metadata if it exists in normalizedMetadata
+    if (normalized.model && typeof normalized.model === 'string') {
+      return [normalized.model];
+    }
+  }
+
   // Fallback: try to extract from raw metadata for unknown formats
   console.log('⚠️ Unknown metadata format for models, attempting fallback extraction');
   return extractModelsFromRawMetadata(metadata);
@@ -817,7 +831,44 @@ function extractPrompt(metadata: ImageMetadata): string {
     }
   }
 
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for prompt');
+    if (normalized.prompt && typeof normalized.prompt === 'string') {
+      return normalized.prompt;
+    }
+  }
+
   return '';
+}
+
+// Function to extract negative prompt text from metadata
+function extractNegativePrompt(metadata: ImageMetadata): string | undefined {
+  // First check if normalized metadata is available (faster path)
+  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
+    const normalized = metadata.normalizedMetadata;
+    if (normalized.negativePrompt) {
+      console.log('🔍 Using normalized metadata for negative prompt extraction');
+      return normalized.negativePrompt;
+    }
+  }
+
+  // For ComfyUI, the negative prompt is extracted during parseComfyUIMetadata
+  // For other formats, negative prompts are typically embedded in the main prompt
+
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for negativePrompt');
+    if (normalized.negativePrompt && typeof normalized.negativePrompt === 'string') {
+      return normalized.negativePrompt;
+    }
+  }
+
+  return undefined;
 }
 
 // Board mapping cache to track unique board IDs and names
@@ -856,9 +907,13 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
 
+      // DEBUG: Log all tEXt chunks found
+      console.log(`📄 PNG chunk found: ${keyword} (length: ${text?.length || 0})`);
+
       // Collect relevant metadata chunks
       if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
         chunks[keyword] = text;
+        console.log(`✅ Collected chunk: ${keyword}`);
       }
     }
 
@@ -1354,6 +1409,7 @@ export async function processDirectory(
           scheduler,
           board,
           prompt: extractPrompt(metadata),
+          negativePrompt: extractNegativePrompt(metadata),
           cfgScale: extractCfgScale(metadata),
           steps: extractSteps(metadata),
           seed: extractSeed(metadata),
@@ -1375,6 +1431,7 @@ export async function processDirectory(
           scheduler,
           board,
           prompt: extractPrompt(metadata),
+          negativePrompt: extractNegativePrompt(metadata),
           cfgScale: extractCfgScale(metadata),
           steps: extractSteps(metadata),
           seed: extractSeed(metadata),
@@ -1439,12 +1496,20 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     let workflow: any = metadata.workflow;
     let prompt: any = metadata.prompt;
 
+    console.log('🔍 Parsing ComfyUI metadata:', {
+      hasWorkflow: !!workflow,
+      hasPrompt: !!prompt,
+      workflowType: typeof workflow,
+      promptType: typeof prompt
+    });
+
     // Parse workflow if it's a string
     if (typeof workflow === 'string') {
       try {
         workflow = JSON.parse(workflow);
+        console.log('✅ Parsed workflow JSON successfully');
       } catch (error) {
-        console.warn('Failed to parse ComfyUI workflow string:', error);
+        console.warn('❌ Failed to parse ComfyUI workflow string:', error);
         return result;
       }
     }
@@ -1453,139 +1518,440 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     if (typeof prompt === 'string') {
       try {
         prompt = JSON.parse(prompt);
+        console.log('✅ Parsed prompt JSON successfully');
       } catch (error) {
-        console.warn('Failed to parse ComfyUI prompt string:', error);
+        console.warn('❌ Failed to parse ComfyUI prompt string:', error);
         return result;
       }
     }
 
-    // If we have both workflow and prompt, use workflow as primary source
+    // Determine which data source to use (prefer workflow over prompt)
     const dataSource = workflow || prompt;
     if (!dataSource) {
+      console.warn('❌ No valid workflow or prompt data found in ComfyUI metadata');
       return result;
     }
 
-    // Extract data from nodes
+    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
+
+    // Log all node types found for debugging
+    const nodeTypes = new Set<string>();
+    const allNodes = [];
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+      const node = nodeData as any;
+      const classType = node.class_type || node.type || '';
+      if (classType) nodeTypes.add(classType);
+      allNodes.push({ id: nodeId, type: classType, inputs: Object.keys(node.inputs || {}) });
+    }
+    console.log('🔍 Found node types in workflow:', Array.from(nodeTypes));
+    console.log('🔍 All nodes summary:', allNodes);
+
+    // Extract data from nodes - handle both workflow format (with class_type) and prompt format
     for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
 
       if (!node || typeof node !== 'object') continue;
 
-      const classType = node.class_type || '';
+      const classType = node.class_type || node.type || '';
+      const inputs = node.inputs || {};
 
-      // Extract model from CheckpointLoaderSimple or similar
-      if (classType.toLowerCase().includes('checkpoint') && classType.toLowerCase().includes('loader')) {
-        if (node.inputs && node.inputs.ckpt_name && typeof node.inputs.ckpt_name === 'string') {
-          result.models.push(node.inputs.ckpt_name);
+      console.log(`🔍 Processing node ${nodeId}: ${classType} with inputs:`, Object.keys(inputs));
+
+      // Check if this node matches sampler criteria
+      const isSamplerNode = classType.toLowerCase().includes('sampler') ||
+          classType === 'KSampler' ||
+          classType === 'SamplerCustom' ||
+          classType === 'Sampler' ||
+          classType === 'SamplerEuler' ||
+          classType === 'SamplerEulerAncestral' ||
+          classType === 'SamplerDPMPP2M' ||
+          classType === 'SamplerDPMPP2MKarras' ||
+          classType === 'SamplerDPMAdaptive' ||
+          classType === 'SamplerLMS' ||
+          classType === 'SamplerHeun' ||
+          classType === 'SamplerDPM2' ||
+          classType === 'SamplerDPM2Ancestral' ||
+          classType === 'SamplerUniPC' ||
+          classType === 'SamplerTCD' ||
+          classType === 'SamplerLCM' ||
+          classType.toLowerCase().includes('ksampler') ||
+          classType.toLowerCase().includes('sample');
+
+      if (isSamplerNode) {
+        console.log(`🎯 FOUND SAMPLER NODE: ${nodeId} (${classType})`);
+      }
+
+      // Extract model from various checkpoint loader nodes
+      if (classType.toLowerCase().includes('checkpoint') ||
+          classType.toLowerCase().includes('model') ||
+          classType === 'CheckpointLoaderSimple' ||
+          classType === 'CheckpointLoader') {
+        // Try different possible input names for checkpoint
+        const ckptName = inputs.ckpt_name || inputs.checkpoint || inputs.model_name;
+        if (ckptName && typeof ckptName === 'string') {
+          result.models.push(ckptName);
+          console.log(`✅ Found model: ${ckptName}`);
         }
       }
 
-      // Extract LoRAs from LoraLoader nodes
-      if (classType.toLowerCase().includes('lora') && classType.toLowerCase().includes('loader')) {
-        if (node.inputs && node.inputs.lora_name && typeof node.inputs.lora_name === 'string') {
-          result.loras.push(node.inputs.lora_name);
+      // Extract LoRAs from various LoRA loader nodes
+      if (classType.toLowerCase().includes('lora') ||
+          classType === 'LoraLoader' ||
+          classType === 'LoraLoaderModelOnly' ||
+          classType === 'LoraLoaderModel') {
+        const loraName = inputs.lora_name || inputs.lora || inputs.name;
+        if (loraName && typeof loraName === 'string') {
+          result.loras.push(loraName);
+          console.log(`✅ Found LoRA: ${loraName}`);
         }
       }
 
-      // Extract prompt from CLIPTextEncode or similar text input nodes
-      if (classType.toLowerCase().includes('clip') && classType.toLowerCase().includes('text') && classType.toLowerCase().includes('encode')) {
-        if (node.inputs && node.inputs.text && typeof node.inputs.text === 'string') {
-          // Check if this is connected to positive conditioning
-          const isPositive = checkIfPositivePrompt(nodeId, dataSource);
-          if (isPositive) {
-            result.prompt = node.inputs.text;
-          } else {
-            result.negativePrompt = node.inputs.text;
+      // Extract prompts from CLIP text encode nodes
+      if (classType.toLowerCase().includes('clip') &&
+          classType.toLowerCase().includes('text') &&
+          (classType.toLowerCase().includes('encode') || classType === 'CLIPTextEncode' || classType === 'CLIPTextEncodeSDXL')) {
+        const text = inputs.text || inputs.prompt || inputs.string;
+        if (text && typeof text === 'string') {
+          const isPositive = determinePromptType(nodeId, dataSource, classType);
+          if (isPositive && !result.prompt) {
+            result.prompt = text;
+            console.log(`✅ Found positive prompt: ${text.substring(0, 50)}...`);
+          } else if (!isPositive && !result.negativePrompt) {
+            result.negativePrompt = text;
+            console.log(`✅ Found negative prompt: ${text.substring(0, 50)}...`);
           }
         }
       }
 
-      // Extract sampler parameters from KSampler or similar
-      if (classType.toLowerCase().includes('ksampler') || classType.toLowerCase().includes('sampler')) {
-        if (node.inputs) {
-          if (typeof node.inputs.steps === 'number') {
-            result.steps = node.inputs.steps;
+      // Extract sampler parameters from various sampler nodes
+      if (classType.toLowerCase().includes('sampler') ||
+          classType === 'KSampler' ||
+          classType === 'SamplerCustom' ||
+          classType === 'Sampler' ||
+          classType === 'SamplerEuler' ||
+          classType === 'SamplerEulerAncestral' ||
+          classType === 'SamplerDPMPP2M' ||
+          classType === 'SamplerDPMPP2MKarras' ||
+          classType === 'SamplerDPMAdaptive' ||
+          classType === 'SamplerLMS' ||
+          classType === 'SamplerHeun' ||
+          classType === 'SamplerDPM2' ||
+          classType === 'SamplerDPM2Ancestral' ||
+          classType === 'SamplerUniPC' ||
+          classType === 'SamplerTCD' ||
+          classType === 'SamplerLCM' ||
+          classType.toLowerCase().includes('ksampler') ||
+          classType.toLowerCase().includes('sample')) {
+        console.log(`🎯 FOUND SAMPLER NODE: ${nodeId} (${classType})`);
+        // Try different input names
+        const steps = inputs.steps || inputs.step_count || inputs.num_steps || inputs.steps_count;
+        const cfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value;
+        const seed = inputs.seed || inputs.noise_seed || inputs.seed_value;
+        const samplerName = inputs.sampler_name || inputs.sampler || inputs.sampling_method || inputs.method;
+
+        console.log(`🔍 Found sampler node ${nodeId} (${classType}) with inputs:`, inputs);
+
+        // Check if inputs are strings that need parsing
+        if (typeof steps === 'string') {
+          const parsedSteps = parseInt(steps, 10);
+          if (!isNaN(parsedSteps) && parsedSteps > 0) {
+            result.steps = parsedSteps;
+            console.log(`✅ Found steps (from string): ${parsedSteps}`);
           }
-          if (typeof node.inputs.cfg === 'number') {
-            result.cfgScale = node.inputs.cfg;
+        } else if (typeof steps === 'number' && steps > 0) {
+          result.steps = steps;
+          console.log(`✅ Found steps: ${steps}`);
+        } else {
+          console.log(`❌ Steps not found or invalid: ${steps} (type: ${typeof steps})`);
+        }
+
+        if (typeof cfg === 'string') {
+          const parsedCfg = parseFloat(cfg);
+          if (!isNaN(parsedCfg) && parsedCfg > 0) {
+            result.cfgScale = parsedCfg;
+            console.log(`✅ Found CFG scale (from string): ${parsedCfg}`);
           }
-          if (typeof node.inputs.seed === 'number' || typeof node.inputs.seed === 'string') {
-            const seedValue = typeof node.inputs.seed === 'string' ? parseInt(node.inputs.seed, 10) : node.inputs.seed;
-            if (!isNaN(seedValue)) {
+        } else if (typeof cfg === 'number' && cfg > 0) {
+          result.cfgScale = cfg;
+          console.log(`✅ Found CFG scale: ${cfg}`);
+        } else {
+          console.log(`❌ CFG scale not found or invalid: ${cfg} (type: ${typeof cfg})`);
+        }
+
+        if (seed !== undefined && seed !== null) {
+          let seedValue: number;
+          if (Array.isArray(seed)) {
+            // Handle seed references like ["46", 0] - these point to other nodes
+            console.log(`🎯 Seed is array reference: ${JSON.stringify(seed)} - skipping for now`);
+            // For now, skip array references - we'll look for actual seed values elsewhere
+          } else if (typeof seed === 'string') {
+            seedValue = parseInt(seed, 10);
+            if (!isNaN(seedValue) && seedValue >= 0) {
               result.seed = seedValue;
+              console.log(`✅ Found seed (from string): ${result.seed}`);
             }
+          } else if (typeof seed === 'number') {
+            if (seed >= 0) {
+              result.seed = seed;
+              console.log(`✅ Found seed: ${result.seed}`);
+            }
+          } else {
+            console.log(`❌ Seed invalid type: ${typeof seed} = ${seed}`);
           }
-          if (node.inputs.sampler_name && typeof node.inputs.sampler_name === 'string') {
-            result.scheduler = node.inputs.sampler_name;
-          }
-          if (node.inputs.scheduler && typeof node.inputs.scheduler === 'string') {
-            result.scheduler = node.inputs.scheduler;
-          }
+        } else {
+          console.log(`❌ Seed not found in inputs`);
+        }
+        if (samplerName && typeof samplerName === 'string') {
+          result.scheduler = samplerName;
+          console.log(`✅ Found sampler: ${samplerName}`);
+        } else if (inputs.scheduler && typeof inputs.scheduler === 'string') {
+          result.scheduler = inputs.scheduler;
+          console.log(`✅ Found scheduler: ${inputs.scheduler}`);
+        } else {
+          console.log(`❌ Sampler name not found`);
         }
       }
 
-      // Extract dimensions from EmptyLatentImage or similar
-      if (classType.toLowerCase().includes('empty') && classType.toLowerCase().includes('latent')) {
-        if (node.inputs) {
-          if (typeof node.inputs.width === 'number') {
-            result.width = node.inputs.width;
+      // Look for seed values in any node (including Seed Everywhere nodes)
+      if (classType.toLowerCase().includes('seed') || classType === 'Seed Everywhere' || classType === 'Random Seed') {
+        console.log(`🎯 FOUND SEED NODE: ${nodeId} (${classType})`);
+        console.log(`🎯 SEED NODE INPUTS:`, JSON.stringify(inputs, null, 2));
+
+        // Look for seed values in inputs
+        for (const [key, value] of Object.entries(inputs)) {
+          if (key.toLowerCase().includes('seed') && typeof value === 'number' && value > 0 && !result.seed) {
+            result.seed = value;
+            console.log(`✅ Found seed in ${key}: ${value}`);
+            break;
           }
-          if (typeof node.inputs.height === 'number') {
-            result.height = node.inputs.height;
-          }
+        }
+      }
+      if (classType.toLowerCase().includes('latent') ||
+          classType === 'EmptyLatentImage' ||
+          classType === 'LatentFromPrompt' ||
+          classType === 'EmptyImage' ||
+          classType === 'ImageSize' ||
+          classType === 'LatentUpscale' ||
+          classType === 'LatentDownscale' ||
+          classType.toLowerCase().includes('image') ||
+          classType.toLowerCase().includes('size') ||
+          classType.toLowerCase().includes('dimension')) {
+        const width = inputs.width || inputs.image_width || inputs.size_width || inputs.w || inputs.x;
+        const height = inputs.height || inputs.image_height || inputs.size_height || inputs.h || inputs.y;
+
+        console.log(`🔍 Found dimension node ${nodeId} (${classType}) with inputs:`, inputs);
+
+        if (typeof width === 'number' && width > 0) {
+          result.width = width;
+          console.log(`✅ Found width: ${width}`);
+        }
+        if (typeof height === 'number' && height > 0) {
+          result.height = height;
+          console.log(`✅ Found height: ${height}`);
         }
       }
     }
 
-    // Fallback: if no prompt found through nodes, try to extract from any text input
-    if (!result.prompt) {
+    // Fallback: if no prompts found, look for any text inputs
+    if (!result.prompt && !result.negativePrompt) {
+      console.log('🔍 No prompts found through node analysis, trying fallback extraction');
       for (const [nodeId, nodeData] of Object.entries(dataSource)) {
         const node = nodeData as any;
-        if (node.inputs && node.inputs.text && typeof node.inputs.text === 'string') {
-          // Simple heuristic: if text contains common negative words, it's negative
-          const text = node.inputs.text.toLowerCase();
-          if (text.includes('blur') || text.includes('deform') || text.includes('ugly') || text.includes('worst')) {
-            result.negativePrompt = node.inputs.text;
+        const inputs = node.inputs || {};
+        if (inputs.text && typeof inputs.text === 'string') {
+          const text = inputs.text.toLowerCase();
+          // Simple heuristic for negative prompts
+          if (text.includes('blur') || text.includes('deform') || text.includes('ugly') ||
+              text.includes('worst') || text.includes('low quality') || text.includes('bad')) {
+            if (!result.negativePrompt) {
+              result.negativePrompt = inputs.text;
+              console.log(`✅ Fallback negative prompt: ${inputs.text.substring(0, 50)}...`);
+            }
           } else {
-            result.prompt = node.inputs.text;
+            if (!result.prompt) {
+              result.prompt = inputs.text;
+              console.log(`✅ Fallback positive prompt: ${inputs.text.substring(0, 50)}...`);
+            }
           }
-          break; // Take the first text input we find
         }
       }
     }
 
+    // Additional fallback: look for numeric parameters in any node that might contain generation settings
+    if ((result.steps === 0 || result.cfgScale === 0) && !result.seed) {
+      console.log('🔍 Looking for numeric parameters in any node');
+      for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+        const node = nodeData as any;
+        const inputs = node.inputs || {};
+        const classType = node.class_type || node.type || '';
+
+        // Look for common parameter names in any node
+        const possibleSteps = inputs.steps || inputs.step_count || inputs.num_steps || inputs.steps_count || inputs.step || inputs.n_steps;
+        const possibleCfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value || inputs.strength;
+        const possibleSeed = inputs.seed || inputs.noise_seed || inputs.seed_value || inputs.random_seed;
+
+        console.log(`🔍 Checking node ${nodeId} (${classType}) for parameters: steps=${possibleSteps}, cfg=${possibleCfg}, seed=${possibleSeed}`);
+
+        if (typeof possibleSteps === 'string') {
+          const parsed = parseInt(possibleSteps, 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 200 && result.steps === 0) {
+            result.steps = parsed;
+            console.log(`✅ Found steps in node ${nodeId} (${classType}): ${parsed}`);
+          }
+        } else if (typeof possibleSteps === 'number' && possibleSteps > 0 && possibleSteps < 200 && result.steps === 0) {
+          result.steps = possibleSteps;
+          console.log(`✅ Found steps in node ${nodeId} (${classType}): ${possibleSteps}`);
+        }
+
+        if (typeof possibleCfg === 'string') {
+          const parsed = parseFloat(possibleCfg);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 50 && result.cfgScale === 0) {
+            result.cfgScale = parsed;
+            console.log(`✅ Found CFG scale in node ${nodeId} (${classType}): ${parsed}`);
+          }
+        } else if (typeof possibleCfg === 'number' && possibleCfg > 0 && possibleCfg < 50 && result.cfgScale === 0) {
+          result.cfgScale = possibleCfg;
+          console.log(`✅ Found CFG scale in node ${nodeId} (${classType}): ${possibleCfg}`);
+        }
+
+        if (possibleSeed !== undefined && possibleSeed !== null && result.seed === undefined) {
+          let seedValue: number;
+          if (typeof possibleSeed === 'string') {
+            seedValue = parseInt(possibleSeed, 10);
+          } else {
+            seedValue = possibleSeed;
+          }
+          if (!isNaN(seedValue) && seedValue >= 0) {
+            result.seed = seedValue;
+            console.log(`✅ Found seed in node ${nodeId} (${classType}): ${result.seed}`);
+          }
+        }
+      }
+    }
+
+    // Final comprehensive search: look for any node with generation parameters
+    console.log('🔍 FINAL COMPREHENSIVE SEARCH: Looking for any node with generation parameters');
+    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+      const node = nodeData as any;
+      const inputs = node.inputs || {};
+      const classType = node.class_type || node.type || '';
+
+      // Look for any input that could be steps, cfg, or seed
+      for (const [inputKey, inputValue] of Object.entries(inputs)) {
+        const key = inputKey.toLowerCase();
+        const value = inputValue;
+
+        console.log(`🔍 Checking input ${inputKey}=${value} (type: ${typeof value}) in node ${nodeId} (${classType})`);
+
+        // Check for steps
+        if ((key.includes('step') || key === 'steps' || key === 'n_steps') && result.steps === 0) {
+          if (typeof value === 'number' && value > 0 && value < 200) {
+            result.steps = value;
+            console.log(`✅ FOUND STEPS in ${inputKey}: ${value}`);
+          } else if (typeof value === 'string') {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed) && parsed > 0 && parsed < 200) {
+              result.steps = parsed;
+              console.log(`✅ FOUND STEPS in ${inputKey} (string): ${parsed}`);
+            }
+          }
+        }
+
+        // Check for CFG
+        if ((key.includes('cfg') || key.includes('guidance') || key === 'scale' || key === 'strength') && result.cfgScale === 0) {
+          if (typeof value === 'number' && value > 0 && value < 50) {
+            result.cfgScale = value;
+            console.log(`✅ FOUND CFG in ${inputKey}: ${value}`);
+          } else if (typeof value === 'string') {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed) && parsed > 0 && parsed < 50) {
+              result.cfgScale = parsed;
+              console.log(`✅ FOUND CFG in ${inputKey} (string): ${parsed}`);
+            }
+          }
+        }
+
+        // Check for seed
+        if ((key.includes('seed') || key === 'noise_seed') && result.seed === undefined) {
+          if (typeof value === 'number' && value >= 0) {
+            result.seed = value;
+            console.log(`✅ FOUND SEED in ${inputKey}: ${value}`);
+          } else if (typeof value === 'string') {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed) && parsed >= 0) {
+              result.seed = parsed;
+              console.log(`✅ FOUND SEED in ${inputKey} (string): ${parsed}`);
+            }
+          }
+        }
+      }
+    }
+
+    // Set primary model if found
+    if (result.models.length > 0) {
+      result.model = result.models[0];
+    }
+
+    console.log('✅ ComfyUI metadata parsing complete:', {
+      prompt: result.prompt ? result.prompt.substring(0, 30) + '...' : '',
+      negativePrompt: result.negativePrompt ? result.negativePrompt.substring(0, 30) + '...' : '',
+      model: result.model,
+      models: result.models,
+      loras: result.loras,
+      steps: result.steps,
+      cfgScale: result.cfgScale,
+      seed: result.seed,
+      scheduler: result.scheduler,
+      width: result.width,
+      height: result.height,
+      dimensions: result.width && result.height ? `${result.width}x${result.height}` : 'unknown'
+    });
+
   } catch (error) {
-    console.warn('Failed to parse ComfyUI metadata:', error);
+    console.error('❌ Failed to parse ComfyUI metadata:', error);
   }
 
   return result;
 }
 
 // Helper function to determine if a text node is for positive or negative prompt
-function checkIfPositivePrompt(nodeId: string, workflow: any): boolean {
+function determinePromptType(nodeId: string, workflow: any, classType: string): boolean {
   try {
     // Look for connections from this node to conditioning nodes
     for (const [otherNodeId, otherNodeData] of Object.entries(workflow)) {
       const otherNode = otherNodeData as any;
-      if (otherNode && otherNode.inputs) {
-        // Check all inputs of other nodes to see if they reference our node
-        for (const [inputName, inputValue] of Object.entries(otherNode.inputs)) {
-          if (Array.isArray(inputValue) && inputValue.length >= 2 && inputValue[0] === nodeId) {
-            // This node is connected to another node
-            const connectedNodeClass = otherNode.class_type || '';
-            if (connectedNodeClass.toLowerCase().includes('conditioning') ||
-                connectedNodeClass.toLowerCase().includes('positive')) {
-              return true;
-            }
-            if (connectedNodeClass.toLowerCase().includes('negative')) {
-              return false;
-            }
+      if (!otherNode || !otherNode.inputs) continue;
+
+      // Check all inputs of other nodes to see if they reference our node
+      for (const [inputName, inputValue] of Object.entries(otherNode.inputs)) {
+        if (Array.isArray(inputValue) && inputValue.length >= 2 && inputValue[0] === nodeId) {
+          // This node is connected to another node
+          const connectedNodeClass = otherNode.class_type || otherNode.type || '';
+          if (connectedNodeClass.toLowerCase().includes('conditioning') ||
+              connectedNodeClass.toLowerCase().includes('positive') ||
+              connectedNodeClass === 'ConditioningCombine' ||
+              connectedNodeClass === 'PositiveConditioning') {
+            return true; // Positive prompt
+          }
+          if (connectedNodeClass.toLowerCase().includes('negative') ||
+              connectedNodeClass === 'ConditioningSetMask' ||
+              connectedNodeClass === 'NegativeConditioning') {
+            return false; // Negative prompt
           }
         }
       }
     }
+
+    // Fallback: check node class type for hints
+    if (classType.toLowerCase().includes('positive')) {
+      return true;
+    }
+    if (classType.toLowerCase().includes('negative')) {
+      return false;
+    }
+
   } catch (error) {
-    console.warn('Failed to check prompt type:', error);
+    console.warn('Failed to determine prompt type:', error);
   }
   return true; // Default to positive if we can't determine
 }
@@ -1757,6 +2123,16 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
     }
   }
 
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for cfgScale');
+    if (normalized.cfgScale !== undefined && typeof normalized.cfgScale === 'number') {
+      return normalized.cfgScale;
+    }
+  }
+
   return undefined;
 }
 
@@ -1767,6 +2143,16 @@ function extractSteps(metadata: ImageMetadata): number | undefined {
     const normalized = metadata.normalizedMetadata;
     if (normalized.steps !== undefined && typeof normalized.steps === 'number') {
       console.log('🔍 Using normalized metadata for steps extraction');
+      return normalized.steps;
+    }
+  }
+
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for steps');
+    if (normalized.steps !== undefined && typeof normalized.steps === 'number') {
       return normalized.steps;
     }
   }
@@ -1881,6 +2267,16 @@ function extractSeed(metadata: ImageMetadata): number | undefined {
     }
   }
 
+  // SPECIAL CASE: If we have normalizedMetadata but couldn't detect format,
+  // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
+  if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
+    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for seed');
+    if (normalized.seed !== undefined && typeof normalized.seed === 'number') {
+      return normalized.seed;
+    }
+  }
+
   return undefined;
 }
 
@@ -1951,4 +2347,4 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
 }
 
 // Export utility functions for use in other modules
-export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata };
+export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata };
