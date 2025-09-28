@@ -965,16 +965,8 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
   } else if (chunks.invokeai_metadata) {
     // InvokeAI format
-    const metadata = JSON.parse(chunks.invokeai_metadata) as InvokeAIMetadata;
-
-    // Add normalized metadata for enhanced filtering
-    try {
-      metadata.normalizedMetadata = parseInvokeAIMetadata(metadata);
-    } catch (error) {
-      console.warn('Failed to parse normalized metadata for InvokeAI:', error);
-    }
-
-    return metadata;
+    const metadata = JSON.parse(chunks.invokeai_metadata);
+    return metadata as InvokeAIMetadata;
 
   } else if (chunks.parameters) {
     // Automatic1111 format
@@ -1048,19 +1040,9 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
     if (metadataText) {
       // Try to parse as JSON first (for structured metadata like InvokeAI)
       try {
-        const parsedMetadata = JSON.parse(metadataText) as InvokeAIMetadata;
+        const parsedMetadata = JSON.parse(metadataText);
         console.log(`✅ Successfully parsed JSON metadata from JPEG ${sourceField}: ${file.name}`);
-
-        // Check if it's InvokeAI and normalize it
-        if (isInvokeAIMetadata(parsedMetadata)) {
-            try {
-                parsedMetadata.normalizedMetadata = parseInvokeAIMetadata(parsedMetadata);
-            } catch (error) {
-                console.warn('Failed to parse normalized metadata for InvokeAI JPEG:', error);
-            }
-        }
-
-        return parsedMetadata;
+        return parsedMetadata as ImageMetadata;
       } catch (jsonError) {
         console.log(`🔄 JSON parsing failed for ${file.name}, trying A1111 format...`);
 
@@ -1550,12 +1532,27 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       return result;
     }
 
-    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
+    // UNIFY NODE HANDLING: Check for API-style workflow ('nodes' array) vs. prompt-style (direct map)
+    let nodeMap: { [key: string]: any } = {};
+    const isApiFormat = Array.isArray(dataSource.nodes);
+
+    if (isApiFormat) {
+      console.log('🔍 Detected ComfyUI API/Workflow format');
+      for (const node of dataSource.nodes) {
+        // The API format uses numeric IDs, but we'll use strings for consistency
+        nodeMap[String(node.id)] = node;
+      }
+    } else {
+      console.log('🔍 Detected ComfyUI Prompt format');
+      nodeMap = dataSource; // It's already a map
+    }
+
+    console.log('🔍 Processing ComfyUI data source with', Object.keys(nodeMap).length, 'nodes');
 
     // Log all node types found for debugging
     const nodeTypes = new Set<string>();
     const allNodes = [];
-    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
       const node = nodeData as any;
       const classType = node.class_type || node.type || '';
       if (classType) nodeTypes.add(classType);
@@ -1565,7 +1562,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     console.log('🔍 All nodes summary:', allNodes);
 
     // Extract data from nodes - handle both workflow format (with class_type) and prompt format
-    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
       const node = nodeData as any;
 
       if (!node || typeof node !== 'object') continue;
@@ -1935,38 +1932,49 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
 // Helper function to determine if a text node is for positive or negative prompt
 function determinePromptType(nodeId: string, workflow: any, classType: string): boolean {
   try {
-    // Look for connections from this node to conditioning nodes
-    for (const [otherNodeId, otherNodeData] of Object.entries(workflow)) {
-      const otherNode = otherNodeData as any;
-      if (!otherNode || !otherNode.inputs) continue;
+    const isApiFormat = Array.isArray(workflow.links) && Array.isArray(workflow.nodes);
 
-      // Check all inputs of other nodes to see if they reference our node
-      for (const [inputName, inputValue] of Object.entries(otherNode.inputs)) {
-        if (Array.isArray(inputValue) && inputValue.length >= 2 && inputValue[0] === nodeId) {
-          // This node is connected to another node
-          const connectedNodeClass = otherNode.class_type || otherNode.type || '';
-          if (connectedNodeClass.toLowerCase().includes('conditioning') ||
-              connectedNodeClass.toLowerCase().includes('positive') ||
-              connectedNodeClass === 'ConditioningCombine' ||
-              connectedNodeClass === 'PositiveConditioning') {
-            return true; // Positive prompt
+    if (isApiFormat) {
+      // API/Workflow format: Use the 'links' array to find connections
+      for (const link of workflow.links) {
+        const sourceNodeId = String(link[1]);
+        if (sourceNodeId === nodeId) {
+          const targetNodeId = link[3];
+          const connectedNode = workflow.nodes.find((n: any) => n.id === targetNodeId);
+          if (connectedNode) {
+            const connectedNodeClass = connectedNode.type || '';
+            if (connectedNodeClass.toLowerCase().includes('conditioning') || connectedNodeClass.toLowerCase().includes('positive')) {
+              return true; // Positive prompt
+            }
+            if (connectedNodeClass.toLowerCase().includes('negative')) {
+              return false; // Negative prompt
+            }
           }
-          if (connectedNodeClass.toLowerCase().includes('negative') ||
-              connectedNodeClass === 'ConditioningSetMask' ||
-              connectedNodeClass === 'NegativeConditioning') {
-            return false; // Negative prompt
+        }
+      }
+    } else {
+      // Prompt format: Use the existing logic of checking input references
+      for (const otherNodeData of Object.values(workflow)) {
+        const otherNode = otherNodeData as any;
+        if (!otherNode || !otherNode.inputs) continue;
+
+        for (const inputValue of Object.values(otherNode.inputs)) {
+          if (Array.isArray(inputValue) && String(inputValue[0]) === nodeId) {
+            const connectedNodeClass = otherNode.class_type || '';
+            if (connectedNodeClass.toLowerCase().includes('conditioning') || connectedNodeClass.toLowerCase().includes('positive')) {
+              return true;
+            }
+            if (connectedNodeClass.toLowerCase().includes('negative')) {
+              return false;
+            }
           }
         }
       }
     }
 
-    // Fallback: check node class type for hints
-    if (classType.toLowerCase().includes('positive')) {
-      return true;
-    }
-    if (classType.toLowerCase().includes('negative')) {
-      return false;
-    }
+    // Fallback: check the node's own class type for hints
+    if (classType.toLowerCase().includes('positive')) return true;
+    if (classType.toLowerCase().includes('negative')) return false;
 
   } catch (error) {
     console.warn('Failed to determine prompt type:', error);
@@ -2364,63 +2372,5 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
   return undefined;
 }
 
-// Function to parse InvokeAI parameters and extract normalized metadata
-function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
-  const result: BaseMetadata = {
-    format: 'InvokeAI',
-    prompt: '',
-    model: '',
-    width: 0,
-    height: 0,
-    steps: 0,
-    scheduler: '',
-    // Additional normalized fields
-    negativePrompt: '',
-    cfgScale: 0,
-    seed: undefined,
-    models: [],
-    loras: [],
-  };
-
-  try {
-    // Extract positive prompt
-    if (typeof metadata.positive_prompt === 'string') {
-      result.prompt = metadata.positive_prompt;
-    } else if (typeof metadata.prompt === 'string') {
-      result.prompt = metadata.prompt;
-    } else if (Array.isArray(metadata.prompt)) {
-      result.prompt = metadata.prompt
-        .map(p => (typeof p === 'string' ? p : p.prompt || ''))
-        .join(' ');
-    }
-
-
-    // Extract negative prompt
-    if (typeof metadata.negative_prompt === 'string') {
-      result.negativePrompt = metadata.negative_prompt;
-    }
-
-    // Extract core metadata
-    if (metadata.model_name) result.model = metadata.model_name;
-    if (metadata.width) result.width = metadata.width;
-    if (metadata.height) result.height = metadata.height;
-    if (metadata.steps) result.steps = metadata.steps;
-    if (metadata.scheduler) result.scheduler = metadata.scheduler;
-    if (metadata.cfg_scale) result.cfgScale = metadata.cfg_scale;
-    if (metadata.seed) result.seed = metadata.seed;
-
-    // Extract models and LoRAs
-    result.models = extractModelsFromInvokeAI(metadata);
-    result.loras = extractLorasFromInvokeAI(metadata);
-    if(result.models.length > 0) result.model = result.models[0]
-
-
-  } catch (error) {
-    console.warn('Failed to parse InvokeAI parameters:', error);
-  }
-
-  return result;
-}
-
 // Export utility functions for use in other modules
-export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata, parseInvokeAIMetadata };
+export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata };
