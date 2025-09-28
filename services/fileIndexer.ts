@@ -965,8 +965,16 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
   } else if (chunks.invokeai_metadata) {
     // InvokeAI format
-    const metadata = JSON.parse(chunks.invokeai_metadata);
-    return metadata as InvokeAIMetadata;
+    const metadata = JSON.parse(chunks.invokeai_metadata) as InvokeAIMetadata;
+
+    // Add normalized metadata for enhanced filtering
+    try {
+      metadata.normalizedMetadata = parseInvokeAIMetadata(metadata);
+    } catch (error) {
+      console.warn('Failed to parse normalized metadata for InvokeAI:', error);
+    }
+
+    return metadata;
 
   } else if (chunks.parameters) {
     // Automatic1111 format
@@ -1040,9 +1048,19 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
     if (metadataText) {
       // Try to parse as JSON first (for structured metadata like InvokeAI)
       try {
-        const parsedMetadata = JSON.parse(metadataText);
+        const parsedMetadata = JSON.parse(metadataText) as InvokeAIMetadata;
         console.log(`✅ Successfully parsed JSON metadata from JPEG ${sourceField}: ${file.name}`);
-        return parsedMetadata as ImageMetadata;
+
+        // Check if it's InvokeAI and normalize it
+        if (isInvokeAIMetadata(parsedMetadata)) {
+            try {
+                parsedMetadata.normalizedMetadata = parseInvokeAIMetadata(parsedMetadata);
+            } catch (error) {
+                console.warn('Failed to parse normalized metadata for InvokeAI JPEG:', error);
+            }
+        }
+
+        return parsedMetadata;
       } catch (jsonError) {
         console.log(`🔄 JSON parsing failed for ${file.name}, trying A1111 format...`);
 
@@ -1532,12 +1550,27 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       return result;
     }
 
-    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
+    // UNIFY NODE HANDLING: Check for API-style workflow ('nodes' array) vs. prompt-style (direct map)
+    let nodeMap: { [key: string]: any } = {};
+    const isApiFormat = Array.isArray(dataSource.nodes);
+
+    if (isApiFormat) {
+      console.log('🔍 Detected ComfyUI API/Workflow format');
+      for (const node of dataSource.nodes) {
+        // The API format uses numeric IDs, but we'll use strings for consistency
+        nodeMap[String(node.id)] = node;
+      }
+    } else {
+      console.log('🔍 Detected ComfyUI Prompt format');
+      nodeMap = dataSource; // It's already a map
+    }
+
+    console.log('🔍 Processing ComfyUI data source with', Object.keys(nodeMap).length, 'nodes');
 
     // Log all node types found for debugging
     const nodeTypes = new Set<string>();
     const allNodes = [];
-    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
       const node = nodeData as any;
       const classType = node.class_type || node.type || '';
       if (classType) nodeTypes.add(classType);
@@ -1547,7 +1580,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     console.log('🔍 All nodes summary:', allNodes);
 
     // Extract data from nodes - handle both workflow format (with class_type) and prompt format
-    for (const [nodeId, nodeData] of Object.entries(dataSource)) {
+    for (const [nodeId, nodeData] of Object.entries(nodeMap)) {
       const node = nodeData as any;
 
       if (!node || typeof node !== 'object') continue;
@@ -2357,5 +2390,63 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
   return undefined;
 }
 
+// Function to parse InvokeAI parameters and extract normalized metadata
+function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
+  const result: BaseMetadata = {
+    format: 'InvokeAI',
+    prompt: '',
+    model: '',
+    width: 0,
+    height: 0,
+    steps: 0,
+    scheduler: '',
+    // Additional normalized fields
+    negativePrompt: '',
+    cfgScale: 0,
+    seed: undefined,
+    models: [],
+    loras: [],
+  };
+
+  try {
+    // Extract positive prompt
+    if (typeof metadata.positive_prompt === 'string') {
+      result.prompt = metadata.positive_prompt;
+    } else if (typeof metadata.prompt === 'string') {
+      result.prompt = metadata.prompt;
+    } else if (Array.isArray(metadata.prompt)) {
+      result.prompt = metadata.prompt
+        .map(p => (typeof p === 'string' ? p : p.prompt || ''))
+        .join(' ');
+    }
+
+
+    // Extract negative prompt
+    if (typeof metadata.negative_prompt === 'string') {
+      result.negativePrompt = metadata.negative_prompt;
+    }
+
+    // Extract core metadata
+    if (metadata.model_name) result.model = metadata.model_name;
+    if (metadata.width) result.width = metadata.width;
+    if (metadata.height) result.height = metadata.height;
+    if (metadata.steps) result.steps = metadata.steps;
+    if (metadata.scheduler) result.scheduler = metadata.scheduler;
+    if (metadata.cfg_scale) result.cfgScale = metadata.cfg_scale;
+    if (metadata.seed) result.seed = metadata.seed;
+
+    // Extract models and LoRAs
+    result.models = extractModelsFromInvokeAI(metadata);
+    result.loras = extractLorasFromInvokeAI(metadata);
+    if(result.models.length > 0) result.model = result.models[0]
+
+
+  } catch (error) {
+    console.warn('Failed to parse InvokeAI parameters:', error);
+  }
+
+  return result;
+}
+
 // Export utility functions for use in other modules
-export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata };
+export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata, parseInvokeAIMetadata };
