@@ -82,7 +82,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading Windows assets for v$VERSION"
           for file in dist-electron/*; do
-            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"latest.yml" ]]; then
+            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"latest.yml" ]] || [[ "$file" == *"Setup"*".exe.blockmap" ]]; then
               echo "Uploading $file..."
               gh release upload v$VERSION "$file" --clobber
             fi
@@ -129,7 +129,7 @@ jobs:
           echo "Uploading macOS assets for v$VERSION"
           if [ -d "dist-electron" ]; then
             for file in dist-electron/*; do
-              if [[ "$file" == *".dmg" ]]; then
+              if [[ "$file" == *".dmg" ]] || [[ "$file" == *"mac.yml" ]] || [[ "$file" == *".dmg.blockmap" ]]; then
                 echo "Uploading $file..."
                 gh release upload v$VERSION "$file" --clobber
               fi
@@ -176,7 +176,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading Linux assets for v$VERSION"
           for file in dist-electron/*; do
-            if [[ "$file" == *".AppImage" ]]; then
+            if [[ "$file" == *".AppImage" ]] || [[ "$file" == *"linux.yml" ]] || [[ "$file" == *".AppImage.blockmap" ]]; then
               echo "Uploading $file..."
               gh release upload v$VERSION "$file" --clobber
             fi
