@@ -14,8 +14,8 @@ function extractModels(metadata: ImageMetadata): string[] {
   console.log('  - Raw metadata keys:', Object.keys(metadata));
 
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.models && Array.isArray(normalized.models)) {
       console.log('🔍 Using normalized metadata for models extraction');
       return normalized.models;
@@ -263,8 +263,8 @@ function extractModelName(modelData: any): string | null {
 // Function to extract LoRAs from metadata
 function extractLoras(metadata: ImageMetadata): string[] {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.loras && Array.isArray(normalized.loras)) {
       console.log('🔍 Using normalized metadata for LoRA extraction');
       return normalized.loras;
@@ -302,7 +302,7 @@ function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
   const promptText = typeof metadata.prompt === 'string'
     ? metadata.prompt
     : Array.isArray(metadata.prompt)
-      ? metadata.prompt.map(p => typeof p === 'string' ? p : p.prompt).join(' ')
+      ? metadata.prompt.map(p => typeof p === 'string' ? p : (p as any).prompt).join(' ')
       : '';
 
   // Common LoRA patterns in prompts
@@ -371,9 +371,9 @@ function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
     if (typeof metadata.lora === 'string') {
       loraName = metadata.lora.trim();
     } else if (metadata.lora && typeof metadata.lora === 'object') {
-      loraName = metadata.lora.name || metadata.lora.model || metadata.lora.key;
+      loraName = (metadata.lora as any).name || (metadata.lora as any).model || (metadata.lora as any).key;
       if (typeof loraName !== 'string') {
-        loraName = metadata.lora.key || JSON.stringify(metadata.lora);
+        loraName = (metadata.lora as any).key || JSON.stringify(metadata.lora);
       }
     }
 
@@ -511,8 +511,8 @@ function extractLorasFromRawMetadata(metadata: any): string[] {
 // Function to extract scheduler from metadata
 function extractScheduler(metadata: ImageMetadata): string {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.scheduler) {
       console.log('🔍 Using normalized metadata for scheduler extraction');
       return normalized.scheduler;
@@ -742,8 +742,8 @@ function extractBoardFromWorkflow(workflow: any): string | null {
 // Function to extract prompt text from metadata
 function extractPrompt(metadata: ImageMetadata): string {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.prompt) {
       console.log('🔍 Using normalized metadata for prompt extraction');
       return normalized.prompt;
@@ -751,8 +751,8 @@ function extractPrompt(metadata: ImageMetadata): string {
   }
 
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
-  if (metadata.parameters && typeof metadata.parameters === 'string') {
-    const a1111Data = parseA1111Metadata(metadata.parameters);
+  if ((metadata as any).parameters && typeof (metadata as any).parameters === 'string') {
+    const a1111Data = parseA1111Metadata((metadata as any).parameters);
     if (a1111Data.prompt) return a1111Data.prompt;
   }
 
@@ -847,8 +847,8 @@ function extractPrompt(metadata: ImageMetadata): string {
 // Function to extract negative prompt text from metadata
 function extractNegativePrompt(metadata: ImageMetadata): string | undefined {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.negativePrompt) {
       console.log('🔍 Using normalized metadata for negative prompt extraction');
       return normalized.negativePrompt;
@@ -956,7 +956,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
     // Add normalized metadata for enhanced filtering
     try {
-      comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
+      (comfyMetadata as any).normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
     } catch (error) {
       console.warn('Failed to parse normalized metadata for ComfyUI:', error);
     }
@@ -965,18 +965,24 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
   } else if (chunks.invokeai_metadata) {
     // InvokeAI format
-    const metadata = JSON.parse(chunks.invokeai_metadata);
-    return metadata as InvokeAIMetadata;
+    const invokeMetadata = JSON.parse(chunks.invokeai_metadata);
+    // Add normalized metadata for enhanced filtering
+    try {
+        (invokeMetadata as any).normalizedMetadata = parseInvokeAIMetadata(invokeMetadata);
+    } catch (error) {
+        console.warn('Failed to parse normalized metadata for InvokeAI:', error);
+    }
+    return invokeMetadata as InvokeAIMetadata;
 
   } else if (chunks.parameters) {
     // Automatic1111 format
-    const a1111Metadata = {
+    const a1111Metadata: Automatic1111Metadata = {
       parameters: chunks.parameters
-    } as Automatic1111Metadata;
+    };
 
     // Add normalized metadata for enhanced filtering
     try {
-      a1111Metadata.normalizedMetadata = parseA1111Metadata(chunks.parameters);
+      (a1111Metadata as any).normalizedMetadata = parseA1111Metadata(chunks.parameters);
     } catch (error) {
       console.warn('Failed to parse normalized metadata for Automatic1111:', error);
     }
@@ -998,7 +1004,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
     // Add normalized metadata for enhanced filtering
     try {
-      comfyMetadata.normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
+      (comfyMetadata as any).normalizedMetadata = parseComfyUIMetadata(comfyMetadata);
     } catch (error) {
       console.warn('Failed to parse normalized metadata for ComfyUI:', error);
     }
@@ -1041,6 +1047,9 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
       // Try to parse as JSON first (for structured metadata like InvokeAI)
       try {
         const parsedMetadata = JSON.parse(metadataText);
+        if (isInvokeAIMetadata(parsedMetadata)) {
+            (parsedMetadata as any).normalizedMetadata = parseInvokeAIMetadata(parsedMetadata);
+        }
         console.log(`✅ Successfully parsed JSON metadata from JPEG ${sourceField}: ${file.name}`);
         return parsedMetadata as ImageMetadata;
       } catch (jsonError) {
@@ -1396,12 +1405,19 @@ export async function processDirectory(
         // Find corresponding thumbnail
         const thumbnailHandle = thumbnailMap.get(fileEntry.handle.name);
         
+        // Extract normalized metadata and move it to the top level
+        const normalizedMetadata = (metadata as any).normalizedMetadata;
+        if (normalizedMetadata) {
+          delete (metadata as any).normalizedMetadata;
+        }
+
         indexedImages.push({
           id: fileEntry.path,
           name: fileEntry.handle.name,
           handle: fileEntry.handle,
           thumbnailHandle,
           metadata,
+          normalizedMetadata,
           metadataString,
           lastModified: file.lastModified,
           models,
@@ -1424,6 +1440,7 @@ export async function processDirectory(
           handle: fileEntry.handle,
           thumbnailHandle,
           metadata,
+          normalizedMetadata,
           metadataString,
           lastModified: file.lastModified,
           models,
@@ -1474,9 +1491,73 @@ export async function processDirectory(
   }
 }
 
+// Function to parse InvokeAI metadata and extract normalized metadata
+function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
+  const result: BaseMetadata = {
+    format: 'invokeai',
+    prompt: '',
+    negativePrompt: '',
+    model: '',
+    width: 0,
+    height: 0,
+    steps: 0,
+    scheduler: '',
+    cfgScale: 0,
+    seed: undefined,
+    loras: [],
+  };
+
+  try {
+    // Extract prompt
+    if (typeof metadata.positive_prompt === 'string') {
+      result.prompt = metadata.positive_prompt;
+    } else if (typeof metadata.prompt === 'string') {
+      result.prompt = metadata.prompt;
+    } else if (Array.isArray(metadata.prompt)) {
+      result.prompt = metadata.prompt.map(p => (typeof p === 'string' ? p : p?.prompt || '')).join(' ');
+    }
+
+    // Extract negative prompt
+    if (typeof metadata.negative_prompt === 'string') {
+      result.negativePrompt = metadata.negative_prompt;
+    }
+
+    // Extract model
+    if (typeof metadata.model === 'string') {
+      result.model = metadata.model.split('/').pop()?.split('\\').pop() || metadata.model;
+    } else if (metadata.model?.model_name) {
+      result.model = metadata.model.model_name;
+    }
+
+
+    // Extract dimensions
+    if (metadata.width && metadata.height) {
+      result.width = metadata.width;
+      result.height = metadata.height;
+    }
+
+    // Extract other parameters
+    result.steps = metadata.steps || 0;
+    result.scheduler = metadata.scheduler || '';
+    result.cfgScale = metadata.cfgScale;
+    result.seed = metadata.seed;
+
+    // Extract LoRAs
+    if (Array.isArray(metadata.loras)) {
+        result.loras = metadata.loras.map((lora: any) => lora.lora.model_name);
+    }
+
+  } catch (error) {
+    console.error('Error parsing InvokeAI metadata:', error);
+  }
+
+  return result;
+}
+
 // Function to parse ComfyUI workflow and extract normalized metadata
 function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   const result: BaseMetadata = {
+    format: 'comfyui',
     prompt: '',
     model: '',
     width: 0,
@@ -1645,7 +1726,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         console.log(`🎯 FOUND SAMPLER NODE: ${nodeId} (${classType})`);
         // Try different input names
         const steps = inputs.steps || inputs.step_count || inputs.num_steps || inputs.steps_count;
-        const cfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value;
+        const cfg = inputs.cfg || inputs.cfgScale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value;
         const seed = inputs.seed || inputs.noise_seed || inputs.seed_value;
         const samplerName = inputs.sampler_name || inputs.sampler || inputs.sampling_method || inputs.method;
 
@@ -1787,7 +1868,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
 
         // Look for common parameter names in any node
         const possibleSteps = inputs.steps || inputs.step_count || inputs.num_steps || inputs.steps_count || inputs.step || inputs.n_steps;
-        const possibleCfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value || inputs.strength;
+        const possibleCfg = inputs.cfg || inputs.cfgScale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value || inputs.strength;
         const possibleSeed = inputs.seed || inputs.noise_seed || inputs.seed_value || inputs.random_seed;
 
         console.log(`🔍 Checking node ${nodeId} (${classType}) for parameters: steps=${possibleSteps}, cfg=${possibleCfg}, seed=${possibleSeed}`);
@@ -1959,6 +2040,7 @@ function determinePromptType(nodeId: string, workflow: any, classType: string): 
 // Function to parse Automatic1111 parameters string and extract normalized metadata
 function parseA1111Metadata(parameters: string): BaseMetadata {
   const result: BaseMetadata = {
+    format: 'automatic1111',
     prompt: '',
     model: '',
     width: 0,
@@ -2056,8 +2138,8 @@ function parseA1111Metadata(parameters: string): BaseMetadata {
 // Function to extract CFG scale from metadata
 function extractCfgScale(metadata: ImageMetadata): number | undefined {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.cfgScale !== undefined && typeof normalized.cfgScale === 'number') {
       console.log('🔍 Using normalized metadata for CFG scale extraction');
       return normalized.cfgScale;
@@ -2070,12 +2152,12 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
   console.log('DEBUG parseA1111 test:', testResult);
 
   // DEBUG: Verificar se metadata.parameters existe
-  console.log('DEBUG metadata.parameters:', metadata.parameters);
-  console.log('DEBUG typeof metadata.parameters:', typeof metadata.parameters);
+  console.log('DEBUG metadata.parameters:', (metadata as any).parameters);
+  console.log('DEBUG typeof metadata.parameters:', typeof (metadata as any).parameters);
 
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
-  if (metadata.parameters && typeof metadata.parameters === 'string') {
-    const a1111Data = parseA1111Metadata(metadata.parameters);
+  if ((metadata as any).parameters && typeof (metadata as any).parameters === 'string') {
+    const a1111Data = parseA1111Metadata((metadata as any).parameters);
     console.log('DEBUG a1111Data:', a1111Data);
     console.log('DEBUG a1111Data.cfgScale:', a1111Data.cfgScale);
     if (a1111Data.cfgScale) return a1111Data.cfgScale;
@@ -2084,7 +2166,7 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
   // Fallback to format-specific extraction
   // Handle InvokeAI metadata
   if (isInvokeAIMetadata(metadata)) {
-    return metadata.cfg_scale;
+    return metadata.cfgScale;
   }
 
   // Handle Automatic1111 metadata
@@ -2139,8 +2221,8 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
 // Function to extract steps from metadata
 function extractSteps(metadata: ImageMetadata): number | undefined {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.steps !== undefined && typeof normalized.steps === 'number') {
       console.log('🔍 Using normalized metadata for steps extraction');
       return normalized.steps;
@@ -2158,8 +2240,8 @@ function extractSteps(metadata: ImageMetadata): number | undefined {
   }
 
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
-  if (metadata.parameters && typeof metadata.parameters === 'string') {
-    const a1111Data = parseA1111Metadata(metadata.parameters);
+  if ((metadata as any).parameters && typeof (metadata as any).parameters === 'string') {
+    const a1111Data = parseA1111Metadata((metadata as any).parameters);
     if (a1111Data.steps) return a1111Data.steps;
   }
 
@@ -2211,8 +2293,8 @@ function extractSteps(metadata: ImageMetadata): number | undefined {
 // Function to extract seed from metadata
 function extractSeed(metadata: ImageMetadata): number | undefined {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.seed !== undefined && typeof normalized.seed === 'number') {
       console.log('🔍 Using normalized metadata for seed extraction');
       return normalized.seed;
@@ -2220,8 +2302,8 @@ function extractSeed(metadata: ImageMetadata): number | undefined {
   }
 
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
-  if (metadata.parameters && typeof metadata.parameters === 'string') {
-    const a1111Data = parseA1111Metadata(metadata.parameters);
+  if ((metadata as any).parameters && typeof (metadata as any).parameters === 'string') {
+    const a1111Data = parseA1111Metadata((metadata as any).parameters);
     if (a1111Data.seed) return a1111Data.seed;
   }
 
@@ -2283,8 +2365,8 @@ function extractSeed(metadata: ImageMetadata): number | undefined {
 // Function to extract dimensions from metadata
 function extractDimensions(metadata: ImageMetadata): string | undefined {
   // First check if normalized metadata is available (faster path)
-  if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
-    const normalized = metadata.normalizedMetadata;
+  if ('normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
+    const normalized = (metadata as any).normalizedMetadata;
     if (normalized.width && normalized.height) {
       console.log('🔍 Using normalized metadata for dimensions extraction');
       return `${normalized.width}x${normalized.height}`;
@@ -2292,8 +2374,8 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
   }
 
   // NOVO: Se tem parameters (ComfyUI com A1111 embarcado), parse com A1111
-  if (metadata.parameters && typeof metadata.parameters === 'string') {
-    const a1111Data = parseA1111Metadata(metadata.parameters);
+  if ((metadata as any).parameters && typeof (metadata as any).parameters === 'string') {
+    const a1111Data = parseA1111Metadata((metadata as any).parameters);
     if (a1111Data.width && a1111Data.height) {
       return `${a1111Data.width}x${a1111Data.height}`;
     }
@@ -2347,4 +2429,4 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
 }
 
 // Export utility functions for use in other modules
-export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseComfyUIMetadata, parseA1111Metadata };
+export { extractPrompt, extractModels, extractLoras, extractScheduler, extractBoard, extractCfgScale, extractSteps, extractSeed, extractDimensions, extractNegativePrompt, parseImageMetadata, parseInvokeAIMetadata, parseComfyUIMetadata, parseA1111Metadata };

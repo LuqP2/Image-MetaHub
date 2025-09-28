@@ -1,4 +1,3 @@
-
 export interface InvokeAIMetadata {
   // Core generation fields
   positive_prompt?: string;
@@ -8,7 +7,7 @@ export interface InvokeAIMetadata {
   height?: number;
   seed?: number;
   steps?: number;
-  cfg_scale?: number;
+  cfgScale?: number;
   cfg_rescale_multiplier?: number;
   scheduler?: string;
   seamless_x?: boolean;
@@ -29,14 +28,12 @@ export interface InvokeAIMetadata {
   prompt?: string | { prompt: string }[];
 
   // Additional fields
-  normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
 
 export interface Automatic1111Metadata {
   parameters: string; // Formatted string containing all generation parameters
   // Additional fields that might be present
-  normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
 
@@ -81,7 +78,6 @@ export interface ComfyUIMetadata {
   workflow?: ComfyUIWorkflow | string; // Can be object or JSON string
   prompt?: ComfyUIPrompt | string; // Can be object or JSON string
   // Additional fields that might be present
-  normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
 
@@ -98,7 +94,7 @@ export interface BaseMetadata {
   height: number;
   seed?: number;
   steps: number;
-  cfg_scale?: number;
+  cfgScale?: number;
   scheduler: string;
   sampler?: string;
   loras?: string[];
