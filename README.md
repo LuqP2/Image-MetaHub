@@ -22,6 +22,7 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 **Advanced Search & Filtering**
 - **Deep Metadata Search:** Full-text search across all PNG metadata including prompts, models, and generation parameters
 - **Precise Filtering:** Filter by Models, LoRAs, Schedulers, image dimensions, and generation steps
+- **Multi-Format Support:** Works with InvokeAI and Automatic1111 generated images
 - **Multi-Selection:** Use `Ctrl+Click` to select multiple images for bulk operations
 
 **Performance & Large Collections**
@@ -62,7 +63,7 @@ npm run dev
 - **Desktop:** Electron with integrated auto-updater
 - **Storage:** IndexedDB for persistent local caching
 - **File Access:** File System Access API (browser) / Node.js filesystem (desktop)
-- **Metadata Support:** InvokeAI PNG metadata format
+- **Metadata Support:** InvokeAI and Automatic1111 PNG metadata formats
 
 For comprehensive technical information, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
@@ -86,7 +87,7 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 - Virtual scrolling for extremely large collections
 
 **Medium-Term**
-- Support for ComfyUI and Automatic1111 metadata formats
+- ComfyUI metadata support
 - Custom tagging system
 - Image comparison view
 

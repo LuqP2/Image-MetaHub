@@ -5,7 +5,7 @@
 **Local Image Browser for InvokeAI** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.7.4
+- **Version**: 1.7.5
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
 - **Desktop**: Electron 38 with auto-updater
@@ -113,8 +113,11 @@ const mockHandle = {
 
 ### 2. **Metadata Extraction System**
 - **PNG Chunk Parsing**: Extracts metadata from PNG tEXt chunks
-- **InvokeAI Format Support**: Parses `invokeai_metadata` JSON
-- **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects
+- **Multi-Format Support**: Parses InvokeAI and Automatic1111 metadata formats
+- **InvokeAI Format Support**: Parses `invokeai_metadata` JSON with workflow data
+- **Automatic1111 Format Support**: Parses "parameters" chunk with generation settings
+- **Universal Parser**: Intelligent format detection based on PNG chunk keywords
+- **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects across all formats
 - **Scheduler Detection**: Automatic scheduler type extraction
 - **Thumbnail Detection**: Automatic mapping of WebP thumbnails to PNG images
 
@@ -193,7 +196,7 @@ interface CacheEntry {
 
 ### Implemented ✅
 - [x] Directory selection and recursive scanning
-- [x] PNG metadata extraction (InvokeAI format)
+- [x] PNG metadata extraction (InvokeAI and Automatic1111 formats)
 - [x] Smart caching with incremental updates and automatic cleanup
 - [x] Full-text search across metadata
 - [x] Model and LoRA filtering
@@ -210,6 +213,11 @@ interface CacheEntry {
 - [x] Image modal with metadata display
 - [x] Pagination and sorting with click-to-edit page numbers
 - [x] Intermediate image filtering
+- [x] Multi-format metadata parser (InvokeAI + Automatic1111)
+- [x] Structured metadata display with organized fields
+- [x] Context menu and keyboard navigation
+- [x] Cross-platform file operations ("Show in Folder")
+- [x] Enhanced UI with export functionality
 
 ### In Progress 🚧
 - [ ] Performance monitoring and analytics
@@ -227,7 +235,6 @@ interface CacheEntry {
 
 ### Medium Term (v1.8)
 - ComfyUI metadata support
-- Automatic1111/WebUI metadata support
 - Custom tag system
 - Image comparison view
 - Favorites/Rating system
