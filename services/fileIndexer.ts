@@ -7,17 +7,13 @@ import { parse } from 'exifr';
 // Function to extract models from metadata
 function extractModels(metadata: ImageMetadata): string[] {
   // Log metadata format detection
-  console.log('🔍 DETECTING METADATA FORMAT:');
-  console.log('  - isInvokeAI:', isInvokeAIMetadata(metadata));
-  console.log('  - isAutomatic1111:', isAutomatic1111Metadata(metadata));
-  console.log('  - isComfyUI:', isComfyUIMetadata(metadata));
-  console.log('  - Raw metadata keys:', Object.keys(metadata));
+  // Debug logging removed for performance - only log errors and critical issues
 
   // First check if normalized metadata is available (faster path)
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.models && Array.isArray(normalized.models)) {
-      console.log('🔍 Using normalized metadata for models extraction');
+      // Debug logging removed for performance
       return normalized.models;
     }
   }
@@ -27,19 +23,19 @@ function extractModels(metadata: ImageMetadata): string[] {
 
   // Handle InvokeAI metadata
   if (isInvokeAIMetadata(metadata)) {
-    console.log('🔍 Processing InvokeAI metadata for models');
+    // Debug logging removed for performance
     return extractModelsFromInvokeAI(metadata);
   }
 
   // Handle Automatic1111 metadata
   if (isAutomatic1111Metadata(metadata)) {
-    console.log('🔍 Processing Automatic1111 metadata for models');
+    // Debug logging removed for performance
     return extractModelsFromAutomatic1111(metadata);
   }
 
   // Handle ComfyUI metadata
   if (isComfyUIMetadata(metadata)) {
-    console.log('🔍 Processing ComfyUI metadata for models');
+    // Debug logging removed for performance
     return extractModelsFromComfyUI(metadata);
   }
 
@@ -47,7 +43,7 @@ function extractModels(metadata: ImageMetadata): string[] {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction');
+    // Debug logging removed for performance
     if (normalized.models && Array.isArray(normalized.models)) {
       return normalized.models;
     }
@@ -58,7 +54,7 @@ function extractModels(metadata: ImageMetadata): string[] {
   }
 
   // Fallback: try to extract from raw metadata for unknown formats
-  console.log('⚠️ Unknown metadata format for models, attempting fallback extraction');
+  // Debug logging removed for performance
   return extractModelsFromRawMetadata(metadata);
 }
 
@@ -266,7 +262,7 @@ function extractLoras(metadata: ImageMetadata): string[] {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.loras && Array.isArray(normalized.loras)) {
-      console.log('🔍 Using normalized metadata for LoRA extraction');
+      // Debug logging removed for performance
       return normalized.loras;
     }
   }
@@ -290,7 +286,7 @@ function extractLoras(metadata: ImageMetadata): string[] {
   }
 
   // Fallback: try to extract from raw metadata for unknown formats
-  console.log('⚠️ Unknown metadata format for LoRAs, attempting fallback extraction');
+  // Debug logging removed for performance
   return extractLorasFromRawMetadata(metadata);
 }
 
@@ -514,7 +510,7 @@ function extractScheduler(metadata: ImageMetadata): string {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.scheduler) {
-      console.log('🔍 Using normalized metadata for scheduler extraction');
+      // Debug logging removed for performance
       return normalized.scheduler;
     }
   }
@@ -536,7 +532,7 @@ function extractScheduler(metadata: ImageMetadata): string {
   }
 
   // Fallback: try to extract from raw metadata for unknown formats
-  console.log('⚠️ Unknown metadata format for scheduler, attempting fallback extraction');
+  // Debug logging removed for performance
   return extractSchedulerFromRawMetadata(metadata);
 }
 
@@ -745,7 +741,7 @@ function extractPrompt(metadata: ImageMetadata): string {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.prompt) {
-      console.log('🔍 Using normalized metadata for prompt extraction');
+      // Debug logging removed for performance
       return normalized.prompt;
     }
   }
@@ -835,7 +831,7 @@ function extractPrompt(metadata: ImageMetadata): string {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for prompt');
+    // Debug logging removed for performance
     if (normalized.prompt && typeof normalized.prompt === 'string') {
       return normalized.prompt;
     }
@@ -850,7 +846,7 @@ function extractNegativePrompt(metadata: ImageMetadata): string | undefined {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.negativePrompt) {
-      console.log('🔍 Using normalized metadata for negative prompt extraction');
+      // Debug logging removed for performance
       return normalized.negativePrompt;
     }
   }
@@ -862,7 +858,7 @@ function extractNegativePrompt(metadata: ImageMetadata): string | undefined {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for negativePrompt');
+    // Debug logging removed for performance
     if (normalized.negativePrompt && typeof normalized.negativePrompt === 'string') {
       return normalized.negativePrompt;
     }
@@ -907,13 +903,12 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
 
-      // DEBUG: Log all tEXt chunks found
-      console.log(`📄 PNG chunk found: ${keyword} (length: ${text?.length || 0})`);
+      // Debug logging removed for performance
 
       // Collect relevant metadata chunks
       if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
         chunks[keyword] = text;
-        console.log(`✅ Collected chunk: ${keyword}`);
+        // Debug logging removed for performance
       }
     }
 
@@ -930,16 +925,10 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
   // 3. parameters → Automatic1111
   // 4. prompt only → ComfyUI
 
-  console.log('🔍 Determining format from chunks:', Object.keys(chunks));
-  console.log('🔍 Chunk details:', {
-    hasWorkflow: !!chunks.workflow,
-    hasInvokeAI: !!chunks.invokeai_metadata,
-    hasParameters: !!chunks.parameters,
-    hasPrompt: !!chunks.prompt
-  });
+  // Debug logging removed for performance
 
   if (chunks.workflow) {
-    console.log('🔍 Detected ComfyUI format (workflow chunk present)');
+    // Debug logging removed for performance
     // ComfyUI format (highest priority)
     let workflowData: any;
     let promptData: any = null;
@@ -965,14 +954,9 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
     // Add normalized metadata for enhanced filtering
     try {
-      console.log('🔍 Creating normalized metadata for ComfyUI...');
+      // Debug logging removed for performance
       const normalized = parseComfyUIMetadata(comfyMetadata);
-      console.log('✅ Normalized metadata created for ComfyUI:', {
-        hasPrompt: !!normalized.prompt,
-        hasModel: !!normalized.model,
-        models: normalized.models,
-        loras: normalized.loras
-      });
+      // Debug logging removed for performance
       comfyMetadata.normalizedMetadata = normalized;
     } catch (error) {
       console.warn('Failed to parse normalized metadata for ComfyUI:', error);
@@ -981,20 +965,15 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return comfyMetadata;
 
   } else if (chunks.invokeai_metadata) {
-    console.log('🔍 Detected InvokeAI format (invokeai_metadata chunk present)');
+    // Debug logging removed for performance
     // InvokeAI format
     const metadata = JSON.parse(chunks.invokeai_metadata) as InvokeAIMetadata;
 
     // Add normalized metadata for enhanced filtering
     try {
-      console.log('🔍 Creating normalized metadata for InvokeAI...');
+      // Debug logging removed for performance
       const normalized = parseInvokeAIMetadata(metadata);
-      console.log('✅ Normalized metadata created:', {
-        hasPrompt: !!normalized.prompt,
-        hasModel: !!normalized.model,
-        models: normalized.models,
-        loras: normalized.loras
-      });
+      // Debug logging removed for performance
       metadata.normalizedMetadata = normalized;
     } catch (error) {
       console.warn('Failed to parse normalized metadata for InvokeAI:', error);
@@ -1003,7 +982,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return metadata;
 
   } else if (chunks.parameters) {
-    console.log('🔍 Detected Automatic1111 format (parameters chunk present)');
+    // Debug logging removed for performance
     // Automatic1111 format
     const a1111Metadata = {
       parameters: chunks.parameters
@@ -1019,7 +998,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
     return a1111Metadata;
 
   } else if (chunks.prompt) {
-    console.log('🔍 Detected ComfyUI format (prompt-only chunk present)');
+    // Debug logging removed for performance
     // ComfyUI prompt-only format
     let promptData: any;
     try {
@@ -1047,7 +1026,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageM
 
 // Parse JPEG metadata from EXIF data
 async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<ImageMetadata | null> {
-  console.log(`� Processing JPEG file: ${file.name}`);
+  // Debug logging removed for performance
 
   try {
     // Use exifr to extract EXIF data
@@ -1056,7 +1035,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
       pick: ['UserComment', 'ImageDescription', 'Description', 'XPComment', 'XPTitle']
     });
 
-    console.log(`🔍 EXIF data extracted for ${file.name}:`, exifData);
+    // Debug logging removed for performance
 
     let metadataText = null;
     let sourceField = null;
@@ -1068,7 +1047,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
       if (exifData && exifData[field] && typeof exifData[field] === 'string' && exifData[field].trim()) {
         metadataText = exifData[field].trim();
         sourceField = field;
-        console.log(`📝 Found metadata in ${field} field for ${file.name}: ${metadataText.substring(0, 100)}...`);
+        // Debug logging removed for performance
         break;
       }
     }
@@ -1077,7 +1056,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
       // Try to parse as JSON first (for structured metadata like InvokeAI)
       try {
         const parsedMetadata = JSON.parse(metadataText) as InvokeAIMetadata;
-        console.log(`✅ Successfully parsed JSON metadata from JPEG ${sourceField}: ${file.name}`);
+        // Debug logging removed for performance
 
         // Check if it's InvokeAI and normalize it
         if (isInvokeAIMetadata(parsedMetadata)) {
@@ -1090,23 +1069,23 @@ async function parseJPEGMetadata(buffer: ArrayBuffer, file: File): Promise<Image
 
         return parsedMetadata;
       } catch (jsonError) {
-        console.log(`🔄 JSON parsing failed for ${file.name}, trying A1111 format...`);
+        // Debug logging removed for performance
 
         // If not JSON, try to parse as Automatic1111 format
         try {
           const normalized = parseA1111Metadata(metadataText);
-          console.log(`✅ Successfully parsed A1111 metadata from JPEG ${sourceField}: ${file.name}`);
+          // Debug logging removed for performance
           return {
             parameters: metadataText,
             normalizedMetadata: normalized
           } as Automatic1111Metadata;
         } catch (a1111Error) {
-          console.log(`⚠️ Could not parse metadata format in JPEG ${sourceField}: ${file.name}`, a1111Error);
+          // Debug logging removed for performance
           return null;
         }
       }
     } else {
-      console.log(`❌ No metadata found in EXIF fields for JPEG: ${file.name}`);
+      // Debug logging removed for performance
       return null;
     }
   } catch (error) {
@@ -1123,17 +1102,17 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
 
     // Check if it's a PNG file
     if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
-      console.log(`🖼️ Detected PNG format for: ${file.name}`);
+      // Debug logging removed for performance
       return parsePNGMetadata(buffer, file);
     }
 
     // Check if it's a JPEG file
     if (view.getUint16(0) === 0xFFD8) {
-      console.log(`�️ Detected JPEG format for: ${file.name}`);
+      // Debug logging removed for performance
       return parseJPEGMetadata(buffer, file);
     }
 
-    console.log(`❓ Unknown file format for: ${file.name} (first 4 bytes: ${view.getUint32(0).toString(16)})`);
+    // Debug logging removed for performance
     return null; // Not a supported image format
   } catch (error) {
     console.error(`Failed to parse metadata for ${file.name}:`, error);
@@ -1151,10 +1130,7 @@ export async function getFileHandlesRecursive(
   // IMPROVED: Add Electron detection and handling like in App.tsx
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
-  console.log('🔧 getFileHandlesRecursive called for Electron:', isElectron);
-  console.log('🔧 window.electronAPI exists:', typeof (window as any).electronAPI !== 'undefined');
-  console.log('🔧 listDirectoryFiles is function:', typeof (window as any).electronAPI?.listDirectoryFiles === 'function');
-  console.log('🔧 electronAPI keys:', (window as any).electronAPI ? Object.keys((window as any).electronAPI) : 'N/A');
+  // Debug logging removed for performance
 
   if (isElectron) {
     try {
@@ -1179,7 +1155,7 @@ export async function getFileHandlesRecursive(
       }
 
       if (result.success && result.files) {
-        console.log('✅ Found', result.files.length, 'files in Electron directory');
+        // Debug logging removed for performance
 
         for (const fileInfo of result.files) {
           // Create a mock file handle for Electron
@@ -1235,7 +1211,7 @@ export async function getFileHandlesRecursive(
     }
   } else {
     // Use browser File System Access API
-    console.log('🌐 Using browser File System Access API in getFileHandlesRecursive');
+    // Debug logging removed for performance
     try {
       for await (const entry of dirHandle.values()) {
         const newPath = path ? `${path}/${entry.name}` : entry.name;
@@ -1297,18 +1273,12 @@ export async function processDirectory(
   specificFiles?: { handle: FileSystemFileHandle; path: string }[],
   directoryName?: string
 ): Promise<IndexedImage[]> {
-  console.log('🔧 processDirectory called with handle:', {
-    name: directoryHandle.name,
-    kind: directoryHandle.kind,
-    hasGetDirectoryHandle: typeof (directoryHandle as any).getDirectoryHandle === 'function',
-    hasValues: typeof (directoryHandle as any).values === 'function',
-    hasEntries: typeof (directoryHandle as any).entries === 'function'
-  });
+  // Debug logging removed for performance
 
   try {
-    console.log('🔧 About to call getFileHandlesRecursive...');
+    // Debug logging removed for performance
     const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
-    console.log(`📂 Found ${allFileEntries.length} total files in directory`);
+    // Debug logging removed for performance
 
     const imageFiles = allFileEntries.filter(entry => {
       const name = entry.handle.name.toLowerCase();
@@ -1316,18 +1286,18 @@ export async function processDirectory(
       const isIntermediate = isIntermediateImage(entry.handle.name);
 
       if (isImageFile && !isIntermediate) {
-        console.log(`✅ Including image file: ${entry.handle.name}`);
+        // Debug logging removed for performance
         return true;
       } else if (isImageFile && isIntermediate) {
-        console.log(`⏭️ Skipping intermediate image file: ${entry.handle.name}`);
+        // Debug logging removed for performance
         return false;
       } else {
-        console.log(`⏭️ Skipping non-image file: ${entry.handle.name}`);
+        // Debug logging removed for performance
         return false;
       }
     });
 
-    console.log(`🖼️ Filtered to ${imageFiles.length} valid image files (.png, .jpg, .jpeg)`);
+    // Debug logging removed for performance
 
     // Try to find thumbnails directory
     let thumbnailsDir: FileSystemDirectoryHandle | null = null;
@@ -1342,11 +1312,11 @@ export async function processDirectory(
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
         if (electronPath) {
           const thumbnailsPath = electronPath + '/thumbnails';
-          console.log('🔧 Attempting to list thumbnails in Electron:', thumbnailsPath);
+          // Debug logging removed for performance
 
           const result = await window.electronAPI.listDirectoryFiles(thumbnailsPath);
           if (result.success && result.files) {
-            console.log('🔧 Found', result.files.length, 'files in thumbnails directory');
+            // Debug logging removed for performance
 
             for (const fileInfo of result.files) {
               if (fileInfo.name.toLowerCase().endsWith('.webp')) {
@@ -1379,20 +1349,20 @@ export async function processDirectory(
               }
             }
           } else {
-            console.log('🔧 Thumbnails directory not found or empty in Electron');
+            // Debug logging removed for performance
           }
         }
       } catch (error) {
-        console.log('🔧 Error accessing thumbnails in Electron:', error.message);
+        // Debug logging removed for performance
       }
     } else {
       // Browser environment - use File System Access API
       try {
-        console.log('🔧 Attempting to get thumbnails directory in browser...');
+        // Debug logging removed for performance
         thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
-        console.log('🔧 Thumbnails directory found in browser');
+        // Debug logging removed for performance
       } catch (error) {
-        console.log('🔧 Thumbnails directory not found in browser (expected):', error.message);
+        // Debug logging removed for performance
       }
 
       // Get thumbnail files if directory exists
@@ -1485,7 +1455,7 @@ export async function processDirectory(
     return true;
   });
 
-  console.log(`✅ Processed ${uniqueImages.length} unique images (${indexedImages.length - uniqueImages.length} duplicates removed)`);
+  // Debug logging removed for performance
 
   return uniqueImages;
   } catch (error) {
@@ -1516,18 +1486,13 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     let workflow: any = metadata.workflow;
     let prompt: any = metadata.prompt;
 
-    console.log('🔍 Parsing ComfyUI metadata:', {
-      hasWorkflow: !!workflow,
-      hasPrompt: !!prompt,
-      workflowType: typeof workflow,
-      promptType: typeof prompt
-    });
+    // Debug logging removed for performance
 
     // Parse workflow if it's a string
     if (typeof workflow === 'string') {
       try {
         workflow = JSON.parse(workflow);
-        console.log('✅ Parsed workflow JSON successfully');
+        // Debug logging removed for performance
       } catch (error) {
         console.warn('❌ Failed to parse ComfyUI workflow string:', error);
         return result;
@@ -1538,7 +1503,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     if (typeof prompt === 'string') {
       try {
         prompt = JSON.parse(prompt);
-        console.log('✅ Parsed prompt JSON successfully');
+        // Debug logging removed for performance
       } catch (error) {
         console.warn('❌ Failed to parse ComfyUI prompt string:', error);
         return result;
@@ -1552,15 +1517,10 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       return result;
     }
 
-    console.log('🔍 Processing ComfyUI data source with', Object.keys(dataSource).length, 'nodes');
+    // Debug logging removed for performance
 
     // DEBUG: Log first few nodes to understand structure
-    const firstFewNodes = Object.entries(dataSource).slice(0, 3);
-    console.log('🔍 First few nodes structure:');
-    firstFewNodes.forEach(([nodeId, nodeData]) => {
-      const node = nodeData as any;
-      console.log(`  Node ${nodeId}: class_type=${node.class_type}, type=${node.type}, inputs keys:`, Object.keys(node.inputs || {}));
-    });
+    // Debug logging removed for performance
 
     // Log all node types found for debugging
     const nodeTypes = new Set<string>();
@@ -1571,8 +1531,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       if (classType) nodeTypes.add(classType);
       allNodes.push({ id: nodeId, type: classType, inputs: Object.keys(node.inputs || {}) });
     }
-    console.log('🔍 Found node types in workflow:', Array.from(nodeTypes));
-    console.log('🔍 All nodes summary:', allNodes);
+    // Debug logging removed for performance
 
     // Extract data from nodes - handle both workflow format (with class_type) and prompt format
     for (const [nodeId, nodeData] of Object.entries(dataSource)) {
@@ -1583,7 +1542,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       const classType = node.class_type || node.type || '';
       const inputs = node.inputs || {};
 
-      console.log(`🔍 Processing node ${nodeId}: ${classType} with inputs:`, Object.keys(inputs));
+      // Debug logging removed for performance
 
       // Check if this node matches sampler criteria
       const isSamplerNode = classType.toLowerCase().includes('sampler') ||
@@ -1606,7 +1565,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
           classType.toLowerCase().includes('sample');
 
       if (isSamplerNode) {
-        console.log(`🎯 FOUND SAMPLER NODE: ${nodeId} (${classType})`);
+        // Debug logging removed for performance
       }
 
       // Extract model from various checkpoint loader nodes
@@ -1618,7 +1577,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         const ckptName = inputs.ckpt_name || inputs.checkpoint || inputs.model_name;
         if (ckptName && typeof ckptName === 'string') {
           result.models.push(ckptName);
-          console.log(`✅ Found model: ${ckptName}`);
+          // Debug logging removed for performance
         }
       }
 
@@ -1630,7 +1589,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         const loraName = inputs.lora_name || inputs.lora || inputs.name;
         if (loraName && typeof loraName === 'string') {
           result.loras.push(loraName);
-          console.log(`✅ Found LoRA: ${loraName}`);
+          // Debug logging removed for performance
         }
       }
 
@@ -1650,10 +1609,10 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
                            text.toLowerCase().includes('negative');
           if (isNegative && !result.negativePrompt) {
             result.negativePrompt = text;
-            console.log(`✅ Found negative prompt: ${text.substring(0, 50)}...`);
+            // Debug logging removed for performance
           } else if (!isNegative && !result.prompt) {
             result.prompt = text;
-            console.log(`✅ Found positive prompt: ${text.substring(0, 50)}...`);
+            // Debug logging removed for performance
           }
         }
       }
@@ -1677,86 +1636,85 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
           classType === 'SamplerLCM' ||
           classType.toLowerCase().includes('ksampler') ||
           classType.toLowerCase().includes('sample')) {
-        console.log(`🎯 FOUND SAMPLER NODE: ${nodeId} (${classType})`);
+        // Debug logging removed for performance
         // Try different input names
         const steps = inputs.steps || inputs.step_count || inputs.num_steps || inputs.steps_count;
         const cfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value;
         const seed = inputs.seed || inputs.noise_seed || inputs.seed_value;
         const samplerName = inputs.sampler_name || inputs.sampler || inputs.sampling_method || inputs.method;
 
-        console.log(`🔍 Found sampler node ${nodeId} (${classType}) with inputs:`, inputs);
+        // Debug logging removed for performance
 
         // Check if inputs are strings that need parsing
         if (typeof steps === 'string') {
           const parsedSteps = parseInt(steps, 10);
           if (!isNaN(parsedSteps) && parsedSteps > 0) {
             result.steps = parsedSteps;
-            console.log(`✅ Found steps (from string): ${parsedSteps}`);
+            // Debug logging removed for performance
           }
         } else if (typeof steps === 'number' && steps > 0) {
           result.steps = steps;
-          console.log(`✅ Found steps: ${steps}`);
+          // Debug logging removed for performance
         } else {
-          console.log(`❌ Steps not found or invalid: ${steps} (type: ${typeof steps})`);
+          // Debug logging removed for performance
         }
 
         if (typeof cfg === 'string') {
           const parsedCfg = parseFloat(cfg);
           if (!isNaN(parsedCfg) && parsedCfg > 0) {
             result.cfgScale = parsedCfg;
-            console.log(`✅ Found CFG scale (from string): ${parsedCfg}`);
+            // Debug logging removed for performance
           }
         } else if (typeof cfg === 'number' && cfg > 0) {
           result.cfgScale = cfg;
-          console.log(`✅ Found CFG scale: ${cfg}`);
+          // Debug logging removed for performance
         } else {
-          console.log(`❌ CFG scale not found or invalid: ${cfg} (type: ${typeof cfg})`);
+          // Debug logging removed for performance
         }
 
         if (seed !== undefined && seed !== null) {
           let seedValue: number;
           if (Array.isArray(seed)) {
             // Handle seed references like ["46", 0] - these point to other nodes
-            console.log(`🎯 Seed is array reference: ${JSON.stringify(seed)} - skipping for now`);
+            // Debug logging removed for performance
             // For now, skip array references - we'll look for actual seed values elsewhere
           } else if (typeof seed === 'string') {
             seedValue = parseInt(seed, 10);
             if (!isNaN(seedValue) && seedValue >= 0) {
               result.seed = seedValue;
-              console.log(`✅ Found seed (from string): ${result.seed}`);
+              // Debug logging removed for performance
             }
           } else if (typeof seed === 'number') {
             if (seed >= 0) {
               result.seed = seed;
-              console.log(`✅ Found seed: ${result.seed}`);
+              // Debug logging removed for performance
             }
           } else {
-            console.log(`❌ Seed invalid type: ${typeof seed} = ${seed}`);
+            // Debug logging removed for performance
           }
         } else {
-          console.log(`❌ Seed not found in inputs`);
+          // Debug logging removed for performance
         }
         if (samplerName && typeof samplerName === 'string') {
           result.scheduler = samplerName;
-          console.log(`✅ Found sampler: ${samplerName}`);
+          // Debug logging removed for performance
         } else if (inputs.scheduler && typeof inputs.scheduler === 'string') {
           result.scheduler = inputs.scheduler;
-          console.log(`✅ Found scheduler: ${inputs.scheduler}`);
+          // Debug logging removed for performance
         } else {
-          console.log(`❌ Sampler name not found`);
+          // Debug logging removed for performance
         }
       }
 
       // Look for seed values in any node (including Seed Everywhere nodes)
       if (classType.toLowerCase().includes('seed') || classType === 'Seed Everywhere' || classType === 'Random Seed') {
-        console.log(`🎯 FOUND SEED NODE: ${nodeId} (${classType})`);
-        console.log(`🎯 SEED NODE INPUTS:`, JSON.stringify(inputs, null, 2));
+        // Debug logging removed for performance
 
         // Look for seed values in inputs
         for (const [key, value] of Object.entries(inputs)) {
           if (key.toLowerCase().includes('seed') && typeof value === 'number' && value > 0 && !result.seed) {
             result.seed = value;
-            console.log(`✅ Found seed in ${key}: ${value}`);
+            // Debug logging removed for performance
             break;
           }
         }
@@ -1774,22 +1732,22 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         const width = inputs.width || inputs.image_width || inputs.size_width || inputs.w || inputs.x;
         const height = inputs.height || inputs.image_height || inputs.size_height || inputs.h || inputs.y;
 
-        console.log(`🔍 Found dimension node ${nodeId} (${classType}) with inputs:`, inputs);
+        // Debug logging removed for performance
 
         if (typeof width === 'number' && width > 0) {
           result.width = width;
-          console.log(`✅ Found width: ${width}`);
+          // Debug logging removed for performance
         }
         if (typeof height === 'number' && height > 0) {
           result.height = height;
-          console.log(`✅ Found height: ${height}`);
+          // Debug logging removed for performance
         }
       }
     }
 
     // Fallback: if no prompts found, look for any text inputs
     if (!result.prompt && !result.negativePrompt) {
-      console.log('🔍 No prompts found through node analysis, trying fallback extraction');
+      // Debug logging removed for performance
       for (const [nodeId, nodeData] of Object.entries(dataSource)) {
         const node = nodeData as any;
         const inputs = node.inputs || {};
@@ -1800,12 +1758,12 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
               text.includes('worst') || text.includes('low quality') || text.includes('bad')) {
             if (!result.negativePrompt) {
               result.negativePrompt = inputs.text;
-              console.log(`✅ Fallback negative prompt: ${inputs.text.substring(0, 50)}...`);
+              // Debug logging removed for performance
             }
           } else {
             if (!result.prompt) {
               result.prompt = inputs.text;
-              console.log(`✅ Fallback positive prompt: ${inputs.text.substring(0, 50)}...`);
+              // Debug logging removed for performance
             }
           }
         }
@@ -1814,7 +1772,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
 
     // Additional fallback: look for numeric parameters in any node that might contain generation settings
     if ((result.steps === 0 || result.cfgScale === 0) && !result.seed) {
-      console.log('🔍 Looking for numeric parameters in any node');
+      // Debug logging removed for performance
       for (const [nodeId, nodeData] of Object.entries(dataSource)) {
         const node = nodeData as any;
         const inputs = node.inputs || {};
@@ -1825,28 +1783,28 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         const possibleCfg = inputs.cfg || inputs.cfg_scale || inputs.guidance_scale || inputs.scale || inputs.guidance || inputs.cfg_value || inputs.strength;
         const possibleSeed = inputs.seed || inputs.noise_seed || inputs.seed_value || inputs.random_seed;
 
-        console.log(`🔍 Checking node ${nodeId} (${classType}) for parameters: steps=${possibleSteps}, cfg=${possibleCfg}, seed=${possibleSeed}`);
+        // Debug logging removed for performance
 
         if (typeof possibleSteps === 'string') {
           const parsed = parseInt(possibleSteps, 10);
           if (!isNaN(parsed) && parsed > 0 && parsed < 200 && result.steps === 0) {
             result.steps = parsed;
-            console.log(`✅ Found steps in node ${nodeId} (${classType}): ${parsed}`);
+            // Debug logging removed for performance
           }
         } else if (typeof possibleSteps === 'number' && possibleSteps > 0 && possibleSteps < 200 && result.steps === 0) {
           result.steps = possibleSteps;
-          console.log(`✅ Found steps in node ${nodeId} (${classType}): ${possibleSteps}`);
+          // Debug logging removed for performance
         }
 
         if (typeof possibleCfg === 'string') {
           const parsed = parseFloat(possibleCfg);
           if (!isNaN(parsed) && parsed > 0 && parsed < 50 && result.cfgScale === 0) {
             result.cfgScale = parsed;
-            console.log(`✅ Found CFG scale in node ${nodeId} (${classType}): ${parsed}`);
+            // Debug logging removed for performance
           }
         } else if (typeof possibleCfg === 'number' && possibleCfg > 0 && possibleCfg < 50 && result.cfgScale === 0) {
           result.cfgScale = possibleCfg;
-          console.log(`✅ Found CFG scale in node ${nodeId} (${classType}): ${possibleCfg}`);
+          // Debug logging removed for performance
         }
 
         if (possibleSeed !== undefined && possibleSeed !== null && result.seed === undefined) {
@@ -1858,14 +1816,14 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
           }
           if (!isNaN(seedValue) && seedValue >= 0) {
             result.seed = seedValue;
-            console.log(`✅ Found seed in node ${nodeId} (${classType}): ${result.seed}`);
+            // Debug logging removed for performance
           }
         }
       }
     }
 
     // Final comprehensive search: look for any node with generation parameters
-    console.log('🔍 FINAL COMPREHENSIVE SEARCH: Looking for any node with generation parameters');
+    // Debug logging removed for performance
     for (const [nodeId, nodeData] of Object.entries(dataSource)) {
       const node = nodeData as any;
       const inputs = node.inputs || {};
@@ -1876,18 +1834,18 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         const key = inputKey.toLowerCase();
         const value = inputValue;
 
-        console.log(`🔍 Checking input ${inputKey}=${value} (type: ${typeof value}) in node ${nodeId} (${classType})`);
+        // Debug logging removed for performance
 
         // Check for steps
         if ((key.includes('step') || key === 'steps' || key === 'n_steps') && result.steps === 0) {
           if (typeof value === 'number' && value > 0 && value < 200) {
             result.steps = value;
-            console.log(`✅ FOUND STEPS in ${inputKey}: ${value}`);
+            // Debug logging removed for performance
           } else if (typeof value === 'string') {
             const parsed = parseInt(value, 10);
             if (!isNaN(parsed) && parsed > 0 && parsed < 200) {
               result.steps = parsed;
-              console.log(`✅ FOUND STEPS in ${inputKey} (string): ${parsed}`);
+              // Debug logging removed for performance
             }
           }
         }
@@ -1896,12 +1854,12 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         if ((key.includes('cfg') || key.includes('guidance') || key === 'scale' || key === 'strength') && result.cfgScale === 0) {
           if (typeof value === 'number' && value > 0 && value < 50) {
             result.cfgScale = value;
-            console.log(`✅ FOUND CFG in ${inputKey}: ${value}`);
+            // Debug logging removed for performance
           } else if (typeof value === 'string') {
             const parsed = parseFloat(value);
             if (!isNaN(parsed) && parsed > 0 && parsed < 50) {
               result.cfgScale = parsed;
-              console.log(`✅ FOUND CFG in ${inputKey} (string): ${parsed}`);
+              // Debug logging removed for performance
             }
           }
         }
@@ -1910,12 +1868,12 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         if ((key.includes('seed') || key === 'noise_seed') && result.seed === undefined) {
           if (typeof value === 'number' && value >= 0) {
             result.seed = value;
-            console.log(`✅ FOUND SEED in ${inputKey}: ${value}`);
+            // Debug logging removed for performance
           } else if (typeof value === 'string') {
             const parsed = parseInt(value, 10);
             if (!isNaN(parsed) && parsed >= 0) {
               result.seed = parsed;
-              console.log(`✅ FOUND SEED in ${inputKey} (string): ${parsed}`);
+              // Debug logging removed for performance
             }
           }
         }
@@ -1927,20 +1885,7 @@ function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       result.model = result.models[0];
     }
 
-    console.log('✅ ComfyUI metadata parsing complete:', {
-      prompt: result.prompt ? result.prompt.substring(0, 30) + '...' : '',
-      negativePrompt: result.negativePrompt ? result.negativePrompt.substring(0, 30) + '...' : '',
-      model: result.model,
-      models: result.models,
-      loras: result.loras,
-      steps: result.steps,
-      cfgScale: result.cfgScale,
-      seed: result.seed,
-      scheduler: result.scheduler,
-      width: result.width,
-      height: result.height,
-      dimensions: result.width && result.height ? `${result.width}x${result.height}` : 'unknown'
-    });
+    // Debug logging removed for performance
 
   } catch (error) {
     console.error('❌ Failed to parse ComfyUI metadata:', error);
@@ -2105,7 +2050,7 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.cfgScale !== undefined && typeof normalized.cfgScale === 'number') {
-      console.log('🔍 Using normalized metadata for CFG scale extraction');
+      // Debug logging removed for performance
       return normalized.cfgScale;
     }
   }
@@ -2162,7 +2107,7 @@ function extractCfgScale(metadata: ImageMetadata): number | undefined {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for cfgScale');
+    // Debug logging removed for performance
     if (normalized.cfgScale !== undefined && typeof normalized.cfgScale === 'number') {
       return normalized.cfgScale;
     }
@@ -2177,7 +2122,7 @@ function extractSteps(metadata: ImageMetadata): number | undefined {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.steps !== undefined && typeof normalized.steps === 'number') {
-      console.log('🔍 Using normalized metadata for steps extraction');
+      // Debug logging removed for performance
       return normalized.steps;
     }
   }
@@ -2186,7 +2131,7 @@ function extractSteps(metadata: ImageMetadata): number | undefined {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for steps');
+    // Debug logging removed for performance
     if (normalized.steps !== undefined && typeof normalized.steps === 'number') {
       return normalized.steps;
     }
@@ -2249,7 +2194,7 @@ function extractSeed(metadata: ImageMetadata): number | undefined {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.seed !== undefined && typeof normalized.seed === 'number') {
-      console.log('🔍 Using normalized metadata for seed extraction');
+      // Debug logging removed for performance
       return normalized.seed;
     }
   }
@@ -2306,7 +2251,7 @@ function extractSeed(metadata: ImageMetadata): number | undefined {
   // it might be a cached ComfyUI image. Try to extract from normalizedMetadata directly
   if (metadata && typeof metadata === 'object' && 'normalizedMetadata' in metadata && (metadata as any).normalizedMetadata) {
     const normalized = (metadata as any).normalizedMetadata;
-    console.log('🔍 No format detected but have normalizedMetadata - trying ComfyUI extraction for seed');
+    // Debug logging removed for performance
     if (normalized.seed !== undefined && typeof normalized.seed === 'number') {
       return normalized.seed;
     }
@@ -2321,7 +2266,7 @@ function extractDimensions(metadata: ImageMetadata): string | undefined {
   if ('normalizedMetadata' in metadata && metadata.normalizedMetadata) {
     const normalized = metadata.normalizedMetadata;
     if (normalized.width && normalized.height) {
-      console.log('🔍 Using normalized metadata for dimensions extraction');
+      // Debug logging removed for performance
       return `${normalized.width}x${normalized.height}`;
     }
   }

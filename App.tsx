@@ -334,7 +334,7 @@ export default function App() {
       return fileHandlesCache.current.get(cacheKey)!;
     }
 
-    console.log('🔍 Scanning directory for files, cache miss for:', cacheKey);
+    // Debug logging removed for performance
 
     const entries = [];
     const dirHandle = directoryHandle as any;
@@ -342,12 +342,7 @@ export default function App() {
     // IMPROVED: More robust Electron detection with multiple checks
     const isElectron = typeof window !== 'undefined' && window.electronAPI;
     
-    console.log('🔧 getAllFileHandles called for Electron:', isElectron);
-    console.log('🔧 directoryHandle type:', typeof directoryHandle);
-    console.log('🔧 directoryHandle properties:', Object.keys(directoryHandle || {}));
-    console.log('🔧 window.electronAPI exists:', !!window.electronAPI);
-    console.log('🔧 window.electronAPI.listDirectoryFiles exists:', !!(window.electronAPI && typeof window.electronAPI.listDirectoryFiles === 'function'));
-    console.log('🔧 electronAPI keys:', window.electronAPI ? Object.keys(window.electronAPI) : 'N/A');
+    // Debug logging removed for performance
     if (isElectron) {
       try {
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
@@ -371,7 +366,7 @@ export default function App() {
         }
         
         if (result.success && result.files) {
-          console.log('✅ Found', result.files.length, 'PNG files in Electron directory');
+          // Debug logging removed for performance
           
           for (const fileInfo of result.files) {
             // Create a mock file handle for Electron
@@ -431,7 +426,7 @@ export default function App() {
       }
     } else {
       // Use browser File System Access API
-      console.log('🌐 Using browser File System Access API (fallback)');
+      // Debug logging removed for performance
       try {
         for await (const entry of dirHandle.values()) {
           const newPath = path ? `${path}/${entry.name}` : entry.name;
@@ -440,9 +435,9 @@ export default function App() {
             const name = entry.name.toLowerCase();
             if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
               entries.push({handle: entry, path: newPath});
-              console.log(`✅ Browser: Including image file: ${entry.name}`);
+              // Debug logging removed for performance
             } else {
-              console.log(`⏭️ Browser: Skipping non-image file: ${entry.name}`);
+              // Debug logging removed for performance
             }
           } else if (entry.kind === 'directory') {
             entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
@@ -479,7 +474,7 @@ export default function App() {
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
         if (electronPath) {
           const thumbnailsPath = electronPath + '/thumbnails';
-          console.log('🔧 Attempting to list thumbnails in Electron for reconstruction:', thumbnailsPath);
+          // Debug logging removed for performance
           
           const result = await window.electronAPI.listDirectoryFiles(thumbnailsPath);
           if (result.success && result.files) {
@@ -563,11 +558,7 @@ export default function App() {
           continue; // Skip this image
         }
         
-        console.log(`🔄 RECONSTRUCTING: ${metadata.name}`);
-        console.log(`   - File exists: ${!!fileHandle}`);
-        console.log(`   - Thumbnail exists: ${!!thumbnailHandle}`);
-        console.log(`   - Metadata keys:`, Object.keys(parsedMetadata));
-        console.log(`   - Has normalizedMetadata:`, !!parsedMetadata.normalizedMetadata);
+        // Debug logging removed for performance
         
         // Use normalized metadata if available, otherwise extract from raw metadata
         // For ComfyUI and InvokeAI images, always re-extract to ensure latest parsing logic is used
@@ -587,11 +578,7 @@ export default function App() {
         const seed = forceReExtract ? extractSeed(parsedMetadata) : (normalized?.seed ?? extractSeed(parsedMetadata));
         const dimensions = forceReExtract ? extractDimensionsFromMetadata(parsedMetadata) : (normalized ? `${normalized.width || 0}x${normalized.height || 0}` : extractDimensionsFromMetadata(parsedMetadata));
         
-        console.log(`   - Using normalized metadata:`, !!normalized);
-        console.log(`   - Extracted models:`, models);
-        console.log(`   - Extracted loras:`, loras);
-        console.log(`   - Extracted scheduler:`, scheduler);
-        console.log(`   - Extracted prompt:`, prompt ? prompt.substring(0, 50) + '...' : 'none');
+        // Debug logging removed for performance
         
         reconstructedImages.push({
           id: metadata.id,

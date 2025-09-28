@@ -121,14 +121,6 @@ export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeA
   const notComfyUI = !('workflow' in metadata) && !('prompt' in metadata && typeof metadata.prompt === 'object');
   const notA1111 = !('parameters' in metadata && typeof metadata.parameters === 'string');
 
-  console.log('🔍 isInvokeAIMetadata check:', {
-    hasInvokeAIFields,
-    hasLegacyFields,
-    notComfyUI,
-    notA1111,
-    result: (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111
-  });
-
   return (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111;
 }
 
@@ -154,16 +146,9 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = parsed && typeof parsed === 'object' && parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - workflow string parsed, hasValidStructure:', hasValidStructure);
+      // Debug logging removed for performance
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - parsed workflow.nodes exists:', !!(parsed && parsed.nodes));
-        console.log('🔍 ComfyUI detection - parsed workflow.nodes isArray:', Array.isArray(parsed?.nodes));
-        if (parsed?.nodes && Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
-          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(parsed.nodes[0]));
-          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(parsed.nodes[0]).substring(0, 200));
-        } else {
-          console.log('🔍 ComfyUI detection - workflow content:', JSON.stringify(parsed).substring(0, 200) + '...');
-        }
+        // Debug logging removed for performance
       }
       return hasValidStructure;
     }
@@ -175,9 +160,9 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       )) || Object.values(parsed).some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       ));
-      console.log('🔍 ComfyUI detection - prompt string parsed, hasValidStructure:', hasValidStructure);
+      // Debug logging removed for performance
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - prompt content:', JSON.stringify(parsed).substring(0, 200) + '...');
+        // Debug logging removed for performance
       }
       return hasValidStructure;
     }
@@ -187,14 +172,9 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - workflow object, hasValidStructure:', hasValidStructure);
+      // Debug logging removed for performance
       if (!hasValidStructure) {
-        console.log('🔍 ComfyUI detection - workflow.nodes exists:', !!workflow.nodes);
-        console.log('🔍 ComfyUI detection - workflow.nodes isArray:', Array.isArray(workflow.nodes));
-        if (workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.length > 0) {
-          console.log('🔍 ComfyUI detection - first node keys:', Object.keys(workflow.nodes[0]));
-          console.log('🔍 ComfyUI detection - first node sample:', JSON.stringify(workflow.nodes[0]).substring(0, 200));
-        }
+        // Debug logging removed for performance
       }
       return hasValidStructure;
     }
@@ -203,16 +183,16 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
       const hasValidStructure = Object.values(metadata.prompt).some((node: any) =>
         node && typeof node === 'object' && (node.class_type || node.type)
       );
-      console.log('🔍 ComfyUI detection - prompt object, hasValidStructure:', hasValidStructure);
+      // Debug logging removed for performance
       return hasValidStructure;
     }
   } catch (error) {
     // If parsing fails, it's not valid ComfyUI format
-    console.log('🔍 ComfyUI detection - parsing failed:', error);
+    // Debug logging removed for performance
     return false;
   }
 
-  console.log('🔍 ComfyUI detection - reached end, returning true');
+  // Debug logging removed for performance
   return true;
 }
 
