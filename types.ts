@@ -90,14 +90,18 @@ export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMe
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
+  format: 'invokeai' | 'automatic1111' | 'comfyui' | 'unknown';
   prompt: string;
+  negativePrompt?: string;
   model: string;
   width: number;
   height: number;
   seed?: number;
   steps: number;
-  cfg_scale?: number;
+  cfgScale?: number;
   scheduler: string;
+  sampler?: string;
+  loras?: string[];
   // Additional normalized fields
   [key: string]: any;
 }
