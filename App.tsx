@@ -455,21 +455,77 @@ export default function App() {
     const fileMap = new Map(allFiles.map(f => [f.handle.name, f.handle]));
     
     // Try to find thumbnails directory
-    let thumbnailsDir: FileSystemDirectoryHandle | null = null;
-    try {
-      thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
-    } catch (error) {
-      // Thumbnails directory doesn't exist
-    }
+    let thumbnailMap = new Map<string, FileSystemFileHandle>();
+    
+    // Check if we're in Electron environment
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+    
+    if (isElectron) {
+      // In Electron, use the API to list thumbnail files
+      try {
+        const electronPath = localStorage.getItem('invokeai-electron-directory-path');
+        if (electronPath) {
+          const thumbnailsPath = electronPath + '/thumbnails';
+          console.log('🔧 Attempting to list thumbnails in Electron for reconstruction:', thumbnailsPath);
+          
+          const result = await window.electronAPI.listDirectoryFiles(thumbnailsPath);
+          if (result.success && result.files) {
+            console.log('🔧 Found', result.files.length, 'thumbnail files in Electron');
+            
+            for (const fileInfo of result.files) {
+              if (fileInfo.name.toLowerCase().endsWith('.webp')) {
+                // Create mock thumbnail handle
+                const mockThumbnailHandle = {
+                  name: fileInfo.name,
+                  kind: 'file' as const,
+                  getFile: async () => {
+                    try {
+                      const fullPath = thumbnailsPath + '/' + fileInfo.name;
+                      const fileResult = await window.electronAPI.readFile(fullPath);
+                      if (fileResult.success && fileResult.data) {
+                        // Convert Buffer to Uint8Array then to Blob
+                        const uint8Array = new Uint8Array(fileResult.data);
+                        const blob = new Blob([uint8Array], { type: 'image/webp' });
+                        return blob;
+                      } else {
+                        throw new Error(fileResult.error || 'Failed to read thumbnail file');
+                      }
+                    } catch (error) {
+                      console.error('Failed to read thumbnail file:', error);
+                      throw error;
+                    }
+                  }
+                };
+                
+                // Map thumbnail name to PNG name (remove .webp, add .png)
+                const pngName = fileInfo.name.replace(/\.webp$/i, '.png');
+                thumbnailMap.set(pngName, mockThumbnailHandle as any);
+              }
+            }
+          } else {
+            console.log('🔧 Thumbnails directory not found or empty in Electron for reconstruction');
+          }
+        }
+      } catch (error) {
+        console.log('🔧 Error accessing thumbnails in Electron for reconstruction:', error.message);
+      }
+    } else {
+      // Browser environment - use File System Access API
+      let thumbnailsDir: FileSystemDirectoryHandle | null = null;
+      try {
+        thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
+      } catch (error) {
+        // Thumbnails directory doesn't exist
+      }
 
-    const thumbnailMap = new Map<string, FileSystemFileHandle>();
-    if (thumbnailsDir) {
-      const thumbnailFiles = await getAllFileHandles(thumbnailsDir);
-      const webpFiles = thumbnailFiles.filter(f => f.handle.name.toLowerCase().endsWith('.webp'));
-      
-      for (const thumbFile of webpFiles) {
-        const pngName = thumbFile.handle.name.replace(/\.webp$/i, '.png');
-        thumbnailMap.set(pngName, thumbFile.handle);
+      if (thumbnailsDir) {
+        const thumbnailFiles = await getAllFileHandles(thumbnailsDir);
+        const webpFiles = thumbnailFiles.filter(f => f.handle.name.toLowerCase().endsWith('.webp'));
+        
+        for (const thumbFile of webpFiles) {
+          const pngName = thumbFile.handle.name.replace(/\.webp$/i, '.png');
+          thumbnailMap.set(pngName, thumbFile.handle);
+        }
       }
     }
 
@@ -485,7 +541,15 @@ export default function App() {
       if (fileHandle) {
         const thumbnailHandle = thumbnailMap.get(metadata.name);
         
-        const parsedMetadata = JSON.parse(metadata.metadataString);
+        let parsedMetadata;
+        try {
+          parsedMetadata = JSON.parse(metadata.metadataString);
+        } catch (error) {
+          console.error(`❌ Failed to parse metadata for ${metadata.name}:`, error);
+          console.log('Metadata string:', metadata.metadataString);
+          continue; // Skip this image
+        }
+        
         console.log(`🔄 RECONSTRUCTING: ${metadata.name}`);
         console.log(`   - File exists: ${!!fileHandle}`);
         console.log(`   - Thumbnail exists: ${!!thumbnailHandle}`);
@@ -516,7 +580,20 @@ export default function App() {
       }
     }
     
-    return reconstructedImages;
+    // Remove any duplicates by filename to prevent React key conflicts
+    const seenNames = new Set<string>();
+    const uniqueReconstructedImages = reconstructedImages.filter(image => {
+      if (seenNames.has(image.name)) {
+        console.warn(`⚠️ Duplicate reconstructed image found and removed: ${image.name}`);
+        return false;
+      }
+      seenNames.add(image.name);
+      return true;
+    });
+    
+    console.log(`✅ Reconstructed ${uniqueReconstructedImages.length} unique images from cache (${reconstructedImages.length - uniqueReconstructedImages.length} duplicates removed)`);
+    
+    return uniqueReconstructedImages;
   };
 
   // Function to filter out InvokeAI intermediate images  
@@ -673,14 +750,16 @@ export default function App() {
       localStorage.setItem('invokeai-directory-name', handle.name);
       console.log('🔧 localStorage.setItem completed, handle.name:', handle.name);
 
-      // Initialize cache manager
+      // Initialize cache manager (continue even if it fails)
       console.log('🔧 About to call cacheManager.init()...');
+      let cacheAvailable = true;
       try {
         await cacheManager.init();
         console.log('✅ cacheManager.init() completed');
       } catch (cacheError) {
         console.error('❌ cacheManager.init() failed:', cacheError);
-        throw cacheError;
+        console.log('⚠️ Continuing without cache functionality');
+        cacheAvailable = false;
       }
       
       // Quick count of PNG files to determine if we should use cache
@@ -689,10 +768,21 @@ export default function App() {
       console.log('✅ getAllFileHandles completed, found', allFiles.length, 'files');
       const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
       
-      // Check if we should use cached data
-      const cacheResult = await cacheManager.shouldRefreshCache(handle.name, pngCount);
+      // Check if user might have selected a thumbnails directory by mistake
+      if (pngCount === 0 && handle.name.toLowerCase().includes('thumbnail')) {
+        alert(`⚠️ Warning: You selected the "${handle.name}" directory, which appears to contain only thumbnail files.\n\nPlease select the parent directory that contains your main image files (PNG/JPG/JPEG).\n\nFor InvokeAI, this is usually the directory containing your generated images, not the thumbnails subdirectory.`);
+        setIsLoading(false);
+        return;
+      }
       
-      if (!cacheResult.shouldRefresh) {
+      // Check if we should use cached data (only if cache is available)
+      let useCache = false;
+      if (cacheAvailable) {
+        const cacheResult = await cacheManager.shouldRefreshCache(handle.name, pngCount);
+        useCache = !cacheResult.shouldRefresh;
+      }
+      
+      if (useCache) {
         console.log('✅ USING EXISTING CACHE');
         const cachedData = await cacheManager.getCachedData(handle.name);
         if (cachedData) {
@@ -703,7 +793,7 @@ export default function App() {
           setIsLoading(false);
           return;
         }
-      } else {
+      } else if (cacheAvailable) {
         console.log('🔄 UPDATING CACHE INCREMENTALLY');
         const cachedData = await cacheManager.getCachedData(handle.name);
         
@@ -736,19 +826,18 @@ export default function App() {
           }
         } else {
           console.log('🔄 NO CACHE FOUND, FULL INDEXING');
-          console.log('🔧 About to call processDirectory with handle:', {
-            name: handle.name,
-            kind: handle.kind,
-            hasGetDirectoryHandle: typeof (handle as any).getDirectoryHandle === 'function',
-            hasValues: typeof (handle as any).values === 'function',
-            hasEntries: typeof (handle as any).entries === 'function'
-          });
           const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
           setImages(indexedImages);
           setFilteredImages(indexedImages);
           updateFilterOptions(indexedImages);
           await cacheManager.cacheData(handle.name, indexedImages);
         }
+      } else {
+        console.log('🔄 CACHE NOT AVAILABLE, FULL INDEXING WITHOUT CACHE');
+        const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
+        setImages(indexedImages);
+        setFilteredImages(indexedImages);
+        updateFilterOptions(indexedImages);
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {

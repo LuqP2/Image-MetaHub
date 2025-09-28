@@ -1230,27 +1230,82 @@ export async function processDirectory(
 
     // Try to find thumbnails directory
     let thumbnailsDir: FileSystemDirectoryHandle | null = null;
-    try {
-      console.log('🔧 Attempting to get thumbnails directory...');
-      thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
-      console.log('🔧 Thumbnails directory found');
-    } catch (error) {
-      console.log('🔧 Thumbnails directory not found (expected in Electron):', error.message);
-    }
-
-  // Get thumbnail files if directory exists
-  const thumbnailMap = new Map<string, FileSystemFileHandle>();
-  if (thumbnailsDir) {
-    const thumbnailEntries = await getFileHandlesRecursive(thumbnailsDir);
-    const webpFiles = thumbnailEntries.filter(entry => entry.handle.name.toLowerCase().endsWith('.webp'));
+    let thumbnailMap = new Map<string, FileSystemFileHandle>();
     
-    for (const thumbEntry of webpFiles) {
-      // Map thumbnail name to PNG name (remove .webp, add .png)
-      const pngName = thumbEntry.handle.name.replace(/\.webp$/i, '.png');
-      thumbnailMap.set(pngName, thumbEntry.handle);
+    // Check if we're in Electron environment
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+    
+    if (isElectron) {
+      // In Electron, use the API to list thumbnail files
+      try {
+        const electronPath = localStorage.getItem('invokeai-electron-directory-path');
+        if (electronPath) {
+          const thumbnailsPath = electronPath + '/thumbnails';
+          console.log('🔧 Attempting to list thumbnails in Electron:', thumbnailsPath);
+          
+          const result = await window.electronAPI.listDirectoryFiles(thumbnailsPath);
+          if (result.success && result.files) {
+            console.log('🔧 Found', result.files.length, 'files in thumbnails directory');
+            
+            for (const fileInfo of result.files) {
+              if (fileInfo.name.toLowerCase().endsWith('.webp')) {
+                // Create mock thumbnail handle
+                const mockThumbnailHandle = {
+                  name: fileInfo.name,
+                  kind: 'file' as const,
+                  getFile: async () => {
+                    try {
+                      const fullPath = thumbnailsPath + '/' + fileInfo.name;
+                      const fileResult = await window.electronAPI.readFile(fullPath);
+                      if (fileResult.success && fileResult.data) {
+                        // Convert Buffer to Uint8Array then to Blob
+                        const uint8Array = new Uint8Array(fileResult.data);
+                        const blob = new Blob([uint8Array], { type: 'image/webp' });
+                        return blob;
+                      } else {
+                        throw new Error(fileResult.error || 'Failed to read thumbnail file');
+                      }
+                    } catch (error) {
+                      console.error('Failed to read thumbnail file:', error);
+                      throw error;
+                    }
+                  }
+                };
+                
+                // Map thumbnail name to PNG name (remove .webp, add .png)
+                const pngName = fileInfo.name.replace(/\.webp$/i, '.png');
+                thumbnailMap.set(pngName, mockThumbnailHandle as any);
+              }
+            }
+          } else {
+            console.log('🔧 Thumbnails directory not found or empty in Electron');
+          }
+        }
+      } catch (error) {
+        console.log('🔧 Error accessing thumbnails in Electron:', error.message);
+      }
+    } else {
+      // Browser environment - use File System Access API
+      try {
+        console.log('🔧 Attempting to get thumbnails directory in browser...');
+        thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
+        console.log('🔧 Thumbnails directory found in browser');
+      } catch (error) {
+        console.log('🔧 Thumbnails directory not found in browser (expected):', error.message);
+      }
+
+      // Get thumbnail files if directory exists
+      if (thumbnailsDir) {
+        const thumbnailEntries = await getFileHandlesRecursive(thumbnailsDir);
+        const webpFiles = thumbnailEntries.filter(entry => entry.handle.name.toLowerCase().endsWith('.webp'));
+        
+        for (const thumbEntry of webpFiles) {
+          // Map thumbnail name to PNG name (remove .webp, add .png)
+          const pngName = thumbEntry.handle.name.replace(/\.webp$/i, '.png');
+          thumbnailMap.set(pngName, thumbEntry.handle);
+        }
+      }
     }
-    // console.log removed
-  }
 
   const total = imageFiles.length;
   setProgress({ current: 0, total });
@@ -1263,7 +1318,21 @@ export async function processDirectory(
       const file = await fileEntry.handle.getFile();
       const metadata = await parseImageMetadata(file);
       if (metadata) {
-        const metadataString = JSON.stringify(metadata);
+        // Create metadataString safely, handling non-serializable data
+        let metadataString: string;
+        try {
+          metadataString = JSON.stringify(metadata);
+        } catch (error) {
+          console.warn(`⚠️ Failed to stringify metadata for ${fileEntry.handle.name}, using fallback:`, error);
+          // Fallback: create a minimal serializable version
+          metadataString = JSON.stringify({
+            ...metadata,
+            // Remove any potentially non-serializable properties
+            normalizedMetadata: undefined,
+            workflow: typeof metadata.workflow === 'string' ? metadata.workflow : undefined,
+            prompt: typeof metadata.prompt === 'string' ? metadata.prompt : undefined
+          });
+        }
         const models = extractModels(metadata);
         const loras = extractLoras(metadata);
         const scheduler = extractScheduler(metadata);
@@ -1328,7 +1397,20 @@ export async function processDirectory(
     }
   }
   
-  return indexedImages;
+  // Remove any duplicates by filename to prevent React key conflicts
+  const seenNames = new Set<string>();
+  const uniqueImages = indexedImages.filter(image => {
+    if (seenNames.has(image.name)) {
+      console.warn(`⚠️ Duplicate image found and removed: ${image.name}`);
+      return false;
+    }
+    seenNames.add(image.name);
+    return true;
+  });
+  
+  console.log(`✅ Processed ${uniqueImages.length} unique images (${indexedImages.length - uniqueImages.length} duplicates removed)`);
+  
+  return uniqueImages;
   } catch (error) {
     console.error('❌ Error in processDirectory:', error);
     throw error;

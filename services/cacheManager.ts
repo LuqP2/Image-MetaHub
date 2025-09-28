@@ -21,7 +21,7 @@ interface CacheEntry {
 
 class CacheManager {
   private dbName = 'invokeai-browser-cache';
-  private dbVersion = 1;
+  private dbVersion = 2; // Increased version to handle schema changes
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
@@ -32,7 +32,8 @@ class CacheManager {
 
       request.onerror = () => {
         console.error('❌ IndexedDB open error:', request.error);
-        reject(request.error);
+        // If IndexedDB fails to open, try to delete and recreate it
+        this.handleIndexedDBError(request.error).then(resolve).catch(reject);
       };
       request.onsuccess = () => {
         console.log('✅ IndexedDB opened successfully');
@@ -43,40 +44,81 @@ class CacheManager {
       request.onupgradeneeded = (event) => {
         console.log('🔧 IndexedDB upgrade needed, creating stores...');
         const db = (event.target as IDBOpenDBRequest).result;
-        
-        // Create cache store
-        if (!db.objectStoreNames.contains('cache')) {
-          console.log('🔧 Creating cache store...');
-          const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
-          cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
+
+        // Delete old stores if they exist (for clean upgrade)
+        if (db.objectStoreNames.contains('cache')) {
+          console.log('🔧 Deleting old cache store...');
+          db.deleteObjectStore('cache');
+        }
+        if (db.objectStoreNames.contains('thumbnails')) {
+          console.log('🔧 Deleting old thumbnails store...');
+          db.deleteObjectStore('thumbnails');
         }
 
+        // Create cache store
+        console.log('🔧 Creating cache store...');
+        const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
+        cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
+
         // Create thumbnails store
-        if (!db.objectStoreNames.contains('thumbnails')) {
-          console.log('🔧 Creating thumbnails store...');
-          const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
-        }
+        console.log('🔧 Creating thumbnails store...');
+        const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
         console.log('✅ IndexedDB stores created');
       };
     });
   }
 
+  private async handleIndexedDBError(error: any): Promise<void> {
+    console.log('🔧 Handling IndexedDB error, attempting to reset database...');
+
+    try {
+      // Delete the corrupted database
+      const deleteRequest = indexedDB.deleteDatabase(this.dbName);
+      await new Promise<void>((resolve, reject) => {
+        deleteRequest.onsuccess = () => {
+          console.log('✅ IndexedDB deleted successfully');
+          resolve();
+        };
+        deleteRequest.onerror = () => {
+          console.error('❌ Failed to delete IndexedDB:', deleteRequest.error);
+          reject(deleteRequest.error);
+        };
+      });
+
+      // Try to recreate the database
+      console.log('🔧 Recreating IndexedDB...');
+      return this.init();
+    } catch (deleteError) {
+      console.error('❌ Failed to reset IndexedDB:', deleteError);
+      // If we can't reset, continue without cache
+      console.log('⚠️ Continuing without IndexedDB cache');
+      return Promise.resolve();
+    }
+  }
+
   async getCachedData(directoryName: string): Promise<CacheEntry | null> {
-    if (!this.db) await this.init();
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, skipping cache lookup');
+        return null;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, skipping cache lookup');
+      return null;
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readonly');
+      const transaction = this.db.transaction(['cache'], 'readonly');
       const store = transaction.objectStore('cache');
       const request = store.get(directoryName);
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const result = request.result || null;
-        // if (result) {
-        //   console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Found ${result.imageCount} images (saved ${new Date(result.lastScan).toLocaleString()})`);
-        // } else {
-        //   console.log(`🔍 CACHE LOOKUP: "${directoryName}" -> Not found`);
-        // }
         resolve(result);
       };
     });
@@ -86,7 +128,19 @@ class CacheManager {
     directoryName: string,
     images: IndexedImage[]
   ): Promise<void> {
-    if (!this.db) await this.init();
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, skipping cache save');
+        return;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, skipping cache save');
+      return;
+    }
 
     const cacheEntry: CacheEntry = {
       id: directoryName,
@@ -106,7 +160,7 @@ class CacheManager {
     };
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
+      const transaction = this.db.transaction(['cache'], 'readwrite');
       const store = transaction.objectStore('cache');
       const request = store.put(cacheEntry);
 
@@ -115,17 +169,28 @@ class CacheManager {
         reject(request.error);
       };
       request.onsuccess = () => {
-        // console.log(`✅ CACHE SAVED: ${directoryName} with ${images.length} images`);
         resolve();
       };
     });
   }
 
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
-    if (!this.db) await this.init();
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, skipping thumbnail cache');
+        return;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, skipping thumbnail cache');
+      return;
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['thumbnails'], 'readwrite');
+      const transaction = this.db.transaction(['thumbnails'], 'readwrite');
       const store = transaction.objectStore('thumbnails');
       const request = store.put({ id: imageId, blob });
 
@@ -135,10 +200,22 @@ class CacheManager {
   }
 
   async getCachedThumbnail(imageId: string): Promise<Blob | null> {
-    if (!this.db) await this.init();
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, skipping thumbnail lookup');
+        return null;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, skipping thumbnail lookup');
+      return null;
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['thumbnails'], 'readonly');
+      const transaction = this.db.transaction(['thumbnails'], 'readonly');
       const store = transaction.objectStore('thumbnails');
       const request = store.get(imageId);
 
@@ -151,10 +228,22 @@ class CacheManager {
   }
 
   async clearCache(): Promise<void> {
-    if (!this.db) await this.init();
+    if (!this.db) {
+      try {
+        await this.init();
+      } catch (error) {
+        console.log('⚠️ IndexedDB not available, nothing to clear');
+        return;
+      }
+    }
+
+    if (!this.db) {
+      console.log('⚠️ IndexedDB not available, nothing to clear');
+      return;
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
+      const transaction = this.db.transaction(['cache', 'thumbnails'], 'readwrite');
       
       const cacheStore = transaction.objectStore('cache');
       const thumbStore = transaction.objectStore('thumbnails');
