@@ -334,11 +334,14 @@ export default function App() {
     const dirHandle = directoryHandle as any;
 
     // IMPROVED: More robust Electron detection with multiple checks
-    const isElectron = typeof window !== 'undefined' && 
-                      window.electronAPI && 
-                      typeof window.electronAPI.listDirectoryFiles === 'function';
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
     
     console.log('🔧 getAllFileHandles called for Electron:', isElectron);
+    console.log('🔧 directoryHandle type:', typeof directoryHandle);
+    console.log('🔧 directoryHandle properties:', Object.keys(directoryHandle || {}));
+    console.log('🔧 window.electronAPI exists:', !!window.electronAPI);
+    console.log('🔧 window.electronAPI.listDirectoryFiles exists:', !!(window.electronAPI && typeof window.electronAPI.listDirectoryFiles === 'function'));
+    console.log('🔧 electronAPI keys:', window.electronAPI ? Object.keys(window.electronAPI) : 'N/A');
     if (isElectron) {
       try {
         const electronPath = localStorage.getItem('invokeai-electron-directory-path');
@@ -423,13 +426,18 @@ export default function App() {
     } else {
       // Use browser File System Access API
       console.log('🌐 Using browser File System Access API (fallback)');
-      for await (const entry of dirHandle.values()) {
-        const newPath = path ? `${path}/${entry.name}` : entry.name;
-        if (entry.kind === 'file') {
-          entries.push({handle: entry, path: newPath});
-        } else if (entry.kind === 'directory') {
-          entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
+      try {
+        for await (const entry of dirHandle.values()) {
+          const newPath = path ? `${path}/${entry.name}` : entry.name;
+          if (entry.kind === 'file') {
+            entries.push({handle: entry, path: newPath});
+          } else if (entry.kind === 'directory') {
+            entries.push(...(await getAllFileHandles(entry as FileSystemDirectoryHandle, newPath)));
+          }
         }
+      } catch (error) {
+        console.error('❌ Error in browser File System Access API fallback:', error);
+        throw error;
       }
       
       // Cache the result
@@ -602,10 +610,22 @@ export default function App() {
           name: result.name || 'Selected Folder',
           path: result.path,
           kind: 'directory',
-          // Add methods that getAllFileHandles expects
+          // Add methods that processDirectory expects
           values: async function* () {
             // This will be implemented differently for Electron
             yield* [];
+          },
+          // Add entries method (alias for values in File System Access API)
+          entries: async function* () {
+            // Same as values for Electron
+            yield* [];
+          },
+          // Add getDirectoryHandle method that processDirectory calls
+          getDirectoryHandle: async function (name: string) {
+            // In Electron, we don't have direct access to subdirectories like in browser
+            // Always return null to indicate thumbnails directory doesn't exist
+            console.log(`🔧 getDirectoryHandle called for '${name}' - returning null (Electron limitation)`);
+            return null;
           }
         };
 
@@ -633,6 +653,8 @@ export default function App() {
       }
 
       setDirectoryHandle(handle);
+      console.log('🔧 setDirectoryHandle completed');
+      
       setIsLoading(true);
       setError(null);
       setImages([]);
@@ -645,15 +667,26 @@ export default function App() {
 
       // Clear file handles cache when selecting new directory
       fileHandlesCache.current.clear();
+      console.log('🔧 fileHandlesCache cleared');
 
       // Save directory name for user reference
       localStorage.setItem('invokeai-directory-name', handle.name);
+      console.log('🔧 localStorage.setItem completed, handle.name:', handle.name);
 
       // Initialize cache manager
-      await cacheManager.init();
+      console.log('🔧 About to call cacheManager.init()...');
+      try {
+        await cacheManager.init();
+        console.log('✅ cacheManager.init() completed');
+      } catch (cacheError) {
+        console.error('❌ cacheManager.init() failed:', cacheError);
+        throw cacheError;
+      }
       
       // Quick count of PNG files to determine if we should use cache
+      console.log('🔧 About to call getAllFileHandles...');
       const allFiles = await getAllFileHandles(handle);
+      console.log('✅ getAllFileHandles completed, found', allFiles.length, 'files');
       const pngCount = allFiles.filter(f => f.handle.name.toLowerCase().endsWith('.png')).length;
       
       // Check if we should use cached data
@@ -703,6 +736,13 @@ export default function App() {
           }
         } else {
           console.log('🔄 NO CACHE FOUND, FULL INDEXING');
+          console.log('🔧 About to call processDirectory with handle:', {
+            name: handle.name,
+            kind: handle.kind,
+            hasGetDirectoryHandle: typeof (handle as any).getDirectoryHandle === 'function',
+            hasValues: typeof (handle as any).values === 'function',
+            hasEntries: typeof (handle as any).entries === 'function'
+          });
           const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
           setImages(indexedImages);
           setFilteredImages(indexedImages);

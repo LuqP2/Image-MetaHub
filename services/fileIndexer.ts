@@ -745,6 +745,16 @@ function extractPrompt(metadata: ImageMetadata): string {
   // Fallback to format-specific extraction
   // Handle InvokeAI metadata
   if (isInvokeAIMetadata(metadata)) {
+    // Try positive_prompt first (newer InvokeAI format)
+    if (metadata.positive_prompt) {
+      let prompt = metadata.positive_prompt;
+      if (metadata.negative_prompt) {
+        prompt += ' ### ' + metadata.negative_prompt;
+      }
+      return prompt;
+    }
+    
+    // Fallback to legacy prompt field
     if (typeof metadata.prompt === 'string') {
       return metadata.prompt;
     } else if (Array.isArray(metadata.prompt)) {
@@ -1035,18 +1045,112 @@ export async function getFileHandlesRecursive(
   path: string = ''
 ): Promise<{handle: FileSystemFileHandle, path: string}[]> {
   const entries = [];
-  // Use type assertion to work around incomplete TypeScript definitions
   const dirHandle = directoryHandle as any;
-  for await (const entry of dirHandle.values()) {
-    const newPath = path ? `${path}/${entry.name}` : entry.name;
-    if (entry.kind === 'file') {
-      entries.push({handle: entry, path: newPath});
-    } else if (entry.kind === 'directory') {
-      // Fix: Explicitly cast entry to FileSystemDirectoryHandle as TypeScript fails to narrow the type.
-      entries.push(...(await getFileHandlesRecursive(entry as FileSystemDirectoryHandle, newPath)));
+
+  // IMPROVED: Add Electron detection and handling like in App.tsx
+  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
+  console.log('🔧 getFileHandlesRecursive called for Electron:', isElectron);
+  console.log('🔧 window.electronAPI exists:', typeof (window as any).electronAPI !== 'undefined');
+  console.log('🔧 listDirectoryFiles is function:', typeof (window as any).electronAPI?.listDirectoryFiles === 'function');
+  console.log('🔧 electronAPI keys:', (window as any).electronAPI ? Object.keys((window as any).electronAPI) : 'N/A');
+
+  if (isElectron) {
+    try {
+      const electronPath = localStorage.getItem('invokeai-electron-directory-path');
+
+      if (!electronPath) {
+        console.error('❌ No Electron directory path stored in localStorage');
+        return entries;
+      }
+
+      const result = await (window as any).electronAPI.listDirectoryFiles(electronPath);
+
+      // Validate result object exists and has expected structure
+      if (!result) {
+        console.error('❌ listDirectoryFiles returned undefined/null');
+        return entries;
+      }
+
+      if (!result.success) {
+        console.error('❌ Electron API failed:', result.error || 'Unknown error');
+        return entries;
+      }
+
+      if (result.success && result.files) {
+        console.log('✅ Found', result.files.length, 'files in Electron directory');
+
+        for (const fileInfo of result.files) {
+          // Create a mock file handle for Electron
+          const mockHandle = {
+            name: fileInfo.name,
+            kind: 'file' as const,
+            getFile: async () => {
+              try {
+                // FIX: Cross-platform path joining - use forward slash for both Windows and macOS
+                const fullPath = electronPath + '/' + fileInfo.name;
+
+                const fileResult = await (window as any).electronAPI.readFile(fullPath);
+                if (fileResult.success) {
+                  // Create a proper File object from the buffer with lastModified date
+                  const uint8Array = new Uint8Array(fileResult.data);
+                  return new File([uint8Array], fileInfo.name, {
+                    type: 'image/png',
+                    lastModified: fileInfo.lastModified
+                  });
+                } else {
+                  // Only log errors that aren't "file not found" to avoid spam when cache is stale
+                  if (!fileResult.error?.includes('ENOENT') && !fileResult.error?.includes('no such file')) {
+                    console.error('❌ Failed to read file:', fileInfo.name, fileResult.error);
+                  }
+                  // Return empty file as fallback with lastModified
+                  return new File([], fileInfo.name, {
+                    type: 'image/png',
+                    lastModified: fileInfo.lastModified
+                  });
+                }
+              } catch (error) {
+                // Only log errors that aren't "file not found" to avoid spam when cache is stale
+                if (!error?.message?.includes('ENOENT') && !error?.message?.includes('no such file')) {
+                  console.error('❌ Error reading file in Electron:', fileInfo.name, error);
+                }
+                return new File([], fileInfo.name, {
+                  type: 'image/png',
+                  lastModified: fileInfo.lastModified
+                });
+              }
+            }
+          };
+          entries.push({ handle: mockHandle, path: fileInfo.name });
+        }
+      } else {
+        console.error('❌ Electron API failed:', result.error);
+      }
+
+      return entries;
+    } catch (error) {
+      console.error('❌ Error listing files in Electron:', error);
+      return entries;
     }
+  } else {
+    // Use browser File System Access API
+    console.log('🌐 Using browser File System Access API in getFileHandlesRecursive');
+    try {
+      for await (const entry of dirHandle.values()) {
+        const newPath = path ? `${path}/${entry.name}` : entry.name;
+        if (entry.kind === 'file') {
+          entries.push({handle: entry, path: newPath});
+        } else if (entry.kind === 'directory') {
+          // Fix: Explicitly cast entry to FileSystemDirectoryHandle as TypeScript fails to narrow the type.
+          entries.push(...(await getFileHandlesRecursive(entry as FileSystemDirectoryHandle, newPath)));
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in browser File System Access API:', error);
+      throw error;
+    }
+    return entries;
   }
-  return entries;
 }
 
 // Function to filter out InvokeAI intermediate images
@@ -1092,36 +1196,47 @@ export async function processDirectory(
   specificFiles?: { handle: FileSystemFileHandle; path: string }[],
   directoryName?: string
 ): Promise<IndexedImage[]> {
-  const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
-  console.log(`📂 Found ${allFileEntries.length} total files in directory`);
-  
-  const imageFiles = allFileEntries.filter(entry => {
-    const name = entry.handle.name.toLowerCase();
-    const isImageFile = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg');
-    const isIntermediate = isIntermediateImage(entry.handle.name);
-    
-    if (isImageFile && !isIntermediate) {
-      console.log(`✅ Including image file: ${entry.handle.name}`);
-      return true;
-    } else if (isImageFile && isIntermediate) {
-      console.log(`⏭️ Skipping intermediate image file: ${entry.handle.name}`);
-      return false;
-    } else {
-      console.log(`⏭️ Skipping non-image file: ${entry.handle.name}`);
-      return false;
-    }
+  console.log('🔧 processDirectory called with handle:', {
+    name: directoryHandle.name,
+    kind: directoryHandle.kind,
+    hasGetDirectoryHandle: typeof (directoryHandle as any).getDirectoryHandle === 'function',
+    hasValues: typeof (directoryHandle as any).values === 'function',
+    hasEntries: typeof (directoryHandle as any).entries === 'function'
   });
   
-  console.log(`🖼️ Filtered to ${imageFiles.length} valid image files (.png, .jpg, .jpeg)`);
-
-  // Try to find thumbnails directory
-  let thumbnailsDir: FileSystemDirectoryHandle | null = null;
   try {
-    thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
-    // console.log removed
-  } catch (error) {
-    // console.log removed
-  }
+    console.log('🔧 About to call getFileHandlesRecursive...');
+    const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
+    console.log(`📂 Found ${allFileEntries.length} total files in directory`);
+  
+    const imageFiles = allFileEntries.filter(entry => {
+      const name = entry.handle.name.toLowerCase();
+      const isImageFile = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg');
+      const isIntermediate = isIntermediateImage(entry.handle.name);
+      
+      if (isImageFile && !isIntermediate) {
+        console.log(`✅ Including image file: ${entry.handle.name}`);
+        return true;
+      } else if (isImageFile && isIntermediate) {
+        console.log(`⏭️ Skipping intermediate image file: ${entry.handle.name}`);
+        return false;
+      } else {
+        console.log(`⏭️ Skipping non-image file: ${entry.handle.name}`);
+        return false;
+      }
+    });
+    
+    console.log(`🖼️ Filtered to ${imageFiles.length} valid image files (.png, .jpg, .jpeg)`);
+
+    // Try to find thumbnails directory
+    let thumbnailsDir: FileSystemDirectoryHandle | null = null;
+    try {
+      console.log('🔧 Attempting to get thumbnails directory...');
+      thumbnailsDir = await directoryHandle.getDirectoryHandle('thumbnails');
+      console.log('🔧 Thumbnails directory found');
+    } catch (error) {
+      console.log('🔧 Thumbnails directory not found (expected in Electron):', error.message);
+    }
 
   // Get thumbnail files if directory exists
   const thumbnailMap = new Map<string, FileSystemFileHandle>();
@@ -1214,6 +1329,10 @@ export async function processDirectory(
   }
   
   return indexedImages;
+  } catch (error) {
+    console.error('❌ Error in processDirectory:', error);
+    throw error;
+  }
 }
 
 // Function to parse ComfyUI workflow and extract normalized metadata

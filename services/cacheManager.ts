@@ -25,28 +25,38 @@ class CacheManager {
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
+    console.log('🔧 cacheManager.init() starting...');
     return new Promise((resolve, reject) => {
+      console.log('🔧 Opening IndexedDB:', this.dbName, 'version:', this.dbVersion);
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('❌ IndexedDB open error:', request.error);
+        reject(request.error);
+      };
       request.onsuccess = () => {
+        console.log('✅ IndexedDB opened successfully');
         this.db = request.result;
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
+        console.log('🔧 IndexedDB upgrade needed, creating stores...');
         const db = (event.target as IDBOpenDBRequest).result;
         
         // Create cache store
         if (!db.objectStoreNames.contains('cache')) {
+          console.log('🔧 Creating cache store...');
           const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
           cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
         }
 
         // Create thumbnails store
         if (!db.objectStoreNames.contains('thumbnails')) {
+          console.log('🔧 Creating thumbnails store...');
           const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
         }
+        console.log('✅ IndexedDB stores created');
       };
     });
   }

@@ -1,16 +1,34 @@
 
 export interface InvokeAIMetadata {
-  prompt: string | { prompt: string }[];
-  model: string;
-  width: number;
-  height: number;
-  seed: number;
-  steps: number;
-  cfg_scale: number;
-  scheduler: string;
+  // Core generation fields
+  positive_prompt?: string;
+  negative_prompt?: string;
+  generation_mode?: string;
+  width?: number;
+  height?: number;
+  seed?: number;
+  steps?: number;
+  cfg_scale?: number;
+  cfg_rescale_multiplier?: number;
+  scheduler?: string;
+  seamless_x?: boolean;
+  seamless_y?: boolean;
+  model?: string;
+  vae?: string;
+  rand_device?: string;
+
+  // UI and organization fields
   board_id?: string;
   board_name?: string;
-  // Add other fields you expect from InvokeAI metadata
+  ref_images?: any[];
+
+  // App metadata
+  app_version?: string;
+
+  // Legacy field (might still be present in some versions)
+  prompt?: string | { prompt: string }[];
+
+  // Additional fields
   normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
@@ -86,7 +104,10 @@ export interface BaseMetadata {
 
 // Type guard functions
 export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeAIMetadata {
-  return 'prompt' in metadata && ('model' in metadata || 'width' in metadata || 'height' in metadata);
+  // Check for InvokeAI-specific fields
+  return ('positive_prompt' in metadata && 'generation_mode' in metadata) ||
+         ('positive_prompt' in metadata && 'app_version' in metadata) ||
+         ('prompt' in metadata && ('model' in metadata || 'width' in metadata || 'height' in metadata));
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
