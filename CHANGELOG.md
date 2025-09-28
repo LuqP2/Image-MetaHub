@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2025-09-28
+
+### Fixed
+- **Critical Performance Issue**: Eliminated console logging spam that was generating 40,000+ messages and severely impacting UI responsiveness
+- **Image Duplication Bug**: Fixed critical bug where processDirectory was calling getFileHandlesRecursive redundantly, causing 36,884 images to be processed instead of the actual 18,452 files
+- **Syntax Errors**: Resolved critical syntax errors in electron.mjs that were preventing the application from starting
+- **File Processing**: Corrected image counting logic to prevent double-processing of files
+
+### Technical Improvements
+- **Automated Release Workflow**: Added complete automated release system with multi-platform builds (Windows, macOS, Linux)
+- **GitHub Actions**: Enhanced CI/CD pipeline for automatic installer generation and release publishing
+- **Error Handling**: Improved error handling in file operations and metadata extraction
+- **Performance Optimization**: Reduced memory usage and improved startup time
+
 ## [1.7.5] - 2025-09-28
 
 ### Added
