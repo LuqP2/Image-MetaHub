@@ -3,7 +3,7 @@
   "description": "Local image browser for browsing InvokeAI outputs (unaffiliated)",
   "author": "LuqP2 <github.com/LuqP2>",
   "private": true,
-  "version": "1.7.5",
+  "version": "1.7.6",
   "type": "module",
   "main": "electron.mjs",
   "homepage": "./",
@@ -18,7 +18,8 @@
     "electron-dist": "npm run build && electron-builder --publish=never",
     "release": "npm run build && electron-builder --publish=always",
     "generate-release": "node generate-release.js",
-    "release-workflow": "node release-workflow.js"
+    "release-workflow": "node release-workflow.js",
+    "auto-release": "node auto-release.js"
   },
   "dependencies": {
     "electron-updater": "^6.6.2",

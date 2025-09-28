@@ -40,6 +40,24 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-28: CRITICAL - Fixed Syntax Error Preventing App Startup
+
+**Decision:** Resolved critical syntax error in electron.mjs that completely prevented the application from starting.
+
+**Context:** Electron development environment failed to load with "SyntaxError: Invalid or unexpected token" due to malformed code from previous edits.
+
+**Rationale:** 
+- Duplicate for loops and malformed code blocks were causing module compilation to fail
+- Cleaned up electron.mjs by removing duplicate code and fixing loop structure
+- Application now starts successfully and processes correct image counts
+
+**Impact:** 
+- Application can now start in development mode
+- Image processing works correctly (18k images instead of 36k duplicates)
+- All previous performance fixes are now functional
+
+**Testing:** Verified Electron loads successfully and processes files correctly.
+
 ## 2025-09-24: FIX - macOS Electron Environment Detection & Path Handling
 
 **Decision:** Implemented robust cross-platform Electron detection and fixed path joining issues causing "zero images found" on macOS.

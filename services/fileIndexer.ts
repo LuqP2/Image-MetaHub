@@ -1278,7 +1278,6 @@ export async function processDirectory(
   try {
     // Debug logging removed for performance
     const allFileEntries = specificFiles || await getFileHandlesRecursive(directoryHandle);
-    // Debug logging removed for performance
 
     const imageFiles = allFileEntries.filter(entry => {
       const name = entry.handle.name.toLowerCase();
@@ -1286,18 +1285,13 @@ export async function processDirectory(
       const isIntermediate = isIntermediateImage(entry.handle.name);
 
       if (isImageFile && !isIntermediate) {
-        // Debug logging removed for performance
         return true;
       } else if (isImageFile && isIntermediate) {
-        // Debug logging removed for performance
         return false;
       } else {
-        // Debug logging removed for performance
         return false;
       }
     });
-
-    // Debug logging removed for performance
 
     // Try to find thumbnails directory
     let thumbnailsDir: FileSystemDirectoryHandle | null = null;

@@ -795,7 +795,14 @@ export default function App() {
       console.log('🔧 About to call getAllFileHandles...');
       const allFiles = await getAllFileHandles(handle);
       console.log('✅ getAllFileHandles completed, found', allFiles.length, 'files');
+      console.log('🚨 DEBUG: Taking NO CACHE path - should process', allFiles.length, 'files');
       const pngCount = allFiles.filter(f => isSupportedImageFile(f.handle.name)).length;
+      
+      console.log('📊 pngCount calculation:', {
+        totalFiles: allFiles.length,
+        pngCount: pngCount,
+        cacheAvailable: cacheAvailable
+      });
       
       // Check if user might have selected a thumbnails directory by mistake
       if (pngCount === 0 && handle.name.toLowerCase().includes('thumbnail')) {
@@ -823,7 +830,7 @@ export default function App() {
           return;
         }
       } else if (cacheAvailable) {
-        console.log('🔄 UPDATING CACHE INCREMENTALLY');
+        console.log('🔄 UPDATING CACHE INCREMENTALLY - should process new files only');
         const cachedData = await cacheManager.getCachedData(handle.name);
         
         if (cachedData) {
@@ -855,7 +862,7 @@ export default function App() {
           }
         } else {
           console.log('🔄 NO CACHE FOUND, FULL INDEXING');
-          const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
+          const indexedImages = await processDirectory(handle, setProgress, allFiles, handle.name);
           setImages(indexedImages);
           setFilteredImages(indexedImages);
           updateFilterOptions(indexedImages);
@@ -863,7 +870,7 @@ export default function App() {
         }
       } else {
         console.log('🔄 CACHE NOT AVAILABLE, FULL INDEXING WITHOUT CACHE');
-        const indexedImages = await processDirectory(handle, setProgress, undefined, handle.name);
+        const indexedImages = await processDirectory(handle, setProgress, allFiles, handle.name);
         setImages(indexedImages);
         setFilteredImages(indexedImages);
         updateFilterOptions(indexedImages);
@@ -1031,7 +1038,7 @@ export default function App() {
           }
         } else {
           console.log('🔄 NO CACHE FOUND, FULL INDEXING');
-          const indexedImages = await processDirectory(directoryHandle, setProgress);
+          const indexedImages = await processDirectory(directoryHandle, setProgress, allFiles);
           setImages(indexedImages);
           setFilteredImages(indexedImages);
           updateFilterOptions(indexedImages);

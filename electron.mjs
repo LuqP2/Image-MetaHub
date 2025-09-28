@@ -357,26 +357,17 @@ function setupFileOperationHandlers() {
       // Filter for PNG, JPG, and JPEG files only and get their stats
       const imageFiles = [];
 
-      for (const file of files) {
-        if (file.isFile()) {
-          const name = file.name.toLowerCase();
-          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-            const filePath = path.join(dirPath, file.name);
-            const stats = await fs.stat(filePath);
-            imageFiles.push({
-              name: file.name,
-              lastModified: stats.mtime.getTime() // Convert to timestamp
-            });
-          }
-        }
+      console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
+      
+      // Check for duplicates in raw listing
+      const fileNames = files.map(f => f.name);
+      const uniqueNames = new Set(fileNames);
+      console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
+      
+      if (fileNames.length !== uniqueNames.size) {
+        console.log('🚨 DUPLICATE FILENAMES DETECTED IN RAW LISTING!');
       }
 
-      // console.log('Listed files in directory:', dirPath); // Commented out to reduce console noise
-      // console.log('Found image files:', imageFiles.length); // Commented out to reduce console noise
-
-      console.log('📂 Electron listDirectoryFiles called for:', dirPath);
-      console.log('📋 Total files found:', files.length);
-
       for (const file of files) {
         if (file.isFile()) {
           const name = file.name.toLowerCase();
@@ -387,14 +378,14 @@ function setupFileOperationHandlers() {
               name: file.name,
               lastModified: stats.mtime.getTime() // Convert to timestamp
             });
-            console.log(`✅ Including image file: ${file.name}`);
+            // console.log(`✅ Including image file: ${file.name}`);
           } else {
-            console.log(`⏭️ Skipping non-image file: ${file.name}`);
+            // console.log(`⏭️ Skipping non-image file: ${file.name}`);
           }
         }
       }
 
-      console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
+      // console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
 
       return { success: true, files: imageFiles };
     } catch (error) {

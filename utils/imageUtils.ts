@@ -49,22 +49,14 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         // Try sessionStorage as fallback if localStorage is null
         if (!directoryPath) {
           directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
-          console.log('🔄 Using sessionStorage fallback for directory path:', directoryPath);
         }
-
-        console.log('🔍 Show in explorer - directory path:', directoryPath);
-        console.log('🔍 Show in explorer - image.name:', imageOrPath.name);
 
         fullPath = directoryPath ? `${directoryPath}\\${imageOrPath.name}` : imageOrPath.name;
       }
       
-      console.log('🔍 Show in explorer - full path:', fullPath);
-
       const result = await (window as any).electronAPI.showItemInFolder(fullPath);
-      console.log('📂 Show in explorer API result:', result);
 
       if (result.success) {
-        console.log('✅ File opened in file explorer:', fullPath);
       } else {
         console.error('❌ Failed to open file in explorer:', result.error);
       }
@@ -83,9 +75,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         // Also copy the path to clipboard for convenience
         try {
           await navigator.clipboard.writeText(imageOrPath);
-          console.log('📋 File path copied to clipboard for reference');
         } catch (clipboardError) {
-          console.log('❌ Could not copy path to clipboard, but path shown in alert');
         }
 
         return { success: true };
@@ -103,9 +93,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         // Also copy the path to clipboard for convenience
         try {
           await navigator.clipboard.writeText(imageOrPath.id);
-          console.log('📋 File path copied to clipboard for reference');
         } catch (clipboardError) {
-          console.log('❌ Could not copy path to clipboard, but path shown in alert');
         }
 
         return { success: true };
@@ -137,12 +125,6 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
     let pathToCopy: string;
 
-    console.log('🔍 Copy filepath - Image object:', {
-      id: image.id,
-      name: image.name,
-      directoryName: image.directoryName
-    });
-
     if (isElectron) {
       // In Electron, construct full path from directory + relative path
       let directoryPath = localStorage.getItem('invokeai-electron-directory-path');
@@ -150,30 +132,21 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
       // Try sessionStorage as fallback if localStorage is null
       if (!directoryPath) {
         directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
-        console.log('🔄 Using sessionStorage fallback for directory path:', directoryPath);
       }
 
-      console.log('📋 Directory path from storage:', directoryPath);
-      console.log('📋 Image name:', image.name);
-
       pathToCopy = directoryPath ? `${directoryPath}\\${image.name}` : image.name;
-      console.log('📋 Electron full path to copy:', pathToCopy);
     } else {
       // In browser, use relative path
       pathToCopy = image.id;
-      console.log('📋 Browser relative path to copy:', pathToCopy);
     }
 
     await navigator.clipboard.writeText(pathToCopy);
 
     // Show confirmation messages
     if (isElectron) {
-      console.log('✅ Full file path copied to clipboard:', pathToCopy);
     } else {
-      console.log('✅ Relative file path copied to clipboard:', pathToCopy);
       // Show additional context if we have directory name
       if (image.directoryName) {
-        console.log('📁 File is located in directory:', image.directoryName);
       }
     }
 

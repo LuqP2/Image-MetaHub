@@ -25,9 +25,7 @@ class CacheManager {
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
-    console.log('🔧 cacheManager.init() starting...');
     return new Promise((resolve, reject) => {
-      console.log('🔧 Opening IndexedDB:', this.dbName, 'version:', this.dbVersion);
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
       request.onerror = () => {
@@ -36,47 +34,38 @@ class CacheManager {
         this.handleIndexedDBError(request.error).then(resolve).catch(reject);
       };
       request.onsuccess = () => {
-        console.log('✅ IndexedDB opened successfully');
         this.db = request.result;
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
-        console.log('🔧 IndexedDB upgrade needed, creating stores...');
         const db = (event.target as IDBOpenDBRequest).result;
 
         // Delete old stores if they exist (for clean upgrade)
         if (db.objectStoreNames.contains('cache')) {
-          console.log('🔧 Deleting old cache store...');
           db.deleteObjectStore('cache');
         }
         if (db.objectStoreNames.contains('thumbnails')) {
-          console.log('🔧 Deleting old thumbnails store...');
           db.deleteObjectStore('thumbnails');
         }
 
         // Create cache store
-        console.log('🔧 Creating cache store...');
         const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
         cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
 
         // Create thumbnails store
-        console.log('🔧 Creating thumbnails store...');
         const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
-        console.log('✅ IndexedDB stores created');
       };
     });
   }
 
   private async handleIndexedDBError(error: any): Promise<void> {
-    console.log('🔧 Handling IndexedDB error, attempting to reset database...');
 
     try {
       // Delete the corrupted database
       const deleteRequest = indexedDB.deleteDatabase(this.dbName);
       await new Promise<void>((resolve, reject) => {
         deleteRequest.onsuccess = () => {
-          console.log('✅ IndexedDB deleted successfully');
           resolve();
         };
         deleteRequest.onerror = () => {
@@ -86,12 +75,10 @@ class CacheManager {
       });
 
       // Try to recreate the database
-      console.log('🔧 Recreating IndexedDB...');
       return this.init();
     } catch (deleteError) {
       console.error('❌ Failed to reset IndexedDB:', deleteError);
       // If we can't reset, continue without cache
-      console.log('⚠️ Continuing without IndexedDB cache');
       return Promise.resolve();
     }
   }
@@ -101,13 +88,11 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, skipping cache lookup');
         return null;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, skipping cache lookup');
       return null;
     }
 
@@ -132,13 +117,11 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, skipping cache save');
         return;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, skipping cache save');
       return;
     }
 
@@ -179,13 +162,11 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, skipping thumbnail cache');
         return;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, skipping thumbnail cache');
       return;
     }
 
@@ -204,13 +185,11 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, skipping thumbnail lookup');
         return null;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, skipping thumbnail lookup');
       return null;
     }
 
@@ -232,17 +211,13 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, skipping cache validation');
-        return;
+        return 0;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, skipping cache validation');
-      return;
+      return 0;
     }
-
-    console.log('🔍 Validating cache for normalizedMetadata...');
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(['cache'], 'readwrite');
@@ -266,7 +241,6 @@ class CacheManager {
           });
 
           if (invalidImages.length > 0) {
-            console.log(`🗑️ Removing ${invalidImages.length} invalid cache entries from ${entry.directoryName}`);
             entry.metadata = entry.metadata.filter(meta => {
               try {
                 const parsed = JSON.parse(meta.metadataString);
@@ -284,12 +258,6 @@ class CacheManager {
           }
         }
 
-        if (cleanedCount > 0) {
-          console.log(`✅ Cache validation complete: ${cleanedCount} invalid entries removed`);
-        } else {
-          console.log('✅ Cache validation complete: All entries valid');
-        }
-
         resolve(cleanedCount);
       };
     });
@@ -300,13 +268,11 @@ class CacheManager {
       try {
         await this.init();
       } catch (error) {
-        console.log('⚠️ IndexedDB not available, nothing to clear');
         return;
       }
     }
 
     if (!this.db) {
-      console.log('⚠️ IndexedDB not available, nothing to clear');
       return;
     }
 
@@ -366,11 +332,9 @@ class CacheManager {
     const maxAge = 60 * 60 * 1000; // 1 hour
     
     if (cacheAge > maxAge) {
-      console.log(`⏰ CACHE EXPIRED: ${ageMinutes} minutes old (max: 60 minutes)`);
       return { shouldRefresh: true };
     }
 
-    console.log(`✅ CACHE VALID: Using cached data`);
     return { shouldRefresh: false };
   }
 
@@ -412,7 +376,6 @@ class CacheManager {
 
         // Save updated cache
         store.put(cachedData);
-        console.log(`✅ CACHE UPDATED INCREMENTALLY: ${newImages.length} new images added`);
       } else {
         console.warn('⚠️ CACHE ENTRY NOT FOUND FOR INCREMENTAL UPDATE');
       }
@@ -443,7 +406,6 @@ class CacheManager {
             cachedData.imageCount = validMetadata.length;
             cachedData.lastScan = Date.now();
             store.put(cachedData);
-            console.log(`🧹 CLEANED ${removedCount} STALE CACHE ENTRIES`);
           }
 
           resolve(removedCount);
