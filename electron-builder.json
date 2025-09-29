@@ -53,5 +53,6 @@
     "owner": "LuqP2",
     "repo": "local-image-browser-for-invokeai",
     "releaseType": "release"
-  }
+  },
+  "generateUpdatesFilesForAllChannels": true
 }
