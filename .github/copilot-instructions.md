@@ -13,6 +13,7 @@ This is a React + TypeScript + Electron application that provides local browsing
 
 ### Key Components
 - `App.tsx` - Main application with state management and filtering logic
+- `hooks/useImageLoader.ts` - Directory loading and automatic filter extraction
 - `components/` - Reusable UI components (ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
 - `services/` - Business logic (fileIndexer, cacheManager, fileOperations)
 - `types.ts` - TypeScript interfaces for InvokeAI metadata and file handles
@@ -20,8 +21,9 @@ This is a React + TypeScript + Electron application that provides local browsing
 ### Data Flow Patterns
 1. **Directory Selection** → Environment detection (browser vs Electron)
 2. **File Indexing** → PNG metadata extraction → IndexedDB caching
-3. **Search/Filter** → In-memory filtering with word-boundary matching
-4. **File Operations** → IPC communication for Electron file management
+3. **Automatic Filter Extraction** → Models, LoRAs, and schedulers extracted from loaded images
+4. **Search/Filter** → In-memory filtering with word-boundary matching
+5. **File Operations** → IPC communication for Electron file management
 
 ## Critical Developer Workflows
 
@@ -110,7 +112,7 @@ node log-change.js FIX "Fixed clipboard operations in ImageModal"
 
 **Manual Logging Format:**
 ```
-[2025-09-20 10:30:00] - FIX Fixed clipboard operations in ImageModal
+[2025-09-20] - FIX Fixed clipboard operations in ImageModal
   Files: components/ImageModal.tsx
   Rationale: Copy prompt and copy metadata functions were failing
   Impact: Right-click context menu now works properly
@@ -191,6 +193,38 @@ function extractModels(metadata: InvokeAIMetadata): string[] {
 - **Case Insensitive**: All searches ignore case
 - **Metadata Search**: Searches through all PNG metadata including prompts and settings
 - **Real-time Filtering**: Instant results as user types
+
+### Automatic Filter System
+The automatic filter extraction system dynamically generates filter options from loaded images:
+
+**Architecture**: Filter extraction moved from `App.tsx` to `hooks/useImageLoader.ts` for better separation of concerns
+
+**Filter Types**:
+- **Models**: Checkpoint models used for generation (e.g., "sdxl_base_1.0", "realistic_vision_v5.1")
+- **LoRAs**: Low-Rank Adaptations applied during generation
+- **Schedulers**: Sampling methods (e.g., "euler", "ddim", "k_lms")
+
+**Implementation Pattern**:
+```typescript
+// In useImageLoader.ts - automatic filter extraction
+const updateFilterOptions = (images: IndexedImage[]) => {
+  const models = new Set<string>();
+  const loras = new Set<string>();
+  const schedulers = new Set<string>();
+  
+  images.forEach(image => {
+    // Extract from metadata and add to sets
+    if (image.metadata?.models) {
+      image.metadata.models.forEach(model => models.add(model));
+    }
+    // Similar for LoRAs and schedulers
+  });
+  
+  setFilterOptions({ models: Array.from(models), loras: Array.from(loras), schedulers: Array.from(schedulers) });
+};
+```
+
+**Cross-Format Support**: Works with InvokeAI, A1111, and ComfyUI metadata formats by normalizing single model strings to arrays
 
 ### File Handle Management
 ```typescript
@@ -313,8 +347,8 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 ## Common Development Tasks
 
 ### Adding New Filters
-1. Add filter state to `App.tsx`
-2. Update `updateFilterOptions()` function
+1. Add filter state to `App.tsx` or `useImageFilters.ts`
+2. Update `updateFilterOptions()` function in `hooks/useImageLoader.ts`
 3. Add UI controls in `SearchBar.tsx`, `Sidebar.tsx`, or create new component
 4. Implement filtering logic in search/filter functions
 

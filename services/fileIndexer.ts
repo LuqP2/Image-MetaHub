@@ -39,8 +39,12 @@ function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
     // Extract model
     if (typeof metadata.model === 'string') {
       result.model = metadata.model.split('/').pop()?.split('\\').pop() || metadata.model;
+      result.models = [result.model]; // Convert to array for filtering
     } else if ((metadata.model as any)?.model_name) {
       result.model = (metadata.model as any).model_name;
+      result.models = [result.model]; // Convert to array for filtering
+    } else {
+      result.models = []; // Empty array if no model found
     }
 
     // Extract dimensions
@@ -121,6 +125,9 @@ function parseA1111Metadata(parameters: string): BaseMetadata {
 
     const modelMatch = parameters.match(/Model: ([^,]+)/);
     if (modelMatch) result.model = modelMatch[1].trim();
+
+    // Convert single model to models array for filtering
+    result.models = result.model ? [result.model] : [];
 
   } catch (error) {
     console.warn('Failed to parse Automatic1111 parameters:', error);
