@@ -47,13 +47,6 @@ jobs:
           echo "Windows build completed!"
           ls -la dist-electron/
 
-      - name: Generate release notes
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Generating release notes for version $VERSION"
-          node generate-release.js $VERSION
-
       - name: Create GitHub Release
         shell: bash
         run: |
@@ -65,13 +58,15 @@ jobs:
             gh release create v$VERSION \
               --title "Local Image Browser for InvokeAI v$VERSION" \
               --notes-file "$RELEASE_NOTES_FILE" \
-              --latest
+              --latest \
+              --draft
           else
             echo "Release notes file not found, creating basic release..."
             gh release create v$VERSION \
               --title "Local Image Browser for InvokeAI v$VERSION" \
               --generate-notes \
-              --latest
+              --latest \
+              --draft
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -87,6 +82,15 @@ jobs:
               gh release upload v$VERSION "$file" --clobber
             fi
           done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Release
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Publishing release v$VERSION..."
+          gh release edit v$VERSION --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
