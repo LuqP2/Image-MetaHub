@@ -109,7 +109,10 @@ function parseA1111Metadata(parameters: string): BaseMetadata {
     if (stepsMatch) result.steps = parseInt(stepsMatch[1], 10);
 
     const samplerMatch = parameters.match(/Sampler: ([^,]+)/);
-    if (samplerMatch) result.sampler = samplerMatch[1].trim();
+    if (samplerMatch) {
+      result.sampler = samplerMatch[1].trim();
+      result.scheduler = result.sampler; // Ensure consistency for filtering
+    }
 
     const cfgScaleMatch = parameters.match(/CFG scale: ([\d.]+)/);
     if (cfgScaleMatch) result.cfgScale = parseFloat(cfgScaleMatch[1]);
@@ -128,6 +131,13 @@ function parseA1111Metadata(parameters: string): BaseMetadata {
 
     // Convert single model to models array for filtering
     result.models = result.model ? [result.model] : [];
+
+    // Extract LoRAs from prompt
+    const loraRegex = /<lora:([^:]+):[^>]+>/g;
+    let loraMatch;
+    while ((loraMatch = loraRegex.exec(result.prompt)) !== null) {
+      result.loras.push(loraMatch[1]);
+    }
 
   } catch (error) {
     console.warn('Failed to parse Automatic1111 parameters:', error);
