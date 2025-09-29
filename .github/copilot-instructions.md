@@ -7,15 +7,20 @@ This is a React + TypeScript + Electron application that provides local browsing
 
 ### Core Architecture
 - **Frontend**: React 18 + TypeScript + Vite build system
+- **State Management**: Zustand store (useImageStore.ts) for centralized state management
 - **Desktop**: Electron wrapper with auto-updater
 - **Storage**: IndexedDB for client-side caching, localStorage for UI preferences
 - **File Access**: File System Access API (browser) + Node.js fs APIs (Electron)
 
 ### Key Components
-- `App.tsx` - Main application with state management and filtering logic
+- `App.tsx` - Main application orchestrator (minimal, focused on composition)
+- `store/useImageStore.ts` - Centralized Zustand store for all application state
 - `hooks/useImageLoader.ts` - Directory loading and automatic filter extraction
-- `components/` - Reusable UI components (ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
+- `hooks/useImageFilters.ts` - Search and filtering logic
+- `hooks/useImageSelection.ts` - Image selection management
+- `components/` - Modular UI components (Header, StatusBar, ActionToolbar, ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
 - `services/` - Business logic (fileIndexer, cacheManager, fileOperations)
+- `services/parsers/` - Modular metadata parsers (InvokeAI, A1111, ComfyUI)
 - `types.ts` - TypeScript interfaces for InvokeAI metadata and file handles
 
 ### Data Flow Patterns
@@ -24,6 +29,27 @@ This is a React + TypeScript + Electron application that provides local browsing
 3. **Automatic Filter Extraction** → Models, LoRAs, and schedulers extracted from loaded images
 4. **Search/Filter** → In-memory filtering with word-boundary matching
 5. **File Operations** → IPC communication for Electron file management
+
+### Architecture Refactoring (2025-09-29)
+The application underwent a major refactoring to improve modularity and LLM-friendliness:
+
+**State Management Migration**: All component state (useState) was migrated to a centralized Zustand store (`useImageStore.ts`). This consolidates state logic and makes it easier to manage and understand.
+
+**Custom Hooks Extraction**: Logic was extracted from the monolithic `App.tsx` into focused custom hooks:
+- `useImageLoader.ts` - Directory loading and automatic filter extraction
+- `useImageFilters.ts` - Search and filtering logic  
+- `useImageSelection.ts` - Image selection management
+
+**Component Modularization**: UI elements were broken out into dedicated components:
+- `Header.tsx` - Application header
+- `StatusBar.tsx` - Status information display
+- `ActionToolbar.tsx` - Action buttons and controls
+
+**Parser Modularization**: The monolithic `fileIndexer.ts` was broken down into smaller, focused parser modules:
+- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, and ComfyUI formats
+- Factory pattern for automatic parser selection based on metadata format
+
+This architecture transformation significantly improves code maintainability, testability, and LLM comprehension.
 
 ## Critical Developer Workflows
 
@@ -332,6 +358,10 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 
 ### Implementation Examples
 - `App.tsx` - State management and component orchestration
+- `store/useImageStore.ts` - Centralized Zustand store implementation
+- `hooks/useImageLoader.ts` - Directory loading and filter extraction logic
+- `hooks/useImageFilters.ts` - Search and filtering implementation
+- `hooks/useImageSelection.ts` - Image selection management
 - `services/fileIndexer.ts` - Metadata extraction patterns
 - `services/cacheManager.ts` - IndexedDB caching implementation
 - `components/ImageGrid.tsx` - Lazy loading and selection patterns
@@ -354,9 +384,10 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 
 ### Adding New Components
 1. Create component in `components/` directory
-2. Add TypeScript interfaces to `types.ts` if needed
-3. Import and use in `App.tsx` or parent component
-4. Handle both browser and Electron environments if needed
+2. Add state to `store/useImageStore.ts` if needed (use Zustand for centralized state management)
+3. Add TypeScript interfaces to `types.ts` if needed
+4. Import and use in `App.tsx` or parent component
+5. Handle both browser and Electron environments if needed
 
 ### Adding File Operations
 1. Add IPC handler in `electron.cjs`
@@ -393,6 +424,12 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - Auto-updater functionality
 
 ## Code Quality Guidelines
+
+### State Management
+- Use Zustand (`useImageStore.ts`) for all application state management
+- Avoid useState in components - centralize state in the Zustand store
+- Use custom hooks (`useImageLoader`, `useImageFilters`, `useImageSelection`) for complex logic
+- Keep components focused on UI rendering, not business logic
 
 ### TypeScript Usage
 - Strict typing for all data structures

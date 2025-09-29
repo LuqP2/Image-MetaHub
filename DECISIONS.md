@@ -40,6 +40,40 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-29: ARCHITECTURE - Major Application Refactoring for LLM-Friendliness
+
+**Decision:** Performed comprehensive architectural refactoring to improve code modularity, maintainability, and LLM comprehension through state management migration, custom hooks extraction, component modularization, and parser modularization.
+
+**Context:** The monolithic App.tsx component had grown too large and complex, making it difficult for both human developers and AI assistants to understand and work with the codebase effectively.
+
+**Rationale:** 
+- **State Management Migration**: Migrated all component state (useState) to centralized Zustand store (`useImageStore.ts`) for better state management and predictability
+- **Custom Hooks Extraction**: Extracted business logic from App.tsx into focused custom hooks:
+  - `useImageLoader.ts` - Directory loading and automatic filter extraction
+  - `useImageFilters.ts` - Search and filtering logic
+  - `useImageSelection.ts` - Image selection management
+- **Component Modularization**: Broke out UI elements into dedicated components:
+  - `Header.tsx` - Application header
+  - `StatusBar.tsx` - Status information display
+  - `ActionToolbar.tsx` - Action buttons and controls
+- **Parser Modularization**: Split monolithic `fileIndexer.ts` into modular parsers:
+  - `services/parsers/` - Separate modules for InvokeAI, A1111, and ComfyUI formats
+  - Factory pattern for automatic parser selection based on metadata format
+
+**Alternatives Considered:**
+- Incremental refactoring (rejected: would take longer and create intermediate complexity)
+- Using Redux instead of Zustand (rejected: Zustand is simpler and more suitable for this scale)
+- Keeping monolithic structure (rejected: would continue to hinder development velocity)
+
+**Impact:** 
+- Significantly improved code maintainability and readability
+- Enhanced LLM comprehension of codebase structure
+- Better separation of concerns across the application
+- Easier testing and debugging of individual components
+- Improved developer experience for future modifications
+
+**Testing:** Verified all existing functionality works correctly after refactoring, including image loading, filtering, selection, and metadata parsing across all supported formats (InvokeAI, A1111, ComfyUI).
+
 ## 2025-09-28: CRITICAL - Fixed Syntax Error Preventing App Startup
 
 **Decision:** Resolved critical syntax error in electron.mjs that completely prevented the application from starting.
