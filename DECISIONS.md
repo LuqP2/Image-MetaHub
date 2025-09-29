@@ -40,6 +40,29 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-29: UX - Multi-Select Filter Logic Changed to OR Behavior
+
+**Decision:** Changed multi-select filter logic from AND to OR behavior for models, LoRAs, and schedulers.
+
+**Context:** Users reported that selecting multiple filters (models/LoRAs/schedulers) resulted in zero images shown, as the system required images to match ALL selected filters simultaneously.
+
+**Rationale:** 
+- Changed `selectedModels.every()` to `selectedModels.some()` for OR logic
+- Changed `selectedLoras.every()` to `selectedLoras.some()` for OR logic  
+- Schedulers already used OR logic with `selectedSchedulers.includes()`
+- Images now appear if they match ANY of the selected filters, not ALL
+
+**Alternatives Considered:**
+- Keep AND logic (rejected: poor UX, users expect OR behavior for filters)
+- Add toggle between AND/OR modes (rejected: over-engineering, OR is standard expectation)
+
+**Impact:** 
+- Significantly improves user experience when filtering by multiple criteria
+- More intuitive behavior matching user expectations
+- Allows users to see broader sets of images when combining filters
+
+**Testing:** Verified filter combinations now work correctly, showing images that match any selected model/LoRA/scheduler.
+
 ## 2025-09-29: ARCHITECTURE - Major Application Refactoring for LLM-Friendliness
 
 **Decision:** Performed comprehensive architectural refactoring to improve code modularity, maintainability, and LLM comprehension through state management migration, custom hooks extraction, component modularization, and parser modularization.

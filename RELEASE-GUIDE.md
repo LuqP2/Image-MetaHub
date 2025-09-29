@@ -1,6 +1,6 @@
 # Release Management Guide
 
-This guide explains how to create rich, well-organized GitHub releases for the Local Image Browser for InvokeAI project.
+This guide explains how to create rich, well-organized GitHub releases for the Image MetaHub project.
 
 ## Overview
 
@@ -64,7 +64,7 @@ npm run release-workflow 1.7.4
    ```
 
 4. **Create GitHub release**:
-   - Go to [GitHub Releases](https://github.com/LuqP2/local-image-browser-for-invokeai/releases/new)
+   - Go to [GitHub Releases](https://github.com/LuqP2/image-metahub/releases/new)
    - Select tag `v1.7.4`
    - Copy content from `release-v1.7.4.md`
    - Publish!
@@ -81,7 +81,7 @@ The generated release notes include:
 
 ### Example Structure:
 ```
-# Local Image Browser for InvokeAI v1.7.4
+# Image MetaHub v1.7.4
 
 [Changelog content from CHANGELOG.md]
 

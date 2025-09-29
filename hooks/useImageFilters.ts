@@ -35,13 +35,13 @@ export function useImageFilters() {
 
         if (selectedModels.length > 0) {
             results = results.filter(image =>
-                selectedModels.every(sm => image.models.includes(sm))
+                selectedModels.some(sm => image.models.includes(sm))
             );
         }
 
         if (selectedLoras.length > 0) {
             results = results.filter(image =>
-                selectedLoras.every(sl => image.loras.includes(sl))
+                selectedLoras.some(sl => image.loras.includes(sl))
             );
         }
 

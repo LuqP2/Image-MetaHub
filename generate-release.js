@@ -53,7 +53,7 @@ const releaseNotes = versionContent.join('\n').trim();
 const today = new Date().toISOString().split('T')[0];
 
 // Generate release title
-const releaseTitle = `Local Image Browser for InvokeAI v${VERSION}`;
+const releaseTitle = `Image MetaHub v${VERSION}`;
 
 // Generate rich release body
 const releaseBody = `# ${releaseTitle}
@@ -65,18 +65,18 @@ ${releaseNotes}
 Choose the appropriate installer for your operating system:
 
 ###  Windows
-- **Installer**: \`LocalImageBrowser-InvokeAI-Setup-${VERSION}.exe\`
+- **Installer**: \`ImageMetaHub-Setup-${VERSION}.exe\`
 - **Format**: NSIS installer with desktop and start menu shortcuts
 - **Size**: ~85MB
 
 ###  macOS
-- **Intel Macs**: \`LocalImageBrowser-InvokeAI-${VERSION}.dmg\`
-- **Apple Silicon**: \`LocalImageBrowser-InvokeAI-${VERSION}-arm64.dmg\`
+- **Intel Macs**: \`ImageMetaHub-${VERSION}.dmg\`
+- **Apple Silicon**: \`ImageMetaHub-${VERSION}-arm64.dmg\`
 - **Format**: DMG packages with proper entitlements
 - **Requirements**: macOS 10.15+
 
 ###  Linux
-- **Universal**: \`LocalImageBrowser-InvokeAI-${VERSION}.AppImage\`
+- **Universal**: \`ImageMetaHub-${VERSION}.AppImage\`
 - **Format**: Portable AppImage (no installation required)
 - **Dependencies**: None (fully self-contained)
 
@@ -92,9 +92,9 @@ ${releaseNotes.split('\n').slice(2).join('\n')}
 
 ## Documentation
 
-- [README](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/main/README.md)
-- [Architecture](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/main/ARCHITECTURE.md)
-- [Changelog](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/CHANGELOG.md)
+- [README](https://github.com/LuqP2/image-metahub/blob/main/README.md)
+- [Architecture](https://github.com/LuqP2/image-metahub/blob/main/ARCHITECTURE.md)
+- [Changelog](https://github.com/LuqP2/image-metahub/blob/CHANGELOG.md)
 
 ## Known Issues
 
@@ -103,7 +103,7 @@ ${releaseNotes.split('\n').slice(2).join('\n')}
 
 ## Feedback
 
-Found a bug or have a feature request? [Open an issue](https://github.com/LuqP2/local-image-browser-for-invokeai/issues)!
+Found a bug or have a feature request? [Open an issue](https://github.com/LuqP2/image-metahub/issues)!
 
 ---
 
@@ -129,10 +129,10 @@ console.log('\nOpening GitHub releases page...');
 try {
   // Only try to open browser on Windows (where 'start' command exists)
   if (process.platform === 'win32') {
-    execSync('start https://github.com/LuqP2/local-image-browser-for-invokeai/releases/new', { stdio: 'inherit' });
+    execSync('start https://github.com/LuqP2/image-metahub/releases/new', { stdio: 'inherit' });
   } else {
-    console.log('On non-Windows systems, manually open: https://github.com/LuqP2/local-image-browser-for-invokeai/releases/new');
+    console.log('On non-Windows systems, manually open: https://github.com/LuqP2/image-metahub/releases/new');
   }
 } catch (error) {
-  console.log('Manually open: https://github.com/LuqP2/local-image-browser-for-invokeai/releases/new');
+  console.log('Manually open: https://github.com/LuqP2/image-metahub/releases/new');
 }

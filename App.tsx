@@ -63,11 +63,11 @@ export default function App() {
 
   // Persist settings
   useEffect(() => {
-    localStorage.setItem('invokeai-sort-order', sortOrder);
+    localStorage.setItem('image-metahub-sort-order', sortOrder);
   }, [sortOrder]);
 
   useEffect(() => {
-    localStorage.setItem('invokeai-items-per-page', itemsPerPage.toString());
+    localStorage.setItem('image-metahub-items-per-page', itemsPerPage.toString());
   }, [itemsPerPage]);
 
   // --- Memoized Callbacks for UI ---
@@ -112,8 +112,8 @@ export default function App() {
 
   const handleChangeFolder = async () => {
     useImageStore.getState().resetState();
-    localStorage.removeItem('invokeai-electron-directory-path');
-    localStorage.removeItem('invokeai-directory-name');
+    localStorage.removeItem('image-metahub-electron-directory-path');
+    localStorage.removeItem('image-metahub-directory-name');
     await handleSelectFolder();
   };
 

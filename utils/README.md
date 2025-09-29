@@ -1,6 +1,6 @@
 # Image Utilities
 
-Este arquivo contém funções utilitárias para operações com imagens no Local Image Browser.
+Este arquivo contém funções utilitárias para operações com imagens no Image MetaHub.
 
 ## Funções Disponíveis
 

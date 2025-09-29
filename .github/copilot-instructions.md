@@ -1,7 +1,7 @@
-# AI Coding Assistant Instructions for Local Image Browser for InvokeAI
+# AI Coding Assistant Instructions for Image MetaHub
 
 ## Project Overview
-This is a React + TypeScript + Electron application that provides local browsing and filtering of AI-generated images from InvokeAI. The app runs in both web browsers and as a desktop application, with dual file system APIs for cross-platform compatibility.
+This is a React + TypeScript + Electron application that provides local browsing and filtering of AI-generated images. The app runs in both web browsers and as a desktop application, with dual file system APIs for cross-platform compatibility.
 
 ## Architecture & Data Flow
 
@@ -283,8 +283,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 ```typescript
 // Save user preferences to localStorage
 useEffect(() => {
-  const savedSortOrder = localStorage.getItem('invokeai-sort-order');
-  const savedItemsPerPage = localStorage.getItem('invokeai-items-per-page');
+  const savedSortOrder = localStorage.getItem('image-metahub-sort-order');
+  const savedItemsPerPage = localStorage.getItem('image-metahub-items-per-page');
   // Apply saved preferences on component mount
 }, []);
 ```
@@ -468,12 +468,12 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 4. **GitHub Actions**: The workflow will attempt automated builds, but manual intervention may be needed
 5. **Manual Upload**: If automated workflow fails, upload installers manually:
    ```bash
-   gh release upload v1.7.4 "dist-electron\LocalImageBrowser-InvokeAI-Setup-1.7.4.exe" --clobber
+   gh release upload v1.7.4 "dist-electron\ImageMetaHub-Setup-1.7.4.exe" --clobber
    gh release upload v1.7.4 "dist-electron\latest.yml" --clobber
    ```
 
 **Release Artifacts:**
-- **Windows**: `LocalImageBrowser-InvokeAI-Setup-{version}.exe` + `latest.yml`
+- **Windows**: `ImageMetaHub-Setup-{version}.exe` + `latest.yml`
 - **macOS**: `.dmg` files for Intel and Apple Silicon + `latest-mac.yml`
 - **Linux**: `.AppImage` files + `latest-linux.yml`
 
@@ -487,7 +487,7 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 ```bash
 npm run build
 npx electron-builder --publish=never
-gh release upload v{version} "dist-electron\LocalImageBrowser-InvokeAI-Setup-{version}.exe" --clobber
+gh release upload v{version} "dist-electron\ImageMetaHub-Setup-{version}.exe" --clobber
 gh release upload v{version} "dist-electron\latest.yml" --clobber
 ```
 

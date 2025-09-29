@@ -15,7 +15,7 @@ const Header: React.FC<HeaderProps> = ({ directoryHandle, onUpdateFolder, onChan
             <path d="M11.83 2.17C11.42 1.41 10.58 1.41 10.17 2.17L2.17 16.17C1.76 16.93 2.23 18 3 18H21C21.77 18 22.24 16.93 21.83 16.17L13.83 2.17C13.42 1.41 12.58 1.41 12.17 2.17L11.83 2.17Z" fillOpacity="0.01"/>
             <path d="M12 2L3 18H21L12 2ZM12 5.5L18.6 16H5.4L12 5.5Z"/>
           </svg>
-          <h1 className="text-2xl font-bold tracking-wider">Local Image Browser</h1>
+          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub</h1>
         </div>
         {directoryHandle && (
           <div className="flex items-center gap-3">
