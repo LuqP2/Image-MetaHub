@@ -40,7 +40,8 @@
       }
     ],
     "category": "Utility",
-    "synopsis": "Local image browser for InvokeAI outputs"
+    "synopsis": "Local image browser for InvokeAI outputs",
+    "generateUpdatesFilesForAllChannels": true
   },
   "nsis": {
     "oneClick": false,
