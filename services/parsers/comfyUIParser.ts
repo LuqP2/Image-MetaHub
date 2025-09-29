@@ -39,6 +39,7 @@ function findValueByLink(link: [string, number], nodes: NodeMap, visited: Set<st
 
 export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   const result: BaseMetadata & { loras: string[], models: string[] } = {
+    format: 'ComfyUI [beta]',
     prompt: '',
     negativePrompt: '',
     model: 'Unknown',
@@ -56,16 +57,9 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   const dataSource = metadata.prompt || metadata.workflow;
   if (!dataSource) return result;
 
-  let nodes: NodeMap;
   const sourceObj = typeof dataSource === 'string' ? JSON.parse(dataSource) : dataSource;
 
-  // Debug logging
-  console.log('ComfyUI parser input:', { hasPrompt: !!metadata.prompt, hasWorkflow: !!metadata.workflow });
-  console.log('ComfyUI source object keys:', Object.keys(sourceObj));
-  if (sourceObj.nodes) {
-    console.log('ComfyUI workflow nodes count:', sourceObj.nodes.length);
-    console.log('ComfyUI workflow node types:', sourceObj.nodes.map((n: any) => n.type || n.class_type));
-  }
+  let nodes: NodeMap;
 
   // Normalize 'workflow' structure (array of nodes) to 'prompt' structure (map of nodes)
   if (sourceObj.nodes && Array.isArray(sourceObj.nodes)) {
@@ -87,21 +81,17 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   let samplerNodeId: string | null = null;
 
   // First pass: Find the main sampler and basic info
-  console.log('Starting first pass - scanning nodes for class_types...');
   for (const nodeId in nodes) {
     const node = nodes[nodeId];
-    console.log(`Node ${nodeId}: class_type=${node.class_type}, inputs keys:`, Object.keys(node.inputs || {}));
     switch (node.class_type) {
       case 'KSampler':
       case 'KSamplerAdvanced':
         samplerNodeId = nodeId;
-        console.log(`Found KSampler node ${nodeId} with inputs:`, node.inputs);
         result.steps = node.inputs.steps ?? result.steps;
         result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? node.inputs.conditioning_scale ?? result.cfg_scale;
         result.seed = node.inputs.seed ?? result.seed;
         result.scheduler = node.inputs.scheduler ?? result.scheduler;
         result.sampler = node.inputs.sampler_name ?? result.sampler;
-        console.log(`Extracted from KSampler: steps=${result.steps}, cfg=${result.cfg_scale}, seed=${result.seed}`);
         break;
 
       case 'CheckpointLoaderSimple':
@@ -123,22 +113,18 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         break;
 
       case 'BasicScheduler':
-         console.log(`Found BasicScheduler node ${nodeId} with inputs:`, node.inputs);
          result.steps = node.inputs.steps ?? result.steps;
          result.scheduler = node.inputs.scheduler ?? result.scheduler;
-         console.log(`Extracted from BasicScheduler: steps=${result.steps}, scheduler=${result.scheduler}`);
          break;
 
       case 'SamplerCustom':
       case 'SamplerCustomAdvanced':
-        console.log(`Found SamplerCustom node ${nodeId} with inputs:`, node.inputs);
         result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? result.cfg_scale;
         result.sampler = node.inputs.sampler_name ?? result.sampler;
         break;
 
       case ' ConditioningCombine':
       case 'ConditioningSetTimestepRange':
-        console.log(`Found Conditioning node ${nodeId} with inputs:`, node.inputs);
         result.steps = node.inputs.end_step ?? result.steps;
         break;
 
@@ -207,21 +193,6 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       if (typeof a[key] === 'number') a[key] = 0;
     }
   }
-
-  console.log('Final extracted metadata:', {
-    prompt: result.prompt,
-    negativePrompt: result.negativePrompt,
-    model: result.model,
-    steps: result.steps,
-    cfg_scale: result.cfg_scale,
-    seed: result.seed,
-    scheduler: result.scheduler,
-    sampler: result.sampler,
-    width: result.width,
-    height: result.height,
-    models: result.models,
-    loras: result.loras
-  });
 
   return result;
 }
