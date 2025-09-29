@@ -3,6 +3,7 @@
 
 import { type IndexedImage, type ImageMetadata, type InvokeAIMetadata, type Automatic1111Metadata, type ComfyUIMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata } from '../types';
 import { parse } from 'exifr';
+import { parseComfyUIMetadata } from './parsers/comfyUIParser';
 
 // Function to parse InvokeAI metadata and extract normalized metadata
 function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
@@ -66,97 +67,6 @@ function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
 
   } catch (error) {
     console.error('Error parsing InvokeAI metadata:', error);
-  }
-
-  return result;
-}
-
-// Function to parse ComfyUI workflow and extract normalized metadata
-function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
-  const result: BaseMetadata = {
-    format: 'comfyui',
-    prompt: '',
-    negativePrompt: '',
-    model: '',
-    width: 0,
-    height: 0,
-    steps: 0,
-    cfgScale: 0,
-    seed: undefined,
-    sampler: '',
-    scheduler: '',
-    loras: [],
-  };
-
-  try {
-    const workflow = typeof metadata.workflow === 'string' ? JSON.parse(metadata.workflow) : metadata.workflow;
-    const promptData = typeof metadata.prompt === 'string' ? JSON.parse(metadata.prompt) : metadata.prompt;
-    const dataSource = workflow || promptData;
-
-    if (!dataSource) return result;
-
-    const nodes = dataSource.nodes || Object.values(dataSource);
-
-    let positivePromptNodeId: string | null = null;
-    let negativePromptNodeId: string | null = null;
-
-    // Find KSampler node to identify positive/negative prompt connections
-    const ksamplerNode = nodes.find((node: any) => node.type === 'KSampler' || node.class_type === 'KSampler');
-    if (ksamplerNode && ksamplerNode.inputs) {
-      if (ksamplerNode.inputs.positive && Array.isArray(ksamplerNode.inputs.positive)) {
-        positivePromptNodeId = ksamplerNode.inputs.positive[0];
-      }
-      if (ksamplerNode.inputs.negative && Array.isArray(ksamplerNode.inputs.negative)) {
-        negativePromptNodeId = ksamplerNode.inputs.negative[0];
-      }
-    }
-
-    nodes.forEach((node: any) => {
-      const nodeType = node.type || node.class_type;
-      const inputs = node.inputs || {};
-      const widgets = node.widgets_values || [];
-
-      // Extract Prompts
-      if (nodeType.includes('CLIPTextEncode')) {
-        const text = inputs.text || widgets[0];
-        if (typeof text === 'string') {
-          if (positivePromptNodeId && String(node.id) === String(positivePromptNodeId)) {
-            result.prompt = text;
-          } else if (negativePromptNodeId && String(node.id) === String(negativePromptNodeId)) {
-            result.negativePrompt = text;
-          }
-        }
-      }
-
-      // Extract Model
-      if (nodeType.includes('CheckpointLoader')) {
-        result.model = inputs.ckpt_name || widgets[0] || result.model;
-      }
-
-      // Extract Sampler settings from KSampler
-      if (nodeType === 'KSampler' || node.class_type === 'KSampler') {
-          result.steps = inputs.steps || result.steps;
-          result.cfgScale = inputs.cfg || result.cfgScale;
-          result.sampler = inputs.sampler_name || result.sampler;
-          result.scheduler = inputs.scheduler || result.scheduler;
-          result.seed = inputs.seed ?? result.seed;
-      }
-
-      // Extract Dimensions from EmptyLatentImage
-      if (nodeType === 'EmptyLatentImage' || node.class_type === 'EmptyLatentImage') {
-        result.width = inputs.width || result.width;
-        result.height = inputs.height || result.height;
-      }
-
-      // Extract LoRAs
-      if(nodeType === 'LoraLoader' || node.class_type === 'LoraLoader') {
-        const loraName = inputs.lora_name || widgets[0];
-        if(loraName) result.loras?.push(loraName);
-      }
-    });
-
-  } catch (error) {
-    console.error('Failed to parse ComfyUI metadata:', error);
   }
 
   return result;

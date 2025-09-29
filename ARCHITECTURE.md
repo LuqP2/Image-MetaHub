@@ -5,11 +5,22 @@
 **Local Image Browser for InvokeAI** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.7.5
+- **Version**: 1.7.6
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
+- **State Management**: Zustand
 - **Desktop**: Electron 38 with auto-updater
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS v4
+
+### Recent Architecture Changes (v1.7.6)
+- **Major Refactoring**: Complete restructuring for better maintainability
+  - Migrated from monolithic App.tsx to modular hooks-based architecture
+  - Introduced Zustand for centralized state management
+  - Extracted business logic into custom hooks (useImageLoader, useImageFilters, useImageSelection)
+  - Componentized UI elements (Header, StatusBar, ActionToolbar)
+  - Modularized metadata parsing into separate parser modules
+- **Cross-Platform Improvements**: Enhanced Electron/browser compatibility
+- **Performance Optimizations**: Better state management and reduced re-renders
 
 ## Core Architecture
 
@@ -17,6 +28,7 @@
 ```
 React 18.2.0
 ├── TypeScript 5.2.2
+├── Zustand 5.0.8 (State Management)
 ├── Vite 5.0.8 (Build Tool)
 ├── Electron 38 (Desktop Wrapper)
 ├── DOM APIs (File System Access API)
@@ -26,23 +38,72 @@ React 18.2.0
 ### 2. **Project Structure**
 ```
 src/
-├── App.tsx                 # Main application component
+├── App.tsx                 # Main application orchestrator (lean, uses hooks)
 ├── index.tsx              # Application entry point
 ├── types.ts               # TypeScript type definitions
 ├── components/            # Reusable UI components
+│   ├── ActionToolbar.tsx  # Action buttons (delete, copy, etc.)
+│   ├── BrowserCompatibilityWarning.tsx # Browser support checks
 │   ├── DropdownMenu.tsx   # Dropdown component for UI
 │   ├── FolderSelector.tsx # Directory selection interface
+│   ├── Header.tsx         # Application header
 │   ├── ImageGrid.tsx      # Grid display with multi-selection
 │   ├── ImageModal.tsx     # Image details and metadata
 │   ├── Loader.tsx         # Loading states and progress
-│   └── SearchBar.tsx      # Search and filtering interface
+│   ├── SearchBar.tsx      # Search and filtering interface
+│   ├── Sidebar.tsx        # Filter sidebar
+│   ├── StatusBar.tsx      # Status information display
+│   └── StepsRangeSlider.tsx # Range slider for steps filter
+├── hooks/                 # Custom React hooks
+│   ├── useImageFilters.ts # Filtering logic and state
+│   ├── useImageLoader.ts  # Directory loading and processing
+│   └── useImageSelection.ts # Multi-selection management
 ├── services/              # Business logic services
 │   ├── cacheManager.ts    # IndexedDB cache management
 │   ├── fileIndexer.ts     # File processing and metadata extraction
-│   └── fileOperations.ts  # File management (rename/delete)
+│   ├── fileOperations.ts  # File management (rename/delete)
+│   └── parsers/           # Modular metadata parsers
+│       ├── index.ts       # Parser factory and exports
+│       ├── parseA1111.ts  # Automatic1111 metadata parser
+│       ├── parseComfyUI.ts # ComfyUI metadata parser
+│       └── parseInvokeAI.ts # InvokeAI metadata parser
+├── store/                 # State management
+│   └── useImageStore.ts   # Zustand store for global state
+├── utils/                 # Utility functions
+│   ├── imageUtils.ts      # Image-related utilities
+│   └── README.md          # Utils documentation
 ├── electron.cjs           # Electron main process
 ├── preload.js             # Secure IPC bridge
 └── dist-electron/         # Built desktop application
+```
+
+### 3. **State Management & Logic Separation**
+- **Global State**: Zustand store (`useImageStore.ts`) for centralized application state
+- **Custom Hooks**: Business logic extracted into reusable hooks
+  - `useImageLoader.ts`: Directory loading and file processing
+  - `useImageFilters.ts`: Search and filtering logic
+  - `useImageSelection.ts`: Multi-selection management
+- **Component Architecture**: Lean components focused on UI rendering
+- **Separation of Concerns**: State, logic, and UI are cleanly separated
+
+#### Zustand Store Structure
+```typescript
+interface ImageState {
+  // Data
+  images: IndexedImage[];
+  filteredImages: IndexedImage[];
+  selectedImages: Set<string>;
+  
+  // UI State
+  loading: boolean;
+  error: string | null;
+  directoryHandle: FileSystemDirectoryHandle | null;
+  
+  // Actions
+  setImages: (images: IndexedImage[]) => void;
+  setSelectedImages: (ids: Set<string>) => void;
+  // ... more actions
+}
 ```
 
 ## Core Systems
@@ -112,14 +173,18 @@ const mockHandle = {
 ```
 
 ### 2. **Metadata Extraction System**
+- **Modular Parser Architecture**: Separate parsers for each metadata format
+  - `parseInvokeAI.ts`: InvokeAI workflow and metadata parsing
+  - `parseComfyUI.ts`: ComfyUI workflow parsing
+  - `parseA1111.ts`: Automatic1111 parameters parsing
+- **Parser Factory**: Intelligent format detection and parser selection
 - **PNG Chunk Parsing**: Extracts metadata from PNG tEXt chunks
-- **Multi-Format Support**: Parses InvokeAI and Automatic1111 metadata formats
-- **InvokeAI Format Support**: Parses `invokeai_metadata` JSON with workflow data
-- **Automatic1111 Format Support**: Parses "parameters" chunk with generation settings
-- **Universal Parser**: Intelligent format detection based on PNG chunk keywords
-- **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects across all formats
-- **Scheduler Detection**: Automatic scheduler type extraction
-- **Thumbnail Detection**: Automatic mapping of WebP thumbnails to PNG images
+- **JPEG EXIF Parsing**: Extracts metadata from JPEG EXIF data using exifr library
+- **Multi-Format Support**: Unified interface for InvokeAI, ComfyUI, and Automatic1111
+- **Error-Resilient Parsing**: Graceful handling of malformed metadata
+- **Normalized Metadata**: Consistent data structure across all formats
+- **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects
+- **Thumbnail Detection**: Automatic mapping of WebP thumbnails to images
 
 ```typescript
 interface IndexedImage {

@@ -25,8 +25,8 @@ function findValueByLink(link: [string, number], nodes: NodeMap, visited: Set<st
   for (const field of valueFields) {
     if (inputs[field] !== undefined) {
       // If this value is itself a link, recurse
-      if (Array.isArray(inputs[field])) {
-        return findValueByLink(inputs[field], nodes, visited);
+      if (Array.isArray(inputs[field]) && inputs[field].length === 2 && typeof inputs[field][0] === 'string' && typeof inputs[field][1] === 'number') {
+        return findValueByLink(inputs[field] as [string, number], nodes, visited);
       }
       return inputs[field]; // Found primitive value
     }
@@ -59,14 +59,22 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   let nodes: NodeMap;
   const sourceObj = typeof dataSource === 'string' ? JSON.parse(dataSource) : dataSource;
 
+  // Debug logging
+  console.log('ComfyUI parser input:', { hasPrompt: !!metadata.prompt, hasWorkflow: !!metadata.workflow });
+  console.log('ComfyUI source object keys:', Object.keys(sourceObj));
+  if (sourceObj.nodes) {
+    console.log('ComfyUI workflow nodes count:', sourceObj.nodes.length);
+    console.log('ComfyUI workflow node types:', sourceObj.nodes.map((n: any) => n.type || n.class_type));
+  }
+
   // Normalize 'workflow' structure (array of nodes) to 'prompt' structure (map of nodes)
   if (sourceObj.nodes && Array.isArray(sourceObj.nodes)) {
     nodes = (sourceObj as ComfyUIWorkflow).nodes.reduce((acc, node) => {
       acc[node.id.toString()] = {
           inputs: node.inputs || {},
-          class_type: node.type,
+          class_type: (node as any).class_type || node.type, // Handle both 'type' and 'class_type' fields
           // A common property name for UI titles
-          _meta: { title: node.properties?.['Node name for S&R'] || node.title }
+          _meta: { title: node.properties?.['Node name for S&R'] || '' }
       };
       return acc;
     }, {} as NodeMap);
@@ -79,17 +87,21 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
   let samplerNodeId: string | null = null;
 
   // First pass: Find the main sampler and basic info
+  console.log('Starting first pass - scanning nodes for class_types...');
   for (const nodeId in nodes) {
     const node = nodes[nodeId];
+    console.log(`Node ${nodeId}: class_type=${node.class_type}, inputs keys:`, Object.keys(node.inputs || {}));
     switch (node.class_type) {
       case 'KSampler':
       case 'KSamplerAdvanced':
         samplerNodeId = nodeId;
+        console.log(`Found KSampler node ${nodeId} with inputs:`, node.inputs);
         result.steps = node.inputs.steps ?? result.steps;
-        result.cfg_scale = node.inputs.cfg ?? result.cfg_scale;
+        result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? node.inputs.conditioning_scale ?? result.cfg_scale;
         result.seed = node.inputs.seed ?? result.seed;
         result.scheduler = node.inputs.scheduler ?? result.scheduler;
         result.sampler = node.inputs.sampler_name ?? result.sampler;
+        console.log(`Extracted from KSampler: steps=${result.steps}, cfg=${result.cfg_scale}, seed=${result.seed}`);
         break;
 
       case 'CheckpointLoaderSimple':
@@ -111,14 +123,29 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
         break;
 
       case 'BasicScheduler':
+         console.log(`Found BasicScheduler node ${nodeId} with inputs:`, node.inputs);
          result.steps = node.inputs.steps ?? result.steps;
          result.scheduler = node.inputs.scheduler ?? result.scheduler;
+         console.log(`Extracted from BasicScheduler: steps=${result.steps}, scheduler=${result.scheduler}`);
          break;
 
+      case 'SamplerCustom':
+      case 'SamplerCustomAdvanced':
+        console.log(`Found SamplerCustom node ${nodeId} with inputs:`, node.inputs);
+        result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? result.cfg_scale;
+        result.sampler = node.inputs.sampler_name ?? result.sampler;
+        break;
+
+      case ' ConditioningCombine':
+      case 'ConditioningSetTimestepRange':
+        console.log(`Found Conditioning node ${nodeId} with inputs:`, node.inputs);
+        result.steps = node.inputs.end_step ?? result.steps;
+        break;
+
       case 'EmptyLatentImage':
-        // Latent dimensions need to be scaled (usually by 8)
-        result.width = (node.inputs.width ?? 0) * 8;
-        result.height = (node.inputs.height ?? 0) * 8;
+        // Latent dimensions are already in the correct scale (no need to multiply by 8)
+        result.width = node.inputs.width ?? result.width;
+        result.height = node.inputs.height ?? result.height;
         break;
 
       case 'Int Literal':
@@ -132,14 +159,36 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     }
   }
 
-  // Second pass: Use the sampler node to trace prompts accurately
+  // Second pass: Use the sampler node to trace prompts and other linked values
   if (samplerNodeId) {
     const samplerNode = nodes[samplerNodeId];
+    
+    // Extract prompts by following links
     if (samplerNode.inputs.positive && Array.isArray(samplerNode.inputs.positive)) {
       result.prompt = findValueByLink(samplerNode.inputs.positive, nodes) ?? result.prompt;
     }
     if (samplerNode.inputs.negative && Array.isArray(samplerNode.inputs.negative)) {
       result.negativePrompt = findValueByLink(samplerNode.inputs.negative, nodes) ?? result.negativePrompt;
+    }
+    
+    // Extract other parameters by following links if not already set directly
+    if (!result.seed && samplerNode.inputs.seed && Array.isArray(samplerNode.inputs.seed)) {
+      result.seed = findValueByLink(samplerNode.inputs.seed, nodes) ?? result.seed;
+    }
+    if (!result.steps && samplerNode.inputs.steps && Array.isArray(samplerNode.inputs.steps)) {
+      result.steps = findValueByLink(samplerNode.inputs.steps, nodes) ?? result.steps;
+    }
+    if (!result.cfg_scale && samplerNode.inputs.cfg && Array.isArray(samplerNode.inputs.cfg)) {
+      result.cfg_scale = findValueByLink(samplerNode.inputs.cfg, nodes) ?? result.cfg_scale;
+    }
+    if (!result.cfg_scale && samplerNode.inputs.guidance && Array.isArray(samplerNode.inputs.guidance)) {
+      result.cfg_scale = findValueByLink(samplerNode.inputs.guidance, nodes) ?? result.cfg_scale;
+    }
+    if (!result.sampler && samplerNode.inputs.sampler_name && Array.isArray(samplerNode.inputs.sampler_name)) {
+      result.sampler = findValueByLink(samplerNode.inputs.sampler_name, nodes) ?? result.sampler;
+    }
+    if (!result.scheduler && samplerNode.inputs.scheduler && Array.isArray(samplerNode.inputs.scheduler)) {
+      result.scheduler = findValueByLink(samplerNode.inputs.scheduler, nodes) ?? result.scheduler;
     }
   }
 
@@ -158,6 +207,21 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
       if (typeof a[key] === 'number') a[key] = 0;
     }
   }
+
+  console.log('Final extracted metadata:', {
+    prompt: result.prompt,
+    negativePrompt: result.negativePrompt,
+    model: result.model,
+    steps: result.steps,
+    cfg_scale: result.cfg_scale,
+    seed: result.seed,
+    scheduler: result.scheduler,
+    sampler: result.sampler,
+    width: result.width,
+    height: result.height,
+    models: result.models,
+    loras: result.loras
+  });
 
   return result;
 }
