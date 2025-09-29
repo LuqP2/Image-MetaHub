@@ -41,7 +41,7 @@ async function getAllFileHandles(directoryHandle: FileSystemDirectoryHandle, dir
 export function useImageLoader() {
     const {
         setDirectory, setLoading, setProgress, setImages, setError, setSuccess,
-        directoryHandle, directoryPath,
+        directoryHandle, directoryPath, setFilterOptions
     } = useImageStore();
 
     const fileHandlesCache = useRef<Map<string, {handle: FileSystemFileHandle, path: string}[]>>(new Map());
@@ -76,6 +76,30 @@ export function useImageLoader() {
             const allFiles = await getAllFileHandles(handle, path);
             const indexedImages = isElectron ? await processFiles(allFiles, setProgress) : await processDirectory(handle, setProgress);
 
+            // --- Filter Extraction ---
+            const models = new Set<string>();
+            const loras = new Set<string>();
+            const schedulers = new Set<string>();
+
+            for (const image of indexedImages) {
+                if (image.models && image.models.length > 0) {
+                    image.models.forEach(model => models.add(model));
+                }
+                if (image.loras && image.loras.length > 0) {
+                    image.loras.forEach(lora => loras.add(lora));
+                }
+                if (image.scheduler) {
+                    schedulers.add(image.scheduler);
+                }
+            }
+
+            setFilterOptions({
+                models: Array.from(models).sort(),
+                loras: Array.from(loras).sort(),
+                schedulers: Array.from(schedulers).sort(),
+            });
+            // --- End of Filter Extraction ---
+
             setImages(indexedImages);
             await cacheManager.cacheData(handle.name, indexedImages);
             setSuccess(`Loaded ${indexedImages.length} images.`);
@@ -87,7 +111,7 @@ export function useImageLoader() {
         } finally {
             setLoading(false);
         }
-    }, [setDirectory, setLoading, setProgress, setImages, setError, setSuccess]);
+    }, [setDirectory, setLoading, setProgress, setImages, setError, setSuccess, setFilterOptions]);
 
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {
