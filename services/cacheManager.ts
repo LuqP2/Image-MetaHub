@@ -16,7 +16,13 @@ interface CacheEntry {
     loras: string[];
     scheduler: string;
   }[];
-  thumbnails: Map<string, Blob>; // Store thumbnail blobs
+}
+
+export interface CacheDiff {
+  newAndModifiedFiles: { name: string; lastModified: number }[];
+  deletedFileIds: string[];
+  cachedImages: IndexedImage[];
+  needsFullRefresh: boolean;
 }
 
 class CacheManager {
@@ -139,7 +145,6 @@ class CacheManager {
         loras: img.loras,
         scheduler: img.scheduler,
       })),
-      thumbnails: new Map()
     };
 
     return new Promise((resolve, reject) => {
@@ -298,122 +303,70 @@ class CacheManager {
     });
   }
 
-  async shouldRefreshCache(
+  async validateCacheAndGetDiff(
     directoryName: string,
-    currentImageCount: number
-  ): Promise<{ shouldRefresh: boolean }> {
+    currentFiles: { name: string; lastModified: number }[]
+  ): Promise<CacheDiff> {
     const cached = await this.getCachedData(directoryName);
-    
+
     if (!cached) {
-      // console.log(`❌ NO CACHE FOUND for "${directoryName}"`);
-      return { shouldRefresh: true };
-    }
-    
-    const cacheAge = Date.now() - cached.lastScan;
-    const ageMinutes = Math.round(cacheAge / (1000 * 60));
-    
-    // console.log(`🔍 CACHE ANALYSIS:`);
-    // console.log(`   Directory: "${directoryName}"`);
-    // console.log(`   Cached count: ${cached.imageCount}`);
-    // console.log(`   Current count: ${currentImageCount}`);
-    // console.log(`   Cache age: ${ageMinutes} minutes`);
-    // console.log(`   Cache timestamp: ${new Date(cached.lastScan).toLocaleString()}`);
-    
-    // Check if image count changed
-    const countDiff = Math.abs(cached.imageCount - currentImageCount);
-    
-    // If count changed, refresh cache
-    if (countDiff > 0) {
-      // console.log(`🔄 COUNT CHANGED: ${cached.imageCount} -> ${currentImageCount} (diff: ${countDiff})`);
-      return { shouldRefresh: true };
-    }
-
-    // Refresh if cache is older than 1 hour
-    const maxAge = 60 * 60 * 1000; // 1 hour
-    
-    if (cacheAge > maxAge) {
-      return { shouldRefresh: true };
-    }
-
-    return { shouldRefresh: false };
-  }
-
-  async updateCacheIncrementally(
-    directoryName: string,
-    newImages: IndexedImage[]
-  ): Promise<void> {
-    if (!this.db) await this.init();
-
-    const transaction = this.db!.transaction(['cache'], 'readwrite');
-    const store = transaction.objectStore('cache');
-
-    const request = store.get(directoryName);
-    request.onerror = () => {
-      console.error('❌ CACHE UPDATE FAILED:', request.error);
-    };
-    request.onsuccess = () => {
-      const cachedData: CacheEntry = request.result;
-      if (cachedData) {
-        // Merge new images with existing cache
-
-        // Ensure no duplicates in the cache
-        const existingNames = new Set(cachedData.metadata.map(meta => meta.name));
-        const uniqueNewImages = newImages.filter(img => !existingNames.has(img.name));
-
-        const updatedMetadata = [...cachedData.metadata, ...uniqueNewImages.map(img => ({
-          id: img.id,
-          name: img.name,
-          metadataString: img.metadataString,
-          lastModified: img.lastModified,
-          models: img.models,
-          loras: img.loras,
-          scheduler: img.scheduler,
-        }))];
-
-        cachedData.metadata = updatedMetadata;
-        cachedData.imageCount = updatedMetadata.length;
-        cachedData.lastScan = Date.now();
-
-        // Save updated cache
-        store.put(cachedData);
-      } else {
-        console.warn('⚠️ CACHE ENTRY NOT FOUND FOR INCREMENTAL UPDATE');
-      }
-    };
-  }
-
-  async cleanStaleCacheEntries(
-    directoryName: string,
-    validFileNames: string[]
-  ): Promise<number> {
-    if (!this.db) await this.init();
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
-
-      const request = store.get(directoryName);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const cachedData: CacheEntry = request.result;
-        if (cachedData) {
-          const originalCount = cachedData.metadata.length;
-          const validMetadata = cachedData.metadata.filter(meta => validFileNames.includes(meta.name));
-          const removedCount = originalCount - validMetadata.length;
-
-          if (removedCount > 0) {
-            cachedData.metadata = validMetadata;
-            cachedData.imageCount = validMetadata.length;
-            cachedData.lastScan = Date.now();
-            store.put(cachedData);
-          }
-
-          resolve(removedCount);
-        } else {
-          resolve(0);
-        }
+      console.log(`❌ NO CACHE FOUND for "${directoryName}". Performing full scan.`);
+      return {
+        newAndModifiedFiles: currentFiles,
+        deletedFileIds: [],
+        cachedImages: [],
+        needsFullRefresh: true,
       };
-    });
+    }
+    
+    console.log(`✅ CACHE FOUND for "${directoryName}". Analyzing diff...`);
+
+    const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
+    const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
+    const cachedImages: IndexedImage[] = [];
+    const currentFileNames = new Set<string>();
+
+    for (const file of currentFiles) {
+      currentFileNames.add(file.name);
+      const cachedFile = cachedMetadataMap.get(file.name);
+
+      if (!cachedFile) {
+        // File is new
+        newAndModifiedFiles.push(file);
+      } else if (cachedFile.lastModified < file.lastModified) {
+        // File has been modified
+        newAndModifiedFiles.push(file);
+      } else {
+        // File is unchanged, restore from cache
+        try {
+          const metadata = JSON.parse(cachedFile.metadataString);
+          cachedImages.push({
+            ...cachedFile,
+            metadata,
+            // Mock handle for cached items, getFile will be implemented in the hook
+            handle: { name: cachedFile.name, kind: 'file' } as any,
+          });
+        } catch (e) {
+          console.warn(`Could not parse metadata for ${cachedFile.name}, will re-process.`);
+          newAndModifiedFiles.push(file);
+        }
+      }
+    }
+
+    const deletedFileIds = cached.metadata
+      .filter(m => !currentFileNames.has(m.name))
+      .map(m => m.id);
+
+    console.log(`   - ${newAndModifiedFiles.length} new or modified files to process.`);
+    console.log(`   - ${deletedFileIds.length} deleted files to remove.`);
+    console.log(`   - ${cachedImages.length} images restored from cache.`);
+
+    return {
+      newAndModifiedFiles,
+      deletedFileIds,
+      cachedImages,
+      needsFullRefresh: false,
+    };
   }
 }
 
