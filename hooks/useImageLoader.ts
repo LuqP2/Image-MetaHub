@@ -1,12 +1,13 @@
 import { useCallback, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { processDirectory } from '../services/fileIndexer';
+import { processDirectory, processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
 import { IndexedImage } from '../types';
 
+const isElectron = typeof window !== 'undefined' && window.electronAPI;
+
 async function getAllFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string): Promise<{handle: FileSystemFileHandle, path: string}[]> {
     const entries = [];
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
     if (isElectron) {
         const result = await window.electronAPI.listDirectoryFiles(directoryPath);
@@ -28,7 +29,7 @@ async function getAllFileHandles(directoryHandle: FileSystemDirectoryHandle, dir
             }
         }
     } else {
-        for await (const entry of directoryHandle.values()) {
+        for await (const entry of (directoryHandle as any).values()) {
             if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
                 entries.push({ handle: entry, path: entry.name });
             }
@@ -73,7 +74,7 @@ export function useImageLoader() {
 
             await cacheManager.init();
             const allFiles = await getAllFileHandles(handle, path);
-            const indexedImages = await processDirectory(handle, setProgress, allFiles, handle.name);
+            const indexedImages = isElectron ? await processFiles(allFiles, setProgress) : await processDirectory(handle, setProgress);
 
             setImages(indexedImages);
             await cacheManager.cacheData(handle.name, indexedImages);
