@@ -55,8 +55,13 @@ function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
     result.seed = metadata.seed;
 
     // Extract LoRAs
-    if (Array.isArray(metadata.loras)) {
-        result.loras = metadata.loras.map((lora: any) => lora.lora.model_name);
+    try {
+      if (Array.isArray(metadata.loras)) {
+          result.loras = metadata.loras.map((lora: any) => lora?.lora?.model_name || lora?.model_name || '').filter(name => name);
+      }
+    } catch (error) {
+      console.warn('Error extracting LoRAs:', error);
+      result.loras = [];
     }
 
   } catch (error) {
