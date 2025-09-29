@@ -275,10 +275,19 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory selected' };
       }
 
-      const filePath = path.join(currentDirectoryPath, filename);
+      // --- SECURITY CHECK ---
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const filePath = path.resolve(safeBasePath, filename);
+
+      if (!filePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to trash file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot trash files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
       console.log('Attempting to trash file:', filePath);
       
-      const success = await shell.trashItem(filePath);
+      await shell.trashItem(filePath);
       return { success: true };
     } catch (error) {
       console.error('Error trashing file:', error);
@@ -293,8 +302,16 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory selected' };
       }
 
-      const oldPath = path.join(currentDirectoryPath, oldName);
-      const newPath = path.join(currentDirectoryPath, newName);
+      // --- SECURITY CHECK ---
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const oldPath = path.resolve(safeBasePath, oldName);
+      const newPath = path.resolve(safeBasePath, newName);
+
+      if (!oldPath.startsWith(safeBasePath) || !newPath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to rename file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot rename files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
       
@@ -309,20 +326,33 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      console.log('📂 Attempting to show item in folder:', filePath);
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot show items outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the file exists before trying to show it
       const { promises: fs } = await import('fs');
       try {
-        await fs.access(filePath);
-        console.log('✅ File exists:', filePath);
+        await fs.access(normalizedFilePath);
+        console.log('✅ File exists:', normalizedFilePath);
       } catch (accessError) {
-        console.error('❌ File does not exist:', filePath, accessError);
-        return { success: false, error: `File does not exist: ${filePath}` };
+        console.error('❌ File does not exist:', normalizedFilePath, accessError);
+        return { success: false, error: `File does not exist: ${normalizedFilePath}` };
       }
 
-      shell.showItemInFolder(filePath);
-      console.log('✅ shell.showItemInFolder called for:', filePath);
+      shell.showItemInFolder(normalizedFilePath);
+      console.log('✅ shell.showItemInFolder called for:', normalizedFilePath);
 
       return { success: true };
     } catch (error) {
@@ -400,6 +430,20 @@ function setupFileOperationHandlers() {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
       }
+
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        // This case should ideally not be hit if the app flow is correct, but as a safeguard:
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to read file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot read files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
 
       const data = await fs.readFile(filePath);
       // console.log('Read file:', filePath, 'Size:', data.length); // Commented out to reduce console noise
