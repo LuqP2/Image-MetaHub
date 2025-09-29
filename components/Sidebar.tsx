@@ -40,10 +40,17 @@ const Sidebar: React.FC<SidebarProps> = ({
   onClearAllFilters,
   images
 }) => {
+  console.log('🔍 Sidebar received props:', {
+    availableModels: availableModels.length,
+    availableLoras: availableLoras.length,
+    availableSchedulers: availableSchedulers.length,
+    imagesCount: images.length
+  });
+
   const [expandedSections, setExpandedSections] = useState({
-    models: false,
-    loras: false,
-    schedulers: false,
+    models: true,
+    loras: true,
+    schedulers: true,
     advanced: false
   });
 
