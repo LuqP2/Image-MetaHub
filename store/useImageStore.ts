@@ -1,4 +1,4 @@
-import create from 'zustand';
+import { create } from 'zustand';
 import { IndexedImage } from '../types';
 
 interface ImageState {
