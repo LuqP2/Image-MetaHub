@@ -30,12 +30,6 @@ function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T 
 // Dynamic Electron detection - check at runtime, not module load time
 const getIsElectron = () => {
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-  console.log('🔍 Electron detection:', {
-    isElectron,
-    hasWindow: typeof window !== 'undefined',
-    hasElectronAPI: !!(window as any).electronAPI,
-    electronAPIMethods: isElectron ? Object.keys((window as any).electronAPI) : []
-  });
   return isElectron;
 };
 
@@ -44,7 +38,6 @@ const fileDataCache = new Map<string, Uint8Array>();
 
 // Function to clear file data cache
 function clearFileDataCache() {
-  console.log(`🧹 Clearing file data cache (${fileDataCache.size} entries)`);
   fileDataCache.clear();
 }
 
@@ -72,7 +65,6 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     const filesToGet = new Set(fileNames);
 
     if (getIsElectron()) {
-        console.log('🚀 Electron detected: Creating file handles for processing');
         // Create lightweight handles that will be read during processing
         for (const fileName of filesToGet) {
             const filePath = `${directoryPath}/${fileName}`;

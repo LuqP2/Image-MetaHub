@@ -123,13 +123,32 @@ async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path
       }
     }
 
+    // Determine the best date for sorting (generation date vs file date)
+    let sortDate = file.lastModified;
+
+    // For Electron files, try to get creation date
+    if (isElectron && (fileEntry.handle as any)._filePath) {
+      try {
+        const filePath = (fileEntry.handle as any)._filePath;
+        const stats = await (window as any).electronAPI.getFileStats(filePath);
+        if (stats && stats.success && stats.stats && stats.stats.birthtimeMs) {
+          // Use creation date for all files - this is more accurate for sorting
+          // AI-generated images should be sorted by when they were created, not modified
+          sortDate = stats.stats.birthtimeMs;
+        }
+      } catch (error) {
+        // Fall back to lastModified if we can't get creation date
+        console.warn('Could not get file creation date, using lastModified:', error);
+      }
+    }
+
     return {
       id: fileEntry.path,
       name: fileEntry.handle.name,
       handle: fileEntry.handle,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
       metadataString: JSON.stringify(rawMetadata) || '',
-      lastModified: file.lastModified,
+      lastModified: sortDate, // Use the determined sort date
       models: normalizedMetadata?.models || [],
       loras: normalizedMetadata?.loras || [],
       scheduler: normalizedMetadata?.scheduler || '',

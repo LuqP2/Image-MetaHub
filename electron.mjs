@@ -1,10 +1,10 @@
 import electron from 'electron';
 const { app, BrowserWindow, shell, dialog, ipcMain } = electron;
-console.log('📦 Loaded electron module');
+// console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
 const { autoUpdater } = electronUpdater;
-console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
+// console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -387,12 +387,12 @@ function setupFileOperationHandlers() {
       // Filter for PNG, JPG, and JPEG files only and get their stats
       const imageFiles = [];
 
-      console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
+      // console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
       
       // Check for duplicates in raw listing
       const fileNames = files.map(f => f.name);
       const uniqueNames = new Set(fileNames);
-      console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
+      // console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
       
       if (fileNames.length !== uniqueNames.size) {
         console.log('🚨 DUPLICATE FILENAMES DETECTED IN RAW LISTING!');
@@ -521,6 +521,45 @@ function setupFileOperationHandlers() {
       return { success: true, files: data };
     } catch (error) {
       console.error('Error in read-files-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle getting file statistics (creation date, etc.)
+  ipcMain.handle('get-file-stats', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to get stats for file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot get stats for files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      const stats = await fs.stat(filePath);
+      return {
+        success: true,
+        stats: {
+          size: stats.size,
+          birthtime: stats.birthtime,
+          birthtimeMs: stats.birthtimeMs,
+          mtime: stats.mtime,
+          mtimeMs: stats.mtimeMs,
+          ctime: stats.ctime,
+          ctimeMs: stats.ctimeMs
+        }
+      };
+    } catch (error) {
+      console.error('Error getting file stats:', error);
       return { success: false, error: error.message };
     }
   });
