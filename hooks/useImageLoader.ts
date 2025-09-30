@@ -6,6 +6,27 @@ import { IndexedImage } from '../types';
 
 console.log('🚀 useImageLoader module loaded');
 
+// Throttle function for progress updates to avoid excessive re-renders
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+  let timeoutId: NodeJS.Timeout | null = null;
+  let lastExecTime = 0;
+
+  return ((...args: any[]) => {
+    const currentTime = Date.now();
+
+    if (currentTime - lastExecTime > delay) {
+      func(...args);
+      lastExecTime = currentTime;
+    } else {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func(...args);
+        lastExecTime = Date.now();
+      }, delay - (currentTime - lastExecTime));
+    }
+  }) as T;
+}
+
 // Dynamic Electron detection - check at runtime, not module load time
 const getIsElectron = () => {
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
@@ -51,113 +72,31 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     const filesToGet = new Set(fileNames);
 
     if (getIsElectron()) {
-        console.log('🚀 Electron detected: Using batch file reading optimization');
-        // Use batch reading for Electron to reduce IPC overhead
-        const fileNamesArray = Array.from(filesToGet);
-        const BATCH_SIZE = 50; // Read 50 files at a time
-        const batches: string[][] = [];
+        console.log('🚀 Electron detected: Creating file handles for processing');
+        // Create lightweight handles that will be read during processing
+        for (const fileName of filesToGet) {
+            const filePath = `${directoryPath}/${fileName}`;
 
-        // Split files into batches
-        for (let i = 0; i < fileNamesArray.length; i += BATCH_SIZE) {
-            batches.push(fileNamesArray.slice(i, i + BATCH_SIZE));
-        }
-
-        console.log(`📦 Reading ${fileNamesArray.length} files in ${batches.length} batches of ${BATCH_SIZE} files each`);
-
-        // Process each batch
-        for (const batch of batches) {
-            const filePaths = batch.map(name => `${directoryPath}/${name}`);
-            console.log(`🔄 Processing batch of ${batch.length} files...`);
-            const batchResult = await window.electronAPI.readFilesBatch(filePaths);
-
-            if (batchResult.success && batchResult.files) {
-                for (const fileResult of batchResult.files) {
-                    if (fileResult.success && fileResult.data) {
-                        const fileName = fileResult.path.split('/').pop() || fileResult.path.split('\\').pop() || '';
-                        const lowerName = fileName.toLowerCase();
-                        const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-
-                        // Create a lightweight handle that references the file by path
-                        // File data is stored in global cache, not in the handle itself
-                        const filePath = `${directoryPath}/${fileName}`;
-
-                        const mockHandle = {
-                            name: fileName,
-                            kind: 'file' as const,
-                            // Store file path for later retrieval
-                            _filePath: filePath,
-                            getFile: async () => {
-                                // Get file data from global cache
-                                const cachedData = fileDataCache.get(filePath);
-                                if (!cachedData) {
-                                    // If not in cache, read from disk (fallback)
-                                    if (getIsElectron()) {
-                                        const fileResult = await window.electronAPI.readFile(filePath);
-                                        if (fileResult.success && fileResult.data) {
-                                            const freshData = new Uint8Array(fileResult.data);
-                                            fileDataCache.set(filePath, freshData);
-                                            const lowerName = fileName.toLowerCase();
-                                            const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                            return new File([freshData as any], fileName, { type });
-                                        }
-                                    }
-                                    throw new Error(`File data not available: ${filePath}`);
-                                }
-                                const lowerName = fileName.toLowerCase();
-                                const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                return new File([cachedData as any], fileName, { type });
-                            }
-                        };
-                        handles.push({ handle: mockHandle as any, path: fileName });
-                    } else {
-                        console.warn(`Failed to read file in batch: ${fileResult.path}`, fileResult.error);
-                    }
-                }
-            } else {
-                console.error('Batch read failed:', batchResult.error);
-                // Fallback to individual reads for this batch
-                for (const filePath of filePaths) {
-                    try {
+            const mockHandle = {
+                name: fileName,
+                kind: 'file' as const,
+                // Store file path for later retrieval during processing
+                _filePath: filePath,
+                getFile: async () => {
+                    // Read file directly when needed (during processFiles)
+                    if (getIsElectron()) {
                         const fileResult = await window.electronAPI.readFile(filePath);
                         if (fileResult.success && fileResult.data) {
-                            const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || '';
+                            const freshData = new Uint8Array(fileResult.data);
                             const lowerName = fileName.toLowerCase();
                             const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-
-                            const mockHandle = {
-                                name: fileName,
-                                kind: 'file' as const,
-                                // Store file path for later retrieval
-                                _filePath: filePath,
-                                getFile: async () => {
-                                    // Get file data from global cache
-                                    const cachedData = fileDataCache.get(filePath);
-                                    if (!cachedData) {
-                                        // If not in cache, read from disk (fallback)
-                                        if (getIsElectron()) {
-                                            const fileResult = await window.electronAPI.readFile(filePath);
-                                            if (fileResult.success && fileResult.data) {
-                                                const freshData = new Uint8Array(fileResult.data);
-                                                fileDataCache.set(filePath, freshData);
-                                                const lowerName = fileName.toLowerCase();
-                                                const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                                return new File([freshData as any], fileName, { type });
-                                            }
-                                        }
-                                        throw new Error(`File data not available: ${filePath}`);
-                                    }
-                                    const lowerName = fileName.toLowerCase();
-                                    const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                    return new File([cachedData as any], fileName, { type });
-                                }
-                            };
-                            handles.push({ handle: mockHandle as any, path: fileName });
+                            return new File([freshData as any], fileName, { type });
                         }
-                    } catch (error) {
-                        console.warn(`Failed to read file individually: ${filePath}`, error);
                     }
+                    throw new Error(`Failed to read file: ${filePath}`);
                 }
-            }
+            };
+            handles.push({ handle: mockHandle as any, path: fileName });
         }
     } else {
         // Browser implementation remains unchanged
@@ -249,7 +188,10 @@ export function useImageLoader() {
                     newlyProcessedImages.push(...batch); // Collect for final processing
                 };
 
-                await processFiles(fileHandles, setProgress, handleBatchProcessed);
+                // Create throttled progress update function (max 5 updates per second)
+                const throttledSetProgress = throttle(setProgress, 200);
+
+                await processFiles(fileHandles, throttledSetProgress, handleBatchProcessed);
 
                 finalImages = [...finalImages, ...newlyProcessedImages];
             }

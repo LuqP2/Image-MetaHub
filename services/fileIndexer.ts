@@ -7,6 +7,9 @@ import { parseComfyUIMetadata } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 
+// Electron detection for optimized batch reading
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   const view = new DataView(buffer);
@@ -157,30 +160,58 @@ export async function processFiles(
   const total = imageFiles.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
-  const YIELD_INTERVAL = 25; // For updating the progress text UI
+  const CONCURRENCY_LIMIT = 10; // Limit of files processed in parallel
   let batch: IndexedImage[] = [];
 
-  for (const fileEntry of imageFiles) {
+  // Async pool implementation for controlled concurrency
+  async function asyncPool<T, R>(
+    concurrency: number,
+    iterable: T[],
+    iteratorFn: (item: T) => Promise<R>
+  ): Promise<R[]> {
+    const ret: Promise<R>[] = [];
+    const executing = new Set<Promise<R>>();
+
+    for (const item of iterable) {
+      const p = Promise.resolve().then(() => iteratorFn(item));
+      ret.push(p);
+      executing.add(p);
+
+      const clean = () => executing.delete(p);
+      p.then(clean).catch(clean);
+
+      if (executing.size >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
+
+    return Promise.all(ret);
+  }
+
+  const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> => {
     const indexedImage = await processSingleFile(fileEntry);
+    processedCount++;
+
+    // Update progress after each file
+    setProgress({ current: processedCount, total });
+
+    return indexedImage;
+  };
+
+  // Process files with controlled concurrency
+  const results = await asyncPool(CONCURRENCY_LIMIT, imageFiles, iteratorFn);
+
+  // Filter valid images and collect them into batches
+  for (const indexedImage of results) {
     if (indexedImage) {
       batch.push(indexedImage);
-    }
 
-    processedCount++;
-    // Update progress with a small delay to allow UI updates
-    setTimeout(() => setProgress({ current: processedCount, total }), 0);
-
-    // Yield to the main thread periodically to allow the progress text to update.
-    // This is separate from the larger batching for store updates.
-    if (processedCount % YIELD_INTERVAL === 0) {
+      if (batch.length >= BATCH_SIZE) {
+        onBatchProcessed(batch);
+        batch = [];
+        // Yield to the main thread to allow UI updates after a batch is sent
         await new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    if (batch.length >= BATCH_SIZE) {
-      onBatchProcessed(batch);
-      batch = [];
-      // Yield to the main thread to allow UI updates after a batch is sent
-      await new Promise(resolve => setTimeout(resolve, 0));
+      }
     }
   }
 
