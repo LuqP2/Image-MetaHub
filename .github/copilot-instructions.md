@@ -3,6 +3,13 @@
 ## Project Overview
 This is a React + TypeScript + Electron application that provides local browsing and filtering of AI-generated images. The app runs in both web browsers and as a desktop application, with dual file system APIs for cross-platform compatibility.
 
+**Recent Performance Achievements (v1.7.6):**
+- **🚀 Record Performance**: Successfully indexed 18,000 images in 3.5 minutes (~85 images/second)
+- **🔄 Async Pool Implementation**: 10 concurrent file operations with memory safety
+- **⚡ UI Responsiveness**: Throttled updates prevent interface freezing during processing
+- **📅 Accurate Date Sorting**: Uses file creation date (birthtime) instead of modification date
+- **🧹 Clean Console Output**: Eliminated excessive logging for better performance
+
 ## Architecture & Data Flow
 
 ### Core Architecture
@@ -184,6 +191,7 @@ node log-change.js FIX "Fixed clipboard operations in ImageModal"
 - ✅ **DEPENDENCY** updates that affect development workflow
 - ✅ **CROSS-PLATFORM** changes (new browser/Electron compatibility issues)
 - ✅ **RELEASE** process changes (new manual steps, workflow fixes)
+- ✅ **PERFORMANCE** optimizations and breakthroughs (new APIs, concurrency patterns, memory improvements)
 
 **How to update:**
 1. Review what changed in the codebase
@@ -348,6 +356,11 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - **Memory Management**: File handles instead of blob storage
 - **Batch Processing**: Progress updates every 20 files during indexing
 - **Virtual Scrolling**: Efficient rendering for large image collections
+- **🚀 High-Performance Processing**: 18,000 images in 3.5 minutes (~85 images/second)
+- **🔄 Async Pool Concurrency**: Controlled parallel processing with 10 simultaneous operations
+- **⚡ Throttled Progress Updates**: UI updates at 5Hz (200ms intervals) to prevent blocking
+- **📅 Accurate Date Sorting**: File creation date instead of modification date
+- **🧹 Clean Console Output**: Eliminated excessive logging for better performance
 
 ## Key Files to Reference
 
@@ -417,6 +430,10 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - Test with 17,000+ images for performance
 - Monitor memory usage with lazy loading
 - Verify caching effectiveness
+- Validate 18,000 images processing in under 4 minutes
+- Test async pool concurrency (10 simultaneous operations)
+- Verify throttled progress updates (5Hz/200ms intervals)
+- Confirm accurate date sorting using creation dates
 
 ### Cross-Platform Testing
 - Windows, macOS, and Linux compatibility
@@ -445,6 +462,11 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - Avoid unnecessary re-renders
 - Use React.memo for expensive components
 - Implement proper cleanup in useEffect hooks
+- Use async pool pattern for concurrent operations (max 10 simultaneous)
+- Throttle state updates to prevent UI blocking (5Hz/200ms intervals)
+- Prefer file handles over blob storage for memory efficiency
+- Use virtual scrolling for large image collections
+- Clean console output - avoid excessive logging in production
 
 ## Release Management
 
@@ -481,7 +503,70 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 
 ## Common Issues & Solutions
 
+### Performance Issues with Large Image Collections
+**Problem**: Memory allocation failures and slow processing with 17,000+ images
+**Solution**: Implemented async pool concurrency with controlled parallelism:
+```typescript
+// Async pool pattern for controlled concurrency
+const asyncPool = async (concurrency, iterable, iteratorFn) => {
+  const ret = [];
+  const executing = [];
+  for (const item of iterable) {
+    const p = Promise.resolve().then(() => iteratorFn(item));
+    ret.push(p);
+    if (iterable.length >= concurrency) {
+      executing.push(p);
+      if (executing.length >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
+  }
+  return Promise.all(ret);
+};
+```
+
+### UI Freezing During File Processing
+**Problem**: Interface becomes unresponsive during large file processing operations
+**Solution**: Throttle progress updates to 5Hz (200ms intervals):
+```typescript
+// Throttled progress updates
+const throttle = (func, delay) => {
+  let timeoutId;
+  let lastExecTime = 0;
+  return function (...args) {
+    const currentTime = Date.now();
+    if (currentTime - lastExecTime > delay) {
+      func.apply(this, args);
+      lastExecTime = currentTime;
+    } else {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        func.apply(this, args);
+        lastExecTime = Date.now();
+      }, delay - (currentTime - lastExecTime));
+    }
+  };
+};
+```
+
+### Incorrect Date Sorting
+**Problem**: Sort by date used file modification time instead of creation time
+**Solution**: Added getFileStats Electron API for accessing creation timestamps:
+```typescript
+// Get accurate creation date
+const statsResult = await window.electronAPI.getFileStats(filePath);
+const creationDate = statsResult.stats.birthtimeMs;
+```
+
 ### GitHub Actions Windows Build Failures
+**Problem**: Windows builds fail in GitHub Actions despite working locally
+**Solution**: Build manually and upload to releases:
+```bash
+npm run build
+npx electron-builder --publish=never
+gh release upload v{version} "dist-electron\ImageMetaHub-Setup-{version}.exe" --clobber
+gh release upload v{version} "dist-electron\latest.yml" --clobber
+```
 **Problem**: Windows builds fail in GitHub Actions despite working locally
 **Solution**: Build manually and upload to releases:
 ```bash
