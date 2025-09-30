@@ -14,6 +14,7 @@ import Header from './components/Header';
 import StatusBar from './components/StatusBar';
 import ActionToolbar from './components/ActionToolbar';
 import { SearchField } from './components/SearchBar';
+import Pagination from './components/Pagination';
 
 export default function App() {
   // --- Hooks ---
@@ -184,13 +185,14 @@ export default function App() {
                 />
               </div>
 
-              {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-4 mt-4">
-                  <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1}>Prev</button>
-                  <span>Page {currentPage} of {totalPages}</span>
-                  <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages}>Next</button>
-                </div>
-              )}
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={setItemsPerPage}
+                totalItems={filteredImages.length}
+              />
             </>
           )}
         </main>
