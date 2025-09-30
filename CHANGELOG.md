@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2025-09-30
+
+### Major Architectural Changes
+- **Complete Application Refactoring**: Migrated from monolithic App.tsx to modular architecture with Zustand state management, custom hooks, and component modularization for improved maintainability and LLM-friendliness
+- **Parser Modularization**: Split monolithic fileIndexer.ts into modular parsers (InvokeAI, A1111, ComfyUI) with factory pattern for automatic format detection
+- **State Management Migration**: All component state migrated to centralized Zustand store (useImageStore.ts) for better predictability and debugging
+
+### New Features
+- **Automatic1111 Support**: Full PNG and JPEG metadata parsing with model, LoRA, and generation parameter extraction
+- **ComfyUI Support (Partial)**: Workflow detection and basic metadata parsing for ComfyUI-generated images
+- **JPEG File Support**: Added support for .jpg/.jpeg files with EXIF metadata extraction using exifr library
+- **Advanced Filters**: Range filters for Steps, CFG Scale, Dimensions, and Date with real-time UI updates
+- **Right-Click Context Menu**: Copy Prompt, Copy Negative Prompt, Copy Seed, Copy Model options in ImageModal
+- **File Operations**: "Show in Folder" and "Export Image" functionality with proper cross-platform path handling
+- **Multi-Format Support**: Unified filtering system working seamlessly across InvokeAI, A1111, and ComfyUI formats
+
+### Performance Improvements
+- **🚀 Record Performance**: Successfully indexed 18,000 images in 3.5 minutes (~85 images/second)
+- **Async Pool Concurrency**: 10 simultaneous file operations with memory safety controls
+- **Throttled Progress Updates**: UI updates at 5Hz (200ms intervals) to prevent interface freezing
+- **Optimized File Processing**: Eliminated duplicate file processing and improved batch reading
+- **Memory Management**: File handles instead of blob storage for better memory efficiency
+
+### Technical Improvements
+- **Enhanced Metadata Parsing**: Intelligent detection prioritizing ComfyUI workflow > InvokeAI metadata > A1111 parameters
+- **Cross-Platform Compatibility**: Improved Electron/browser environment detection and path handling
+- **Date Sorting Accuracy**: Uses file creation date (birthtime) instead of modification date for AI-generated images
+- **Error Handling**: Comprehensive error handling for malformed metadata and file system operations
+- **Console Optimization**: Cleaned up excessive logging for better performance and debugging experience
+
+### Fixed
+- **Advanced Filters Bug**: Fixed disconnected state between App.tsx and useImageStore preventing filter application
+- **Filter Data Extraction**: Corrected sidebar reading from raw metadata instead of normalized IndexedImage properties
+- **Range Filter Logic**: Fixed images with undefined steps/cfg being incorrectly included in range filters
+- **Export Functionality**: Fixed images being exported to source folder instead of selected destination
+- **Image Duplication**: Resolved critical bug causing double processing of files (36k instead of 18k images)
+- **Syntax Errors**: Fixed critical syntax errors in electron.mjs preventing app startup
+- **Format Detection**: Fixed ComfyUI images with A1111 parameters being incorrectly detected as A1111 format
+- **Model Filter Issues**: Enhanced InvokeAI model extraction to work across multiple field names and formats
+
+### Dependencies Updated
+- **Tailwind CSS v4**: Updated PostCSS configuration and styling system
+- **Zustand v5**: Migrated to latest version with improved TypeScript support
+- **exifr Library**: Added for professional JPEG EXIF metadata extraction
+
 ## [1.7.6] - 2025-09-28
 
 ### Fixed
