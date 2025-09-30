@@ -40,6 +40,56 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-30: FIX - Fixed Show in Folder Button in Image Modal
+
+**Decision:** Fixed "Show in Folder" button in image modal interface to use same implementation as working context menu.
+
+**Context:** Button was failing because it called async function synchronously and passed IndexedImage object instead of full path string.
+
+**Rationale:** 
+- Context menu implementation was working correctly
+- Button should use same logic: check directoryPath exists, construct full path string
+- Made button async to properly handle the promise
+
+**Alternatives Considered:**
+- Modify showInExplorer to handle IndexedImage better (rejected: context menu approach is more reliable)
+- Remove the button entirely (rejected: useful functionality)
+
+**Impact:** 
+- "Show in Folder" button now works in modal interface
+- Consistent behavior between context menu and button
+- No breaking changes
+
+**Testing:** Verified both context menu and button work correctly.
+
+---
+
+## 2025-09-30: UX - Added Copy to Clipboard Feature for Images
+
+**Decision:** Added "Copy to Clipboard" option as the first item in the image modal context menu.
+
+**Context:** Users needed a way to copy actual image files to clipboard for use in other applications, not just text metadata.
+
+**Rationale:** 
+- Leveraged existing `copyImageToClipboard` utility function
+- Positioned as first menu option for discoverability
+- Added proper separators to organize menu into logical groups
+- Maintains consistent UI patterns with other copy operations
+
+**Alternatives Considered:**
+- Adding to main toolbar (rejected: context menu is more appropriate for image-specific actions)
+- Keyboard shortcut only (rejected: discoverability issues)
+- Multiple copy options (rejected: single "Copy to Clipboard" covers the main use case)
+
+**Impact:** 
+- Users can copy images to clipboard with right-click
+- Improved workflow for users who need to paste images elsewhere
+- Menu reorganized with logical grouping and separators
+
+**Testing:** Verified clipboard API works in both browser and Electron environments.
+
+---
+
 ## 2025-09-30: PERF - Fixed Refresh Re-indexing Bug by Standardizing Timestamp Usage
 
 **Decision:** Changed file listing during refresh to use creation time (birthtimeMs) instead of modification time (mtime) for consistency with initial indexing.

@@ -129,6 +129,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
     hideContextMenu();
   };
 
+  const copyImage = async () => {
+    hideContextMenu();
+    const result = await copyImageToClipboard(image);
+    if (result.success) {
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.textContent = 'Image copied to clipboard!';
+      document.body.appendChild(notification);
+      setTimeout(() => document.body.removeChild(notification), 2000);
+    } else {
+      alert(`Failed to copy image to clipboard: ${result.error}`);
+    }
+  };
+
   const copyModel = () => {
     copyToClipboardElectron(nMeta?.model || '', 'Model');
     hideContextMenu();
@@ -328,7 +342,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Prompt</button>
             <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Raw Metadata</button>
-            <button onClick={() => showInExplorer(image)} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
+            <button onClick={async () => {
+              if (!directoryPath) {
+                alert('Cannot determine file location: directory path is missing.');
+                return;
+              }
+              await showInExplorer(`${directoryPath}/${image.name}`);
+            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
           </div>
 
           <div>
@@ -351,6 +371,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={copyImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy to Clipboard
+          </button>
+          
+          <div className="border-t border-gray-600 my-1"></div>
+          
           <button
             onClick={copyPrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JPEG File Support**: Added support for .jpg/.jpeg files with EXIF metadata extraction using exifr library
 - **Advanced Filters**: Range filters for Steps, CFG Scale, Dimensions, and Date with real-time UI updates
 - **Right-Click Context Menu**: Copy Prompt, Copy Negative Prompt, Copy Seed, Copy Model options in ImageModal
+- **Copy to Clipboard**: Copy actual image files to clipboard for use in other applications
 - **File Operations**: "Show in Folder" and "Export Image" functionality with proper cross-platform path handling
 - **Multi-Format Support**: Unified filtering system working seamlessly across InvokeAI, A1111, and ComfyUI formats
 
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Cache Collision Bug**: Fixed cache system incorrectly treating folders with same names as identical entries, causing unnecessary re-indexing when switching between different folders with similar names
 - **Refresh Re-indexing Bug**: Fixed refresh functionality re-indexing entire folders instead of only changed files due to timestamp inconsistency between initial indexing (creation time) and refresh (modification time)
+- **Show in Folder Button**: Fixed "Show in Folder" button in image modal interface that was failing due to incorrect async handling and parameter passing
 - **Advanced Filters Bug**: Fixed disconnected state between App.tsx and useImageStore preventing filter application
 - **Filter Data Extraction**: Corrected sidebar reading from raw metadata instead of normalized IndexedImage properties
 - **Range Filter Logic**: Fixed images with undefined steps/cfg being incorrectly included in range filters
