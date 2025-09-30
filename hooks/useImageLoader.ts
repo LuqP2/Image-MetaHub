@@ -129,6 +129,8 @@ export function useImageLoader() {
                     path = result.path;
                     handle = { name: result.name || 'Selected Folder', kind: 'directory' } as any;
                     localStorage.setItem('image-metahub-electron-directory-path', path);
+                    // Set the current directory in Electron main process
+                    await window.electronAPI.setCurrentDirectory(path);
                 } else {
                     handle = await window.showDirectoryPicker();
                     path = handle.name; // For browser, path is just the name for cache key

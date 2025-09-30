@@ -255,7 +255,8 @@ function setupFileOperationHandlers() {
       }
       
       const selectedPath = result.filePaths[0];
-      currentDirectoryPath = selectedPath;
+      // NOTE: Don't update currentDirectoryPath here - this is for export destination selection
+      // currentDirectoryPath should remain as the source directory
       
       return { 
         success: true, 
