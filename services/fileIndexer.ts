@@ -28,6 +28,39 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
         chunks[keyword] = text;
       }
+    } else if (type === 'iTXt') {
+      const chunkData = new Uint8Array(buffer.slice(offset + 8, offset + 8 + length));
+      const keywordEndIndex = chunkData.indexOf(0);
+      if (keywordEndIndex === -1) {
+        offset += 12 + length;
+        continue;
+      }
+      const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
+
+      if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword)) {
+        const compressionFlag = chunkData[keywordEndIndex + 1];
+        if (compressionFlag === 0) {
+          // 0 -> uncompressed, which is what we expect from A1111
+          let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
+
+          const langTagEndIndex = chunkData.indexOf(0, currentIndex);
+          if (langTagEndIndex === -1) {
+            offset += 12 + length;
+            continue;
+          }
+          currentIndex = langTagEndIndex + 1;
+
+          const translatedKwEndIndex = chunkData.indexOf(0, currentIndex);
+          if (translatedKwEndIndex === -1) {
+            offset += 12 + length;
+            continue;
+          }
+          currentIndex = translatedKwEndIndex + 1;
+
+          const text = decoder.decode(chunkData.slice(currentIndex));
+          chunks[keyword] = text;
+        }
+      }
     }
     if (type === 'IEND') break;
     offset += 12 + length;
