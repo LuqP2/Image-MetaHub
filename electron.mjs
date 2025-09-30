@@ -480,50 +480,6 @@ function setupFileOperationHandlers() {
     }
     return { success: false, error: 'Version not provided' };
   });
-
-  // Handle reading multiple files in a batch
-  ipcMain.handle('read-files-batch', async (event, filePaths) => {
-    try {
-      if (!Array.isArray(filePaths) || filePaths.length === 0) {
-        return { success: false, error: 'No file paths provided' };
-      }
-
-      if (!currentDirectoryPath) {
-        return { success: false, error: 'No directory selected' };
-      }
-
-      const safeBasePath = path.normalize(currentDirectoryPath);
-
-      // --- SECURITY CHECK ---
-      for (const filePath of filePaths) {
-        const normalizedFilePath = path.normalize(filePath);
-        if (!normalizedFilePath.startsWith(safeBasePath)) {
-          console.error('SECURITY VIOLATION: Attempted to read file outside of the allowed directory:', filePath);
-          return { success: false, error: 'Access denied: Cannot read files outside of the selected directory.' };
-        }
-      }
-      // --- END SECURITY CHECK ---
-
-      const promises = filePaths.map(filePath => fs.readFile(filePath));
-      const results = await Promise.allSettled(promises);
-
-      const data = results.map((result, index) => {
-        if (result.status === 'fulfilled') {
-          return { success: true, data: result.value, path: filePaths[index] };
-        } else {
-          if (!result.reason.message?.includes('ENOENT')) {
-            console.error('Error reading file in batch:', filePaths[index], result.reason);
-          }
-          return { success: false, error: result.reason.message, path: filePaths[index] };
-        }
-      });
-
-      return { success: true, files: data };
-    } catch (error) {
-      console.error('Error in read-files-batch handler:', error);
-      return { success: false, error: error.message };
-    }
-  });
 }
 
 app.on('window-all-closed', () => {

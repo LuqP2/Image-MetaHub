@@ -19,7 +19,6 @@ import Pagination from './components/Pagination';
 export default function App() {
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder } = useImageLoader();
-  useImageFilters(); // This hook just runs effects, no need to get values here
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -49,6 +48,17 @@ export default function App() {
     removeImage,
     updateImage,
   } = useImageStore();
+
+  // --- Filtering Hook ---
+  // This hook now receives state, ensuring it re-runs when dependencies change.
+  useImageFilters({
+    images,
+    searchQuery,
+    selectedModels,
+    selectedLoras,
+    selectedSchedulers,
+    sortOrder,
+  });
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');

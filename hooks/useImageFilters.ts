@@ -2,18 +2,27 @@ import { useEffect, useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { IndexedImage } from '../types';
 
-export function useImageFilters() {
-    const {
-        images,
-        searchQuery,
-        selectedModels,
-        selectedLoras,
-        selectedSchedulers,
-        sortOrder,
-        setFilteredImages,
-    } = useImageStore();
+interface ImageFilterProps {
+    images: IndexedImage[];
+    searchQuery: string;
+    selectedModels: string[];
+    selectedLoras: string[];
+    selectedSchedulers: string[];
+    sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc';
+}
+
+export function useImageFilters({
+    images,
+    searchQuery,
+    selectedModels,
+    selectedLoras,
+    selectedSchedulers,
+    sortOrder,
+}: ImageFilterProps) {
+    const setFilteredImages = useImageStore(state => state.setFilteredImages);
 
     const sortImages = useCallback((imagesToSort: IndexedImage[]) => {
+        // Create a new array to avoid mutating the original
         return [...imagesToSort].sort((a, b) => {
             if (sortOrder === 'asc') return a.name.localeCompare(b.name);
             if (sortOrder === 'desc') return b.name.localeCompare(a.name);
