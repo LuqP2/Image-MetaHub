@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useImageLoader } from './hooks/useImageLoader';
-import { useImageFilters } from './hooks/useImageFilters';
 import { useImageSelection } from './hooks/useImageSelection';
 
 import FolderSelector from './components/FolderSelector';
@@ -48,17 +47,6 @@ export default function App() {
     removeImage,
     updateImage,
   } = useImageStore();
-
-  // --- Filtering Hook ---
-  // This hook now receives state, ensuring it re-runs when dependencies change.
-  useImageFilters({
-    images,
-    searchQuery,
-    selectedModels,
-    selectedLoras,
-    selectedSchedulers,
-    sortOrder,
-  });
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');

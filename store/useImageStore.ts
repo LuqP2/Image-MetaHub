@@ -33,7 +33,6 @@ interface ImageState {
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
   setImages: (images: IndexedImage[]) => void;
-  setFilteredImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
@@ -44,6 +43,7 @@ interface ImageState {
   setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[] }) => void;
   setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc') => void;
+  filterAndSortImages: () => void;
 
   // Selection Actions
   setSelectedImage: (image: IndexedImage | null) => void;
@@ -55,7 +55,51 @@ interface ImageState {
   resetState: () => void;
 }
 
-export const useImageStore = create<ImageState>((set, get) => ({
+export const useImageStore = create<ImageState>((set, get) => {
+    // --- Helper function for filtering and sorting ---
+    const filterAndSort = (state: ImageState) => {
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder } = state;
+
+        let results = images;
+
+        if (searchQuery) {
+            const lowerCaseQuery = searchQuery.toLowerCase();
+            results = results.filter(image =>
+                image.metadataString.toLowerCase().includes(lowerCaseQuery)
+            );
+        }
+
+        if (selectedModels.length > 0) {
+            results = results.filter(image =>
+                selectedModels.some(sm => image.models.includes(sm))
+            );
+        }
+
+        if (selectedLoras.length > 0) {
+            results = results.filter(image =>
+                selectedLoras.some(sl => image.loras.includes(sl))
+            );
+        }
+
+        if (selectedSchedulers.length > 0) {
+            results = results.filter(image =>
+                selectedSchedulers.includes(image.scheduler)
+            );
+        }
+
+        const sorted = [...results].sort((a, b) => {
+            if (sortOrder === 'asc') return a.name.localeCompare(b.name);
+            if (sortOrder === 'desc') return b.name.localeCompare(a.name);
+            if (sortOrder === 'date-asc') return a.lastModified - b.lastModified;
+            if (sortOrder === 'date-desc') return b.lastModified - a.lastModified;
+            return 0;
+        });
+
+        return { filteredImages: sorted };
+    };
+
+
+    return {
   // Initial State
   images: [],
   filteredImages: [],
@@ -83,41 +127,43 @@ export const useImageStore = create<ImageState>((set, get) => ({
   setProgress: (progress) => set({ progress }),
   setError: (error) => set({ error, success: null }),
   setSuccess: (success) => set({ success, error: null }),
-  setImages: (images) => set({ images, filteredImages: images }),
-  setFilteredImages: (filteredImages) => set({ filteredImages }),
+
+  filterAndSortImages: () => set(state => filterAndSort(state)),
+
+  setImages: (images) => set(state => ({ ...filterAndSort({ ...state, images }), images })),
 
   addImages: (newImages) => {
-    // Logic to add new images without duplicates
     set(state => {
       const existingIds = new Set(state.images.map(img => img.id));
       const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
-      return { images: [...state.images, ...uniqueNewImages] };
+      const allImages = [...state.images, ...uniqueNewImages];
+      return { ...filterAndSort({ ...state, images: allImages }), images: allImages };
     });
   },
 
   removeImages: (imageIds) => {
     const idsToRemove = new Set(imageIds);
-    set(state => ({
-      images: state.images.filter(img => !idsToRemove.has(img.id)),
-      filteredImages: state.filteredImages.filter(img => !idsToRemove.has(img.id)),
-    }));
+    set(state => {
+        const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
+        return { ...filterAndSort({ ...state, images: remainingImages }), images: remainingImages };
+    });
   },
 
   removeImage: (imageId) => {
-    set(state => ({
-      images: state.images.filter(img => img.id !== imageId),
-      filteredImages: state.filteredImages.filter(img => img.id !== imageId),
-    }));
+    set(state => {
+        const remainingImages = state.images.filter(img => img.id !== imageId);
+        return { ...filterAndSort({ ...state, images: remainingImages }), images: remainingImages };
+    });
   },
 
   updateImage: (imageId, newName) => {
-      set(state => ({
-          images: state.images.map(img => img.id === imageId ? { ...img, name: newName } : img),
-          filteredImages: state.filteredImages.map(img => img.id === imageId ? { ...img, name: newName } : img),
-      }));
+      set(state => {
+          const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
+          return { ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
+      });
   },
 
-  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),
 
   setFilterOptions: (options) => set({
     availableModels: options.models,
@@ -126,12 +172,18 @@ export const useImageStore = create<ImageState>((set, get) => ({
   }),
 
   setSelectedFilters: (filters) => set(state => ({
-    selectedModels: filters.models ?? state.selectedModels,
-    selectedLoras: filters.loras ?? state.selectedLoras,
-    selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+      ...filterAndSort({
+          ...state,
+          selectedModels: filters.models ?? state.selectedModels,
+          selectedLoras: filters.loras ?? state.selectedLoras,
+          selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+      }),
+      selectedModels: filters.models ?? state.selectedModels,
+      selectedLoras: filters.loras ?? state.selectedLoras,
+      selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
   })),
 
-  setSortOrder: (order) => set({ sortOrder: order }),
+  setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
 
   setSelectedImage: (image) => set({ selectedImage: image }),
 
@@ -176,4 +228,4 @@ export const useImageStore = create<ImageState>((set, get) => ({
     selectedLoras: [],
     selectedSchedulers: [],
   })
-}));
+}});
