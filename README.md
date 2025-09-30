@@ -1,10 +1,12 @@
-# Local Image Browser for InvokeAI
+# Image MetaHub
+
+⚠️ This project was renamed from `local-image-browser-for-invokeai` to `Image MetaHub`. All links and references have been updated.
 
 A desktop application for browsing, searching, and organizing AI-generated images locally. Designed for performance with large collections, focusing on powerful metadata filtering and complete privacy.
 
 All processing is performed locally on your machine. No data is sent to external services, and no internet connection is required after installation.
 
-*For detailed changes and updates, see the [Releases page](https://github.com/LuqP2/local-image-browser-for-invokeai/releases).*
+*For detailed changes and updates, see the [Releases page](https://github.com/LuqP2/image-metahub/releases).*
 
 ## Releases & Updates
 
@@ -38,14 +40,14 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 ## Installation
 
 **Desktop Application (Recommended)**
-1. Go to [**Releases**](https://github.com/LuqP2/local-image-browser-for-invokeai/releases)
+1. Go to [**Releases**](https://github.com/LuqP2/image-metahub/releases)
 2. Download the installer for your system (`.exe` for Windows, `.dmg` for macOS, `.AppImage` for Linux)
 3. Run the installer and launch the application
 
 **Run from Source**
 ```bash
-git clone https://github.com/LuqP2/local-image-browser-for-invokeai.git
-cd local-image-browser-for-invokeai
+git clone https://github.com/LuqP2/image-metahub.git
+cd image-metahub
 npm install
 npm run dev
 ```

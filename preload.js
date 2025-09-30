@@ -9,7 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
-  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath)
+  readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+  readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
+  getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
+  writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data)
 });
 
 // DEBUG: Log that preload script has loaded

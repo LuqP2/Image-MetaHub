@@ -1,9 +1,9 @@
 {
-  "name": "local-image-browser-for-invokeai",
-  "description": "Local image browser for browsing InvokeAI outputs (unaffiliated)",
+  "name": "image-metahub",
+  "description": "Image MetaHub",
   "author": "LuqP2 <github.com/LuqP2>",
   "private": true,
-  "version": "1.7.6",
+  "version": "1.8.0",
   "type": "module",
   "main": "electron.mjs",
   "homepage": "./",
@@ -19,23 +19,31 @@
     "release": "npm run build && electron-builder --publish=always",
     "generate-release": "node generate-release.js",
     "release-workflow": "node release-workflow.js",
-    "auto-release": "node auto-release.js"
+    "auto-release": "node auto-release.js",
+    "reset-cache": "node reset-cache.js"
   },
   "dependencies": {
     "electron-updater": "^6.6.2",
     "exifr": "^7.1.3",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-virtualized-auto-sizer": "^1.0.26",
+    "react-window": "^1.8.10",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^24.5.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@types/react-window": "^1.8.8",
     "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
+    "lucide-react": "^0.544.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.8",
     "wait-on": "^9.0.0"

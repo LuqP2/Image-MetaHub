@@ -1,4 +1,4 @@
-# Local Image Browser for InvokeAI v1.7.6
+# Image MetaHub v1.7.6
 
 ## [1.7.6] - 2025-09-28
 
@@ -19,18 +19,18 @@
 Choose the appropriate installer for your operating system:
 
 ###  Windows
-- **Installer**: `LocalImageBrowser-InvokeAI-Setup-1.7.6.exe`
+- **Installer**: `ImageMetaHub-Setup-1.7.6.exe`
 - **Format**: NSIS installer with desktop and start menu shortcuts
 - **Size**: ~85MB
 
 ###  macOS
-- **Intel Macs**: `LocalImageBrowser-InvokeAI-1.7.6.dmg`
-- **Apple Silicon**: `LocalImageBrowser-InvokeAI-1.7.6-arm64.dmg`
+- **Intel Macs**: `ImageMetaHub-1.7.6.dmg`
+- **Apple Silicon**: `ImageMetaHub-1.7.6-arm64.dmg`
 - **Format**: DMG packages with proper entitlements
 - **Requirements**: macOS 10.15+
 
 ###  Linux
-- **Universal**: `LocalImageBrowser-InvokeAI-1.7.6.AppImage`
+- **Universal**: `ImageMetaHub-1.7.6.AppImage`
 - **Format**: Portable AppImage (no installation required)
 - **Dependencies**: None (fully self-contained)
 
@@ -56,9 +56,9 @@ Choose the appropriate installer for your operating system:
 
 ## Documentation
 
-- [README](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/main/README.md)
-- [Architecture](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/main/ARCHITECTURE.md)
-- [Changelog](https://github.com/LuqP2/local-image-browser-for-invokeai/blob/CHANGELOG.md)
+- [README](https://github.com/LuqP2/image-metahub/blob/main/README.md)
+- [Architecture](https://github.com/LuqP2/image-metahub/blob/main/ARCHITECTURE.md)
+- [Changelog](https://github.com/LuqP2/image-metahub/blob/CHANGELOG.md)
 
 ## Known Issues
 
@@ -67,7 +67,7 @@ Choose the appropriate installer for your operating system:
 
 ## Feedback
 
-Found a bug or have a feature request? [Open an issue](https://github.com/LuqP2/local-image-browser-for-invokeai/issues)!
+Found a bug or have a feature request? [Open an issue](https://github.com/LuqP2/image-metahub/issues)!
 
 ---
 

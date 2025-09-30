@@ -1,10 +1,10 @@
 import electron from 'electron';
 const { app, BrowserWindow, shell, dialog, ipcMain } = electron;
-console.log('📦 Loaded electron module');
+// console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
 const { autoUpdater } = electronUpdater;
-console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
+// console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -255,7 +255,8 @@ function setupFileOperationHandlers() {
       }
       
       const selectedPath = result.filePaths[0];
-      currentDirectoryPath = selectedPath;
+      // NOTE: Don't update currentDirectoryPath here - this is for export destination selection
+      // currentDirectoryPath should remain as the source directory
       
       return { 
         success: true, 
@@ -275,10 +276,19 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory selected' };
       }
 
-      const filePath = path.join(currentDirectoryPath, filename);
+      // --- SECURITY CHECK ---
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const filePath = path.resolve(safeBasePath, filename);
+
+      if (!filePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to trash file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot trash files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
       console.log('Attempting to trash file:', filePath);
       
-      const success = await shell.trashItem(filePath);
+      await shell.trashItem(filePath);
       return { success: true };
     } catch (error) {
       console.error('Error trashing file:', error);
@@ -293,8 +303,16 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory selected' };
       }
 
-      const oldPath = path.join(currentDirectoryPath, oldName);
-      const newPath = path.join(currentDirectoryPath, newName);
+      // --- SECURITY CHECK ---
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const oldPath = path.resolve(safeBasePath, oldName);
+      const newPath = path.resolve(safeBasePath, newName);
+
+      if (!oldPath.startsWith(safeBasePath) || !newPath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to rename file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot rename files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
       
@@ -309,20 +327,33 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      console.log('📂 Attempting to show item in folder:', filePath);
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to show item outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot show items outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
       // Verify the file exists before trying to show it
       const { promises: fs } = await import('fs');
       try {
-        await fs.access(filePath);
-        console.log('✅ File exists:', filePath);
+        await fs.access(normalizedFilePath);
+        console.log('✅ File exists:', normalizedFilePath);
       } catch (accessError) {
-        console.error('❌ File does not exist:', filePath, accessError);
-        return { success: false, error: `File does not exist: ${filePath}` };
+        console.error('❌ File does not exist:', normalizedFilePath, accessError);
+        return { success: false, error: `File does not exist: ${normalizedFilePath}` };
       }
 
-      shell.showItemInFolder(filePath);
-      console.log('✅ shell.showItemInFolder called for:', filePath);
+      shell.showItemInFolder(normalizedFilePath);
+      console.log('✅ shell.showItemInFolder called for:', normalizedFilePath);
 
       return { success: true };
     } catch (error) {
@@ -357,12 +388,12 @@ function setupFileOperationHandlers() {
       // Filter for PNG, JPG, and JPEG files only and get their stats
       const imageFiles = [];
 
-      console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
+      // console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
       
       // Check for duplicates in raw listing
       const fileNames = files.map(f => f.name);
       const uniqueNames = new Set(fileNames);
-      console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
+      // console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
       
       if (fileNames.length !== uniqueNames.size) {
         console.log('🚨 DUPLICATE FILENAMES DETECTED IN RAW LISTING!');
@@ -376,7 +407,7 @@ function setupFileOperationHandlers() {
             const stats = await fs.stat(filePath);
             imageFiles.push({
               name: file.name,
-              lastModified: stats.mtime.getTime() // Convert to timestamp
+              lastModified: stats.birthtimeMs // Use creation time for consistency with indexing
             });
             // console.log(`✅ Including image file: ${file.name}`);
           } else {
@@ -400,6 +431,20 @@ function setupFileOperationHandlers() {
       if (!filePath) {
         return { success: false, error: 'No file path provided' };
       }
+
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        // This case should ideally not be hit if the app flow is correct, but as a safeguard:
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to read file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot read files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
 
       const data = await fs.readFile(filePath);
       // console.log('Read file:', filePath, 'Size:', data.length); // Commented out to reduce console noise
@@ -435,6 +480,121 @@ function setupFileOperationHandlers() {
       return { success: true };
     }
     return { success: false, error: 'Version not provided' };
+  });
+
+  // Handle reading multiple files in a batch
+  ipcMain.handle('read-files-batch', async (event, filePaths) => {
+    try {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+        return { success: false, error: 'No file paths provided' };
+      }
+
+      if (!currentDirectoryPath) {
+        return { success: false, error: 'No directory selected' };
+      }
+
+      const safeBasePath = path.normalize(currentDirectoryPath);
+
+      // --- SECURITY CHECK ---
+      for (const filePath of filePaths) {
+        const normalizedFilePath = path.normalize(filePath);
+        if (!normalizedFilePath.startsWith(safeBasePath)) {
+          console.error('SECURITY VIOLATION: Attempted to read file outside of the allowed directory:', filePath);
+          return { success: false, error: 'Access denied: Cannot read files outside of the selected directory.' };
+        }
+      }
+      // --- END SECURITY CHECK ---
+
+      const promises = filePaths.map(filePath => fs.readFile(filePath));
+      const results = await Promise.allSettled(promises);
+
+      const data = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return { success: true, data: result.value, path: filePaths[index] };
+        } else {
+          if (!result.reason.message?.includes('ENOENT')) {
+            console.error('Error reading file in batch:', filePaths[index], result.reason);
+          }
+          return { success: false, error: result.reason.message, path: filePaths[index] };
+        }
+      });
+
+      return { success: true, files: data };
+    } catch (error) {
+      console.error('Error in read-files-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle getting file statistics (creation date, etc.)
+  ipcMain.handle('get-file-stats', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      if (!currentDirectoryPath) {
+        return { success: false, error: 'No directory selected' };
+      }
+      const safeBasePath = path.normalize(currentDirectoryPath);
+      const normalizedFilePath = path.normalize(filePath);
+
+      if (!normalizedFilePath.startsWith(safeBasePath)) {
+        console.error('SECURITY VIOLATION: Attempted to get stats for file outside of the allowed directory.');
+        return { success: false, error: 'Access denied: Cannot get stats for files outside of the selected directory.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      const stats = await fs.stat(filePath);
+      return {
+        success: true,
+        stats: {
+          size: stats.size,
+          birthtime: stats.birthtime,
+          birthtimeMs: stats.birthtimeMs,
+          mtime: stats.mtime,
+          mtimeMs: stats.mtimeMs,
+          ctime: stats.ctime,
+          ctimeMs: stats.ctimeMs
+        }
+      };
+    } catch (error) {
+      console.error('Error getting file stats:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle writing file content
+  ipcMain.handle('write-file', async (event, filePath, data) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!data) {
+        return { success: false, error: 'No data provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      // For write operations, we need to be more careful about where files can be written
+      // We'll allow writing to any directory the user has selected via the directory dialog
+      // This is more permissive than read operations but still controlled
+      const normalizedFilePath = path.normalize(filePath);
+      const fileDir = path.dirname(normalizedFilePath);
+
+      // Check if the target directory is within the current directory or a user-selected export directory
+      // For now, we'll allow writing to any directory (since users explicitly choose export locations)
+      // But we should add additional validation in the future if needed
+
+      console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
+
+      await fs.writeFile(normalizedFilePath, data);
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing file:', error);
+      return { success: false, error: error.message };
+    }
   });
 }
 

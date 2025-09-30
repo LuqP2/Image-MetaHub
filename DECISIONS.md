@@ -40,6 +40,163 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-30: FIX - Fixed Show in Folder Button in Image Modal
+
+**Decision:** Fixed "Show in Folder" button in image modal interface to use same implementation as working context menu.
+
+**Context:** Button was failing because it called async function synchronously and passed IndexedImage object instead of full path string.
+
+**Rationale:** 
+- Context menu implementation was working correctly
+- Button should use same logic: check directoryPath exists, construct full path string
+- Made button async to properly handle the promise
+
+**Alternatives Considered:**
+- Modify showInExplorer to handle IndexedImage better (rejected: context menu approach is more reliable)
+- Remove the button entirely (rejected: useful functionality)
+
+**Impact:** 
+- "Show in Folder" button now works in modal interface
+- Consistent behavior between context menu and button
+- No breaking changes
+
+**Testing:** Verified both context menu and button work correctly.
+
+---
+
+## 2025-09-30: UX - Added Copy to Clipboard Feature for Images
+
+**Decision:** Added "Copy to Clipboard" option as the first item in the image modal context menu.
+
+**Context:** Users needed a way to copy actual image files to clipboard for use in other applications, not just text metadata.
+
+**Rationale:** 
+- Leveraged existing `copyImageToClipboard` utility function
+- Positioned as first menu option for discoverability
+- Added proper separators to organize menu into logical groups
+- Maintains consistent UI patterns with other copy operations
+
+**Alternatives Considered:**
+- Adding to main toolbar (rejected: context menu is more appropriate for image-specific actions)
+- Keyboard shortcut only (rejected: discoverability issues)
+- Multiple copy options (rejected: single "Copy to Clipboard" covers the main use case)
+
+**Impact:** 
+- Users can copy images to clipboard with right-click
+- Improved workflow for users who need to paste images elsewhere
+- Menu reorganized with logical grouping and separators
+
+**Testing:** Verified clipboard API works in both browser and Electron environments.
+
+---
+
+## 2025-09-30: PERF - Fixed Refresh Re-indexing Bug by Standardizing Timestamp Usage
+
+**Decision:** Changed file listing during refresh to use creation time (birthtimeMs) instead of modification time (mtime) for consistency with initial indexing.
+
+**Context:** Refresh was re-indexing entire folders because it used different timestamps than the initial indexing process, causing all files to appear "modified" even when unchanged.
+
+**Rationale:** 
+- Initial indexing uses birthtimeMs (creation date) for accurate AI image sorting
+- Refresh was using mtime (modification date), creating timestamp mismatch
+- Standardized on birthtimeMs for both operations to ensure cache diff works correctly
+
+**Alternatives Considered:**
+- Change initial indexing to use mtime (rejected: creation date is more accurate for AI-generated images)
+- Add timestamp type flag to cache (rejected: overcomplicated, birthtimeMs is the correct choice)
+
+**Impact:** 
+- Refresh now only processes actually changed files
+- Eliminates unnecessary re-indexing of large folders
+- Maintains accurate date sorting for AI-generated content
+
+**Testing:** Verified with folders containing thousands of images - refresh now works incrementally.
+
+---
+
+## 2025-09-30: PERF - Cache Key Changed from Folder Name to Full Directory Path
+
+**Decision:** Modified cache system to use full directory path as cache key instead of just folder name.
+
+**Context:** Users experienced cache collisions where different folders with the same name (e.g., "Images" vs "images") were treated as the same cache entry, causing unnecessary re-indexing when switching between folders.
+
+**Rationale:** 
+- Cache keys must uniquely identify each folder regardless of name similarity
+- Full directory path provides guaranteed uniqueness across different locations
+- Maintains backward compatibility by keeping directoryName as display field
+
+**Alternatives Considered:**
+- Hashing folder names with additional metadata (rejected: complex, potential collisions)
+- User-provided cache identifiers (rejected: poor UX, manual management)
+- Keeping folder name only (rejected: causes the reported collision issue)
+
+**Impact:** 
+- Each folder now has independent cache entries
+- Eliminates unnecessary re-indexing for folders with same names
+- Slight increase in storage due to longer cache keys
+- No breaking changes to existing functionality
+
+**Testing:** Verified with user's scenario of switching between "Images" (18k files) and "images" (73 files) folders.
+
+---
+
+## 2025-09-29: UX - Multi-Select Filter Logic Changed to OR Behavior
+
+**Decision:** Changed multi-select filter logic from AND to OR behavior for models, LoRAs, and schedulers.
+
+**Context:** Users reported that selecting multiple filters (models/LoRAs/schedulers) resulted in zero images shown, as the system required images to match ALL selected filters simultaneously.
+
+**Rationale:** 
+- Changed `selectedModels.every()` to `selectedModels.some()` for OR logic
+- Changed `selectedLoras.every()` to `selectedLoras.some()` for OR logic  
+- Schedulers already used OR logic with `selectedSchedulers.includes()`
+- Images now appear if they match ANY of the selected filters, not ALL
+
+**Alternatives Considered:**
+- Keep AND logic (rejected: poor UX, users expect OR behavior for filters)
+- Add toggle between AND/OR modes (rejected: over-engineering, OR is standard expectation)
+
+**Impact:** 
+- Significantly improves user experience when filtering by multiple criteria
+- More intuitive behavior matching user expectations
+- Allows users to see broader sets of images when combining filters
+
+**Testing:** Verified filter combinations now work correctly, showing images that match any selected model/LoRA/scheduler.
+
+## 2025-09-29: ARCHITECTURE - Major Application Refactoring for LLM-Friendliness
+
+**Decision:** Performed comprehensive architectural refactoring to improve code modularity, maintainability, and LLM comprehension through state management migration, custom hooks extraction, component modularization, and parser modularization.
+
+**Context:** The monolithic App.tsx component had grown too large and complex, making it difficult for both human developers and AI assistants to understand and work with the codebase effectively.
+
+**Rationale:** 
+- **State Management Migration**: Migrated all component state (useState) to centralized Zustand store (`useImageStore.ts`) for better state management and predictability
+- **Custom Hooks Extraction**: Extracted business logic from App.tsx into focused custom hooks:
+  - `useImageLoader.ts` - Directory loading and automatic filter extraction
+  - `useImageFilters.ts` - Search and filtering logic
+  - `useImageSelection.ts` - Image selection management
+- **Component Modularization**: Broke out UI elements into dedicated components:
+  - `Header.tsx` - Application header
+  - `StatusBar.tsx` - Status information display
+  - `ActionToolbar.tsx` - Action buttons and controls
+- **Parser Modularization**: Split monolithic `fileIndexer.ts` into modular parsers:
+  - `services/parsers/` - Separate modules for InvokeAI, A1111, and ComfyUI formats
+  - Factory pattern for automatic parser selection based on metadata format
+
+**Alternatives Considered:**
+- Incremental refactoring (rejected: would take longer and create intermediate complexity)
+- Using Redux instead of Zustand (rejected: Zustand is simpler and more suitable for this scale)
+- Keeping monolithic structure (rejected: would continue to hinder development velocity)
+
+**Impact:** 
+- Significantly improved code maintainability and readability
+- Enhanced LLM comprehension of codebase structure
+- Better separation of concerns across the application
+- Easier testing and debugging of individual components
+- Improved developer experience for future modifications
+
+**Testing:** Verified all existing functionality works correctly after refactoring, including image loading, filtering, selection, and metadata parsing across all supported formats (InvokeAI, A1111, ComfyUI).
+
 ## 2025-09-28: CRITICAL - Fixed Syntax Error Preventing App Startup
 
 **Decision:** Resolved critical syntax error in electron.mjs that completely prevented the application from starting.

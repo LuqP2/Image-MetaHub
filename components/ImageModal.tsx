@@ -3,7 +3,6 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 
-// Interface for ImageModal props
 interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
@@ -60,6 +59,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 
@@ -78,6 +78,130 @@ const ImageModal: React.FC<ImageModalProps> = ({
       console.error(`Failed to copy ${type}:`, err);
       alert(`Failed to copy ${type}.`);
     });
+  };
+
+  const copyToClipboardElectron = async (text: string, type: string) => {
+    if (!text) {
+      alert(`No ${type} to copy.`);
+      return;
+    }
+
+    try {
+      // Usar navigator.clipboard (funciona tanto no Electron quanto no browser)
+      await navigator.clipboard.writeText(text);
+
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.textContent = `${type} copied to clipboard!`;
+      document.body.appendChild(notification);
+      setTimeout(() => document.body.removeChild(notification), 2000);
+    } catch (err) {
+      console.error(`Failed to copy ${type}:`, err);
+      alert(`Failed to copy ${type}.`);
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true
+    });
+  };
+
+  const hideContextMenu = () => {
+    setContextMenu({ x: 0, y: 0, visible: false });
+  };
+
+  const copyPrompt = () => {
+    copyToClipboardElectron(nMeta?.prompt || '', 'Prompt');
+    hideContextMenu();
+  };
+
+  const copyNegativePrompt = () => {
+    copyToClipboardElectron(nMeta?.negativePrompt || '', 'Negative Prompt');
+    hideContextMenu();
+  };
+
+  const copySeed = () => {
+    copyToClipboardElectron(String(nMeta?.seed || ''), 'Seed');
+    hideContextMenu();
+  };
+
+  const copyImage = async () => {
+    hideContextMenu();
+    const result = await copyImageToClipboard(image);
+    if (result.success) {
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.textContent = 'Image copied to clipboard!';
+      document.body.appendChild(notification);
+      setTimeout(() => document.body.removeChild(notification), 2000);
+    } else {
+      alert(`Failed to copy image to clipboard: ${result.error}`);
+    }
+  };
+
+  const copyModel = () => {
+    copyToClipboardElectron(nMeta?.model || '', 'Model');
+    hideContextMenu();
+  };
+
+  const showInFolder = () => {
+    hideContextMenu();
+    if (!directoryPath) {
+      alert('Cannot determine file location: directory path is missing.');
+      return;
+    }
+    // The showInExplorer utility can handle the full path directly
+    showInExplorer(`${directoryPath}/${image.name}`);
+  };
+
+  const exportImage = async () => {
+    hideContextMenu();
+    
+    if (!window.electronAPI) {
+      alert('Export feature is only available in the desktop app version.');
+      return;
+    }
+    
+    if (!directoryPath) {
+      alert('Cannot export image: source directory path is missing.');
+      return;
+    }
+
+    try {
+      // 1. Ask user for destination directory
+      const destResult = await window.electronAPI.showDirectoryDialog();
+      if (destResult.canceled || !destResult.path) {
+        return; // User cancelled
+      }
+      const destDir = destResult.path;
+      const sourcePath = `${directoryPath}/${image.name}`;
+      const destPath = `${destDir}/${image.name}`;
+
+      // 2. Read the source file
+      const readResult = await window.electronAPI.readFile(sourcePath);
+      if (!readResult.success || !readResult.data) {
+        alert(`Failed to read original file: ${readResult.error}`);
+        return;
+      }
+
+      // 3. Write the new file
+      const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
+      if (!writeResult.success) {
+        alert(`Failed to export image: ${writeResult.error}`);
+        return;
+      }
+
+      // 4. Success!
+      alert(`Image exported successfully to: ${destPath}`);
+
+    } catch (error) {
+      console.error('Export error:', error);
+      alert(`An unexpected error occurred during export: ${error.message}`);
+    }
   };
 
   useEffect(() => {
@@ -99,10 +223,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (event.key === 'ArrowRight') onNavigateNext?.();
     };
 
+    const handleClickOutside = () => {
+      hideContextMenu();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', handleClickOutside);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', handleClickOutside);
       if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
       }
@@ -147,7 +277,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {/* Image Display Section */}
         <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center p-4 relative group`}>
-          {imageUrl ? <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" /> : <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>}
+          {imageUrl ? <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" onContextMenu={handleContextMenu} /> : <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>}
 
           {onNavigatePrevious && <button onClick={onNavigatePrevious} className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">←</button>}
           {onNavigateNext && <button onClick={onNavigateNext} className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">→</button>}
@@ -212,7 +342,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="flex flex-wrap gap-2 pt-2">
             <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Prompt</button>
             <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Raw Metadata</button>
-            <button onClick={() => showInExplorer(image)} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
+            <button onClick={async () => {
+              if (!directoryPath) {
+                alert('Cannot determine file location: directory path is missing.');
+                return;
+              }
+              await showInExplorer(`${directoryPath}/${image.name}`);
+            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
           </div>
 
           <div>
@@ -227,6 +363,90 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={copyImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy to Clipboard
+          </button>
+          
+          <div className="border-t border-gray-600 my-1"></div>
+          
+          <button
+            onClick={copyPrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!nMeta?.prompt}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy Prompt
+          </button>
+          <button
+            onClick={copyNegativePrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!nMeta?.negativePrompt}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy Negative Prompt
+          </button>
+          <button
+            onClick={copySeed}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!nMeta?.seed}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy Seed
+          </button>
+          <button
+            onClick={copyModel}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!nMeta?.model}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
+            </svg>
+            Copy Model
+          </button>
+          
+          <div className="border-t border-gray-600 my-1"></div>
+          
+          <button
+            onClick={showInFolder}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 6a2 2 0 012-2h5a2 2 0 012 2v2H2V6zM2 10h10v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/>
+            </svg>
+            Show in Folder
+          </button>
+          
+          <button
+            onClick={exportImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.409l-7-14z"/>
+            </svg>
+            Export Image
+          </button>
+        </div>
+      )}
     </div>
   );
 };

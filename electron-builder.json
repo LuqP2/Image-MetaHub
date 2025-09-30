@@ -1,6 +1,6 @@
 {
-  "appId": "com.luqp2.local-image-browser",
-  "productName": "Local Image Browser for InvokeAI",
+  "appId": "com.luqp2.image-metahub",
+  "productName": "Image MetaHub",
   "directories": {
     "output": "dist-electron"
   },
@@ -16,7 +16,7 @@
         "arch": ["x64"]
       }
     ],
-    "artifactName": "LocalImageBrowser-InvokeAI-Setup-${version}.exe"
+    "artifactName": "ImageMetaHub-Setup-${version}.exe"
   },
   "mac": {
     "target": [
@@ -52,7 +52,7 @@
   "publish": {
     "provider": "github",
     "owner": "LuqP2",
-    "repo": "local-image-browser-for-invokeai",
+    "repo": "image-metahub",
     "releaseType": "release"
   },
   "generateUpdatesFilesForAllChannels": true

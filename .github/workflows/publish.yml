@@ -56,14 +56,14 @@ jobs:
           echo "Creating release v$VERSION..."
           if [ -f "$RELEASE_NOTES_FILE" ]; then
             gh release create v$VERSION \
-              --title "Local Image Browser for InvokeAI v$VERSION" \
+              --title "Image MetaHub v$VERSION" \
               --notes-file "$RELEASE_NOTES_FILE" \
               --latest \
               --draft
           else
             echo "Release notes file not found, creating basic release..."
             gh release create v$VERSION \
-              --title "Local Image Browser for InvokeAI v$VERSION" \
+              --title "Image MetaHub v$VERSION" \
               --generate-notes \
               --latest \
               --draft
