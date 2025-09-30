@@ -188,9 +188,9 @@ async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path
       board: normalizedMetadata?.board || '',
       prompt: normalizedMetadata?.prompt || '',
       negativePrompt: normalizedMetadata?.negativePrompt || '',
-      cfgScale: normalizedMetadata?.cfgScale || normalizedMetadata?.cfg_scale || 0,
-      steps: normalizedMetadata?.steps || 0,
-      seed: normalizedMetadata?.seed,
+      cfgScale: normalizedMetadata?.cfgScale || normalizedMetadata?.cfg_scale || null,
+      steps: normalizedMetadata?.steps || null,
+      seed: normalizedMetadata?.seed || null,
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
     } as IndexedImage;
   } catch (error) {

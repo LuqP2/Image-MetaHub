@@ -40,9 +40,11 @@ export default function App() {
     selectedModels,
     selectedLoras,
     selectedSchedulers,
+    advancedFilters,
     setSearchQuery,
     setSelectedFilters,
     setSortOrder,
+    setAdvancedFilters,
     setSelectedImage,
     removeImage,
     updateImage,
@@ -52,7 +54,6 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(20);
   const [currentPage, setCurrentPage] = useState(1);
-  const [advancedFilters, setAdvancedFilters] = useState<any>({});
 
   // --- Effects ---
   // Reset page on filter change

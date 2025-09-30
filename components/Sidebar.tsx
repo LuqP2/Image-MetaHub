@@ -74,10 +74,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const extractUniqueData = (images: any[]) => {
     const dimensions = images.reduce((acc, img) => {
-      const width = img.metadata?.width || img.metadata?.image?.width || img.metadata?.controlLayers?.find(layer => layer.image)?.image?.width || img.width || 'undefined';
-      const height = img.metadata?.height || img.metadata?.image?.height || img.metadata?.controlLayers?.find(layer => layer.image)?.image?.height || img.height || 'undefined';
-      const key = `${width}×${height}`;
-      acc[key] = (acc[key] || 0) + 1;
+      const key = img.dimensions;
+      if (key && key !== '0x0' && key !== 'undefinedxundefined') {
+        acc[key] = (acc[key] || 0) + 1;
+      }
       return acc;
     }, {});
 
@@ -88,11 +88,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       })
       .sort((a, b) => b.size - a.size);
 
-    const steps = images.map(img => img.metadata?.steps || img.metadata?.num_inference_steps).filter(Boolean);
+    const steps = images.map(img => img.steps).filter(step => step !== null && step !== undefined && step > 0);
     const minSteps = steps.length ? Math.min(...steps) : 0;
     const maxSteps = steps.length ? Math.max(...steps) : 100;
 
-    const cfgScales = images.map(img => img.metadata?.cfg_scale || img.metadata?.guidance_scale).filter(Boolean);
+    const cfgScales = images.map(img => img.cfgScale).filter(cfg => cfg !== null && cfg !== undefined && cfg > 0);
     const minCfg = cfgScales.length ? Math.min(...cfgScales) : 1;
     const maxCfg = cfgScales.length ? Math.max(...cfgScales) : 20;
 
