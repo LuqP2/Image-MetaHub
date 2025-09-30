@@ -26,33 +26,52 @@ async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, dir
 }
 
 async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, fileNames: string[]): Promise<{handle: FileSystemFileHandle, path: string}[]> {
-    const handles: {handle: FileSystemFileHandle, path: string}[] = [];
-    const filesToGet = new Set(fileNames);
-
-    if (isElectron) {
-        for (const name of filesToGet) {
-            const mockHandle = {
-                name,
-                kind: 'file' as const,
-                getFile: async () => {
-                    const fullPath = `${directoryPath}/${name}`;
-                    const fileResult = await window.electronAPI.readFile(fullPath);
-                    if (fileResult.success && fileResult.data) {
-                        // We don't have the real lastModified here without another IPC call, but it's only used for diffing which is already done.
-                        return new File([new Uint8Array(fileResult.data)], name, { type: 'image/png' });
-                    }
-                    throw new Error(`Failed to read file in Electron: ${name}`);
-                }
-            };
-            handles.push({ handle: mockHandle as any, path: name });
-        }
-    } else {
+    if (!isElectron) {
+        const handles: {handle: FileSystemFileHandle, path: string}[] = [];
+        const filesToGet = new Set(fileNames);
         for await (const entry of (directoryHandle as any).values()) {
             if (filesToGet.has(entry.name)) {
                 handles.push({ handle: entry, path: entry.name });
             }
         }
+        return handles;
     }
+
+    // --- Electron-specific batch reading logic ---
+    const BATCH_SIZE = 100;
+    const fileMap = new Map<string, File>();
+    const allFilePaths = fileNames.map(name => `${directoryPath}/${name}`);
+
+    for (let i = 0; i < allFilePaths.length; i += BATCH_SIZE) {
+        const batchPaths = allFilePaths.slice(i, i + BATCH_SIZE);
+        const result = await window.electronAPI.readFilesBatch(batchPaths);
+
+        if (result.success && result.files) {
+            for (const fileData of result.files) {
+                if (fileData.success && fileData.data) {
+                    const fileName = fileData.path.split('/').pop()?.split('\\').pop() || '';
+                    const file = new File([new Uint8Array(fileData.data)], fileName, { type: 'image/png' });
+                    fileMap.set(fileName, file);
+                }
+            }
+        } else {
+            console.error("Failed to read batch of files:", result.error);
+        }
+    }
+
+    const handles: {handle: FileSystemFileHandle, path: string}[] = [];
+    for (const name of fileNames) {
+        const file = fileMap.get(name);
+        if (file) {
+            const mockHandle = {
+                name,
+                kind: 'file' as const,
+                getFile: async () => file, // Return the pre-fetched file instantly
+            };
+            handles.push({ handle: mockHandle as any, path: name });
+        }
+    }
+
     return handles;
 }
 
