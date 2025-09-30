@@ -19,7 +19,8 @@
     "release": "npm run build && electron-builder --publish=always",
     "generate-release": "node generate-release.js",
     "release-workflow": "node release-workflow.js",
-    "auto-release": "node auto-release.js"
+    "auto-release": "node auto-release.js",
+    "reset-cache": "node reset-cache.js"
   },
   "dependencies": {
     "electron-updater": "^6.6.2",

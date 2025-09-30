@@ -1,4 +1,5 @@
 import React from 'react';
+import { resetAllCaches } from '../utils/cacheReset';
 
 interface ActionToolbarProps {
   sortOrder: string;
@@ -6,6 +7,7 @@ interface ActionToolbarProps {
   selectedCount: number;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
+  onTestBatchReading?: () => void; // Temporary test function
 }
 
 const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -13,7 +15,8 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   onSortOrderChange,
   selectedCount,
   onClearSelection,
-  onDeleteSelected
+  onDeleteSelected,
+  onTestBatchReading
 }) => {
   return (
     <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
@@ -30,6 +33,14 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
           <option value="asc">A-Z</option>
           <option value="desc">Z-A</option>
         </select>
+        {onTestBatchReading && (
+          <button
+            onClick={onTestBatchReading}
+            className="ml-4 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-500 text-sm"
+          >
+            Test Batch Reading
+          </button>
+        )}
       </div>
       {selectedCount > 0 && (
         <div className="flex items-center gap-4">

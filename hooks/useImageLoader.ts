@@ -4,11 +4,32 @@ import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
 import { IndexedImage } from '../types';
 
-const isElectron = typeof window !== 'undefined' && window.electronAPI;
+console.log('🚀 useImageLoader module loaded');
+
+// Dynamic Electron detection - check at runtime, not module load time
+const getIsElectron = () => {
+  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+  console.log('🔍 Electron detection:', {
+    isElectron,
+    hasWindow: typeof window !== 'undefined',
+    hasElectronAPI: !!(window as any).electronAPI,
+    electronAPIMethods: isElectron ? Object.keys((window as any).electronAPI) : []
+  });
+  return isElectron;
+};
+
+// Global cache for file data to avoid Zustand serialization issues
+const fileDataCache = new Map<string, Uint8Array>();
+
+// Function to clear file data cache
+function clearFileDataCache() {
+  console.log(`🧹 Clearing file data cache (${fileDataCache.size} entries)`);
+  fileDataCache.clear();
+}
 
 async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string): Promise<{ name: string; lastModified: number }[]> {
-    if (isElectron) {
-        const result = await window.electronAPI.listDirectoryFiles(directoryPath);
+    if (getIsElectron()) {
+        const result = await (window as any).electronAPI.listDirectoryFiles(directoryPath);
         if (result.success && result.files) {
             return result.files;
         }
@@ -29,25 +50,117 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     const handles: {handle: FileSystemFileHandle, path: string}[] = [];
     const filesToGet = new Set(fileNames);
 
-    if (isElectron) {
-        for (const name of filesToGet) {
-            const mockHandle = {
-                name,
-                kind: 'file' as const,
-                getFile: async () => {
-                    const fullPath = `${directoryPath}/${name}`;
-                    const fileResult = await window.electronAPI.readFile(fullPath);
+    if (getIsElectron()) {
+        console.log('🚀 Electron detected: Using batch file reading optimization');
+        // Use batch reading for Electron to reduce IPC overhead
+        const fileNamesArray = Array.from(filesToGet);
+        const BATCH_SIZE = 50; // Read 50 files at a time
+        const batches: string[][] = [];
+
+        // Split files into batches
+        for (let i = 0; i < fileNamesArray.length; i += BATCH_SIZE) {
+            batches.push(fileNamesArray.slice(i, i + BATCH_SIZE));
+        }
+
+        console.log(`📦 Reading ${fileNamesArray.length} files in ${batches.length} batches of ${BATCH_SIZE} files each`);
+
+        // Process each batch
+        for (const batch of batches) {
+            const filePaths = batch.map(name => `${directoryPath}/${name}`);
+            console.log(`🔄 Processing batch of ${batch.length} files...`);
+            const batchResult = await window.electronAPI.readFilesBatch(filePaths);
+
+            if (batchResult.success && batchResult.files) {
+                for (const fileResult of batchResult.files) {
                     if (fileResult.success && fileResult.data) {
-                        const lowerName = name.toLowerCase();
+                        const fileName = fileResult.path.split('/').pop() || fileResult.path.split('\\').pop() || '';
+                        const lowerName = fileName.toLowerCase();
                         const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                        return new File([new Uint8Array(fileResult.data)], name, { type });
+
+                        // Create a lightweight handle that references the file by path
+                        // File data is stored in global cache, not in the handle itself
+                        const filePath = `${directoryPath}/${fileName}`;
+
+                        const mockHandle = {
+                            name: fileName,
+                            kind: 'file' as const,
+                            // Store file path for later retrieval
+                            _filePath: filePath,
+                            getFile: async () => {
+                                // Get file data from global cache
+                                const cachedData = fileDataCache.get(filePath);
+                                if (!cachedData) {
+                                    // If not in cache, read from disk (fallback)
+                                    if (getIsElectron()) {
+                                        const fileResult = await window.electronAPI.readFile(filePath);
+                                        if (fileResult.success && fileResult.data) {
+                                            const freshData = new Uint8Array(fileResult.data);
+                                            fileDataCache.set(filePath, freshData);
+                                            const lowerName = fileName.toLowerCase();
+                                            const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                            return new File([freshData as any], fileName, { type });
+                                        }
+                                    }
+                                    throw new Error(`File data not available: ${filePath}`);
+                                }
+                                const lowerName = fileName.toLowerCase();
+                                const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                return new File([cachedData as any], fileName, { type });
+                            }
+                        };
+                        handles.push({ handle: mockHandle as any, path: fileName });
+                    } else {
+                        console.warn(`Failed to read file in batch: ${fileResult.path}`, fileResult.error);
                     }
-                    throw new Error(`Failed to read file in Electron: ${name}`);
                 }
-            };
-            handles.push({ handle: mockHandle as any, path: name });
+            } else {
+                console.error('Batch read failed:', batchResult.error);
+                // Fallback to individual reads for this batch
+                for (const filePath of filePaths) {
+                    try {
+                        const fileResult = await window.electronAPI.readFile(filePath);
+                        if (fileResult.success && fileResult.data) {
+                            const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || '';
+                            const lowerName = fileName.toLowerCase();
+                            const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+                            const mockHandle = {
+                                name: fileName,
+                                kind: 'file' as const,
+                                // Store file path for later retrieval
+                                _filePath: filePath,
+                                getFile: async () => {
+                                    // Get file data from global cache
+                                    const cachedData = fileDataCache.get(filePath);
+                                    if (!cachedData) {
+                                        // If not in cache, read from disk (fallback)
+                                        if (getIsElectron()) {
+                                            const fileResult = await window.electronAPI.readFile(filePath);
+                                            if (fileResult.success && fileResult.data) {
+                                                const freshData = new Uint8Array(fileResult.data);
+                                                fileDataCache.set(filePath, freshData);
+                                                const lowerName = fileName.toLowerCase();
+                                                const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                                return new File([freshData as any], fileName, { type });
+                                            }
+                                        }
+                                        throw new Error(`File data not available: ${filePath}`);
+                                    }
+                                    const lowerName = fileName.toLowerCase();
+                                    const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                    return new File([cachedData as any], fileName, { type });
+                                }
+                            };
+                            handles.push({ handle: mockHandle as any, path: fileName });
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to read file individually: ${filePath}`, error);
+                    }
+                }
+            }
         }
     } else {
+        // Browser implementation remains unchanged
         for await (const entry of (directoryHandle as any).values()) {
             if (filesToGet.has(entry.name)) {
                 handles.push({ handle: entry, path: entry.name });
@@ -67,6 +180,9 @@ export function useImageLoader() {
         setLoading(true);
         setError(null);
         setSuccess(null);
+
+        // Clear file data cache when starting a new folder load
+        clearFileDataCache();
 
         try {
             let handle: FileSystemDirectoryHandle;
@@ -124,6 +240,9 @@ export function useImageLoader() {
                 const filesToProcessNames = diff.newAndModifiedFiles.map(f => f.name);
                 const fileHandles = await getFileHandles(handle, path, filesToProcessNames);
 
+                // Initialize progress with total files to process
+                setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
+
                 const newlyProcessedImages: IndexedImage[] = [];
                 const handleBatchProcessed = (batch: IndexedImage[]) => {
                     addImages(batch); // Update the store incrementally
@@ -176,3 +295,5 @@ export function useImageLoader() {
 
     return { handleSelectFolder, handleUpdateFolder };
 }
+
+export { getFileHandles };

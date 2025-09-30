@@ -167,7 +167,8 @@ export async function processFiles(
     }
 
     processedCount++;
-    setProgress({ current: processedCount, total });
+    // Update progress with a small delay to allow UI updates
+    setTimeout(() => setProgress({ current: processedCount, total }), 0);
 
     // Yield to the main thread periodically to allow the progress text to update.
     // This is separate from the larger batching for store updates.
