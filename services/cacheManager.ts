@@ -12,6 +12,7 @@ interface CacheEntry {
     id: string;
     name: string;
     metadataString: string;
+    metadata: any; // Store complete metadata including normalizedMetadata
     lastModified: number;
     models: string[];
     loras: string[];
@@ -28,7 +29,7 @@ export interface CacheDiff {
 
 class CacheManager {
   private dbName = 'invokeai-browser-cache';
-  private dbVersion = 2; // Increased version to handle schema changes
+  private dbVersion = 3; // Increased version to include complete metadata in cache
   private db: IDBDatabase | null = null;
 
   async init(): Promise<void> {
@@ -143,6 +144,7 @@ class CacheManager {
         id: img.id,
         name: img.name,
         metadataString: img.metadataString,
+        metadata: img.metadata, // Store complete metadata including normalizedMetadata
         lastModified: img.lastModified,
         models: img.models,
         loras: img.loras,
@@ -250,12 +252,8 @@ class CacheManager {
 
           if (invalidImages.length > 0) {
             entry.metadata = entry.metadata.filter(meta => {
-              try {
-                const parsed = JSON.parse(meta.metadataString);
-                return !!parsed.normalizedMetadata;
-              } catch {
-                return false;
-              }
+              // Check if metadata has normalizedMetadata
+              return !!(meta.metadata && meta.metadata.normalizedMetadata);
             });
             entry.imageCount = entry.metadata.length;
             entry.lastScan = Date.now();
@@ -342,18 +340,12 @@ class CacheManager {
         newAndModifiedFiles.push(file);
       } else {
         // File is unchanged, restore from cache
-        try {
-          const metadata = JSON.parse(cachedFile.metadataString);
-          cachedImages.push({
-            ...cachedFile,
-            metadata,
-            // Mock handle for cached items, getFile will be implemented in the hook
-            handle: { name: cachedFile.name, kind: 'file' } as any,
-          });
-        } catch (e) {
-          console.warn(`Could not parse metadata for ${cachedFile.name}, will re-process.`);
-          newAndModifiedFiles.push(file);
-        }
+        cachedImages.push({
+          ...cachedFile,
+          metadata: cachedFile.metadata, // Use the complete metadata that was stored
+          // Mock handle for cached items, getFile will be implemented in the hook
+          handle: { name: cachedFile.name, kind: 'file' } as any,
+        });
       }
     }
 

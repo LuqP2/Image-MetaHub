@@ -136,13 +136,9 @@ export default function App() {
           onModelChange={(models) => setSelectedFilters({ models })}
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
-          advancedFilters={advancedFilters}
-          onAdvancedFiltersChange={setAdvancedFilters}
           onClearAllFilters={() => {
             setSelectedFilters({ models: [], loras: [], schedulers: [] });
-            setAdvancedFilters({});
           }}
-          images={images}
         />
       )}
 
