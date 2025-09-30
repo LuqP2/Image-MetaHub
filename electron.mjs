@@ -407,7 +407,7 @@ function setupFileOperationHandlers() {
             const stats = await fs.stat(filePath);
             imageFiles.push({
               name: file.name,
-              lastModified: stats.mtime.getTime() // Convert to timestamp
+              lastModified: stats.birthtimeMs // Use creation time for consistency with indexing
             });
             // console.log(`✅ Including image file: ${file.name}`);
           } else {

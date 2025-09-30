@@ -3,12 +3,12 @@
 ## Project Overview
 This is a React + TypeScript + Electron application that provides local browsing and filtering of AI-generated images. The app runs in both web browsers and as a desktop application, with dual file system APIs for cross-platform compatibility.
 
-**Recent Performance Achievements (v1.7.6):**
-- **🚀 Record Performance**: Successfully indexed 18,000 images in 3.5 minutes (~85 images/second)
-- **🔄 Async Pool Implementation**: 10 concurrent file operations with memory safety
-- **⚡ UI Responsiveness**: Throttled updates prevent interface freezing during processing
-- **📅 Accurate Date Sorting**: Uses file creation date (birthtime) instead of modification date
-- **🧹 Clean Console Output**: Eliminated excessive logging for better performance
+**Recent Changes (v1.8.0):**
+- **✨ Automatic1111 & ComfyUI Support**: Full metadata parsing for A1111 and partial for ComfyUI.
+- **🚀 Refactored Architecture**: Migrated to Zustand and custom hooks for better maintainability.
+- **🖼️ JPEG Support**: Added support for JPEG files.
+- **🔍 Advanced Filters**: Added range filters for Steps, CFG Scale, etc.
+- **🚀 High Performance**: Indexes 18,000 images in ~3.5 minutes.
 
 ## Architecture & Data Flow
 

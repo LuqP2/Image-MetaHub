@@ -144,7 +144,7 @@ export function useImageLoader() {
 
             await cacheManager.init();
             const allCurrentFiles = await getDirectoryFiles(handle, path);
-            const diff = await cacheManager.validateCacheAndGetDiff(handle.name, allCurrentFiles);
+            const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles);
 
             // --- FIX: Regenerate handles for cached images ---
             const regeneratedCachedImages = diff.cachedImages.length > 0
@@ -208,7 +208,7 @@ export function useImageLoader() {
             });
             // --- End of Filter Extraction ---
 
-            await cacheManager.cacheData(handle.name, finalImages);
+            await cacheManager.cacheData(path, handle.name, finalImages);
             setSuccess(`Loaded ${finalImages.length} images. ${diff.newAndModifiedFiles.length} new/updated, ${diff.cachedImages.length} from cache.`);
 
         } catch (err) {

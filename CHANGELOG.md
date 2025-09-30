@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console Optimization**: Cleaned up excessive logging for better performance and debugging experience
 
 ### Fixed
+- **Cache Collision Bug**: Fixed cache system incorrectly treating folders with same names as identical entries, causing unnecessary re-indexing when switching between different folders with similar names
+- **Refresh Re-indexing Bug**: Fixed refresh functionality re-indexing entire folders instead of only changed files due to timestamp inconsistency between initial indexing (creation time) and refresh (modification time)
 - **Advanced Filters Bug**: Fixed disconnected state between App.tsx and useImageStore preventing filter application
 - **Filter Data Extraction**: Corrected sidebar reading from raw metadata instead of normalized IndexedImage properties
 - **Range Filter Logic**: Fixed images with undefined steps/cfg being incorrectly included in range filters

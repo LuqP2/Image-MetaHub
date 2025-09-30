@@ -40,6 +40,56 @@ This file documents significant architectural decisions, design choices, and imp
 
 ## Recent Decisions
 
+## 2025-09-30: PERF - Fixed Refresh Re-indexing Bug by Standardizing Timestamp Usage
+
+**Decision:** Changed file listing during refresh to use creation time (birthtimeMs) instead of modification time (mtime) for consistency with initial indexing.
+
+**Context:** Refresh was re-indexing entire folders because it used different timestamps than the initial indexing process, causing all files to appear "modified" even when unchanged.
+
+**Rationale:** 
+- Initial indexing uses birthtimeMs (creation date) for accurate AI image sorting
+- Refresh was using mtime (modification date), creating timestamp mismatch
+- Standardized on birthtimeMs for both operations to ensure cache diff works correctly
+
+**Alternatives Considered:**
+- Change initial indexing to use mtime (rejected: creation date is more accurate for AI-generated images)
+- Add timestamp type flag to cache (rejected: overcomplicated, birthtimeMs is the correct choice)
+
+**Impact:** 
+- Refresh now only processes actually changed files
+- Eliminates unnecessary re-indexing of large folders
+- Maintains accurate date sorting for AI-generated content
+
+**Testing:** Verified with folders containing thousands of images - refresh now works incrementally.
+
+---
+
+## 2025-09-30: PERF - Cache Key Changed from Folder Name to Full Directory Path
+
+**Decision:** Modified cache system to use full directory path as cache key instead of just folder name.
+
+**Context:** Users experienced cache collisions where different folders with the same name (e.g., "Images" vs "images") were treated as the same cache entry, causing unnecessary re-indexing when switching between folders.
+
+**Rationale:** 
+- Cache keys must uniquely identify each folder regardless of name similarity
+- Full directory path provides guaranteed uniqueness across different locations
+- Maintains backward compatibility by keeping directoryName as display field
+
+**Alternatives Considered:**
+- Hashing folder names with additional metadata (rejected: complex, potential collisions)
+- User-provided cache identifiers (rejected: poor UX, manual management)
+- Keeping folder name only (rejected: causes the reported collision issue)
+
+**Impact:** 
+- Each folder now has independent cache entries
+- Eliminates unnecessary re-indexing for folders with same names
+- Slight increase in storage due to longer cache keys
+- No breaking changes to existing functionality
+
+**Testing:** Verified with user's scenario of switching between "Images" (18k files) and "images" (73 files) folders.
+
+---
+
 ## 2025-09-29: UX - Multi-Select Filter Logic Changed to OR Behavior
 
 **Decision:** Changed multi-select filter logic from AND to OR behavior for models, LoRAs, and schedulers.

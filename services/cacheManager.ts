@@ -4,6 +4,7 @@ import { type IndexedImage } from '../types';
 
 interface CacheEntry {
   id: string;
+  directoryPath: string;
   directoryName: string;
   lastScan: number;
   imageCount: number;
@@ -116,6 +117,7 @@ class CacheManager {
   }
 
   async cacheData(
+    directoryPath: string,
     directoryName: string,
     images: IndexedImage[]
   ): Promise<void> {
@@ -132,7 +134,8 @@ class CacheManager {
     }
 
     const cacheEntry: CacheEntry = {
-      id: directoryName,
+      id: directoryPath,
+      directoryPath,
       directoryName,
       lastScan: Date.now(),
       imageCount: images.length,
@@ -304,13 +307,14 @@ class CacheManager {
   }
 
   async validateCacheAndGetDiff(
+    directoryPath: string,
     directoryName: string,
     currentFiles: { name: string; lastModified: number }[]
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryName);
+    const cached = await this.getCachedData(directoryPath);
 
     if (!cached) {
-      console.log(`❌ NO CACHE FOUND for "${directoryName}". Performing full scan.`);
+      console.log(`❌ NO CACHE FOUND for "${directoryPath}". Performing full scan.`);
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
