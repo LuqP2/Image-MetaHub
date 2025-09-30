@@ -7,6 +7,11 @@ function extractModelName(modelData: any): string | null {
     return modelData.trim();
   }
   if (modelData && typeof modelData === 'object') {
+    // Special handling for InvokeAI LoRA structure: { model: { name: "LoRA Name" }, weight: 0.7 }
+    if (modelData.model && typeof modelData.model === 'object' && modelData.model.name) {
+      return modelData.model.name.trim();
+    }
+
     const possibleNames = [
       modelData.name, modelData.model, modelData.model_name,
       modelData.base_model, modelData.mechanism, modelData.type
