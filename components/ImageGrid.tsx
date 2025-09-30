@@ -1,7 +1,11 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, CSSProperties, memo } from 'react';
+import { FixedSizeGrid as Grid } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 
+// --- ImageCard Component ---
+// This component is now simpler and does not need to be aware of virtualization.
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -10,60 +14,39 @@ interface ImageCardProps {
 
 const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          let isMounted = true;
-          
-          // Use thumbnail if available, otherwise use original image
-          const fileHandle = image.thumbnailHandle || image.handle;
-          
-          fileHandle.getFile().then(file => {
-            if (isMounted) {
-              const url = URL.createObjectURL(file);
-              setImageUrl(url);
-            }
-          }).catch(error => {
-            console.error('Failed to load image:', error);
-            // Fallback to original image if thumbnail fails
-            if (image.thumbnailHandle && isMounted) {
-              image.handle.getFile().then(file => {
-                if (isMounted) {
-                  const url = URL.createObjectURL(file);
-                  setImageUrl(url);
-                }
-              });
-            }
-          });
-          observer.disconnect();
+    let isMounted = true;
+    const fileHandle = image.thumbnailHandle || image.handle;
 
-          return () => {
-            isMounted = false;
-          };
-        }
-      },
-      { rootMargin: '200px' }
-    );
-
-    if (ref.current) {
-      observer.observe(ref.current);
-    }
+    fileHandle.getFile().then(file => {
+      if (isMounted) {
+        const url = URL.createObjectURL(file);
+        setImageUrl(url);
+      }
+    }).catch(error => {
+      console.error('Failed to load image:', error);
+      if (image.thumbnailHandle && isMounted) {
+        image.handle.getFile().then(file => {
+          if (isMounted) {
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+          }
+        });
+      }
+    });
 
     return () => {
+      isMounted = false;
       if (imageUrl) {
         URL.revokeObjectURL(imageUrl);
       }
-      observer.disconnect();
     };
-  }, [image.handle, image.thumbnailHandle, imageUrl]);
+  }, [image.handle, image.thumbnailHandle]);
 
   return (
     <div
-      ref={ref}
-      className={`aspect-square bg-gray-800 rounded-lg overflow-hidden shadow-lg cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-blue-500/30 group relative ${
+      className={`aspect-square bg-gray-800 rounded-lg overflow-hidden shadow-lg cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-blue-500/30 group relative h-full w-full ${
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
@@ -89,6 +72,45 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
   );
 };
 
+
+// --- GridCell Component ---
+// This is the memoized cell renderer for react-window.
+// It receives positioning `style` from the grid and `data` via the `itemData` prop.
+const GridCell = memo(({ columnIndex, rowIndex, style, data }: {
+  columnIndex: number;
+  rowIndex: number;
+  style: CSSProperties;
+  data: {
+    images: IndexedImage[];
+    selectedImages: Set<string>;
+    onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+    columnCount: number;
+  };
+}) => {
+  const { images, selectedImages, onImageClick, columnCount } = data;
+  const index = rowIndex * columnCount + columnIndex;
+
+  if (index >= images.length) {
+    return null; // Do not render anything for out-of-bounds indices
+  }
+
+  const image = images[index];
+  const isSelected = selectedImages.has(image.id);
+
+  return (
+    <div style={style} className="p-1">
+      <ImageCard
+        image={image}
+        onImageClick={onImageClick}
+        isSelected={isSelected}
+      />
+    </div>
+  );
+});
+
+
+// --- ImageGrid Component ---
+// This component now correctly uses AutoSizer and FixedSizeGrid.
 interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -101,15 +123,39 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4">
-      {images.map((image) => (
-        <ImageCard 
-          key={image.id} 
-          image={image} 
-          onImageClick={onImageClick}
-          isSelected={selectedImages.has(image.id)}
-        />
-      ))}
+    <div className="h-full w-full">
+      <AutoSizer>
+        {({ height, width }) => {
+          const PADDING = 8; // p-1 on cell is 4px, so total gap is 8px
+          const MIN_CARD_WIDTH = 120;
+
+          const columnCount = Math.floor((width) / (MIN_CARD_WIDTH + PADDING)) || 1;
+          const cardWidth = Math.floor((width - (columnCount - 1) * PADDING) / columnCount);
+          const rowCount = Math.ceil(images.length / columnCount);
+
+          const itemData = {
+              images,
+              selectedImages,
+              onImageClick,
+              columnCount
+          };
+
+          return (
+            <Grid
+              className="grid-container"
+              columnCount={columnCount}
+              columnWidth={cardWidth}
+              height={height}
+              rowCount={rowCount}
+              rowHeight={cardWidth} // For square aspect ratio
+              width={width}
+              itemData={itemData}
+            >
+              {GridCell}
+            </Grid>
+          );
+        }}
+      </AutoSizer>
     </div>
   );
 };

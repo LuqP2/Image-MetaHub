@@ -1,6 +1,6 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { processDirectory, processFiles } from '../services/fileIndexer';
+import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
 import { IndexedImage } from '../types';
 
@@ -58,7 +58,7 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 
 export function useImageLoader() {
     const {
-        setDirectory, setLoading, setProgress, setImages, setError, setSuccess,
+        setDirectory, setLoading, setProgress, setError, setSuccess,
         directoryHandle, directoryPath, setFilterOptions, removeImages, addImages
     } = useImageStore();
 
@@ -106,10 +106,15 @@ export function useImageLoader() {
                 const filesToProcessNames = diff.newAndModifiedFiles.map(f => f.name);
                 const fileHandles = await getFileHandles(handle, path, filesToProcessNames);
 
-                const newIndexedImages = await processFiles(fileHandles, setProgress);
+                const newlyProcessedImages: IndexedImage[] = [];
+                const handleBatchProcessed = (batch: IndexedImage[]) => {
+                    addImages(batch); // Update the store incrementally
+                    newlyProcessedImages.push(...batch); // Collect for final processing
+                };
 
-                addImages(newIndexedImages);
-                finalImages = [...finalImages, ...newIndexedImages];
+                await processFiles(fileHandles, setProgress, handleBatchProcessed);
+
+                finalImages = [...finalImages, ...newlyProcessedImages];
             }
 
             // --- Recalculate Filters from the final complete list ---
@@ -141,7 +146,7 @@ export function useImageLoader() {
         } finally {
             setLoading(false);
         }
-    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setImages, setError, setSuccess, setFilterOptions, addImages, removeImages]);
+    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
 
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {

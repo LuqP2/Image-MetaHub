@@ -36,6 +36,7 @@ interface ImageState {
   setFilteredImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
+  removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
 
   // Filter & Sort Actions
@@ -92,6 +93,14 @@ export const useImageStore = create<ImageState>((set, get) => ({
       const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
       return { images: [...state.images, ...uniqueNewImages] };
     });
+  },
+
+  removeImages: (imageIds) => {
+    const idsToRemove = new Set(imageIds);
+    set(state => ({
+      images: state.images.filter(img => !idsToRemove.has(img.id)),
+      filteredImages: state.filteredImages.filter(img => !idsToRemove.has(img.id)),
+    }));
   },
 
   removeImage: (imageId) => {

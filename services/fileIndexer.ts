@@ -171,19 +171,19 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
   // Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
   if (chunks.workflow) {
-    console.log('✅ Detected "workflow" chunk, treating as ComfyUI metadata.');
+    // console.log('✅ Detected "workflow" chunk, treating as ComfyUI metadata.');
     const comfyMetadata: ComfyUIMetadata = {};
     if (chunks.workflow) comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata;
   } else if (chunks.parameters) {
-    console.log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
+    // console.log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
     return { parameters: chunks.parameters };
   } else if (chunks.invokeai_metadata) {
-    console.log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
+    // console.log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
     return JSON.parse(chunks.invokeai_metadata);
   } else if (chunks.prompt) {
-    console.log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
+    // console.log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
     return { prompt: chunks.prompt };
   }
 
@@ -202,7 +202,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:')) {
-      console.log(`✅ Detected A1111-style parameters in JPEG.`);
+      // console.log(`✅ Detected A1111-style parameters in JPEG.`);
       return { parameters: metadataText };
     }
 
@@ -210,14 +210,14 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     try {
       const parsedMetadata = JSON.parse(metadataText);
       if (isInvokeAIMetadata(parsedMetadata)) {
-        console.log(`✅ Successfully parsed InvokeAI JSON metadata from JPEG.`);
+        // console.log(`✅ Successfully parsed InvokeAI JSON metadata from JPEG.`);
         return parsedMetadata;
       } else {
-        console.log(`✅ Successfully parsed ComfyUI JSON metadata from JPEG.`);
+        // console.log(`✅ Successfully parsed ComfyUI JSON metadata from JPEG.`);
         return parsedMetadata;
       }
     } catch (jsonError) {
-      console.warn(`⚠️ Could not parse JPEG metadata as any known format.`);
+      // console.warn(`⚠️ Could not parse JPEG metadata as any known format.`);
       return null;
     }
   } catch (error) {
@@ -239,139 +239,84 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
   return null;
 }
 
-// Recursive file handle getter
-export async function getFileHandlesRecursive(
-  directoryHandle: FileSystemDirectoryHandle,
-  path: string = ''
-): Promise<{handle: FileSystemFileHandle, path: string}[]> {
-  const entries = [];
-  for await (const entry of (directoryHandle as any).values()) {
-    const newPath = path ? `${path}/${entry.name}` : entry.name;
-    if (entry.kind === 'file') {
-      entries.push({handle: entry, path: newPath});
-    } else if (entry.kind === 'directory') {
-      entries.push(...(await getFileHandlesRecursive(entry, newPath)));
-    }
-  }
-  return entries;
-}
+/**
+ * Processes a single file entry to extract metadata and create an IndexedImage object.
+ * This function encapsulates the logic that was previously duplicated.
+ */
+async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> {
+  try {
+    const file = await fileEntry.handle.getFile();
+    const rawMetadata = await parseImageMetadata(file);
 
-// Main directory processing function
-export async function processDirectory(
-  directoryHandle: FileSystemDirectoryHandle | string,
-  setProgress: (progress: { current: number; total: number }) => void
-): Promise<IndexedImage[]> {
-  let allFileEntries: {handle: FileSystemFileHandle, path: string}[];
-
-  if (typeof directoryHandle === 'string') {
-    // Electron mode: files are already listed, but since we don't have them here, this shouldn't happen
-    // For now, throw error
-    throw new Error('processDirectory with string not implemented');
-  } else {
-    allFileEntries = await getFileHandlesRecursive(directoryHandle);
-  }
-
-  const imageFiles = allFileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
-  const total = imageFiles.length;
-  let processedCount = 0;
-
-  const indexedImages = await Promise.all(imageFiles.map(async (fileEntry) => {
-    try {
-      const file = await fileEntry.handle.getFile();
-      const rawMetadata = await parseImageMetadata(file);
-
-      let normalizedMetadata: BaseMetadata | undefined;
-      if (rawMetadata) {
-        if (isComfyUIMetadata(rawMetadata)) {
-          normalizedMetadata = parseComfyUIMetadata(rawMetadata);
-        } else if (isAutomatic1111Metadata(rawMetadata)) {
-          normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
-        } else if (isInvokeAIMetadata(rawMetadata)) {
-          normalizedMetadata = parseInvokeAIMetadata(rawMetadata);
-        }
+    let normalizedMetadata: BaseMetadata | undefined;
+    if (rawMetadata) {
+      if (isComfyUIMetadata(rawMetadata)) {
+        normalizedMetadata = parseComfyUIMetadata(rawMetadata);
+      } else if (isAutomatic1111Metadata(rawMetadata)) {
+        normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
+      } else if (isInvokeAIMetadata(rawMetadata)) {
+        normalizedMetadata = parseInvokeAIMetadata(rawMetadata);
       }
-
-      processedCount++;
-      setProgress({ current: processedCount, total });
-
-      return {
-        id: fileEntry.path,
-        name: fileEntry.handle.name,
-        handle: fileEntry.handle,
-        metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
-        metadataString: JSON.stringify(rawMetadata) || '',
-        lastModified: file.lastModified,
-        models: normalizedMetadata?.models || [],
-        loras: normalizedMetadata?.loras || [],
-        scheduler: normalizedMetadata?.scheduler || '',
-        board: normalizedMetadata?.board || '',
-        prompt: normalizedMetadata?.prompt || '',
-        negativePrompt: normalizedMetadata?.negativePrompt || '',
-        cfgScale: normalizedMetadata?.cfgScale || normalizedMetadata?.cfg_scale || 0,
-        steps: normalizedMetadata?.steps || 0,
-        seed: normalizedMetadata?.seed,
-        dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
-      } as IndexedImage;
-    } catch (error) {
-      console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
-      return null;
     }
-  }));
 
-  return indexedImages.filter((image): image is IndexedImage => image !== null);
+    return {
+      id: fileEntry.path,
+      name: fileEntry.handle.name,
+      handle: fileEntry.handle,
+      metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
+      metadataString: JSON.stringify(rawMetadata) || '',
+      lastModified: file.lastModified,
+      models: normalizedMetadata?.models || [],
+      loras: normalizedMetadata?.loras || [],
+      scheduler: normalizedMetadata?.scheduler || '',
+      board: normalizedMetadata?.board || '',
+      prompt: normalizedMetadata?.prompt || '',
+      negativePrompt: normalizedMetadata?.negativePrompt || '',
+      cfgScale: normalizedMetadata?.cfgScale || normalizedMetadata?.cfg_scale || 0,
+      steps: normalizedMetadata?.steps || 0,
+      seed: normalizedMetadata?.seed,
+      dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+    } as IndexedImage;
+  } catch (error) {
+    console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
+    return null;
+  }
 }
 
-// Process array of file entries
+/**
+ * Processes an array of file entries in batches to avoid blocking the main thread.
+ * Invokes a callback with each batch of processed images.
+ */
 export async function processFiles(
-  fileEntries: {handle: FileSystemFileHandle, path: string}[],
-  setProgress: (progress: { current: number; total: number }) => void
-): Promise<IndexedImage[]> {
+  fileEntries: { handle: FileSystemFileHandle, path: string }[],
+  setProgress: (progress: { current: number; total: number }) => void,
+  onBatchProcessed: (batch: IndexedImage[]) => void
+): Promise<void> {
   const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
   const total = imageFiles.length;
   let processedCount = 0;
+  const BATCH_SIZE = 50;
+  let batch: IndexedImage[] = [];
 
-  const indexedImages = await Promise.all(imageFiles.map(async (fileEntry) => {
-    try {
-      const file = await fileEntry.handle.getFile();
-      const rawMetadata = await parseImageMetadata(file);
-
-      let normalizedMetadata: BaseMetadata | undefined;
-      if (rawMetadata) {
-        if (isComfyUIMetadata(rawMetadata)) {
-          normalizedMetadata = parseComfyUIMetadata(rawMetadata);
-        } else if (isAutomatic1111Metadata(rawMetadata)) {
-          normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
-        } else if (isInvokeAIMetadata(rawMetadata)) {
-          normalizedMetadata = parseInvokeAIMetadata(rawMetadata);
-        }
-      }
-
-      processedCount++;
-      setProgress({ current: processedCount, total });
-
-      return {
-        id: fileEntry.path,
-        name: fileEntry.handle.name,
-        handle: fileEntry.handle,
-        metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
-        metadataString: JSON.stringify(rawMetadata) || '',
-        lastModified: file.lastModified,
-        models: normalizedMetadata?.models || [],
-        loras: normalizedMetadata?.loras || [],
-        scheduler: normalizedMetadata?.scheduler || '',
-        board: normalizedMetadata?.board || '',
-        prompt: normalizedMetadata?.prompt || '',
-        negativePrompt: normalizedMetadata?.negativePrompt || '',
-        cfgScale: normalizedMetadata?.cfgScale || normalizedMetadata?.cfg_scale || 0,
-        steps: normalizedMetadata?.steps || 0,
-        seed: normalizedMetadata?.seed,
-        dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
-      } as IndexedImage;
-    } catch (error) {
-      console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
-      return null;
+  for (const fileEntry of imageFiles) {
+    const indexedImage = await processSingleFile(fileEntry);
+    if (indexedImage) {
+      batch.push(indexedImage);
     }
-  }));
 
-  return indexedImages.filter((image): image is IndexedImage => image !== null);
+    processedCount++;
+    setProgress({ current: processedCount, total });
+
+    if (batch.length >= BATCH_SIZE) {
+      onBatchProcessed(batch);
+      batch = [];
+      // Yield to the main thread to allow UI updates
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  }
+
+  // Process any remaining images in the last batch
+  if (batch.length > 0) {
+    onBatchProcessed(batch);
+  }
 }

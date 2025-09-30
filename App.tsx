@@ -146,14 +146,14 @@ export default function App() {
         />
       )}
 
-      <div className={`${directoryHandle ? 'ml-80' : ''} min-h-screen`}>
+      <div className={`${directoryHandle ? 'ml-80' : ''} h-screen flex flex-col`}>
         <Header
           directoryHandle={directoryHandle}
           onUpdateFolder={handleUpdateFolder}
           onChangeFolder={handleChangeFolder}
         />
 
-        <main className="container mx-auto p-4">
+        <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
           {error && <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4">{error}</div>}
           {success && <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4">{success}</div>}
 
@@ -176,14 +176,16 @@ export default function App() {
                 onDeleteSelected={handleDeleteSelectedImages}
               />
 
-              <ImageGrid
-                images={paginatedImages}
-                onImageClick={handleImageSelection}
-                selectedImages={selectedImages}
-              />
+              <div className="flex-1 min-h-0">
+                <ImageGrid
+                  images={paginatedImages}
+                  onImageClick={handleImageSelection}
+                  selectedImages={selectedImages}
+                />
+              </div>
 
               {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-4 mt-8">
+                <div className="flex justify-center items-center gap-4 mt-4">
                   <button onClick={() => setCurrentPage(p => Math.max(p - 1, 1))} disabled={currentPage === 1}>Prev</button>
                   <span>Page {currentPage} of {totalPages}</span>
                   <button onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages}>Next</button>
