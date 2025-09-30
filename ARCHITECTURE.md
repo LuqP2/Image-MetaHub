@@ -11,6 +11,7 @@
 - **State Management**: Zustand
 - **Desktop**: Electron 38 with auto-updater
 - **Styling**: Tailwind CSS v4
+- **Performance**: Virtualized grid with `react-window`
 
 ### Recent Architecture Changes (v1.7.6)
 - **Major Refactoring**: Complete restructuring for better maintainability
@@ -31,6 +32,7 @@ React 18.2.0
 ├── Zustand 5.0.8 (State Management)
 ├── Vite 5.0.8 (Build Tool)
 ├── Electron 38 (Desktop Wrapper)
+├── react-window & react-virtualized-auto-sizer (Performance)
 ├── DOM APIs (File System Access API)
 └── IndexedDB (Client-side Storage)
 ```
@@ -250,12 +252,11 @@ interface CacheEntry {
 - **Responsive Design**: Mobile and desktop optimized layouts
 
 ### 5. **Performance Optimizations**
-- **Lazy Loading**: Images loaded as needed
-- **Batch Processing**: Progress updates every 20 files
-- **Memory Management**: File handles instead of blob storage
-- **Incremental Selection**: Efficient multi-selection handling
-- **Background Operations**: Non-blocking file operations
-- **Virtual Scrolling**: (Planned) for large datasets
+- **Virtual Scrolling**: The image grid is fully virtualized using `react-window`, rendering only visible items to handle massive datasets efficiently.
+- **Batch Processing**: File indexing is performed in batches to prevent UI freezing. The application state is updated incrementally as batches are processed.
+- **Batched IPC in Electron**: File reading in the Electron environment is done in large batches to dramatically reduce inter-process communication overhead.
+- **Lazy Loading**: Individual image data is loaded only when the card is about to enter the viewport.
+- **Memory Management**: The app uses file handles instead of loading all file blobs into memory at once.
 
 ## Current Features
 
@@ -394,7 +395,8 @@ ipcMain.handle('show-directory-dialog', async () => {
 
 // Renderer Process Calls
 const dirResult = await window.electronAPI.listDirectoryFiles(electronPath);
-const fileResult = await window.electronAPI.readFile(filePath);
+const fileResult = await window.electronAPI.readFile(filePath); // Single file read
+const batchResult = await window.electronAPI.readFilesBatch(filePaths); // Batched file read
 const dialogResult = await window.electronAPI.showDirectoryDialog();
 ```
 
@@ -420,8 +422,9 @@ for await (const entry of handle.values()) {
   // Direct file access
 }
 
-// Electron: IPC-based file system access
-const result = await window.electronAPI.listDirectoryFiles(path);
+// Electron: IPC-based file system access with batching
+const filePaths = ['path/to/image1.png', 'path/to/image2.png'];
+const result = await window.electronAPI.readFilesBatch(filePaths);
 const mockHandle = createMockFileHandle(result.files[0]);
 ```
 

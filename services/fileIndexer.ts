@@ -156,7 +156,8 @@ export async function processFiles(
   const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
   const total = imageFiles.length;
   let processedCount = 0;
-  const BATCH_SIZE = 50;
+  const BATCH_SIZE = 50; // For sending data to the store
+  const YIELD_INTERVAL = 25; // For updating the progress text UI
   let batch: IndexedImage[] = [];
 
   for (const fileEntry of imageFiles) {
@@ -168,10 +169,16 @@ export async function processFiles(
     processedCount++;
     setProgress({ current: processedCount, total });
 
+    // Yield to the main thread periodically to allow the progress text to update.
+    // This is separate from the larger batching for store updates.
+    if (processedCount % YIELD_INTERVAL === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
     if (batch.length >= BATCH_SIZE) {
       onBatchProcessed(batch);
       batch = [];
-      // Yield to the main thread to allow UI updates
+      // Yield to the main thread to allow UI updates after a batch is sent
       await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
