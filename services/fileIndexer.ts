@@ -1,150 +1,11 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type InvokeAIMetadata, type Automatic1111Metadata, type ComfyUIMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, ComfyUIMetadata, InvokeAIMetadata } from '../types';
 import { parse } from 'exifr';
 import { parseComfyUIMetadata } from './parsers/comfyUIParser';
-
-// Function to parse InvokeAI metadata and extract normalized metadata
-function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
-  const result: BaseMetadata = {
-    format: 'invokeai',
-    prompt: '',
-    negativePrompt: '',
-    model: '',
-    width: 0,
-    height: 0,
-    steps: 0,
-    scheduler: '',
-    cfgScale: 0,
-    seed: undefined,
-    loras: [],
-  };
-
-  try {
-    // Extract prompt
-    if (typeof metadata.positive_prompt === 'string') {
-      result.prompt = metadata.positive_prompt;
-    } else if (typeof metadata.prompt === 'string') {
-      result.prompt = metadata.prompt;
-    } else if (Array.isArray(metadata.prompt)) {
-      result.prompt = metadata.prompt.map(p => (typeof p === 'string' ? p : p?.prompt || '')).join(' ');
-    }
-
-    // Extract negative prompt
-    if (typeof metadata.negative_prompt === 'string') {
-      result.negativePrompt = metadata.negative_prompt;
-    }
-
-    // Extract model
-    if (typeof metadata.model === 'string') {
-      result.model = metadata.model.split('/').pop()?.split('\\').pop() || metadata.model;
-      result.models = [result.model]; // Convert to array for filtering
-    } else if ((metadata.model as any)?.model_name) {
-      result.model = (metadata.model as any).model_name;
-      result.models = [result.model]; // Convert to array for filtering
-    } else {
-      result.models = []; // Empty array if no model found
-    }
-
-    // Extract dimensions
-    if (metadata.width && metadata.height) {
-      result.width = metadata.width;
-      result.height = metadata.height;
-    }
-
-    // Extract other parameters
-    result.steps = metadata.steps || 0;
-    result.scheduler = metadata.scheduler || '';
-    result.cfgScale = metadata.cfg_scale;
-    result.seed = metadata.seed;
-
-    // Extract LoRAs
-    try {
-      if (Array.isArray(metadata.loras)) {
-          result.loras = metadata.loras.map((lora: any) => lora?.lora?.model_name || lora?.model_name || '').filter(name => name);
-      }
-    } catch (error) {
-      console.warn('Error extracting LoRAs:', error);
-      result.loras = [];
-    }
-
-  } catch (error) {
-    console.error('Error parsing InvokeAI metadata:', error);
-  }
-
-  return result;
-}
-
-// Function to parse Automatic1111 parameters string and extract normalized metadata
-function parseA1111Metadata(parameters: string): BaseMetadata {
-  const result: BaseMetadata = {
-    format: 'automatic1111',
-    prompt: '',
-    negativePrompt: '',
-    model: '',
-    width: 0,
-    height: 0,
-    steps: 0,
-    cfgScale: 0,
-    seed: undefined,
-    sampler: '',
-    scheduler: '',
-    loras: [],
-  };
-
-  try {
-    const negPromptIndex = parameters.indexOf('Negative prompt:');
-    const paramsIndex = parameters.indexOf('Steps:');
-
-    if (negPromptIndex > -1) {
-      result.prompt = parameters.substring(0, negPromptIndex).trim();
-      const rest = parameters.substring(negPromptIndex + 'Negative prompt:'.length);
-      result.negativePrompt = rest.substring(0, rest.indexOf('Steps:')).trim();
-    } else if (paramsIndex > -1) {
-      result.prompt = parameters.substring(0, paramsIndex).trim();
-    }
-
-    const stepsMatch = parameters.match(/Steps: (\d+)/);
-    if (stepsMatch) result.steps = parseInt(stepsMatch[1], 10);
-
-    const samplerMatch = parameters.match(/Sampler: ([^,]+)/);
-    if (samplerMatch) {
-      result.sampler = samplerMatch[1].trim();
-      result.scheduler = result.sampler; // Ensure consistency for filtering
-    }
-
-    const cfgScaleMatch = parameters.match(/CFG scale: ([\d.]+)/);
-    if (cfgScaleMatch) result.cfgScale = parseFloat(cfgScaleMatch[1]);
-
-    const seedMatch = parameters.match(/Seed: (\d+)/);
-    if (seedMatch) result.seed = parseInt(seedMatch[1], 10);
-
-    const sizeMatch = parameters.match(/Size: (\d+)x(\d+)/);
-    if (sizeMatch) {
-      result.width = parseInt(sizeMatch[1], 10);
-      result.height = parseInt(sizeMatch[2], 10);
-    }
-
-    const modelMatch = parameters.match(/Model: ([^,]+)/);
-    if (modelMatch) result.model = modelMatch[1].trim();
-
-    // Convert single model to models array for filtering
-    result.models = result.model ? [result.model] : [];
-
-    // Extract LoRAs from prompt
-    const loraRegex = /<lora:([^:]+):[^>]+>/g;
-    let loraMatch;
-    while ((loraMatch = loraRegex.exec(result.prompt)) !== null) {
-      result.loras.push(loraMatch[1]);
-    }
-
-  } catch (error) {
-    console.warn('Failed to parse Automatic1111 parameters:', error);
-  }
-
-  return result;
-}
+import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
+import { parseA1111Metadata } from './parsers/automatic1111Parser';
 
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
@@ -251,11 +112,11 @@ async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
       if (isComfyUIMetadata(rawMetadata)) {
-        normalizedMetadata = parseComfyUIMetadata(rawMetadata);
+        normalizedMetadata = parseComfyUIMetadata(rawMetadata as ComfyUIMetadata);
       } else if (isAutomatic1111Metadata(rawMetadata)) {
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
-        normalizedMetadata = parseInvokeAIMetadata(rawMetadata);
+        normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }
     }
 
