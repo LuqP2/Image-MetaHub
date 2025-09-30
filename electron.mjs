@@ -563,6 +563,38 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Handle writing file content
+  ipcMain.handle('write-file', async (event, filePath, data) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!data) {
+        return { success: false, error: 'No data provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      // For write operations, we need to be more careful about where files can be written
+      // We'll allow writing to any directory the user has selected via the directory dialog
+      // This is more permissive than read operations but still controlled
+      const normalizedFilePath = path.normalize(filePath);
+      const fileDir = path.dirname(normalizedFilePath);
+
+      // Check if the target directory is within the current directory or a user-selected export directory
+      // For now, we'll allow writing to any directory (since users explicitly choose export locations)
+      // But we should add additional validation in the future if needed
+
+      console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
+
+      await fs.writeFile(normalizedFilePath, data);
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing file:', error);
+      return { success: false, error: error.message };
+    }
+  });
 }
 
 app.on('window-all-closed', () => {

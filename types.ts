@@ -239,6 +239,7 @@ declare global {
       listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: {name: string; lastModified: number}[]; error?: string }>;
       readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
       readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
+      writeFile: (filePath: string, data: Buffer) => Promise<{ success: boolean; error?: string }>;
     };
     // File System Access API
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;

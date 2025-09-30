@@ -135,44 +135,58 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const showInFolder = () => {
-    showInExplorer(image);
     hideContextMenu();
+    if (!directoryPath) {
+      alert('Cannot determine file location: directory path is missing.');
+      return;
+    }
+    // The showInExplorer utility can handle the full path directly
+    showInExplorer(`${directoryPath}/${image.name}`);
   };
 
   const exportImage = async () => {
     hideContextMenu();
     
     if (!window.electronAPI) {
-      alert('Export feature is only available in the desktop app version');
+      alert('Export feature is only available in the desktop app version.');
       return;
     }
     
+    if (!directoryPath) {
+      alert('Cannot export image: source directory path is missing.');
+      return;
+    }
+
     try {
-      // Escolher pasta de destino
-      const result = await window.electronAPI.showDirectoryDialog();
-      if (result.canceled || !result.path) return;
-      
-      const exportDir = result.path;
-      const fileName = image.name;
-      const exportPath = `${exportDir}/${fileName}`;
-      
-      // Ler o arquivo original
-      const readResult = await window.electronAPI.readFile(image.handle.name);
+      // 1. Ask user for destination directory
+      const destResult = await window.electronAPI.showDirectoryDialog();
+      if (destResult.canceled || !destResult.path) {
+        return; // User cancelled
+      }
+      const destDir = destResult.path;
+      const sourcePath = `${directoryPath}/${image.name}`;
+      const destPath = `${destDir}/${image.name}`;
+
+      // 2. Read the source file
+      const readResult = await window.electronAPI.readFile(sourcePath);
       if (!readResult.success || !readResult.data) {
         alert(`Failed to read original file: ${readResult.error}`);
         return;
       }
-      
-      // Para Electron, vamos usar uma abordagem diferente - vamos criar um novo arquivo
-      // Por enquanto, vamos mostrar uma mensagem que a funcionalidade será implementada
-      alert('Export functionality will be implemented in the next update. For now, use "Show in Folder" to locate the file and copy it manually.');
-      
-      // TODO: Implementar cópia de arquivo no Electron
-      // const writeResult = await window.electronAPI.writeFile(exportPath, readResult.data);
-      
+
+      // 3. Write the new file
+      const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
+      if (!writeResult.success) {
+        alert(`Failed to export image: ${writeResult.error}`);
+        return;
+      }
+
+      // 4. Success!
+      alert(`Image exported successfully to: ${destPath}`);
+
     } catch (error) {
       console.error('Export error:', error);
-      alert('Failed to export image');
+      alert(`An unexpected error occurred during export: ${error.message}`);
     }
   };
 

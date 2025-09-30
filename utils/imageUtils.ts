@@ -40,7 +40,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
       let fullPath: string;
       
       if (typeof imageOrPath === 'string') {
-        // Direct path provided
+        // Direct path provided - use it as-is
         fullPath = imageOrPath;
       } else {
         // IndexedImage provided - construct path
