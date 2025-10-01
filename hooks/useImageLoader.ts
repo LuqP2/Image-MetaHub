@@ -159,8 +159,7 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         setDirectory, setLoading, setProgress, setError, setSuccess,
-        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages,
-        scanSubfolders
+        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages
     } = useImageStore();
 
     const handleSelectFolder = useCallback(async (isUpdate = false) => {
@@ -199,7 +198,8 @@ export function useImageLoader() {
             }
 
             await cacheManager.init();
-            const allCurrentFiles = await getDirectoryFiles(handle, path, scanSubfolders);
+            const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+            const allCurrentFiles = await getDirectoryFiles(handle, path, shouldScanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles);
 
             // --- FIX: Regenerate handles for cached images ---
@@ -275,7 +275,7 @@ export function useImageLoader() {
         } finally {
             setLoading(false);
         }
-    }, [directoryHandle, directoryPath, scanSubfolders, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
+    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
 
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {
