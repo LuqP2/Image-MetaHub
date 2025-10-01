@@ -44,7 +44,7 @@ function clearFileDataCache() {
 // Helper for getting files recursively in the browser
 async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number }[]> {
     const files = [];
-    for await (const entry of directoryHandle.values()) {
+    for await (const entry of (directoryHandle as any).values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
             if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
@@ -159,13 +159,15 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         setDirectory, setLoading, setProgress, setError, setSuccess,
-        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages
+        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages,
+        clearImages
     } = useImageStore();
 
     const handleSelectFolder = useCallback(async (isUpdate = false) => {
         setLoading(true);
         setError(null);
         setSuccess(null);
+        clearImages();
 
         // Clear file data cache when starting a new folder load
         clearFileDataCache();
@@ -200,7 +202,7 @@ export function useImageLoader() {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const allCurrentFiles = await getDirectoryFiles(handle, path, shouldScanSubfolders);
-            const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles);
+            const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles, shouldScanSubfolders);
 
             // --- FIX: Regenerate handles for cached images ---
             const regeneratedCachedImages = diff.cachedImages.length > 0
@@ -264,7 +266,7 @@ export function useImageLoader() {
             });
             // --- End of Filter Extraction ---
 
-            await cacheManager.cacheData(path, handle.name, finalImages);
+            await cacheManager.cacheData(path, handle.name, finalImages, shouldScanSubfolders);
             setSuccess(`Loaded ${finalImages.length} images. ${diff.newAndModifiedFiles.length} new/updated, ${diff.cachedImages.length} from cache.`);
 
         } catch (err) {
@@ -275,7 +277,7 @@ export function useImageLoader() {
         } finally {
             setLoading(false);
         }
-    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
+    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages, clearImages]);
 
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {

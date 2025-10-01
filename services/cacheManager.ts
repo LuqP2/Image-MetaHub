@@ -91,7 +91,7 @@ class CacheManager {
     }
   }
 
-  async getCachedData(directoryName: string): Promise<CacheEntry | null> {
+  async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<CacheEntry | null> {
     if (!this.db) {
       try {
         await this.init();
@@ -104,10 +104,12 @@ class CacheManager {
       return null;
     }
 
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(['cache'], 'readonly');
       const store = transaction.objectStore('cache');
-      const request = store.get(directoryName);
+      const request = store.get(cacheId);
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
@@ -120,7 +122,8 @@ class CacheManager {
   async cacheData(
     directoryPath: string,
     directoryName: string,
-    images: IndexedImage[]
+    images: IndexedImage[],
+    scanSubfolders: boolean
   ): Promise<void> {
     if (!this.db) {
       try {
@@ -134,8 +137,10 @@ class CacheManager {
       return;
     }
 
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+
     const cacheEntry: CacheEntry = {
-      id: directoryPath,
+      id: cacheId,
       directoryPath,
       directoryName,
       lastScan: Date.now(),
@@ -307,12 +312,14 @@ class CacheManager {
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,
-    currentFiles: { name: string; lastModified: number }[]
+    currentFiles: { name: string; lastModified: number }[],
+    scanSubfolders: boolean
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath);
+    const cached = await this.getCachedData(directoryPath, scanSubfolders);
 
     if (!cached) {
-      console.log(`❌ NO CACHE FOUND for "${directoryPath}". Performing full scan.`);
+      const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+      console.log(`❌ NO CACHE FOUND for "${cacheId}". Performing full scan.`);
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
