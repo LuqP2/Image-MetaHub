@@ -5,7 +5,7 @@
 **Image MetaHub** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.8.0
+- **Version**: 1.8.1
 - **Build System**: Vite
 - **Framework**: React 18 with TypeScript
 - **State Management**: Zustand
@@ -24,6 +24,14 @@
   - Intelligent date selection prioritizing creation date for accurate chronological ordering
 - **🧹 Code Quality Improvements**: Cleaned up excessive console logging and improved error handling
 - **⚡ UI Responsiveness**: Throttled state updates prevent re-render storms during large file processing
+
+### Recent Architecture Changes (v1.8.1 - Configurable Subfolder Scanning)
+- **📁 Configurable Directory Scanning**: Added user-controlled subfolder scanning with persistent preferences
+  - Checkbox control in FolderSelector component for initial directory selection
+  - Toggle control in Header component for runtime scanning preference changes
+  - State management through Zustand store with `scanSubfolders` property
+  - Automatic filter extraction respects scanning depth preferences
+  - Cross-platform compatibility maintained for both browser and Electron environments
 
 ## Core Architecture
 
@@ -307,7 +315,7 @@ interface CacheEntry {
 ## Current Features
 
 ### Implemented ✅
-- [x] Directory selection and recursive scanning
+- [x] Directory selection with configurable recursive scanning (user-controlled subfolder depth)
 - [x] PNG metadata extraction (InvokeAI and Automatic1111 formats)
 - [x] Smart caching with incremental updates and automatic cleanup
 - [x] Full-text search across metadata
