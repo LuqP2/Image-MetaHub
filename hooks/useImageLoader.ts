@@ -41,32 +41,86 @@ function clearFileDataCache() {
   fileDataCache.clear();
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string): Promise<{ name: string; lastModified: number }[]> {
+// Helper for getting files recursively in the browser
+async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number }[]> {
+    const files = [];
+    for await (const entry of directoryHandle.values()) {
+        const entryPath = path ? `${path}/${entry.name}` : entry.name;
+        if (entry.kind === 'file') {
+            if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
+                const file = await entry.getFile();
+                files.push({ name: entryPath, lastModified: file.lastModified });
+            }
+        } else if (entry.kind === 'directory') {
+            try {
+                const subFiles = await getFilesRecursivelyWeb(entry, entryPath);
+                files.push(...subFiles);
+            } catch (e) {
+                console.warn(`Could not read directory: ${entryPath}`, e);
+            }
+        }
+    }
+    return files;
+}
+
+async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number }[]> {
     if (getIsElectron()) {
-        const result = await (window as any).electronAPI.listDirectoryFiles(directoryPath);
+        const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
         if (result.success && result.files) {
             return result.files;
         }
         return [];
     } else {
-        const files = [];
-        for await (const entry of (directoryHandle as any).values()) {
-            if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
-                const file = await entry.getFile();
-                files.push({ name: file.name, lastModified: file.lastModified });
+        if (recursive) {
+            return await getFilesRecursivelyWeb(directoryHandle);
+        } else {
+            const files = [];
+            for await (const entry of (directoryHandle as any).values()) {
+                if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
+                    const file = await entry.getFile();
+                    files.push({ name: file.name, lastModified: file.lastModified });
+                }
             }
+            return files;
         }
-        return files;
     }
+}
+
+// Helper to get a file handle from a relative path in the browser
+async function getHandleFromPath(rootHandle: FileSystemDirectoryHandle, path: string): Promise<FileSystemFileHandle | null> {
+    const parts = path.split('/');
+    let currentHandle: FileSystemDirectoryHandle | FileSystemFileHandle = rootHandle;
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (!part) continue;
+
+        if (currentHandle.kind !== 'directory') {
+            console.error('Path traversal failed: expected a directory, but got a file.');
+            return null;
+        }
+
+        try {
+            if (i === parts.length - 1) { // Last part is the file
+                currentHandle = await (currentHandle as FileSystemDirectoryHandle).getFileHandle(part);
+            } else { // Intermediate part is a directory
+                currentHandle = await (currentHandle as FileSystemDirectoryHandle).getDirectoryHandle(part);
+            }
+        } catch (e) {
+            console.error(`Could not get handle for part "${part}" in path "${path}"`, e);
+            return null;
+        }
+    }
+
+    return currentHandle.kind === 'file' ? currentHandle as FileSystemFileHandle : null;
 }
 
 async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, fileNames: string[]): Promise<{handle: FileSystemFileHandle, path: string}[]> {
     const handles: {handle: FileSystemFileHandle, path: string}[] = [];
-    const filesToGet = new Set(fileNames);
 
     if (getIsElectron()) {
         // Create lightweight handles that will be read during processing
-        for (const fileName of filesToGet) {
+        for (const fileName of fileNames) {
             const filePath = `${directoryPath}/${fileName}`;
 
             const mockHandle = {
@@ -91,10 +145,11 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
             handles.push({ handle: mockHandle as any, path: fileName });
         }
     } else {
-        // Browser implementation remains unchanged
-        for await (const entry of (directoryHandle as any).values()) {
-            if (filesToGet.has(entry.name)) {
-                handles.push({ handle: entry, path: entry.name });
+        // Browser implementation needs to handle sub-paths
+        for (const fileName of fileNames) {
+            const handle = await getHandleFromPath(directoryHandle, fileName);
+            if (handle) {
+                handles.push({ handle, path: fileName });
             }
         }
     }
@@ -104,7 +159,8 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         setDirectory, setLoading, setProgress, setError, setSuccess,
-        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages
+        directoryHandle, directoryPath, setFilterOptions, removeImages, addImages,
+        scanSubfolders
     } = useImageStore();
 
     const handleSelectFolder = useCallback(async (isUpdate = false) => {
@@ -143,7 +199,7 @@ export function useImageLoader() {
             }
 
             await cacheManager.init();
-            const allCurrentFiles = await getDirectoryFiles(handle, path);
+            const allCurrentFiles = await getDirectoryFiles(handle, path, scanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles);
 
             // --- FIX: Regenerate handles for cached images ---
@@ -219,7 +275,7 @@ export function useImageLoader() {
         } finally {
             setLoading(false);
         }
-    }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
+    }, [directoryHandle, directoryPath, scanSubfolders, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages]);
 
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {

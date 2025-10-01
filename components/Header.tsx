@@ -1,4 +1,5 @@
 import React from 'react';
+import { useImageStore } from '../store/useImageStore';
 
 interface HeaderProps {
   directoryHandle: FileSystemDirectoryHandle | null;
@@ -7,6 +8,8 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ directoryHandle, onUpdateFolder, onChangeFolder }) => {
+  const { scanSubfolders, setScanSubfolders } = useImageStore();
+
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
       <div className="container mx-auto flex items-center justify-between gap-4">
@@ -18,7 +21,23 @@ const Header: React.FC<HeaderProps> = ({ directoryHandle, onUpdateFolder, onChan
           <h1 className="text-2xl font-bold tracking-wider">Image MetaHub</h1>
         </div>
         {directoryHandle && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. The folder will be re-scanned when this is toggled.">
+              <input
+                type="checkbox"
+                id="scanSubfolders"
+                checked={scanSubfolders}
+                onChange={(e) => {
+                  setScanSubfolders(e.target.checked);
+                  // Trigger a folder refresh when the checkbox is toggled
+                  onUpdateFolder();
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="scanSubfolders" className="ml-2 block text-sm text-gray-300">
+                Scan Subfolders
+              </label>
+            </div>
             <button
               onClick={onUpdateFolder}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"

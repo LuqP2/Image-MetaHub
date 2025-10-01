@@ -15,6 +15,7 @@ interface ImageState {
   success: string | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
+  scanSubfolders: boolean;
 
   // Filter & Sort State
   searchQuery: string;
@@ -52,6 +53,7 @@ interface ImageState {
   toggleImageSelection: (imageId: string) => void;
   clearImageSelection: () => void;
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
+  setScanSubfolders: (scan: boolean) => void;
 
   // Reset Actions
   resetState: () => void;
@@ -168,6 +170,7 @@ export const useImageStore = create<ImageState>((set, get) => {
   selectedSchedulers: [],
   sortOrder: 'date-desc',
   advancedFilters: {},
+  scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') === 'true',
 
   // --- ACTIONS ---
 
@@ -261,6 +264,11 @@ export const useImageStore = create<ImageState>((set, get) => {
     // that uses this store. For now, it just clears the selection.
     console.log("Deleting selected images...");
     get().clearImageSelection();
+  },
+
+  setScanSubfolders: (scan) => {
+    localStorage.setItem('image-metahub-scan-subfolders', String(scan));
+    set({ scanSubfolders: scan });
   },
 
   resetState: () => set({

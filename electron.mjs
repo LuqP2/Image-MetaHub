@@ -235,6 +235,34 @@ app.whenReady().then(() => {
 // Store current directory path
 let currentDirectoryPath = '';
 
+// Helper function for recursive file search
+async function getFilesRecursively(directory, baseDirectory) {
+    const files = [];
+    try {
+        const entries = await fs.readdir(directory, { withFileTypes: true });
+
+        for (const entry of entries) {
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                files.push(...await getFilesRecursively(fullPath, baseDirectory));
+            } else if (entry.isFile()) {
+                const lowerName = entry.name.toLowerCase();
+                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+                    const stats = await fs.stat(fullPath);
+                    files.push({
+                        name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
+                        lastModified: stats.birthtimeMs
+                    });
+                }
+            }
+        }
+    } catch (error) {
+        // Ignore errors from directories we can't read, e.g. permissions
+        console.warn(`Could not read directory ${directory}: ${error.message}`);
+    }
+    return files;
+}
+
 function setupFileOperationHandlers() {
   // Handle setting current directory
   ipcMain.handle('set-current-directory', async (event, dirPath) => {
@@ -378,45 +406,33 @@ function setupFileOperationHandlers() {
   });
 
   // Handle listing directory files
-  ipcMain.handle('list-directory-files', async (event, dirPath) => {
+  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
 
-      const files = await fs.readdir(dirPath, { withFileTypes: true });
-      // Filter for PNG, JPG, and JPEG files only and get their stats
-      const imageFiles = [];
+      let imageFiles = [];
 
-      // console.log(`📂 RAW fs.readdir result for ${dirPath}: ${files.length} total items`);
-      
-      // Check for duplicates in raw listing
-      const fileNames = files.map(f => f.name);
-      const uniqueNames = new Set(fileNames);
-      // console.log(`📂 File name analysis: ${fileNames.length} total, ${uniqueNames.size} unique`);
-      
-      if (fileNames.length !== uniqueNames.size) {
-        console.log('🚨 DUPLICATE FILENAMES DETECTED IN RAW LISTING!');
-      }
+      if (recursive) {
+        imageFiles = await getFilesRecursively(dirPath, dirPath);
+      } else {
+        const files = await fs.readdir(dirPath, { withFileTypes: true });
 
-      for (const file of files) {
-        if (file.isFile()) {
-          const name = file.name.toLowerCase();
-          if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-            const filePath = path.join(dirPath, file.name);
-            const stats = await fs.stat(filePath);
-            imageFiles.push({
-              name: file.name,
-              lastModified: stats.birthtimeMs // Use creation time for consistency with indexing
-            });
-            // console.log(`✅ Including image file: ${file.name}`);
-          } else {
-            // console.log(`⏭️ Skipping non-image file: ${file.name}`);
+        for (const file of files) {
+          if (file.isFile()) {
+            const name = file.name.toLowerCase();
+            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+              const filePath = path.join(dirPath, file.name);
+              const stats = await fs.stat(filePath);
+              imageFiles.push({
+                name: file.name, // name is already relative for top-level
+                lastModified: stats.birthtimeMs
+              });
+            }
           }
         }
       }
-
-      // console.log('🖼️ Filtered to', imageFiles.length, 'image files (.png, .jpg, .jpeg)');
 
       return { success: true, files: imageFiles };
     } catch (error) {
