@@ -1,5 +1,18 @@
 # Image MetaHub
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lucaspierri)
+
+This project was renamed from `local-image-browser-for-invokeai` to `Image MetaHub`. All links and references have been updated.
+
+A desktop application for browsing, searching, and organizing AI-generated images locally. Designed for performance with large collections, focusing on powerful metadata filtering and complete privacy.
+
+All processing is performed locally on your machine. No data is sent to external services, and no internet connection is required after installation.
+
+*For detailed changes and updates, see the [Releases page](https://github.com/LuqP2/image-metahub/releases).*
+
+## Releases & Updates
+
+
 This project was renamed from `local-image-browser-for-invokeai` to `Image MetaHub`. All links and references have been updated.
 
 A desktop application for browsing, searching, and organizing AI-generated images locally. Designed for performance with large collections, focusing on powerful metadata filtering and complete privacy.
