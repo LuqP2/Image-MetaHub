@@ -74,9 +74,10 @@ export default function App() {
 
       let path = useSettingsStore.getState().cachePath;
 
-      // If no custom path is set in Electron, get the default path from the main process
+      // If no custom path is set in Electron, use a default path or skip
       if (!path && window.electronAPI) {
-        path = await window.electronAPI.getDefaultCachePath();
+        // Fallback: use a hardcoded default or leave undefined for cacheManager to handle
+        path = undefined;
       }
 
       console.log(`Initializing cache with base path: ${path}`);
