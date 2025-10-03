@@ -291,7 +291,7 @@ export function useImageLoader() {
         }
         await loadDirectory(directoryPath, directoryHandle, true);
     }, [directoryHandle, directoryPath, loadDirectory, setError]);
-
+    
     const handleLoadFromPath = useCallback(async (path: string) => {
         if (getIsElectron()) {
             const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
