@@ -163,40 +163,23 @@ export function useImageLoader() {
         clearImages
     } = useImageStore();
 
-    const handleSelectFolder = useCallback(async (isUpdate = false) => {
+    const loadDirectory = useCallback(async (path: string, handle: FileSystemDirectoryHandle, isUpdate: boolean) => {
         setLoading(true);
         setError(null);
         setSuccess(null);
-        clearImages();
-
-        // Clear file data cache when starting a new folder load
-        clearFileDataCache();
+        if (!isUpdate) {
+            clearImages();
+            clearFileDataCache();
+        }
 
         try {
-            let handle: FileSystemDirectoryHandle;
-            let path: string;
-
-            if (!isUpdate || !directoryHandle || !directoryPath) {
-                if (window.electronAPI) {
-                    const result = await window.electronAPI.showDirectoryDialog();
-                    if (result.canceled || !result.path) {
-                        setLoading(false);
-                        return;
-                    }
-                    path = result.path;
-                    handle = { name: result.name || 'Selected Folder', kind: 'directory' } as any;
-                    localStorage.setItem('image-metahub-electron-directory-path', path);
-                    // Set the current directory in Electron main process
-                    await window.electronAPI.setCurrentDirectory(path);
-                } else {
-                    handle = await window.showDirectoryPicker();
-                    path = handle.name; // For browser, path is just the name for cache key
-                }
+            if (!isUpdate) {
                 setDirectory(handle, path);
+                if (getIsElectron()) {
+                    localStorage.setItem('image-metahub-electron-directory-path', path);
+                    await window.electronAPI.setCurrentDirectory(path);
+                }
                 localStorage.setItem('image-metahub-directory-name', handle.name);
-            } else {
-                handle = directoryHandle;
-                path = directoryPath;
             }
 
             await cacheManager.init();
@@ -204,7 +187,6 @@ export function useImageLoader() {
             const allCurrentFiles = await getDirectoryFiles(handle, path, shouldScanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(path, handle.name, allCurrentFiles, shouldScanSubfolders);
 
-            // --- FIX: Regenerate handles for cached images ---
             const regeneratedCachedImages = diff.cachedImages.length > 0
                 ? await getFileHandles(handle, path, diff.cachedImages.map(img => img.name))
                 : [];
@@ -216,7 +198,6 @@ export function useImageLoader() {
                 handle: handleMap.get(img.name)!,
             }));
 
-            // Add images from cache to the store immediately
             if (finalCachedImages.length > 0) {
                 addImages(finalCachedImages);
             }
@@ -231,16 +212,14 @@ export function useImageLoader() {
                 const filesToProcessNames = diff.newAndModifiedFiles.map(f => f.name);
                 const fileHandles = await getFileHandles(handle, path, filesToProcessNames);
 
-                // Initialize progress with total files to process
                 setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
 
                 const newlyProcessedImages: IndexedImage[] = [];
                 const handleBatchProcessed = (batch: IndexedImage[]) => {
-                    addImages(batch); // Update the store incrementally
-                    newlyProcessedImages.push(...batch); // Collect for final processing
+                    addImages(batch);
+                    newlyProcessedImages.push(...batch);
                 };
 
-                // Create throttled progress update function (max 5 updates per second)
                 const throttledSetProgress = throttle(setProgress, 200);
 
                 await processFiles(fileHandles, throttledSetProgress, handleBatchProcessed);
@@ -248,7 +227,6 @@ export function useImageLoader() {
                 finalImages = [...finalImages, ...newlyProcessedImages];
             }
 
-            // --- Recalculate Filters from the final complete list ---
             const models = new Set<string>();
             const loras = new Set<string>();
             const schedulers = new Set<string>();
@@ -264,7 +242,6 @@ export function useImageLoader() {
                 loras: Array.from(loras).sort(),
                 schedulers: Array.from(schedulers).sort(),
             });
-            // --- End of Filter Extraction ---
 
             await cacheManager.cacheData(path, handle.name, finalImages, shouldScanSubfolders);
             setSuccess(`Loaded ${finalImages.length} images. ${diff.newAndModifiedFiles.length} new/updated, ${diff.cachedImages.length} from cache.`);
@@ -279,15 +256,53 @@ export function useImageLoader() {
         }
     }, [directoryHandle, directoryPath, setDirectory, setLoading, setProgress, setError, setSuccess, setFilterOptions, addImages, removeImages, clearImages]);
 
+
+    const handleSelectFolder = useCallback(async () => {
+        try {
+            let handle: FileSystemDirectoryHandle;
+            let path: string;
+
+            if (getIsElectron()) {
+                const result = await window.electronAPI.showDirectoryDialog();
+                if (result.canceled || !result.path) {
+                    setLoading(false);
+                    return;
+                }
+                path = result.path;
+                handle = { name: result.name || 'Selected Folder', kind: 'directory' } as any;
+            } else {
+                handle = await window.showDirectoryPicker();
+                path = handle.name;
+            }
+            await loadDirectory(path, handle, false);
+        } catch (err) {
+            if (!(err instanceof DOMException && err.name === 'AbortError')) {
+                console.error(err);
+                setError("Failed to load directory. Check console for details.");
+            }
+            setLoading(false);
+        }
+    }, [loadDirectory, setLoading, setError]);
+
     const handleUpdateFolder = useCallback(async () => {
         if (!directoryHandle || !directoryPath) {
             setError("No directory selected to update.");
             return;
         }
-        await handleSelectFolder(true);
-    }, [directoryHandle, directoryPath, handleSelectFolder, setError]);
+        await loadDirectory(directoryPath, directoryHandle, true);
+    }, [directoryHandle, directoryPath, loadDirectory, setError]);
 
-    return { handleSelectFolder, handleUpdateFolder };
+    const handleLoadFromPath = useCallback(async (path: string) => {
+        if (getIsElectron()) {
+            const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
+            const handle = { name, kind: 'directory' } as any;
+            await loadDirectory(path, handle, false);
+        } else {
+            console.warn('Loading from path is only supported in Electron.');
+        }
+    }, [loadDirectory]);
+
+    return { handleSelectFolder, handleUpdateFolder, handleLoadFromPath };
 }
 
 export { getFileHandles };

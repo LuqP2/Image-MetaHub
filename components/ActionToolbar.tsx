@@ -1,5 +1,6 @@
 import React from 'react';
 import { resetAllCaches } from '../utils/cacheReset';
+import ImageSizeSlider from './ImageSizeSlider';
 
 interface ActionToolbarProps {
   sortOrder: string;
@@ -20,7 +21,7 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
 }) => {
   return (
     <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
-      <div>
+      <div className="flex items-center gap-4">
         <label htmlFor="sortOrder" className="mr-2 text-gray-300">Sort by:</label>
         <select
           id="sortOrder"
@@ -42,17 +43,22 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
           </button>
         )}
       </div>
-      {selectedCount > 0 && (
-        <div className="flex items-center gap-4">
-          <span className="text-gray-300">{selectedCount} selected</span>
-          <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300">
-            Clear Selection
-          </button>
-          <button onClick={onDeleteSelected} className="text-red-500 hover:text-red-400">
-            Delete Selected
-          </button>
-        </div>
-      )}
+
+      <ImageSizeSlider />
+
+      <div>
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-4">
+            <span className="text-gray-300">{selectedCount} selected</span>
+            <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300">
+              Clear Selection
+            </button>
+            <button onClick={onDeleteSelected} className="text-red-500 hover:text-red-400">
+              Delete Selected
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

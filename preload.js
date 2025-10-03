@@ -12,7 +12,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
-  writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data)
+  writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings)
 });
 
 // DEBUG: Log that preload script has loaded
