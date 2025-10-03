@@ -98,8 +98,9 @@ export default function App() {
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
-    if (window.electronAPI?.onLoadDirectoryFromCLI) {
-      const unsubscribe = window.electronAPI.onLoadDirectoryFromCLI((path) => {
+    const electronAPI = window.electronAPI as any;
+    if (electronAPI && typeof electronAPI.onLoadDirectoryFromCLI === 'function') {
+      const unsubscribe = electronAPI.onLoadDirectoryFromCLI((path: string) => {
         console.log('Received directory to load from main process:', path);
         if (path) {
           handleLoadFromPath(path);
