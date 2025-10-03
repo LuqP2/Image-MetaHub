@@ -53,10 +53,19 @@ if (autoUpdater) {
   // Remove checkForUpdatesAndNotify to avoid duplicate dialogs
   // autoUpdater.checkForUpdatesAndNotify();
 
-  // Check for updates manually
-  setTimeout(() => {
-    if (!isDev) {
+  // Check for updates manually, respecting user settings
+  setTimeout(async () => {
+    if (isDev) return;
+
+    const settings = await readSettings();
+    // Default to true if the setting is not present
+    const shouldCheckForUpdates = settings.autoUpdate !== false;
+
+    if (shouldCheckForUpdates) {
+      console.log('Checking for updates...');
       autoUpdater.checkForUpdates();
+    } else {
+      console.log('Auto-update is disabled by user settings.');
     }
   }, 3000); // Wait 3 seconds after app start
 } else {
@@ -296,6 +305,11 @@ function setupFileOperationHandlers() {
     const currentSettings = await readSettings();
     const mergedSettings = { ...currentSettings, ...newSettings };
     await saveSettings(mergedSettings);
+  });
+
+  ipcMain.handle('get-default-cache-path', () => {
+    // Define a specific subfolder for the cache
+    return path.join(app.getPath('userData'), 'ImageMetaHubCache');
   });
   // --- End Settings IPC ---
 

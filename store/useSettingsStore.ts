@@ -30,13 +30,17 @@ interface SettingsState {
   sortOrder: 'asc' | 'desc';
   itemsPerPage: number | 'all';
   scanSubfolders: boolean;
-  imageSize: number; // New property for image size
+  imageSize: number;
+  cachePath: string | null;
+  autoUpdate: boolean;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
   setItemsPerPage: (count: number | 'all') => void;
   toggleScanSubfolders: () => void;
   setImageSize: (size: number) => void;
+  setCachePath: (path: string) => void;
+  toggleAutoUpdate: () => void;
 }
 
 // Check if running in Electron
@@ -49,13 +53,17 @@ export const useSettingsStore = create<SettingsState>()(
       sortOrder: 'desc',
       itemsPerPage: 20,
       scanSubfolders: true,
-      imageSize: 120, // Default image size
+      imageSize: 120,
+      cachePath: null, // Default cache path, null means use app data dir
+      autoUpdate: true, // Check for updates by default
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
       setItemsPerPage: (count) => set({ itemsPerPage: count }),
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
       setImageSize: (size) => set({ imageSize: size }),
+      setCachePath: (path) => set({ cachePath: path }),
+      toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
     }),
     {
       name: 'image-metahub-settings',

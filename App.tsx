@@ -15,6 +15,8 @@ import StatusBar from './components/StatusBar';
 import ActionToolbar from './components/ActionToolbar';
 import { SearchField } from './components/SearchBar';
 import Pagination from './components/Pagination';
+import SettingsModal from './components/SettingsModal';
+import cacheManager from './services/cacheManager';
 
 export default function App() {
   // --- Hooks ---
@@ -61,8 +63,30 @@ export default function App() {
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // --- Effects ---
+  // Initialize the cache manager on startup
+  useEffect(() => {
+    const initializeCache = async () => {
+      // Zustand persistence can be async, wait for it to rehydrate
+      await useSettingsStore.persist.rehydrate();
+
+      let path = useSettingsStore.getState().cachePath;
+
+      // If no custom path is set in Electron, get the default path from the main process
+      if (!path && window.electronAPI) {
+        path = await window.electronAPI.getDefaultCachePath();
+      }
+
+      console.log(`Initializing cache with base path: ${path}`);
+      // Pass undefined if path is null, so the default is used
+      await cacheManager.init(path || undefined);
+    };
+
+    initializeCache().catch(console.error);
+  }, []);
+
   // On mount, check if a directory is stored in localStorage and load it
   useEffect(() => {
     const storedPath = localStorage.getItem('image-metahub-electron-directory-path');
@@ -132,6 +156,11 @@ export default function App() {
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
 
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+      />
+
       {directoryHandle && (
         <Sidebar
           searchQuery={searchQuery}
@@ -158,6 +187,7 @@ export default function App() {
           directoryHandle={directoryHandle}
           onUpdateFolder={handleUpdateFolder}
           onChangeFolder={handleChangeFolder}
+          onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
 
         <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">

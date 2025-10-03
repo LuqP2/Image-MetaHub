@@ -1,13 +1,20 @@
 import React from 'react';
 import { useImageStore } from '../store/useImageStore';
+import { Settings } from 'lucide-react';
 
 interface HeaderProps {
   directoryHandle: FileSystemDirectoryHandle | null;
   onUpdateFolder: () => void;
   onChangeFolder: () => void;
+  onOpenSettings: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ directoryHandle, onUpdateFolder, onChangeFolder }) => {
+const Header: React.FC<HeaderProps> = ({
+  directoryHandle,
+  onUpdateFolder,
+  onChangeFolder,
+  onOpenSettings,
+}) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
 
   return (
@@ -20,40 +27,49 @@ const Header: React.FC<HeaderProps> = ({ directoryHandle, onUpdateFolder, onChan
           </svg>
           <h1 className="text-2xl font-bold tracking-wider">Image MetaHub</h1>
         </div>
-        {directoryHandle && (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. The folder will be re-scanned when this is toggled.">
-              <input
-                type="checkbox"
-                id="scanSubfolders"
-                checked={scanSubfolders}
-                onChange={(e) => {
-                  setScanSubfolders(e.target.checked);
-                  // Trigger a folder refresh when the checkbox is toggled
-                  onUpdateFolder();
-                }}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="scanSubfolders" className="ml-2 block text-sm text-gray-300">
-                Scan Subfolders
-              </label>
-            </div>
-            <button
-              onClick={onUpdateFolder}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
-              title="Refresh current folder"
-            >
-              Refresh Folder
-            </button>
-            <button
-              onClick={onChangeFolder}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
-              title="Change folder"
-            >
-              Change Folder
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          {directoryHandle && (
+            <>
+              <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. The folder will be re-scanned when this is toggled.">
+                <input
+                  type="checkbox"
+                  id="scanSubfolders"
+                  checked={scanSubfolders}
+                  onChange={(e) => {
+                    setScanSubfolders(e.target.checked);
+                    onUpdateFolder();
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="scanSubfolders" className="ml-2 block text-sm text-gray-300">
+                  Scan Subfolders
+                </label>
+              </div>
+              <button
+                onClick={onUpdateFolder}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+                title="Refresh current folder"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={onChangeFolder}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+                title="Change folder"
+              >
+                Change Folder
+              </button>
+              <div className="border-l border-gray-600 h-8 mx-2"></div>
+            </>
+          )}
+          <button
+            onClick={onOpenSettings}
+            className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+            title="Open Settings"
+          >
+            <Settings size={20} />
+          </button>
+        </div>
       </div>
     </header>
   );

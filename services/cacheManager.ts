@@ -28,28 +28,39 @@ export interface CacheDiff {
 }
 
 class CacheManager {
-  private dbName = 'invokeai-browser-cache';
-  private dbVersion = 3; // Increased version to include complete metadata in cache
+  private dbName = 'invokeai-browser-cache'; // Default name
+  private dbVersion = 3;
   private db: IDBDatabase | null = null;
+  private isInitialized = false;
 
-  async init(): Promise<void> {
+  async init(basePath?: string): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
+
+    // Create a unique DB name from the base path to avoid collisions
+    if (basePath) {
+      // Sanitize the path to be a valid DB name
+      this.dbName = `image-metahub-cache-${basePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    }
+
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.dbVersion);
 
       request.onerror = () => {
         console.error('❌ IndexedDB open error:', request.error);
-        // If IndexedDB fails to open, try to delete and recreate it
         this.handleIndexedDBError(request.error).then(resolve).catch(reject);
       };
       request.onsuccess = () => {
         this.db = request.result;
+        this.isInitialized = true;
+        console.log(`✅ IndexedDB initialized successfully: ${this.dbName}`);
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
 
-        // Delete old stores if they exist (for clean upgrade)
         if (db.objectStoreNames.contains('cache')) {
           db.deleteObjectStore('cache');
         }
@@ -57,65 +68,43 @@ class CacheManager {
           db.deleteObjectStore('thumbnails');
         }
 
-        // Create cache store
         const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
         cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
 
-        // Create thumbnails store
         const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
       };
     });
   }
 
   private async handleIndexedDBError(error: any): Promise<void> {
-
     try {
-      // Delete the corrupted database
       const deleteRequest = indexedDB.deleteDatabase(this.dbName);
       await new Promise<void>((resolve, reject) => {
-        deleteRequest.onsuccess = () => {
-          resolve();
-        };
+        deleteRequest.onsuccess = () => resolve();
         deleteRequest.onerror = () => {
           console.error('❌ Failed to delete IndexedDB:', deleteRequest.error);
           reject(deleteRequest.error);
         };
       });
-
-      // Try to recreate the database
       return this.init();
     } catch (deleteError) {
       console.error('❌ Failed to reset IndexedDB:', deleteError);
-      // If we can't reset, continue without cache
       return Promise.resolve();
     }
   }
 
   async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<CacheEntry | null> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return null;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return null;
     }
-
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['cache'], 'readonly');
+      const transaction = this.db!.transaction(['cache'], 'readonly');
       const store = transaction.objectStore('cache');
       const request = store.get(cacheId);
-
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const result = request.result || null;
-        resolve(result);
-      };
+      request.onsuccess = () => resolve(request.result || null);
     });
   }
 
@@ -126,19 +115,10 @@ class CacheManager {
     scanSubfolders: boolean
   ): Promise<void> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return;
     }
-
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-
     const cacheEntry: CacheEntry = {
       id: cacheId,
       directoryPath,
@@ -149,47 +129,34 @@ class CacheManager {
         id: img.id,
         name: img.name,
         metadataString: img.metadataString,
-        metadata: img.metadata, // Store complete metadata including normalizedMetadata
+        metadata: img.metadata,
         lastModified: img.lastModified,
         models: img.models,
         loras: img.loras,
         scheduler: img.scheduler,
       })),
     };
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['cache'], 'readwrite');
+      const transaction = this.db!.transaction(['cache'], 'readwrite');
       const store = transaction.objectStore('cache');
       const request = store.put(cacheEntry);
-
       request.onerror = () => {
         console.error('❌ CACHE SAVE FAILED:', request.error);
         reject(request.error);
       };
-      request.onsuccess = () => {
-        resolve();
-      };
+      request.onsuccess = () => resolve();
     });
   }
 
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return;
     }
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['thumbnails'], 'readwrite');
+      const transaction = this.db!.transaction(['thumbnails'], 'readwrite');
       const store = transaction.objectStore('thumbnails');
       const request = store.put({ id: imageId, blob });
-
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve();
     });
@@ -197,22 +164,13 @@ class CacheManager {
 
   async getCachedThumbnail(imageId: string): Promise<Blob | null> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return null;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return null;
     }
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['thumbnails'], 'readonly');
+      const transaction = this.db!.transaction(['thumbnails'], 'readonly');
       const store = transaction.objectStore('thumbnails');
       const request = store.get(imageId);
-
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const result = request.result;
@@ -223,27 +181,17 @@ class CacheManager {
 
   async validateAndCleanCache(): Promise<number> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return 0;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return 0;
     }
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['cache'], 'readwrite');
+      const transaction = this.db!.transaction(['cache'], 'readwrite');
       const store = transaction.objectStore('cache');
-
       const request = store.getAll();
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const cacheEntries: CacheEntry[] = request.result;
         let cleanedCount = 0;
-
         for (const entry of cacheEntries) {
           const invalidImages = entry.metadata.filter(meta => {
             try {
@@ -251,24 +199,17 @@ class CacheManager {
               return !parsed.normalizedMetadata;
             } catch (error) {
               console.warn(`❌ Invalid metadata JSON for ${meta.name}, removing from cache`);
-              return true; // Remove invalid JSON entries
+              return true;
             }
           });
-
           if (invalidImages.length > 0) {
-            entry.metadata = entry.metadata.filter(meta => {
-              // Check if metadata has normalizedMetadata
-              return !!(meta.metadata && meta.metadata.normalizedMetadata);
-            });
+            entry.metadata = entry.metadata.filter(meta => !!(meta.metadata && meta.metadata.normalizedMetadata));
             entry.imageCount = entry.metadata.length;
             entry.lastScan = Date.now();
-
-            // Update the cache entry
             store.put(entry);
             cleanedCount += invalidImages.length;
           }
         }
-
         resolve(cleanedCount);
       };
     });
@@ -276,32 +217,20 @@ class CacheManager {
 
   async clearCache(): Promise<void> {
     if (!this.db) {
-      try {
-        await this.init();
-      } catch (error) {
-        return;
-      }
-    }
-
-    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
       return;
     }
-
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction(['cache', 'thumbnails'], 'readwrite');
-      
+      const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
       const cacheStore = transaction.objectStore('cache');
       const thumbStore = transaction.objectStore('thumbnails');
-      
       const clearCache = cacheStore.clear();
       const clearThumbs = thumbStore.clear();
-
       let completed = 0;
       const checkComplete = () => {
         completed++;
         if (completed === 2) resolve();
       };
-
       clearCache.onerror = () => reject(clearCache.error);
       clearThumbs.onerror = () => reject(clearThumbs.error);
       clearCache.onsuccess = checkComplete;
@@ -340,17 +269,13 @@ class CacheManager {
       const cachedFile = cachedMetadataMap.get(file.name);
 
       if (!cachedFile) {
-        // File is new
         newAndModifiedFiles.push(file);
       } else if (cachedFile.lastModified < file.lastModified) {
-        // File has been modified
         newAndModifiedFiles.push(file);
       } else {
-        // File is unchanged, restore from cache
         cachedImages.push({
           ...cachedFile,
-          metadata: cachedFile.metadata, // Use the complete metadata that was stored
-          // Mock handle for cached items, getFile will be implemented in the hook
+          metadata: cachedFile.metadata,
           handle: { name: cachedFile.name, kind: 'file' } as any,
         });
       }
@@ -373,7 +298,6 @@ class CacheManager {
   }
 }
 
-// Export cache manager instance
 const cacheManager = new CacheManager();
 export { cacheManager };
 export default cacheManager;

@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   getSettings: () => ipcRenderer.invoke('get-settings'),
-  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings)
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path')
 });
 
 // DEBUG: Log that preload script has loaded
