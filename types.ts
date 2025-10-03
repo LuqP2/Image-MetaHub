@@ -43,6 +43,7 @@ export interface Automatic1111Metadata {
 export interface ComfyUINode {
   id: number;
   type: string;
+  title?: string;
   pos: [number, number];
   size?: { 0: number; 1: number };
   flags?: any;
@@ -78,7 +79,8 @@ export interface ComfyUIPrompt {
 }
 
 export interface ComfyUIMetadata {
-  workflow?: ComfyUIWorkflow | string; // Can be object or JSON string
+  workflow?: ComfyUIWorkflow | string;
+  parameters?: string // Can be object or JSON string
   prompt?: ComfyUIPrompt | string; // Can be object or JSON string
   // Additional fields that might be present
   normalizedMetadata?: BaseMetadata;
@@ -91,13 +93,17 @@ export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMe
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
   prompt: string;
+  negativePrompt?: string;
   model: string;
+  models?: string[];
   width: number;
   height: number;
   seed?: number;
   steps: number;
   cfg_scale?: number;
   scheduler: string;
+  sampler?: string;
+  loras?: string[];
   // Additional normalized fields
   [key: string]: any;
 }

@@ -1,198 +1,254 @@
-import { ComfyUIMetadata, BaseMetadata, ComfyUIPrompt, ComfyUIWorkflow, ComfyUINode } from '../../types';
+import { ComfyUIMetadata, BaseMetadata, ComfyUIWorkflow, ComfyUIPrompt, ComfyUINode } from '../../types';
 
-type NodeMap = { [id: string]: any };
+type Link = [string, number];
 
-/**
- * Recursively resolves a value from a node's input.
- * If the input is a link, it follows it to the source node and gets the value.
- * @param link The link array, e.g., ["node_id", output_index].
- * @param nodes The map of all nodes in the prompt.
- * @param visited A set to track visited nodes to prevent infinite loops.
- * @returns The resolved primitive value or null if not found.
- */
-function findValueByLink(link: [string, number], nodes: NodeMap, visited: Set<string> = new Set()): any {
-  const nodeId = link[0];
-  if (visited.has(nodeId)) return null; // Circular reference detected
-  visited.add(nodeId);
+interface ParserNode {
+  id: string;
+  inputs: Record<string, any>;
+  class_type: string;
+  title?: string;
+  properties?: Record<string, any>;
+  widgets_values?: any[];
+}
+type NodeMap = { [id: string]: ParserNode };
 
-  const node = nodes[nodeId];
-  if (!node) return null;
+function parseParametersString(parameters: string): Partial<BaseMetadata> {
+    const result: Partial<BaseMetadata> = { loras: [], models: [] };
+    const negativePromptKeyword = 'Negative prompt:';
+    const stepsKeyword = '\nSteps:';
+    const negativePromptIndex = parameters.indexOf(negativePromptKeyword);
+    const stepsIndex = parameters.indexOf(stepsKeyword, negativePromptIndex);
 
-  // Try to find a direct value in the target node's inputs
-  const inputs = node.inputs;
-  // Common value fields in order of preference
-  const valueFields = ['string', 'text', 'int', 'float', 'seed', 'noise_seed', 'steps', 'cfg', 'guidance', 'scheduler', 'sampler_name', 'unet_name', 'ckpt_name', 'lora_name', 'width', 'height'];
-  for (const field of valueFields) {
-    if (inputs[field] !== undefined) {
-      // If this value is itself a link, recurse
-      if (Array.isArray(inputs[field]) && inputs[field].length === 2 && typeof inputs[field][0] === 'string' && typeof inputs[field][1] === 'number') {
-        return findValueByLink(inputs[field] as [string, number], nodes, visited);
-      }
-      return inputs[field]; // Found primitive value
+    if (negativePromptIndex !== -1) {
+        result.prompt = parameters.substring(0, negativePromptIndex).trim();
+        const fromNegative = parameters.substring(negativePromptIndex + negativePromptKeyword.length);
+        result.negativePrompt = fromNegative.substring(0, fromNegative.indexOf(stepsKeyword)).trim();
+    } else if (stepsIndex !== -1) {
+        result.prompt = parameters.substring(0, stepsIndex).trim();
+    } else {
+        result.prompt = parameters.trim();
     }
-  }
-  return null; // No recognizable value field found
+
+    const paramsPart = stepsIndex !== -1 ? parameters.substring(stepsIndex) : '';
+    const stepsMatch = paramsPart.match(/Steps: (\d+)/);
+    if (stepsMatch) result.steps = parseInt(stepsMatch[1], 10);
+
+    const samplerMatch = paramsPart.match(/Sampler: ([^,]+)/);
+    if (samplerMatch) {
+        result.sampler = samplerMatch[1].trim();
+        result.scheduler = samplerMatch[1].trim();
+    }
+
+    const cfgScaleMatch = paramsPart.match(/CFG scale: ([\d.]+)/);
+    if (cfgScaleMatch) result.cfg_scale = parseFloat(cfgScaleMatch[1]);
+
+    const seedMatch = paramsPart.match(/Seed: (\d+)/);
+    if (seedMatch) result.seed = parseInt(seedMatch[1], 10);
+
+    const sizeMatch = paramsPart.match(/Size: (\d+)x(\d+)/);
+    if (sizeMatch) {
+        result.width = parseInt(sizeMatch[1], 10);
+        result.height = parseInt(sizeMatch[2], 10);
+    }
+
+    const modelMatch = paramsPart.match(/Model: ([^,]+)/);
+    if (modelMatch) {
+        result.model = modelMatch[1].trim();
+        if(!result.models) result.models = [];
+        result.models.push(result.model);
+    }
+
+    const loraRegex = /<lora:([^:]+):[^>]+>/g;
+    let loraMatch;
+    if (result.prompt) {
+        while ((loraMatch = loraRegex.exec(result.prompt)) !== null) {
+            if(!result.loras) result.loras = [];
+            result.loras.push(loraMatch[1]);
+        }
+    }
+    return result;
 }
 
+function traceNodeValue(link: Link | undefined, nodes: NodeMap, visited: Set<string> = new Set()): any {
+    if (!link || !Array.isArray(link) || link.length < 2) return null;
+    
+    const [nodeId, outputIndex] = link;
+    const visitKey = `${nodeId}:${outputIndex}`;
+    if (visited.has(visitKey)) return null;
+    visited.add(visitKey);
 
-// --- Main Parser Function ---
+    const node = nodes[nodeId];
+    if (!node) return null;
+
+    const getNestedValue = (input: unknown): any => {
+        if (Array.isArray(input) && typeof input[0] === 'string') {
+            return traceNodeValue(input as Link, nodes, new Set(visited));
+        }
+        return input;
+    }
+    
+    const valueFields = ['text', 'string', 'String', 'int', 'float', 'seed', 'sampler_name', 'scheduler', 'populated_text', 'unet_name', 'ckpt_name', 'model_name', 'lora_name', 'guidance', 'wildcard_text'];
+    for (const field of valueFields) {
+        if (node.inputs[field] !== undefined) {
+            return getNestedValue(node.inputs[field]);
+        }
+    }
+    
+    if (node.class_type.includes("Latent")) {
+        const width = getNestedValue(node.inputs.width);
+        const height = getNestedValue(node.inputs.height);
+        if (width && height) return `${width}x${height}`;
+        
+        const resolution = getNestedValue(node.inputs.resolution) || getNestedValue(node.inputs.dimensions);
+        if (resolution && typeof resolution === 'string') {
+            const match = resolution.match(/(\d+)\s*x\s*(\d+)/);
+            if (match) return `${match[1]}x${match[2]}`;
+        }
+    }
+    
+    if (node.class_type === 'JWStringConcat') {
+        const strA = traceNodeValue(node.inputs.a, nodes, new Set(visited)) || '';
+        const strB = traceNodeValue(node.inputs.b, nodes, new Set(visited)) || '';
+        return `${strA}${strB}`;
+    }
+
+    if (node.widgets_values && node.widgets_values.length > outputIndex) {
+        return node.widgets_values[outputIndex];
+    }
+
+    for (const key in node.inputs) {
+        if (Array.isArray(node.inputs[key])) {
+            const val = getNestedValue(node.inputs[key]);
+            if (val) return val;
+        }
+    }
+    
+    return null;
+}
+
+function parseWorkflowAndPrompt(workflow: ComfyUIWorkflow | null, prompt: ComfyUIPrompt): Partial<BaseMetadata> {
+    const result: Partial<BaseMetadata> = { models: [], loras: [] };
+    const nodes: NodeMap = {};
+
+    if (workflow?.nodes) {
+        workflow.nodes.forEach(node => {
+            nodes[node.id.toString()] = {
+                id: node.id.toString(),
+                inputs: node.inputs || {},
+                class_type: node.type,
+                title: (node as any).title || node.properties?.['Node name for S&R'],
+                widgets_values: node.widgets_values,
+                properties: node.properties,
+            };
+        });
+    }
+
+    Object.entries(prompt).forEach(([id, promptNode]) => {
+        if (!nodes[id]) nodes[id] = { id, inputs: {}, class_type: '' };
+        nodes[id].inputs = promptNode.inputs;
+        nodes[id].class_type = promptNode.class_type;
+        if (promptNode._meta?.title) nodes[id].title = promptNode._meta.title;
+    });
+
+    const getVal = (input: any): any => traceNodeValue(input, nodes);
+    
+    const saverNode = Object.values(nodes).find(n => n.class_type.includes('Save'));
+    if (saverNode) {
+        result.prompt = getVal(saverNode.inputs.positive);
+        result.negativePrompt = getVal(saverNode.inputs.negative);
+        result.steps = getVal(saverNode.inputs.steps);
+        result.cfg_scale = getVal(saverNode.inputs.cfg);
+        result.seed = getVal(saverNode.inputs.seed || saverNode.inputs.seed_value);
+        result.sampler = getVal(saverNode.inputs.sampler_name);
+        result.scheduler = getVal(saverNode.inputs.scheduler);
+        
+        const width = getVal(saverNode.inputs.width);
+        const height = getVal(saverNode.inputs.height);
+        if (width && height) {
+            result.width = width;
+            result.height = height;
+        }
+    }
+
+    if (!result.width || !result.height) {
+        const latentNode = Object.values(nodes).find(n => n.class_type.includes('Latent'));
+        if (latentNode) {
+            const dims = getVal(latentNode.inputs.resolution) || getVal(latentNode.inputs.dimensions);
+            if (dims && typeof dims === 'string') {
+                const match = dims.match(/(\d+)\s*x\s*(\d+)/);
+                if (match) {
+                    result.width = parseInt(match[1].trim(), 10);
+                    result.height = parseInt(match[2].trim(), 10);
+                }
+            } else {
+                result.width = getVal(latentNode.inputs.width);
+                result.height = getVal(latentNode.inputs.height);
+            }
+        }
+    }
+    
+    for (const node of Object.values(nodes)) {
+        if(node.class_type.includes("Loader") && !node.class_type.includes("Lora")) {
+            const modelName = getVal(node.inputs.ckpt_name) || getVal(node.inputs.unet_name) || getVal(node.inputs.model_name) || node.inputs.ckpt_name || node.inputs.unet_name || node.inputs.model_name;
+            if(modelName && !(result.models as string[]).includes(modelName)) (result.models as string[]).push(modelName);
+        }
+        if(node.class_type.includes("LoraLoader")) {
+            const loraName = getVal(node.inputs.lora_name) || node.inputs.lora_name;
+            if(loraName && !(result.loras as string[]).includes(loraName)) (result.loras as string[]).push(loraName);
+        }
+        if (node.class_type === 'Power Lora Loader (rgthree)') {
+            for (const key in node.inputs) {
+                if (key.startsWith('lora_')) {
+                    const loraInfo = node.inputs[key] as { on?: boolean, lora?: string };
+                    if (loraInfo.on && loraInfo.lora && !(result.loras as string[]).includes(loraInfo.lora)) {
+                        (result.loras as string[]).push(loraInfo.lora);
+                    }
+                }
+            }
+        }
+    }
+    
+    if(result.models && result.models.length > 0) result.model = result.models[0];
+
+    return result;
+}
 
 export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
-  const result: BaseMetadata & { loras: string[], models: string[] } = {
-    format: 'ComfyUI [beta]',
-    prompt: '',
-    negativePrompt: '',
-    model: 'Unknown',
-    width: 0,
-    height: 0,
-    steps: 0,
-    cfg_scale: 0,
-    seed: 0,
-    scheduler: 'Unknown',
-    sampler: 'Unknown',
-    loras: [],
-    models: []
-  };
+    let parsedData: Partial<BaseMetadata> = {};
 
-  const dataSource = metadata.prompt || metadata.workflow;
-  if (!dataSource) return result;
-
-  const sourceObj = typeof dataSource === 'string' ? JSON.parse(dataSource) : dataSource;
-
-  let nodes: NodeMap;
-
-  // Normalize 'workflow' structure (array of nodes) to 'prompt' structure (map of nodes)
-  if (sourceObj.nodes && Array.isArray(sourceObj.nodes)) {
-    nodes = (sourceObj as ComfyUIWorkflow).nodes.reduce((acc, node) => {
-      acc[node.id.toString()] = {
-          inputs: node.inputs || {},
-          class_type: (node as any).class_type || node.type, // Handle both 'type' and 'class_type' fields
-          // A common property name for UI titles
-          _meta: { title: node.properties?.['Node name for S&R'] || '' }
-      };
-      return acc;
-    }, {} as NodeMap);
-  } else {
-    nodes = sourceObj as NodeMap;
-  }
-
-  // --- Data Extraction ---
-
-  let samplerNodeId: string | null = null;
-
-  // First pass: Find the main sampler and basic info
-  for (const nodeId in nodes) {
-    const node = nodes[nodeId];
-    switch (node.class_type) {
-      case 'KSampler':
-      case 'KSamplerAdvanced':
-        samplerNodeId = nodeId;
-        result.steps = node.inputs.steps ?? result.steps;
-        result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? node.inputs.conditioning_scale ?? result.cfg_scale;
-        result.seed = node.inputs.seed ?? result.seed;
-        result.scheduler = node.inputs.scheduler ?? result.scheduler;
-        result.sampler = node.inputs.sampler_name ?? result.sampler;
-        break;
-
-      case 'CheckpointLoaderSimple':
-      case 'CheckpointLoader':
-        result.models.push(node.inputs.ckpt_name);
-        break;
-
-      case 'UNETLoader':
-        result.models.push(node.inputs.unet_name);
-        break;
-
-      case 'LoraLoader':
-      case 'LoraLoaderModelOnly':
-        result.loras.push(node.inputs.lora_name);
-        break;
-
-      case 'FluxGuidance':
-        result.cfg_scale = node.inputs.guidance ?? result.cfg_scale;
-        break;
-
-      case 'BasicScheduler':
-         result.steps = node.inputs.steps ?? result.steps;
-         result.scheduler = node.inputs.scheduler ?? result.scheduler;
-         break;
-
-      case 'SamplerCustom':
-      case 'SamplerCustomAdvanced':
-        result.cfg_scale = node.inputs.cfg ?? node.inputs.guidance ?? result.cfg_scale;
-        result.sampler = node.inputs.sampler_name ?? result.sampler;
-        break;
-
-      case ' ConditioningCombine':
-      case 'ConditioningSetTimestepRange':
-        result.steps = node.inputs.end_step ?? result.steps;
-        break;
-
-      case 'EmptyLatentImage':
-        // Latent dimensions are already in the correct scale (no need to multiply by 8)
-        result.width = node.inputs.width ?? result.width;
-        result.height = node.inputs.height ?? result.height;
-        break;
-
-      case 'Int Literal':
-        if (node._meta?.title?.toLowerCase().includes('width')) {
-            result.width = node.inputs.int ?? result.width;
-        }
-        if (node._meta?.title?.toLowerCase().includes('height')) {
-            result.height = node.inputs.int ?? result.height;
-        }
-        break;
+    if (metadata.prompt) {
+        const promptObj = typeof metadata.prompt === 'string' ? JSON.parse(metadata.prompt) : metadata.prompt;
+        const workflowObj = metadata.workflow ? (typeof metadata.workflow === 'string' ? JSON.parse(metadata.workflow) : metadata.workflow) : null;
+        const workflowParsedData = parseWorkflowAndPrompt(workflowObj, promptObj);
+        parsedData = { ...parsedData, ...workflowParsedData };
     }
-  }
 
-  // Second pass: Use the sampler node to trace prompts and other linked values
-  if (samplerNodeId) {
-    const samplerNode = nodes[samplerNodeId];
-    
-    // Extract prompts by following links
-    if (samplerNode.inputs.positive && Array.isArray(samplerNode.inputs.positive)) {
-      result.prompt = findValueByLink(samplerNode.inputs.positive, nodes) ?? result.prompt;
+    if (metadata.parameters && typeof metadata.parameters === 'string') {
+        const paramsData = parseParametersString(metadata.parameters);
+        Object.keys(paramsData).forEach(key => {
+            const typedKey = key as keyof BaseMetadata;
+            const paramsValue = paramsData[typedKey];
+            const workflowValue = parsedData[typedKey];
+            
+            if (paramsValue !== undefined && (workflowValue === undefined || workflowValue === null || (Array.isArray(workflowValue) && workflowValue.length === 0) || workflowValue === 0 || workflowValue === '' )) {
+                (parsedData[typedKey] as any) = paramsValue;
+            }
+        });
     }
-    if (samplerNode.inputs.negative && Array.isArray(samplerNode.inputs.negative)) {
-      result.negativePrompt = findValueByLink(samplerNode.inputs.negative, nodes) ?? result.negativePrompt;
-    }
-    
-    // Extract other parameters by following links if not already set directly
-    if (!result.seed && samplerNode.inputs.seed && Array.isArray(samplerNode.inputs.seed)) {
-      result.seed = findValueByLink(samplerNode.inputs.seed, nodes) ?? result.seed;
-    }
-    if (!result.steps && samplerNode.inputs.steps && Array.isArray(samplerNode.inputs.steps)) {
-      result.steps = findValueByLink(samplerNode.inputs.steps, nodes) ?? result.steps;
-    }
-    if (!result.cfg_scale && samplerNode.inputs.cfg && Array.isArray(samplerNode.inputs.cfg)) {
-      result.cfg_scale = findValueByLink(samplerNode.inputs.cfg, nodes) ?? result.cfg_scale;
-    }
-    if (!result.cfg_scale && samplerNode.inputs.guidance && Array.isArray(samplerNode.inputs.guidance)) {
-      result.cfg_scale = findValueByLink(samplerNode.inputs.guidance, nodes) ?? result.cfg_scale;
-    }
-    if (!result.sampler && samplerNode.inputs.sampler_name && Array.isArray(samplerNode.inputs.sampler_name)) {
-      result.sampler = findValueByLink(samplerNode.inputs.sampler_name, nodes) ?? result.sampler;
-    }
-    if (!result.scheduler && samplerNode.inputs.scheduler && Array.isArray(samplerNode.inputs.scheduler)) {
-      result.scheduler = findValueByLink(samplerNode.inputs.scheduler, nodes) ?? result.scheduler;
-    }
-  }
 
-  // --- Final Cleanup ---
-  if (result.models.length > 0) {
-    // Prioritize checkpoint loaders for the main model name
-    const checkpoint = result.models.find(m => m.toLowerCase().includes('.safetensors') || m.toLowerCase().includes('.ckpt'));
-    result.model = checkpoint || result.models[0];
-  }
-
-  // Ensure no null/undefined values are returned
-  for(const key in result) {
-    if((result as any)[key] === null || (result as any)[key] === undefined) {
-      const a = result as any;
-      if (typeof a[key] === 'string') a[key] = '';
-      if (typeof a[key] === 'number') a[key] = 0;
-    }
-  }
-
-  return result;
+    return {
+        format: 'ComfyUI',
+        prompt: parsedData.prompt ?? '',
+        negativePrompt: parsedData.negativePrompt ?? '',
+        model: parsedData.model ?? 'Unknown',
+        width: parsedData.width ?? 0,
+        height: parsedData.height ?? 0,
+        steps: parsedData.steps ?? 0,
+        cfg_scale: parsedData.cfg_scale ?? 0,
+        seed: parsedData.seed ?? 0,
+        scheduler: parsedData.scheduler ?? 'Unknown',
+        sampler: parsedData.sampler ?? 'Unknown',
+        loras: parsedData.loras ?? [],
+        models: parsedData.models ?? [],
+    } as BaseMetadata;
 }
