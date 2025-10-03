@@ -196,7 +196,7 @@ if (autoUpdater) {
   console.log('⚠️ Auto-updater not available, skipping event handlers');
 }
 
-function createWindow() {
+function createWindow(startupDirectory = null) {
   // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -232,6 +232,12 @@ function createWindow() {
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+
+    // If a startup directory was provided via CLI, send it to the renderer
+    if (startupDirectory) {
+      console.log('Sending startup directory to renderer:', startupDirectory);
+      mainWindow.webContents.send('load-directory-from-cli', startupDirectory);
+    }
     
     // Check for updates in production (REMOVED checkForUpdatesAndNotify to prevent auto-download)
     // Update check is handled in the setTimeout above with checkForUpdates()
@@ -255,8 +261,30 @@ function createWindow() {
 }
 
 // App event handlers
-app.whenReady().then(() => {
-  createWindow();
+app.whenReady().then(async () => {
+  let startupDirectory = null;
+
+  // Check for a directory path provided as a command-line argument
+  // In dev, args start at index 2 (`electron . /path`); in packaged app, at index 1 (`app.exe /path`)
+  const args = process.argv.slice(app.isPackaged ? 1 : 2);
+  const potentialPath = args.find(arg => !arg.startsWith('--')); // Find first non-flag argument
+
+  if (potentialPath) {
+    const fullPath = path.resolve(potentialPath);
+    try {
+      const stats = await fs.stat(fullPath);
+      if (stats.isDirectory()) {
+        startupDirectory = fullPath;
+        console.log('Startup directory specified:', startupDirectory);
+      } else {
+        console.warn(`Provided startup path is not a directory: ${fullPath}`);
+      }
+    } catch (error) {
+      console.warn(`Error checking startup path "${fullPath}": ${error.message}`);
+    }
+  }
+
+  createWindow(startupDirectory);
   
   // Setup IPC handlers for file operations
   setupFileOperationHandlers();

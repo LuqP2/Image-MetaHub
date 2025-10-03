@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './',
+  server: {
+    host: true, // Expose server to the network
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets'

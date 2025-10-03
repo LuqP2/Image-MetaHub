@@ -3,6 +3,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
+  // --- Listeners for main-to-renderer events ---
+  onLoadDirectoryFromCLI: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('load-directory-from-cli', handler);
+    // Return a cleanup function to remove the listener
+    return () => {
+      ipcRenderer.removeListener('load-directory-from-cli', handler);
+    };
+  },
+
+  // --- Invokable renderer-to-main functions ---
   trashFile: (filename) => ipcRenderer.invoke('trash-file', filename),
   renameFile: (oldName, newName) => ipcRenderer.invoke('rename-file', oldName, newName),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),

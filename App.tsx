@@ -96,6 +96,21 @@ export default function App() {
     }
   }, [directoryHandle, handleLoadFromPath]);
 
+  // Listen for directory load events from the main process (e.g., from CLI argument)
+  useEffect(() => {
+    if (window.electronAPI?.onLoadDirectoryFromCLI) {
+      const unsubscribe = window.electronAPI.onLoadDirectoryFromCLI((path) => {
+        console.log('Received directory to load from main process:', path);
+        if (path) {
+          handleLoadFromPath(path);
+        }
+      });
+
+      // Cleanup the listener when the component unmounts
+      return unsubscribe;
+    }
+  }, [handleLoadFromPath]);
+
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
