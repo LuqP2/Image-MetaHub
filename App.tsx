@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useImageStore } from './store/useImageStore';
+import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 
@@ -17,7 +18,7 @@ import Pagination from './components/Pagination';
 
 export default function App() {
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromPath } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -33,7 +34,6 @@ export default function App() {
     selectedImage,
     selectedImages,
     searchQuery,
-    sortOrder,
     availableModels,
     availableLoras,
     availableSchedulers,
@@ -43,32 +43,43 @@ export default function App() {
     advancedFilters,
     setSearchQuery,
     setSelectedFilters,
-    setSortOrder,
     setAdvancedFilters,
     setSelectedImage,
     removeImage,
     updateImage,
   } = useImageStore();
+  const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
+
+  // --- Settings Store State ---
+  const {
+    sortOrder,
+    itemsPerPage,
+    setSortOrder,
+    setItemsPerPage,
+  } = useSettingsStore();
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');
-  const [itemsPerPage, setItemsPerPage] = useState<number | 'all'>(20);
   const [currentPage, setCurrentPage] = useState(1);
 
   // --- Effects ---
+  // On mount, check if a directory is stored in localStorage and load it
+  useEffect(() => {
+    const storedPath = localStorage.getItem('image-metahub-electron-directory-path');
+    if (storedPath && !directoryHandle) {
+      handleLoadFromPath(storedPath);
+    }
+  }, [directoryHandle, handleLoadFromPath]);
+
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
   }, [filteredImages]);
 
-  // Persist settings
+  // Sync settings store with image store for sorting
   useEffect(() => {
-    localStorage.setItem('image-metahub-sort-order', sortOrder);
-  }, [sortOrder]);
-
-  useEffect(() => {
-    localStorage.setItem('image-metahub-items-per-page', itemsPerPage.toString());
-  }, [itemsPerPage]);
+    imageStoreSetSortOrder(sortOrder);
+  }, [sortOrder, imageStoreSetSortOrder]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {

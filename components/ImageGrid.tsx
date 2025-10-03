@@ -3,6 +3,7 @@ import React, { useState, useEffect, CSSProperties, memo } from 'react';
 import { FixedSizeGrid as Grid } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 // --- ImageCard Component ---
 // This component is now simpler and does not need to be aware of virtualization.
@@ -118,6 +119,8 @@ interface ImageGridProps {
 }
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
+  const imageSize = useSettingsStore((state) => state.imageSize);
+
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
@@ -127,9 +130,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       <AutoSizer>
         {({ height, width }) => {
           const PADDING = 8; // p-1 on cell is 4px, so total gap is 8px
-          const MIN_CARD_WIDTH = 120;
+          const cardWidthUnconstrained = imageSize;
 
-          const columnCount = Math.floor((width) / (MIN_CARD_WIDTH + PADDING)) || 1;
+          const columnCount = Math.floor((width) / (cardWidthUnconstrained + PADDING)) || 1;
           const cardWidth = Math.floor((width - (columnCount - 1) * PADDING) / columnCount);
           const rowCount = Math.ceil(images.length / columnCount);
 

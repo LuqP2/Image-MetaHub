@@ -19,6 +19,28 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow;
 let skippedVersions = new Set();
 
+// --- Settings Management ---
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+
+async function readSettings() {
+  try {
+    const data = await fs.readFile(settingsPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error) {
+    // If file doesn't exist or is invalid, return empty object
+    return {};
+  }
+}
+
+async function saveSettings(settings) {
+  try {
+    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+}
+// --- End Settings Management ---
+
 // Configure auto-updater
 if (autoUpdater) {
   autoUpdater.autoDownload = false; // CRITICAL: Disable automatic downloads
@@ -264,6 +286,19 @@ async function getFilesRecursively(directory, baseDirectory) {
 }
 
 function setupFileOperationHandlers() {
+  // --- Settings IPC ---
+  ipcMain.handle('get-settings', async () => {
+    const settings = await readSettings();
+    return settings;
+  });
+
+  ipcMain.handle('save-settings', async (event, newSettings) => {
+    const currentSettings = await readSettings();
+    const mergedSettings = { ...currentSettings, ...newSettings };
+    await saveSettings(mergedSettings);
+  });
+  // --- End Settings IPC ---
+
   // Handle setting current directory
   ipcMain.handle('set-current-directory', async (event, dirPath) => {
     currentDirectoryPath = dirPath;
