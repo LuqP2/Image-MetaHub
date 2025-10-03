@@ -240,6 +240,11 @@ declare global {
       readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
       readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
       writeFile: (filePath: string, data: Buffer) => Promise<{ success: boolean; error?: string }>;
+      // Settings IPC (from preload.js)
+      getSettings: () => Promise<any>;
+      saveSettings: (settings: any) => Promise<void>;
+      // File stats helper
+      getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
     };
     // File System Access API
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
