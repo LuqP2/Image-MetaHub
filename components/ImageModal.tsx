@@ -178,8 +178,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return; // User cancelled
       }
       const destDir = destResult.path;
-      const sourcePath = `${directoryPath}/${image.name}`;
-      const destPath = `${destDir}/${image.name}`;
+      // Get safe paths using joinPaths
+      const sourcePathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
+      if (!sourcePathResult.success || !sourcePathResult.path) {
+        throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
+      }
+      const destPathResult = await window.electronAPI.joinPaths(destDir, image.name);
+      if (!destPathResult.success || !destPathResult.path) {
+        throw new Error(`Failed to construct destination path: ${destPathResult.error}`);
+      }
+
+      const sourcePath = sourcePathResult.path;
+      const destPath = destPathResult.path;
 
       // 2. Read the source file
       const readResult = await window.electronAPI.readFile(sourcePath);
@@ -206,12 +216,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    image.handle.getFile().then(file => {
-      if(isMounted) {
-          const url = URL.createObjectURL(file);
-          setImageUrl(url);
+
+    const loadImage = async () => {
+      try {
+        if (!image.handle) {
+          throw new Error('Image handle is invalid');
+        }
+
+        const file = await image.handle.getFile();
+        if (!isMounted) return;
+
+        const url = URL.createObjectURL(file);
+        setImageUrl(url);
+      } catch (error) {
+        console.error('Error loading image:', error);
+        if (isMounted) {
+          setImageUrl(null);
+          alert(`Failed to load image: ${error.message}`);
+        }
       }
-    });
+    };
+
+    loadImage();
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isRenaming) return;
