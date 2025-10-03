@@ -140,7 +140,10 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
  * Processes a single file entry to extract metadata and create an IndexedImage object.
  * This function encapsulates the logic that was previously duplicated.
  */
-async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> {
+async function processSingleFile(
+  fileEntry: { handle: FileSystemFileHandle, path: string },
+  directoryId: string
+): Promise<IndexedImage | null> {
   try {
     const file = await fileEntry.handle.getFile();
     const rawMetadata = await parseImageMetadata(file);
@@ -176,9 +179,10 @@ async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path
     }
 
     return {
-      id: fileEntry.path,
+      id: `${directoryId}::${fileEntry.path}`,
       name: fileEntry.handle.name,
       handle: fileEntry.handle,
+      directoryId,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
       metadataString: JSON.stringify(rawMetadata) || '',
       lastModified: sortDate, // Use the determined sort date
@@ -206,7 +210,8 @@ async function processSingleFile(fileEntry: { handle: FileSystemFileHandle, path
 export async function processFiles(
   fileEntries: { handle: FileSystemFileHandle, path: string }[],
   setProgress: (progress: { current: number; total: number }) => void,
-  onBatchProcessed: (batch: IndexedImage[]) => void
+  onBatchProcessed: (batch: IndexedImage[]) => void,
+  directoryId: string
 ): Promise<void> {
   const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
   const total = imageFiles.length;
@@ -241,7 +246,7 @@ export async function processFiles(
   }
 
   const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> => {
-    const indexedImage = await processSingleFile(fileEntry);
+    const indexedImage = await processSingleFile(fileEntry, directoryId);
     processedCount++;
 
     // Update progress after each file

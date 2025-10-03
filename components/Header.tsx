@@ -1,21 +1,16 @@
 import React from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { Settings } from 'lucide-react';
+import { Settings, Plus } from 'lucide-react';
 
 interface HeaderProps {
-  directoryHandle: FileSystemDirectoryHandle | null;
-  onUpdateFolder: () => void;
-  onChangeFolder: () => void;
+  onAddFolder: () => void;
   onOpenSettings: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({
-  directoryHandle,
-  onUpdateFolder,
-  onChangeFolder,
-  onOpenSettings,
-}) => {
+const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings }) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
+  const directories = useImageStore((state) => state.directories);
+  const hasDirectories = directories.length > 0;
 
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-lg">
@@ -28,40 +23,32 @@ const Header: React.FC<HeaderProps> = ({
           <h1 className="text-2xl font-bold tracking-wider">Image MetaHub</h1>
         </div>
         <div className="flex items-center gap-4">
-          {directoryHandle && (
+          {hasDirectories && (
             <>
-              <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. The folder will be re-scanned when this is toggled.">
+              <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. A manual refresh of a folder is required to apply this setting.">
                 <input
                   type="checkbox"
                   id="scanSubfolders"
                   checked={scanSubfolders}
-                  onChange={(e) => {
-                    setScanSubfolders(e.target.checked);
-                    onUpdateFolder();
-                  }}
+                  onChange={(e) => setScanSubfolders(e.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="scanSubfolders" className="ml-2 block text-sm text-gray-300">
                   Scan Subfolders
                 </label>
               </div>
-              <button
-                onClick={onUpdateFolder}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
-                title="Refresh current folder"
-              >
-                Refresh
-              </button>
-              <button
-                onClick={onChangeFolder}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
-                title="Change folder"
-              >
-                Change Folder
-              </button>
               <div className="border-l border-gray-600 h-8 mx-2"></div>
             </>
           )}
+          <button
+            onClick={onAddFolder}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2"
+            title="Add a folder to scan"
+          >
+            <Plus size={18} />
+            Add Folder
+          </button>
+          <div className="border-l border-gray-600 h-8 mx-2"></div>
           <button
             onClick={onOpenSettings}
             className="p-2 rounded-full hover:bg-gray-700 transition-colors"

@@ -1,12 +1,11 @@
 import { create } from 'zustand';
-import { IndexedImage } from '../types';
+import { IndexedImage, Directory } from '../types';
 
 interface ImageState {
   // Core Data
   images: IndexedImage[];
   filteredImages: IndexedImage[];
-  directoryHandle: FileSystemDirectoryHandle | null;
-  directoryPath: string;
+  directories: Directory[];
 
   // UI State
   isLoading: boolean;
@@ -29,7 +28,8 @@ interface ImageState {
   advancedFilters: any;
 
   // Actions
-  setDirectory: (handle: FileSystemDirectoryHandle | null, path: string) => void;
+  addDirectory: (directory: Directory) => void;
+  removeDirectory: (directoryId: string) => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number }) => void;
   setError: (error: string | null) => void;
@@ -154,8 +154,7 @@ export const useImageStore = create<ImageState>((set, get) => {
   // Initial State
   images: [],
   filteredImages: [],
-  directoryHandle: null,
-  directoryPath: '',
+  directories: [],
   isLoading: false,
   progress: { current: 0, total: 0 },
   error: null,
@@ -175,7 +174,32 @@ export const useImageStore = create<ImageState>((set, get) => {
 
   // --- ACTIONS ---
 
-  setDirectory: (handle, path) => set({ directoryHandle: handle, directoryPath: path, images: [], filteredImages: [] }),
+  addDirectory: (directory) => set(state => {
+    if (state.directories.some(d => d.id === directory.id)) {
+      return state; // Prevent adding duplicates
+    }
+    return {
+      directories: [...state.directories, directory]
+    };
+  }),
+
+  removeDirectory: (directoryId) => {
+    const { directories } = get();
+    const newDirectories = directories.filter(d => d.id !== directoryId);
+    if (window.electronAPI) { // Only persist in Electron environment
+      localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
+    }
+
+    set(state => {
+      const newImages = state.images.filter(img => img.directoryId !== directoryId);
+      return {
+        ...filterAndSort({ ...state, images: newImages }),
+        images: newImages,
+        directories: newDirectories,
+      };
+    });
+  },
+
   setLoading: (loading) => set({ isLoading: loading }),
   setProgress: (progress) => set({ progress }),
   setError: (error) => set({ error, success: null }),
@@ -194,7 +218,14 @@ export const useImageStore = create<ImageState>((set, get) => {
     });
   },
 
-  clearImages: () => set({ images: [], filteredImages: [] }),
+  clearImages: (directoryId?: string) => set(state => {
+    if (directoryId) {
+      const newImages = state.images.filter(img => img.directoryId !== directoryId);
+      return { ...filterAndSort({ ...state, images: newImages }), images: newImages };
+    } else {
+      return { images: [], filteredImages: [] };
+    }
+  }),
 
   removeImages: (imageIds) => {
     const idsToRemove = new Set(imageIds);
@@ -277,8 +308,7 @@ export const useImageStore = create<ImageState>((set, get) => {
   resetState: () => set({
     images: [],
     filteredImages: [],
-    directoryHandle: null,
-    directoryPath: '',
+    directories: [],
     isLoading: false,
     progress: { current: 0, total: 0 },
     error: null,
