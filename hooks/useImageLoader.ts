@@ -121,7 +121,14 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     if (getIsElectron()) {
         // Create lightweight handles that will be read during processing
         for (const fileName of fileNames) {
-            const filePath = `${directoryPath}/${fileName}`;
+            // Use the new IPC call to join paths correctly on any OS
+            const joinResult = await window.electronAPI.joinPaths(directoryPath, fileName);
+
+            // Use the joined path, or fallback to manual concatenation if the IPC call fails
+            const filePath = joinResult.success ? joinResult.path : `${directoryPath}/${fileName}`;
+            if (!joinResult.success) {
+                console.error("Failed to join paths, falling back to manual concatenation:", joinResult.error);
+            }
 
             const mockHandle = {
                 name: fileName,
@@ -174,9 +181,10 @@ export function useImageLoader() {
         }
 
         try {
-            if (!isUpdate) {
-                // The directory is now added via handleSelectFolder, not here.
-                // Persistence is also handled separately.
+      // Always update the allowed paths in the main process
+      if (getIsElectron()) {
+        const allPaths = useImageStore.getState().directories.map(d => d.path);
+        await window.electronAPI.updateAllowedPaths(allPaths);
             }
 
             await cacheManager.init();
@@ -318,6 +326,8 @@ export function useImageLoader() {
             const storedPaths = localStorage.getItem('image-metahub-directories');
             if (storedPaths) {
                 const paths = JSON.parse(storedPaths);
+                if (paths.length === 0) return;
+
                 for (const path of paths) {
                     const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
                     const handle = { name, kind: 'directory' } as any;
@@ -325,8 +335,12 @@ export function useImageLoader() {
 
                     const newDirectory: Directory = { id: directoryId, path, name, handle };
                     addDirectory(newDirectory);
-                    await loadDirectory(newDirectory, false);
+                    await loadDirectory(newDirectory, false); // This will call updateAllowedPaths internally
                 }
+
+                // Final update after all directories are loaded
+                const allPaths = useImageStore.getState().directories.map(d => d.path);
+                await window.electronAPI.updateAllowedPaths(allPaths);
             }
         } else {
             console.warn('Loading from storage is only supported in Electron.');
