@@ -28,7 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
-  joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths)
+  joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+  // TEST ONLY: Simulate update dialog
+  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
 });
 
 // DEBUG: Log that preload script has loaded

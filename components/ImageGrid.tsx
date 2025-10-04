@@ -18,29 +18,32 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
 
   useEffect(() => {
     let isMounted = true;
+    let currentUrl: string | null = null;
     const fileHandle = image.thumbnailHandle || image.handle;
 
     fileHandle.getFile().then(file => {
       if (isMounted) {
-        const url = URL.createObjectURL(file);
-        setImageUrl(url);
+        currentUrl = URL.createObjectURL(file);
+        setImageUrl(currentUrl);
       }
     }).catch(error => {
       console.error('Failed to load image:', error);
       if (image.thumbnailHandle && isMounted) {
         image.handle.getFile().then(file => {
           if (isMounted) {
-            const url = URL.createObjectURL(file);
-            setImageUrl(url);
+            currentUrl = URL.createObjectURL(file);
+            setImageUrl(currentUrl);
           }
+        }).catch(err => {
+          console.error('Failed to load fallback image:', err);
         });
       }
     });
 
     return () => {
       isMounted = false;
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
       }
     };
   }, [image.handle, image.thumbnailHandle]);

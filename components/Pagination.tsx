@@ -39,9 +39,7 @@ const Pagination: React.FC<PaginationProps> = ({
     onItemsPerPageChange(value === 'all' ? 'all' : parseInt(value, 10));
   };
 
-  if (totalPages <= 1) {
-    return null; // Don't show pagination if there's only one page
-  }
+  const showPageControls = totalPages > 1;
 
   return (
     <div className="flex justify-center items-center gap-4 mt-6 py-4 text-gray-400">
@@ -54,17 +52,21 @@ const Pagination: React.FC<PaginationProps> = ({
           onChange={handleItemsPerPageChange}
           className="bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
+          <option value={10}>10</option>
           <option value={20}>20</option>
           <option value={50}>50</option>
           <option value={100}>100</option>
+          <option value={500}>500</option>
           <option value="all">All</option>
         </select>
       </div>
 
-      <div className="flex-grow" />
+      {showPageControls && (
+        <>
+          <div className="flex-grow" />
 
-      {/* Page navigation */}
-      <div className="flex items-center gap-3">
+          {/* Page navigation */}
+          <div className="flex items-center gap-3">
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
@@ -108,6 +110,8 @@ const Pagination: React.FC<PaginationProps> = ({
       <div className="text-sm">
         {totalItems} items
       </div>
+        </>
+      )}
     </div>
   );
 };

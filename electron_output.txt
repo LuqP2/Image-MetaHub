@@ -1,3 +1,0 @@
-
-> image-metahub@1.8.1 electron-dev
-> concurrently "npm run dev" "wait-on http://localhost:5173 && electron ."

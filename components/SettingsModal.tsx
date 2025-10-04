@@ -19,9 +19,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen) {
       // Fetch the default path when the modal opens
-      window.electronAPI?.getDefaultCachePath().then(path => {
-        setDefaultCachePath(path);
-        setCurrentCachePath(cachePath || path);
+      window.electronAPI?.getDefaultCachePath().then(result => {
+        if (result.success && result.path) {
+          setDefaultCachePath(result.path);
+          setCurrentCachePath(cachePath || result.path);
+        }
+      }).catch(error => {
+        console.error('Failed to get default cache path:', error);
       });
     }
   }, [isOpen, cachePath]);
