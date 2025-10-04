@@ -5,13 +5,31 @@
 **Image MetaHub** is a web-based application built with React and TypeScript that provides fast, intelligent browsing and filtering of AI-generated images. The application focuses on performance, user experience, and extensibility.
 
 ### Current Version
-- **Version**: 1.8.1
-- **Build System**: Vite
+- **Version**: 1.9.0
+- **Build System**: Vite (network-accessible dev server)
 - **Framework**: React 18 with TypeScript
 - **State Management**: Zustand
-- **Desktop**: Electron 38 with auto-updater
+- **Desktop**: Electron 38 with auto-updater and CLI support
 - **Styling**: Tailwind CSS v4
 - **Performance**: 18,000 images in 3.5 minutes (~85 images/second)
+
+### Recent Architecture Changes (v1.9.0 - Multi-Directory & Settings)
+- **Multiple Directory Management**: Added support for simultaneous directory management
+  - New directory management system in useImageStore
+  - Enhanced file indexing to handle multiple root directories
+  - Cross-platform path resolution improvements
+- **Centralized Settings**: New Settings Modal for application configuration
+  - Cache location configuration
+  - Automatic update preferences
+  - Persistent storage of user preferences
+- **Dynamic Grid System**: Resizable image grid implementation
+  - Configurable thumbnail sizes
+  - Responsive layout adjustments
+  - High-DPI display optimizations
+- **Development Improvements**:
+  - Command-line directory support for automation
+  - Network-accessible development server
+  - Enhanced cross-device testing capabilities
 
 ### Recent Architecture Changes (v1.8.0 - A1111 Support and Refactor)
 - **🚀 Major Performance Breakthrough**: Achieved 18,000 images indexed in 3.5 minutes (~85 images/second)

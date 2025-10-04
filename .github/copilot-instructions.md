@@ -1,14 +1,21 @@
-# AI Coding Assistant Instructions for Image MetaHub
+# AI **Recent Changes (v1.9.0):**
+- **Multiple Directory Support**: Add and manage multiple image directories simultaneously.
+- **Settings Management**: New modal for cache and update preferences.
+- **Resizable Grid**: Dynamic thumbnail sizing for any display.
+- **Command-Line Support**: Launch with specified directory for automation.
+- **Dev Server Access**: Network-accessible development server.
+- **Path Fixes**: Improved cross-platform path handling and file operations.Assistant Instructions for Image MetaHub
 
 ## Project Overview
 This is a React + TypeScript + Electron application that provides local browsing and filtering of AI-generated images. The app runs in both web browsers and as a desktop application, with dual file system APIs for cross-platform compatibility.
 
-**Recent Changes (v1.8.0):**
-- **✨ Automatic1111 & ComfyUI Support**: Full metadata parsing for A1111 and partial for ComfyUI.
-- **🚀 Refactored Architecture**: Migrated to Zustand and custom hooks for better maintainability.
-- **🖼️ JPEG Support**: Added support for JPEG files.
-- **🔍 Advanced Filters**: Added range filters for Steps, CFG Scale, etc.
-- **🚀 High Performance**: Indexes 18,000 images in ~3.5 minutes.
+**Recent Changes (v1.9.0):**
+- **📂 Multiple Directory Support**: Add and manage multiple image directories simultaneously.
+- **⚙️ Settings Management**: New modal for cache and update preferences.
+- **�️ Resizable Grid**: Dynamic thumbnail sizing for any display.
+- **� Command-Line Support**: Launch with specified directory for automation.
+- **🌐 Dev Server Access**: Network-accessible development server.
+- **� Path Fixes**: Improved cross-platform path handling and file operations.
 
 ## Architecture & Data Flow
 

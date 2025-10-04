@@ -28,6 +28,25 @@ This file documents significant architectural decisions, design choices, and imp
 **Context:** [Why this was needed]
 
 **Rationale:** [Why this approach was chosen]
+```
+
+## 2025-10-03: [FEATURE] - Multiple Directory Support & Settings Enhancement
+
+**Decision:** 
+- Implemented support for managing multiple image directories simultaneously
+- Added a new Settings Modal for cache and update configurations
+- Introduced resizable image grid with dynamic thumbnail sizing
+- Added command-line directory support and network-accessible dev server
+
+**Context:**
+Users frequently need to work with images across multiple directories, and high-DPI displays required more flexible image sizing. Development workflow improvements were needed for better automation and remote testing.
+
+**Rationale:**
+- Multiple directory support allows users to organize images across different projects or categories while viewing them in one interface
+- Settings Modal provides a central location for growing number of configuration options
+- Resizable grid addresses display issues on various screen sizes and resolutions
+- Command-line support enables automation and integration with other tools
+- Network-accessible dev server facilitates testing across different devices
 
 **Alternatives Considered:** [Other options evaluated and why they were rejected]
 

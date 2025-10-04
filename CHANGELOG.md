@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2025-10-03
+
+### Added
+- Multiple Directory Support: Add and manage multiple image directories simultaneously
+- New Settings Modal: Configure cache location and automatic update preferences
+- Resizable Image Grid: Adjustable thumbnail sizes for better display on high-resolution screens
+- Command-Line Directory Support: Specify startup directory via command-line arguments
+- Exposed Development Server: Access dev server from local network devices
+
+### Fixed
+- Cross-platform path construction issues resolved
+- Improved file operations reliability
+- Fixed cached image loading problems
+
 ## [1.8.1] - 2025-09-30
 
 ### Added

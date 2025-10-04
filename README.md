@@ -28,6 +28,13 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 - **Deep Metadata Search:** Full-text search across all PNG and JPEG metadata including prompts, models, and generation parameters
 - **Precise Filtering:** Filter by Models, LoRAs, Schedulers, image dimensions, generation steps, CFG Scale, and date ranges
 - **Multi-Format Support:** Works with InvokeAI, Automatic1111, and ComfyUI generated images (PNG and JPEG)
+
+**Enhanced User Experience**
+- **Multiple Directories:** Add and manage multiple image directories simultaneously
+- **Configurable Settings:** Control cache location and automatic update preferences
+- **Resizable Grid:** Adjust thumbnail sizes for optimal viewing on any display
+- **Command-Line Support:** Launch with a specified directory for automation workflows
+- **Developer Mode:** Access development server from local network devices
 - **Configurable Directory Scanning:** Choose whether to scan subfolders recursively or limit to selected folder only
 - **Multi-Selection:** Use `Ctrl+Click` to select multiple images for bulk operations
 
