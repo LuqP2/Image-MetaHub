@@ -39,7 +39,7 @@ interface ImageState {
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
-  clearImages: () => void;
+  clearImages: (directoryId?: string) => void;
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;

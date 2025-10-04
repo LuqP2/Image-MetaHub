@@ -22,7 +22,7 @@ import DirectoryList from './components/DirectoryList';
 
 export default function App() {
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, loadDirectory } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -209,7 +209,7 @@ export default function App() {
         >
           <DirectoryList
             directories={directories}
-            onRemoveDirectory={removeDirectory}
+            onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
           />
         </Sidebar>

@@ -178,12 +178,6 @@ export function useImageLoader() {
         setError(null);
         setSuccess(null);
 
-        if (!isUpdate) {
-            // Clear images for this specific directory before loading
-            clearImages();
-            clearFileDataCache(); // This might need a more granular approach later
-        }
-
         try {
       // Always update the allowed paths in the main process
       if (getIsElectron()) {
@@ -193,6 +187,18 @@ export function useImageLoader() {
 
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+
+            if (isUpdate) {
+                // Clear images for this specific directory before refreshing
+                clearImages(directory.id);
+                // NOTE: We do NOT clear the cache here!
+                // validateCacheAndGetDiff will intelligently detect:
+                // - New files (to be processed)
+                // - Deleted files (to be removed)
+                // - Modified files (to be re-processed)
+                // - Unchanged files (loaded from cache - super fast!)
+            }
+            // Note: On first load (isUpdate=false), we don't clear anything - just add new images
             const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
@@ -202,16 +208,17 @@ export function useImageLoader() {
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
-            const finalCachedImages = diff.cachedImages.map(img => ({
+            const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
                 ...img,
                 handle: handleMap.get(img.name)!,
+                directoryId: directory.id, // CRITICAL: Associate cached images with current directory
             }));
 
             if (finalCachedImages.length > 0) {
                 addImages(finalCachedImages);
             }
 
-            let finalImages = finalCachedImages;
+            let finalImages: IndexedImage[] = finalCachedImages;
 
             if (diff.deletedFileIds.length > 0) {
                 removeImages(diff.deletedFileIds);
@@ -351,10 +358,28 @@ export function useImageLoader() {
         }
     }, [loadDirectory, addDirectory]);
 
+    const handleRemoveDirectory = useCallback(async (directoryId: string) => {
+        const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
+        
+        // Remove from store (this removes images from view and updates localStorage)
+        // NOTE: We intentionally DO NOT clear the cache here!
+        // This allows users to temporarily hide folders without losing the expensive indexing work
+        // The cache will be reused when the folder is added back
+        removeDirectoryFromStore(directoryId);
+
+        // Update allowed paths
+        if (getIsElectron()) {
+            const updatedDirectories = useImageStore.getState().directories;
+            const allPaths = updatedDirectories.map(d => d.path);
+            await window.electronAPI.updateAllowedPaths(allPaths);
+        }
+    }, []);
+
     return {
         handleSelectFolder,
         handleUpdateFolder,
         handleLoadFromStorage,
+        handleRemoveDirectory,
         loadDirectory
     };
 }

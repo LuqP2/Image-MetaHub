@@ -238,6 +238,27 @@ class CacheManager {
     });
   }
 
+  async clearDirectoryCache(directoryPath: string, scanSubfolders: boolean): Promise<void> {
+    if (!this.db) {
+      console.warn('Cache not initialized. Call init() first.');
+      return;
+    }
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['cache'], 'readwrite');
+      const store = transaction.objectStore('cache');
+      const request = store.delete(cacheId);
+      request.onerror = () => {
+        console.error(`❌ Failed to clear cache for directory: ${cacheId}`, request.error);
+        reject(request.error);
+      };
+      request.onsuccess = () => {
+        console.log(`✅ Cleared cache for directory: ${cacheId}`);
+        resolve();
+      };
+    });
+  }
+
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,
