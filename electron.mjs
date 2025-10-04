@@ -343,8 +343,13 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('get-default-cache-path', () => {
-    // Define a specific subfolder for the cache
-    return path.join(app.getPath('userData'), 'ImageMetaHubCache');
+    try {
+      // Define a specific subfolder for the cache
+      const cachePath = path.join(app.getPath('userData'), 'ImageMetaHubCache');
+      return { success: true, path: cachePath };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   });
   // --- End Settings IPC ---
 

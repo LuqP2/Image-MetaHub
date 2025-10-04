@@ -1,3 +1,27 @@
+export interface ElectronAPI {
+  trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
+  renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
+  setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
+  updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
+  showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
+  showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+  readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
+  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
+  getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
+  writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  getSettings: () => Promise<any>;
+  saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
+  onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
+}
+
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+  }
+}
 
 export interface InvokeAIMetadata {
   // Core generation fields
@@ -241,28 +265,9 @@ export interface FilterOptions {
   selectedScheduler: string;
 }
 
-// Electron API types
+// File System Access API - extended Window interface
 declare global {
   interface Window {
-    electronAPI?: {
-      trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
-      renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
-      setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean }>;
-      showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
-      showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-      listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: {name: string; lastModified: number}[]; error?: string }>;
-      readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
-      readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
-      writeFile: (filePath: string, data: Buffer) => Promise<{ success: boolean; error?: string }>;
-      updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
-      joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
-      // Settings IPC (from preload.js)
-      getSettings: () => Promise<any>;
-      saveSettings: (settings: any) => Promise<void>;
-      // File stats helper
-      getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
-    };
-    // File System Access API
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   }
 }

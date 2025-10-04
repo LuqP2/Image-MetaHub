@@ -216,6 +216,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+    let currentUrl: string | null = null;
     // Reset imageUrl whenever the image prop changes
     setImageUrl(null);
 
@@ -227,8 +228,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         if (image.handle && typeof image.handle.getFile === 'function') {
           const file = await image.handle.getFile();
           if (isMounted) {
-            const url = URL.createObjectURL(file);
-            setImageUrl(url);
+            currentUrl = URL.createObjectURL(file);
+            setImageUrl(currentUrl);
           }
           return; // Success, no need for fallback
         }
@@ -238,11 +239,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
         console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
         if (isMounted && window.electronAPI && directoryPath) {
           try {
-            const result = await window.electronAPI.readFileAsDataURL(directoryPath, image.name);
-            if (result.success && result.dataUrl && isMounted) {
-              setImageUrl(result.dataUrl);
+            const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
+            if (!pathResult.success || !pathResult.path) {
+              throw new Error(pathResult.error || 'Failed to construct image path.');
+            }
+            const fileResult = await window.electronAPI.readFile(pathResult.path);
+            if (fileResult.success && fileResult.data && isMounted) {
+              // fileResult.data is expected to be a base64 string or Uint8Array
+              let dataUrl: string;
+              if (typeof fileResult.data === 'string') {
+                // Assume base64 string
+                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                  ? 'jpeg'
+                  : 'png';
+                dataUrl = `data:image/${ext};base64,${fileResult.data}`;
+              } else if (fileResult.data instanceof Uint8Array) {
+                // Convert Uint8Array to base64
+                const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
+                const base64 = btoa(binary);
+                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                  ? 'jpeg'
+                  : 'png';
+                dataUrl = `data:image/${ext};base64,${base64}`;
+              } else {
+                throw new Error('Unknown file data format.');
+              }
+              currentUrl = dataUrl;
+              setImageUrl(dataUrl);
             } else {
-              throw new Error(result.error || 'Failed to read file via Electron API.');
+              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
             }
           } catch (electronError) {
             console.error('Electron fallback failed:', electronError);
@@ -281,12 +306,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleClickOutside);
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl);
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, imageUrl]);
+  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
