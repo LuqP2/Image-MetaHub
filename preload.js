@@ -14,8 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // --- Invokable renderer-to-main functions ---
-  trashFile: (filename) => ipcRenderer.invoke('trash-file', filename),
-  renameFile: (oldName, newName) => ipcRenderer.invoke('rename-file', oldName, newName),
+  trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
+  renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
+  updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
@@ -26,7 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
-  getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path')
+  getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
+  joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths)
 });
 
 // DEBUG: Log that preload script has loaded

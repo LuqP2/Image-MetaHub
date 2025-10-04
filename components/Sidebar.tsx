@@ -16,6 +16,7 @@ interface SidebarProps {
   onLoraChange: (loras: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
+  children?: React.ReactNode;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -32,7 +33,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onModelChange,
   onLoraChange,
   onSchedulerChange,
-  onClearAllFilters
+  onClearAllFilters,
+  children
 }) => {
 
   const [expandedSections, setExpandedSections] = useState({
@@ -134,6 +136,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           onSearchFieldChange={onSearchFieldChange}
         />
       </div>
+
+      {/* Render children, which will be the DirectoryList */}
+      {children}
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto">

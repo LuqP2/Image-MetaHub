@@ -17,22 +17,29 @@ export class FileOperations {
   static async deleteFile(image: IndexedImage): Promise<FileOperationsResult> {
     try {
       if (isElectron && window.electronAPI) {
+        if (!image.directoryId) {
+          return { success: false, error: 'Image is missing directory information.' };
+        }
         // Use Electron's trash functionality
-        const result = await window.electronAPI.trashFile(image.handle.name);
+        const joinResult = await window.electronAPI.joinPaths(image.directoryId, image.name);
+        if (!joinResult.success || !joinResult.path) {
+          return { success: false, error: `Failed to construct file path: ${joinResult.error}` };
+        }
+        const result = await window.electronAPI.trashFile(joinResult.path);
         return { success: result.success, error: result.error };
       } else {
         // For browser environment, we can't delete files
         // File System Access API doesn't support delete operations
-        return { 
-          success: false, 
-          error: 'File deletion is only available in the desktop app version' 
+        return {
+          success: false,
+          error: 'File deletion is only available in the desktop app version'
         };
       }
     } catch (error) {
       console.error('Error deleting file:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }
@@ -42,28 +49,48 @@ export class FileOperations {
    */
   static async renameFile(image: IndexedImage, newName: string): Promise<FileOperationsResult> {
     try {
-      // Ensure the new name has .png extension
-      if (!newName.toLowerCase().endsWith('.png')) {
-        newName += '.png';
-      }
-
       if (isElectron && window.electronAPI) {
-        // Use Electron's file rename functionality
-        const result = await window.electronAPI.renameFile(image.handle.name, newName);
+        if (!image.directoryId) {
+          return { success: false, error: 'Image is missing directory information.' };
+        }
+
+        const originalNameParts = image.name.split('/');
+        const originalFilename = originalNameParts[originalNameParts.length - 1];
+        const originalExtension = originalFilename.includes('.') ? originalFilename.split('.').pop() : '';
+
+        if (originalExtension && !newName.toLowerCase().endsWith(`.${originalExtension}`)) {
+          newName += `.${originalExtension}`;
+        }
+
+        const pathParts = image.name.split('/');
+        pathParts.pop(); // remove old filename
+        const newRelativePath = [...pathParts, newName].join('/');
+
+        const oldPathResult = await window.electronAPI.joinPaths(image.directoryId, image.name);
+        const newPathResult = await window.electronAPI.joinPaths(image.directoryId, newRelativePath);
+
+        if (!oldPathResult.success || !oldPathResult.path) {
+          return { success: false, error: `Failed to construct old file path: ${oldPathResult.error}` };
+        }
+        if (!newPathResult.success || !newPathResult.path) {
+          return { success: false, error: `Failed to construct new file path: ${newPathResult.error}` };
+        }
+
+        const result = await window.electronAPI.renameFile(oldPathResult.path, newPathResult.path);
         return { success: result.success, error: result.error };
       } else {
         // For browser environment, we can't rename files directly
         // File System Access API doesn't support rename operations
-        return { 
-          success: false, 
-          error: 'File renaming is only available in the desktop app version' 
+        return {
+          success: false,
+          error: 'File renaming is only available in the desktop app version'
         };
       }
     } catch (error) {
       console.error('Error renaming file:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
       };
     }
   }

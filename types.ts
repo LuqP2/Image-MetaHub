@@ -222,6 +222,14 @@ export interface IndexedImage {
   seed?: number; // Extracted seed from metadata
   dimensions?: string; // Extracted dimensions (width x height) from metadata
   directoryName?: string; // Name of the selected directory for context
+  directoryId?: string; // Unique ID for the parent directory
+}
+
+export interface Directory {
+  id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)
+  name: string;
+  path: string;
+  handle: FileSystemDirectoryHandle;
 }
 
 export interface FilterOptions {
@@ -246,6 +254,8 @@ declare global {
       readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
       readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
       writeFile: (filePath: string, data: Buffer) => Promise<{ success: boolean; error?: string }>;
+      updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
+      joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
       // Settings IPC (from preload.js)
       getSettings: () => Promise<any>;
       saveSettings: (settings: any) => Promise<void>;

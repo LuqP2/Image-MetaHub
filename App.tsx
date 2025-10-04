@@ -17,18 +17,18 @@ import { SearchField } from './components/SearchBar';
 import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import cacheManager from './services/cacheManager';
+import DirectoryList from './components/DirectoryList';
 
 export default function App() {
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromPath } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
   const {
     images,
     filteredImages,
-    directoryHandle,
-    directoryPath,
+    directories,
     isLoading,
     progress,
     error,
@@ -48,6 +48,7 @@ export default function App() {
     setAdvancedFilters,
     setSelectedImage,
     removeImage,
+    removeDirectory,
     updateImage,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
@@ -71,30 +72,21 @@ export default function App() {
     const initializeCache = async () => {
       // Zustand persistence can be async, wait for it to rehydrate
       await useSettingsStore.persist.rehydrate();
-
       let path = useSettingsStore.getState().cachePath;
-
-      // If no custom path is set in Electron, use a default path or skip
       if (!path && window.electronAPI) {
-        // Fallback: use a hardcoded default or leave undefined for cacheManager to handle
         path = undefined;
       }
-
       console.log(`Initializing cache with base path: ${path}`);
-      // Pass undefined if path is null, so the default is used
       await cacheManager.init(path || undefined);
     };
-
     initializeCache().catch(console.error);
   }, []);
 
-  // On mount, check if a directory is stored in localStorage and load it
+  // On mount, load directories stored in localStorage
   useEffect(() => {
-    const storedPath = localStorage.getItem('image-metahub-electron-directory-path');
-    if (storedPath && !directoryHandle) {
-      handleLoadFromPath(storedPath);
-    }
-  }, [directoryHandle, handleLoadFromPath]);
+    // The hook is memoized, so this will only run once on mount
+    handleLoadFromStorage();
+  }, [handleLoadFromStorage]);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
@@ -159,15 +151,9 @@ export default function App() {
   const paginatedImages = itemsPerPage === 'all'
     ? filteredImages
     : filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
   const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
-
-  const handleChangeFolder = async () => {
-    useImageStore.getState().resetState();
-    localStorage.removeItem('image-metahub-electron-directory-path');
-    localStorage.removeItem('image-metahub-directory-name');
-    await handleSelectFolder();
-  };
+  const hasDirectories = directories.length > 0;
+  const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
@@ -178,7 +164,7 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
       />
 
-      {directoryHandle && (
+      {hasDirectories && (
         <Sidebar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -196,14 +182,18 @@ export default function App() {
           onClearAllFilters={() => {
             setSelectedFilters({ models: [], loras: [], schedulers: [] });
           }}
-        />
+        >
+          <DirectoryList
+            directories={directories}
+            onRemoveDirectory={removeDirectory}
+            onUpdateDirectory={handleUpdateFolder}
+          />
+        </Sidebar>
       )}
 
-      <div className={`${directoryHandle ? 'ml-80' : ''} h-screen flex flex-col`}>
+      <div className={`${hasDirectories ? 'ml-80' : ''} h-screen flex flex-col`}>
         <Header
-          directoryHandle={directoryHandle}
-          onUpdateFolder={handleUpdateFolder}
-          onChangeFolder={handleChangeFolder}
+          onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
 
@@ -212,14 +202,14 @@ export default function App() {
           {success && <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4">{success}</div>}
 
           {isLoading && <Loader progress={progress} />}
-          {!isLoading && !directoryHandle && <FolderSelector onSelectFolder={handleSelectFolder} />}
+          {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {directoryHandle && !isLoading && (
+          {hasDirectories && !isLoading && (
             <>
               <StatusBar
                 filteredCount={filteredImages.length}
                 totalCount={images.length}
-                directoryName={directoryHandle.name}
+                directoryCount={directories.length}
               />
 
               <ActionToolbar
@@ -250,7 +240,7 @@ export default function App() {
           )}
         </main>
 
-        {selectedImage && (
+        {selectedImage && directoryPath && (
           <ImageModal
             image={selectedImage}
             onClose={() => setSelectedImage(null)}
