@@ -293,7 +293,18 @@ app.whenReady().then(async () => {
   // Check for a directory path provided as a command-line argument
   // In dev, args start at index 2 (`electron . /path`); in packaged app, at index 1 (`app.exe /path`)
   const args = process.argv.slice(app.isPackaged ? 1 : 2);
-  const potentialPath = args.find(arg => !arg.startsWith('--')); // Find first non-flag argument
+  
+  // Support both --dir flag and direct path
+  let potentialPath = null;
+  const dirFlagIndex = args.indexOf('--dir');
+  
+  if (dirFlagIndex !== -1 && args[dirFlagIndex + 1]) {
+    // Use --dir flag value
+    potentialPath = args[dirFlagIndex + 1];
+  } else {
+    // Fall back to first non-flag argument
+    potentialPath = args.find(arg => !arg.startsWith('--'));
+  }
 
   if (potentialPath) {
     const fullPath = path.resolve(potentialPath);

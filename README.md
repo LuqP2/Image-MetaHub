@@ -60,8 +60,39 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 git clone https://github.com/LuqP2/image-metahub.git
 cd image-metahub
 npm install
+
+# Option 1: Run in browser only
 npm run dev
+
+# Option 2: Run Electron app with optional directory
+npm run dev:app
+npm run dev:app -- --dir "/path/to/images"
 ```
+
+## Command-Line Usage
+
+**Desktop Application (Production)**
+```bash
+# Windows
+ImageMetaHub.exe --dir "C:\path\to\images"
+
+# macOS/Linux
+./ImageMetaHub --dir "/path/to/images"
+```
+
+**Development Mode**
+```bash
+# Start Vite dev server only (browser access)
+npm run dev
+
+# Start Electron app with Vite dev server
+npm run dev:app
+
+# Start with initial directory
+npm run dev:app -- --dir "/path/to/images"
+```
+
+The dev server automatically binds to `0.0.0.0`, making it accessible from other devices on your local network. Check the console output for the network URL.
 
 ## Quick Start
 1. Launch the application and click "Change Folder" to select your AI-generated images directory

@@ -8,7 +8,8 @@
   "main": "electron.mjs",
   "homepage": "./",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
+    "dev:app": "node start-dev.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
