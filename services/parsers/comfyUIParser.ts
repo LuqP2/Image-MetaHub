@@ -217,8 +217,18 @@ export function parseComfyUIMetadata(metadata: ComfyUIMetadata): BaseMetadata {
     let parsedData: Partial<BaseMetadata> = {};
 
     if (metadata.prompt) {
-        const promptObj = typeof metadata.prompt === 'string' ? JSON.parse(metadata.prompt) : metadata.prompt;
-        const workflowObj = metadata.workflow ? (typeof metadata.workflow === 'string' ? JSON.parse(metadata.workflow) : metadata.workflow) : null;
+        // Sanitize the JSON strings to handle non-standard values like NaN
+        const sanitizeJsonString = (str: string) => str.replace(/NaN/g, 'null');
+
+        const promptStr = typeof metadata.prompt === 'string' ? sanitizeJsonString(metadata.prompt) : JSON.stringify(metadata.prompt);
+        const promptObj = JSON.parse(promptStr);
+
+        let workflowObj = null;
+        if (metadata.workflow) {
+            const workflowStr = typeof metadata.workflow === 'string' ? sanitizeJsonString(metadata.workflow) : JSON.stringify(metadata.workflow);
+            workflowObj = JSON.parse(workflowStr);
+        }
+
         const workflowParsedData = parseWorkflowAndPrompt(workflowObj, promptObj);
         parsedData = { ...parsedData, ...workflowParsedData };
     }

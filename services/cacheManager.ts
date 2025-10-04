@@ -2,23 +2,8 @@
 
 import { type IndexedImage } from '../types';
 
-interface CacheEntry {
-  id: string;
-  directoryPath: string;
-  directoryName: string;
-  lastScan: number;
-  imageCount: number;
-  metadata: {
-    id: string;
-    name: string;
-    metadataString: string;
-    metadata: any; // Store complete metadata including normalizedMetadata
-    lastModified: number;
-    models: string[];
-    loras: string[];
-    scheduler: string;
-  }[];
-}
+// This interface is no longer used with the new per-image caching model.
+// interface CacheEntry { ... }
 
 export interface CacheDiff {
   newAndModifiedFiles: { name: string; lastModified: number }[];
@@ -29,7 +14,7 @@ export interface CacheDiff {
 
 class CacheManager {
   private dbName = 'invokeai-browser-cache'; // Default name
-  private dbVersion = 3;
+  private dbVersion = 4; // Incremented version to trigger schema migration
   private db: IDBDatabase | null = null;
   private isInitialized = false;
 
@@ -60,91 +45,112 @@ class CacheManager {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        console.log(`Upgrading IndexedDB from version ${event.oldVersion} to ${event.newVersion}`);
 
+        // Remove old, monolithic cache store if it exists
         if (db.objectStoreNames.contains('cache')) {
           db.deleteObjectStore('cache');
-        }
-        if (db.objectStoreNames.contains('thumbnails')) {
-          db.deleteObjectStore('thumbnails');
+          console.log("Deleted old 'cache' object store.");
         }
 
-        const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
-        cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
+        // Create new, scalable 'images' store if it doesn't exist
+        if (!db.objectStoreNames.contains('images')) {
+          const imageStore = db.createObjectStore('images', { keyPath: 'id' });
+          // Index for retrieving all images in a directory
+          imageStore.createIndex('directoryId', 'directoryId', { unique: false });
+           // Index for checking for a file's existence by its path (directoryId) and name
+          imageStore.createIndex('name_in_directory', ['directoryId', 'name'], { unique: false });
+          console.log("Created new 'images' object store.");
+        }
 
-        const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
+        // Re-create thumbnails store if it doesn't exist (might be deleted in older migration logic)
+        if (!db.objectStoreNames.contains('thumbnails')) {
+            db.createObjectStore('thumbnails', { keyPath: 'id' });
+            console.log("Created 'thumbnails' object store.");
+        }
       };
     });
   }
 
   private async handleIndexedDBError(error: any): Promise<void> {
+    console.warn("Encountered IndexedDB error, attempting to reset database:", error);
     try {
       const deleteRequest = indexedDB.deleteDatabase(this.dbName);
       await new Promise<void>((resolve, reject) => {
-        deleteRequest.onsuccess = () => resolve();
+        deleteRequest.onsuccess = () => {
+            console.log("Successfully deleted IndexedDB. Re-initializing...");
+            resolve();
+        };
         deleteRequest.onerror = () => {
           console.error('❌ Failed to delete IndexedDB:', deleteRequest.error);
           reject(deleteRequest.error);
         };
       });
+      // Retry initialization after deletion
       return this.init();
     } catch (deleteError) {
       console.error('❌ Failed to reset IndexedDB:', deleteError);
+      // Avoid infinite loops if deletion also fails
       return Promise.resolve();
     }
   }
 
-  async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<CacheEntry | null> {
+  async getCachedImagesForDirectory(directoryId: string): Promise<IndexedImage[]> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
-      return null;
+      return [];
     }
-    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readonly');
-      const store = transaction.objectStore('cache');
-      const request = store.get(cacheId);
+      const transaction = this.db!.transaction(['images'], 'readonly');
+      const store = transaction.objectStore('images');
+      const index = store.index('directoryId');
+      const request = index.getAll(directoryId);
+
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || null);
+      request.onsuccess = () => resolve(request.result || []);
     });
   }
 
-  async cacheData(
-    directoryPath: string,
-    directoryName: string,
-    images: IndexedImage[],
-    scanSubfolders: boolean
-  ): Promise<void> {
-    if (!this.db) {
-      console.warn('Cache not initialized. Call init() first.');
+  async cacheImages(images: IndexedImage[]): Promise<void> {
+    if (!this.db || images.length === 0) {
       return;
     }
-    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    const cacheEntry: CacheEntry = {
-      id: cacheId,
-      directoryPath,
-      directoryName,
-      lastScan: Date.now(),
-      imageCount: images.length,
-      metadata: images.map(img => ({
-        id: img.id,
-        name: img.name,
-        metadataString: img.metadataString,
-        metadata: img.metadata,
-        lastModified: img.lastModified,
-        models: img.models,
-        loras: img.loras,
-        scheduler: img.scheduler,
-      })),
-    };
+
+    const transaction = this.db.transaction(['images'], 'readwrite');
+    const store = transaction.objectStore('images');
+
+    // Use a counter to track completion of all put requests
+    let putCount = 0;
+    const totalImages = images.length;
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
-      const request = store.put(cacheEntry);
-      request.onerror = () => {
-        console.error('❌ CACHE SAVE FAILED:', request.error);
-        reject(request.error);
+      transaction.oncomplete = () => {
+        console.log(`✅ Cache transaction completed. Successfully stored/updated ${putCount} images.`);
+        resolve();
       };
-      request.onsuccess = () => resolve();
+
+      transaction.onerror = () => {
+        console.error('❌ Cache transaction failed:', transaction.error);
+        reject(transaction.error);
+      };
+
+      images.forEach(image => {
+        // Each image must have a directoryId to be cached correctly
+        if (!image.directoryId) {
+          console.warn('Skipping image without directoryId:', image.name);
+          return; // Skip this image
+        }
+        const request = store.put(image);
+        request.onsuccess = () => {
+          putCount++;
+        };
+        // Errors on individual requests will bubble up to the transaction's onerror
+      });
+
+      // If no images were actually processed, resolve immediately.
+      if (images.length === 0) {
+          resolve();
+      }
     });
   }
 
@@ -185,32 +191,31 @@ class CacheManager {
       return 0;
     }
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
+      const transaction = this.db!.transaction(['images'], 'readwrite');
+      const store = transaction.objectStore('images');
       const request = store.getAll();
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        const cacheEntries: CacheEntry[] = request.result;
-        let cleanedCount = 0;
-        for (const entry of cacheEntries) {
-          const invalidImages = entry.metadata.filter(meta => {
-            try {
-              const parsed = JSON.parse(meta.metadataString);
-              return !parsed.normalizedMetadata;
-            } catch (error) {
-              console.warn(`❌ Invalid metadata JSON for ${meta.name}, removing from cache`);
-              return true;
-            }
-          });
-          if (invalidImages.length > 0) {
-            entry.metadata = entry.metadata.filter(meta => !!(meta.metadata && meta.metadata.normalizedMetadata));
-            entry.imageCount = entry.metadata.length;
-            entry.lastScan = Date.now();
-            store.put(entry);
-            cleanedCount += invalidImages.length;
+      request.onsuccess = async () => {
+        const images: IndexedImage[] = request.result;
+        const idsToDelete: string[] = [];
+        for (const image of images) {
+          try {
+            JSON.parse(image.metadataString);
+          } catch (error) {
+            console.warn(`❌ Invalid metadata JSON for ${image.name}, scheduling for removal from cache.`);
+            idsToDelete.push(image.id);
           }
         }
-        resolve(cleanedCount);
+
+        if (idsToDelete.length > 0) {
+          // Re-open transaction to delete
+          const deleteTransaction = this.db!.transaction(['images'], 'readwrite');
+          const deleteStore = deleteTransaction.objectStore('images');
+          idsToDelete.forEach(id => deleteStore.delete(id));
+          await new Promise(res => { deleteTransaction.oncomplete = res });
+        }
+
+        resolve(idsToDelete.length);
       };
     });
   }
@@ -221,55 +226,64 @@ class CacheManager {
       return;
     }
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
-      const cacheStore = transaction.objectStore('cache');
+      const transaction = this.db!.transaction(['images', 'thumbnails'], 'readwrite');
+      const imageStore = transaction.objectStore('images');
       const thumbStore = transaction.objectStore('thumbnails');
-      const clearCache = cacheStore.clear();
+      const clearImages = imageStore.clear();
       const clearThumbs = thumbStore.clear();
       let completed = 0;
       const checkComplete = () => {
         completed++;
-        if (completed === 2) resolve();
+        if (completed === 2) {
+            console.log("Cleared 'images' and 'thumbnails' stores.");
+            resolve();
+        }
       };
-      clearCache.onerror = () => reject(clearCache.error);
+      clearImages.onerror = () => reject(clearImages.error);
       clearThumbs.onerror = () => reject(clearThumbs.error);
-      clearCache.onsuccess = checkComplete;
+      clearImages.onsuccess = checkComplete;
       clearThumbs.onsuccess = checkComplete;
     });
   }
 
-  async clearDirectoryCache(directoryPath: string, scanSubfolders: boolean): Promise<void> {
+  async clearDirectoryCache(directoryId: string): Promise<void> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
       return;
     }
-    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const imagesToDelete = await this.getCachedImagesForDirectory(directoryId);
+    if (imagesToDelete.length === 0) {
+      return;
+    }
+
+    const transaction = this.db.transaction(['images'], 'readwrite');
+    const store = transaction.objectStore('images');
+    let deleteCount = 0;
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
-      const request = store.delete(cacheId);
-      request.onerror = () => {
-        console.error(`❌ Failed to clear cache for directory: ${cacheId}`, request.error);
-        reject(request.error);
-      };
-      request.onsuccess = () => {
-        console.log(`✅ Cleared cache for directory: ${cacheId}`);
-        resolve();
-      };
+        transaction.oncomplete = () => {
+            console.log(`✅ Cleared ${deleteCount} cached images for directory: ${directoryId}`);
+            resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+
+        for (const image of imagesToDelete) {
+            const request = store.delete(image.id);
+            request.onsuccess = () => {
+                deleteCount++;
+            };
+        }
     });
   }
 
   async validateCacheAndGetDiff(
-    directoryPath: string,
-    directoryName: string,
-    currentFiles: { name: string; lastModified: number }[],
-    scanSubfolders: boolean
+    directoryId: string,
+    currentFiles: { name: string; lastModified: number }[]
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath, scanSubfolders);
+    const cachedImages = await this.getCachedImagesForDirectory(directoryId);
 
-    if (!cached) {
-      const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-      console.log(`❌ NO CACHE FOUND for "${cacheId}". Performing full scan.`);
+    if (cachedImages.length === 0) {
+      console.log(`❌ NO CACHE FOUND for "${directoryId}". Performing full scan.`);
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -278,42 +292,42 @@ class CacheManager {
       };
     }
     
-    console.log(`✅ CACHE FOUND for "${directoryName}". Analyzing diff...`);
+    console.log(`✅ CACHE FOUND for "${directoryId}". Analyzing diff...`);
 
-    const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
+    const cachedImagesMap = new Map(cachedImages.map(img => [img.name, img]));
     const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
-    const cachedImages: IndexedImage[] = [];
+    const upToDateCachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
 
     for (const file of currentFiles) {
       currentFileNames.add(file.name);
-      const cachedFile = cachedMetadataMap.get(file.name);
+      const cachedFile = cachedImagesMap.get(file.name);
 
       if (!cachedFile) {
         newAndModifiedFiles.push(file);
       } else if (cachedFile.lastModified < file.lastModified) {
         newAndModifiedFiles.push(file);
       } else {
-        cachedImages.push({
+        // The image is in cache and up-to-date
+        upToDateCachedImages.push({
           ...cachedFile,
-          metadata: cachedFile.metadata,
-          handle: { name: cachedFile.name, kind: 'file' } as any,
+          handle: { name: cachedFile.name, kind: 'file' } as any, // Mock handle
         });
       }
     }
 
-    const deletedFileIds = cached.metadata
-      .filter(m => !currentFileNames.has(m.name))
-      .map(m => m.id);
+    const deletedFileIds = cachedImages
+      .filter(img => !currentFileNames.has(img.name))
+      .map(img => img.id);
 
     console.log(`   - ${newAndModifiedFiles.length} new or modified files to process.`);
     console.log(`   - ${deletedFileIds.length} deleted files to remove.`);
-    console.log(`   - ${cachedImages.length} images restored from cache.`);
+    console.log(`   - ${upToDateCachedImages.length} images restored from cache.`);
 
     return {
       newAndModifiedFiles,
       deletedFileIds,
-      cachedImages,
+      cachedImages: upToDateCachedImages,
       needsFullRefresh: false,
     };
   }
