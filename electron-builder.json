@@ -11,12 +11,10 @@
   ],
   "win": {
     "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
+      "nsis",
+      "zip"
     ],
-    "artifactName": "ImageMetaHub-Setup-${version}.exe"
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
   },
   "mac": {
     "target": [
@@ -47,7 +45,8 @@
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
+    "createStartMenuShortcut": true,
+    "artifactName": "ImageMetaHub-Setup-${version}.${ext}"
   },
   "publish": {
     "provider": "github",

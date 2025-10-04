@@ -8,6 +8,9 @@ export default defineConfig({
   server: {
     host: true, // Expose server to the network
   },
+  css: {
+    postcss: './postcss.config.cjs'
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets'
