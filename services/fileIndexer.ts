@@ -66,21 +66,25 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     offset += 12 + length;
   }
 
+  // Configure debug logging
+  const DEBUG = false;
+  const log = (...args: any[]) => DEBUG && console.log(...args);
+
   // Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
   if (chunks.workflow) {
-    // console.log('✅ Detected "workflow" chunk, treating as ComfyUI metadata.');
+    log('✅ Detected "workflow" chunk, treating as ComfyUI metadata.');
     const comfyMetadata: ComfyUIMetadata = {};
     if (chunks.workflow) comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata;
   } else if (chunks.parameters) {
-    // console.log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
+    log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
     return { parameters: chunks.parameters };
   } else if (chunks.invokeai_metadata) {
-    // console.log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
+    log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
     return JSON.parse(chunks.invokeai_metadata);
   } else if (chunks.prompt) {
-    // console.log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
+    log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
     return { prompt: chunks.prompt };
   }
 

@@ -4,7 +4,11 @@ import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
 import { IndexedImage, Directory } from '../types';
 
-console.log('🚀 useImageLoader module loaded');
+// Configure logging level
+const DEBUG = false;
+const log = (...args: any[]) => DEBUG && console.log(...args);
+const warn = (...args: any[]) => DEBUG && console.warn(...args);
+const error = (...args: any[]) => console.error(...args); // Keep error logging for critical issues
 
 // Throttle function for progress updates to avoid excessive re-renders
 function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
@@ -56,7 +60,7 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
                 const subFiles = await getFilesRecursivelyWeb(entry, entryPath);
                 files.push(...subFiles);
             } catch (e) {
-                console.warn(`Could not read directory: ${entryPath}`, e);
+                warn(`Could not read directory: ${entryPath}`);
             }
         }
     }
