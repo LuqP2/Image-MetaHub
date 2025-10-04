@@ -73,10 +73,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         let results = images.filter(img => visibleDirectoryIds.has(img.directoryId || ''));
 
         if (searchQuery) {
-            const lowerCaseQuery = searchQuery.toLowerCase();
-            results = results.filter(image =>
-                image.metadataString.toLowerCase().includes(lowerCaseQuery)
-            );
+            const searchTerms = searchQuery.toLowerCase().split(' ').filter(term => term.trim() !== '');
+            if (searchTerms.length > 0) {
+                results = results.filter(image => {
+                    const metadata = image.metadataString.toLowerCase();
+                    return searchTerms.every(term => metadata.includes(term));
+                });
+            }
         }
 
         if (selectedModels.length > 0) {
