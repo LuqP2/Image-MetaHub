@@ -176,7 +176,7 @@ export function useImageLoader() {
 
         if (!isUpdate) {
             // Clear images for this specific directory before loading
-            clearImages(directory.id);
+            clearImages();
             clearFileDataCache(); // This might need a more granular approach later
         }
 
