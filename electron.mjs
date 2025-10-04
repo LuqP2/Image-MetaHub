@@ -502,6 +502,60 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // TEST ONLY: Simulate update available dialog
+  ipcMain.handle('test-update-dialog', async () => {
+    if (!mainWindow) {
+      return { success: false, error: 'Main window not available' };
+    }
+    
+    // Simulate update info
+    const mockUpdateInfo = {
+      version: '2.0.0',
+      releaseNotes: `## [2.0.0] - Test Release
+
+### Added
+- Multiple Directory Support: Add and manage multiple image directories simultaneously
+- New Settings Modal: Configure cache location and automatic update preferences
+- Resizable Image Grid: Adjustable thumbnail sizes for better display on high-resolution screens
+- Command-Line Directory Support: Specify startup directory via command-line arguments
+
+### Fixed
+- Cross-platform path construction issues resolved
+- Improved file operations reliability
+- Fixed cached image loading problems`
+    };
+
+    // Extract and format changelog
+    let changelogText = 'No release notes available.';
+    
+    if (mockUpdateInfo.releaseNotes) {
+      changelogText = mockUpdateInfo.releaseNotes
+        .replace(/#{1,6}\s/g, '') // Remove markdown headers
+        .replace(/\*\*/g, '') // Remove bold markers
+        .replace(/\*/g, '•') // Convert asterisks to bullets
+        .replace(/<[^>]*>/g, '') // Remove HTML tags
+        .trim();
+    }
+
+    // Limit changelog length
+    if (changelogText.length > 500) {
+      changelogText = changelogText.substring(0, 497) + '...';
+    }
+
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '🎉 Update Available (TEST)',
+      message: `Version ${mockUpdateInfo.version} is ready to download!`,
+      detail: `What's new:\n\n${changelogText}\n\nWould you like to download this update now?`,
+      buttons: ['Download Now', 'Download Later', 'Skip this version'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    });
+
+    return { success: true, response: result.response };
+  });
+
   // Handle listing directory files
   ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
     try {

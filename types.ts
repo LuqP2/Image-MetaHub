@@ -15,6 +15,7 @@ export interface ElectronAPI {
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
+  testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
 }
 
 declare global {
