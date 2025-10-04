@@ -216,23 +216,45 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+    // Reset imageUrl whenever the image prop changes
+    setImageUrl(null);
 
     const loadImage = async () => {
+      if (!isMounted) return;
+
       try {
-        if (!image.handle) {
-          throw new Error('Image handle is invalid');
+        // Primary method: Use FileSystemFileHandle
+        if (image.handle && typeof image.handle.getFile === 'function') {
+          const file = await image.handle.getFile();
+          if (isMounted) {
+            const url = URL.createObjectURL(file);
+            setImageUrl(url);
+          }
+          return; // Success, no need for fallback
         }
-
-        const file = await image.handle.getFile();
-        if (!isMounted) return;
-
-        const url = URL.createObjectURL(file);
-        setImageUrl(url);
-      } catch (error) {
-        console.error('Error loading image:', error);
-        if (isMounted) {
-          setImageUrl(null);
-          alert(`Failed to load image: ${error.message}`);
+        throw new Error('Image handle is not a valid FileSystemFileHandle.');
+      } catch (handleError) {
+        // Fallback method: Use Electron API if available
+        console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
+        if (isMounted && window.electronAPI && directoryPath) {
+          try {
+            const result = await window.electronAPI.readFileAsDataURL(directoryPath, image.name);
+            if (result.success && result.dataUrl && isMounted) {
+              setImageUrl(result.dataUrl);
+            } else {
+              throw new Error(result.error || 'Failed to read file via Electron API.');
+            }
+          } catch (electronError) {
+            console.error('Electron fallback failed:', electronError);
+            if (isMounted) {
+              setImageUrl(null); // Explicitly set to null on failure
+              alert(`Failed to load image: ${electronError.message}`);
+            }
+          }
+        } else if (isMounted) {
+            // If no fallback is available
+            setImageUrl(null);
+            alert(`Failed to load image: No valid file handle and not in a compatible Electron environment.`);
         }
       }
     };
