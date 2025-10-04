@@ -347,7 +347,12 @@ export function useImageLoader() {
         }
     }, [loadDirectory, addDirectory]);
 
-    return { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage };
+    return {
+        handleSelectFolder,
+        handleUpdateFolder,
+        handleLoadFromStorage,
+        loadDirectory
+    };
 }
 
 export { getFileHandles };

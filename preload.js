@@ -16,8 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // --- Invokable renderer-to-main functions ---
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
-  updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
+  updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),

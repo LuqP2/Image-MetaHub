@@ -3,6 +3,7 @@ import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
+import { Directory } from './types';
 
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
@@ -21,7 +22,7 @@ import DirectoryList from './components/DirectoryList';
 
 export default function App() {
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, loadDirectory } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -81,6 +82,29 @@ export default function App() {
     };
     initializeCache().catch(console.error);
   }, []);
+
+  // Handler for loading directory from a path
+  const handleLoadFromPath = useCallback(async (path: string) => {
+    try {
+      // Create a directory object
+      const mockHandle = { 
+        name: path.split(/[/\\]/).pop() || path,
+        kind: 'directory' as const
+      };
+
+      const newDirectory: Directory = {
+        id: path,
+        name: mockHandle.name,
+        path: path,
+        handle: mockHandle as FileSystemDirectoryHandle
+      };
+      
+      // Add the directory through handleSelectFolder which will handle all the necessary setup
+      await handleSelectFolder();
+    } catch (error) {
+      console.error('Error loading directory from path:', error);
+    }
+  }, [handleSelectFolder]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
