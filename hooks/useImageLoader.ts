@@ -173,6 +173,27 @@ export function useImageLoader() {
         setFilterOptions, removeImages, addImages, clearImages
     } = useImageStore();
 
+    const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
+        try {
+            await cacheManager.init();
+            const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
+
+            if (cachedData && cachedData.metadata.length > 0) {
+                const cachedImages: IndexedImage[] = cachedData.metadata.map(meta => ({
+                    ...meta,
+                    handle: { name: meta.name, kind: 'file' } as any, // Mock handle
+                    directoryId: directory.id,
+                }));
+                addImages(cachedImages);
+                log(`Loaded ${cachedImages.length} images from cache for ${directory.name}`);
+            }
+        } catch (err) {
+            error(`Failed to load directory from cache ${directory.name}:`, err);
+            // Don't set global error for this, as it's a background process
+        }
+    }, [addImages]);
+
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
         setLoading(true);
         setError(null);
@@ -333,30 +354,67 @@ export function useImageLoader() {
     }, [loadDirectory, setError]);
     
     const handleLoadFromStorage = useCallback(async () => {
+        setLoading(true);
         if (getIsElectron()) {
             const storedPaths = localStorage.getItem('image-metahub-directories');
             if (storedPaths) {
-                const paths = JSON.parse(storedPaths);
-                if (paths.length === 0) return;
+                try {
+                    const paths = JSON.parse(storedPaths);
+                    if (paths.length === 0) {
+                        setLoading(false);
+                        return;
+                    }
 
-                for (const path of paths) {
-                    const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
-                    const handle = { name, kind: 'directory' } as any;
-                    const directoryId = path;
+                    // First, add all directories to the store without loading.
+                    for (const path of paths) {
+                        const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
+                        const handle = { name, kind: 'directory' } as any;
+                        const directoryId = path;
+                        const newDirectory: Directory = { id: directoryId, path, name, handle };
+                        addDirectory(newDirectory);
+                    }
+                    
+                    // Then, load them all from cache in parallel.
+                    const directoriesToLoad = useImageStore.getState().directories;
+                    const loadPromises = directoriesToLoad.map(dir => loadDirectoryFromCache(dir));
+                    await Promise.all(loadPromises);
 
-                    const newDirectory: Directory = { id: directoryId, path, name, handle };
-                    addDirectory(newDirectory);
-                    await loadDirectory(newDirectory, false); // This will call updateAllowedPaths internally
+                    // Final update for allowed paths.
+                    const allPaths = useImageStore.getState().directories.map(d => d.path);
+                    await window.electronAPI.updateAllowedPaths(allPaths);
+
+                    // And finally, update the filter options from all the loaded images.
+                    const allImages = useImageStore.getState().images;
+                    const models = new Set<string>();
+                    const loras = new Set<string>();
+                    const schedulers = new Set<string>();
+
+                    for (const image of allImages) {
+                        if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
+                        if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
+                        if (image.scheduler) schedulers.add(image.scheduler);
+                    }
+
+                    setFilterOptions({
+                        models: Array.from(models).sort(),
+                        loras: Array.from(loras).sort(),
+                        schedulers: Array.from(schedulers).sort(),
+                    });
+                    setSuccess(`Loaded ${directoriesToLoad.length} director(y|ies) from cache.`);
+                } catch (e) {
+                    error("Error loading from storage", e);
+                    setError("Failed to load previously saved directories.");
+                } finally {
+                    setLoading(false);
                 }
-
-                // Final update after all directories are loaded
-                const allPaths = useImageStore.getState().directories.map(d => d.path);
-                await window.electronAPI.updateAllowedPaths(allPaths);
+            } else {
+                 setLoading(false);
             }
         } else {
             console.warn('Loading from storage is only supported in Electron.');
+            setLoading(false);
         }
-    }, [loadDirectory, addDirectory]);
+    }, [loadDirectoryFromCache, addDirectory, setLoading, setError, setFilterOptions, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
@@ -380,7 +438,8 @@ export function useImageLoader() {
         handleUpdateFolder,
         handleLoadFromStorage,
         handleRemoveDirectory,
-        loadDirectory
+        loadDirectory,
+        loadDirectoryFromCache
     };
 }
 
