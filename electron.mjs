@@ -88,14 +88,40 @@ if (autoUpdater) {
     }
 
     if (mainWindow) {
+      // Extract and format changelog from release notes
+      let changelogText = 'No release notes available.';
+      
+      if (info.releaseNotes) {
+        if (typeof info.releaseNotes === 'string') {
+          // Clean up markdown formatting for dialog display
+          changelogText = info.releaseNotes
+            .replace(/#{1,6}\s/g, '') // Remove markdown headers
+            .replace(/\*\*/g, '') // Remove bold markers
+            .replace(/\*/g, '•') // Convert asterisks to bullets
+            .replace(/<[^>]*>/g, '') // Remove HTML tags
+            .trim();
+        } else if (Array.isArray(info.releaseNotes)) {
+          changelogText = info.releaseNotes
+            .map(note => note.note || '')
+            .join('\n')
+            .trim();
+        }
+      }
+
+      // Limit changelog length for dialog
+      if (changelogText.length > 500) {
+        changelogText = changelogText.substring(0, 497) + '...';
+      }
+
       dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available.`,
-        detail: 'Would you like to download this update?',
+        type: 'info',
+        title: '🎉 Update Available',
+        message: `Version ${info.version} is ready to download!`,
+        detail: `What's new:\n\n${changelogText}\n\nWould you like to download this update now?`,
         buttons: ['Download Now', 'Download Later', 'Skip this version'],
         defaultId: 0,
-        cancelId: 2
+        cancelId: 2,
+        noLink: true
       }).then((result) => {
         if (result.response === 0) {
           // User chose to download - START DOWNLOAD NOW
