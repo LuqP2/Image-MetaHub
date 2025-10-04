@@ -30,6 +30,7 @@ interface ImageState {
   // Actions
   addDirectory: (directory: Directory) => void;
   removeDirectory: (directoryId: string) => void;
+  toggleDirectoryVisibility: (directoryId: string) => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number }) => void;
   setError: (error: string | null) => void;
@@ -63,9 +64,13 @@ interface ImageState {
 export const useImageStore = create<ImageState>((set, get) => {
     // --- Helper function for filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories } = state;
 
-        let results = images;
+        // First, filter by directory visibility
+        const visibleDirectoryIds = new Set(
+            directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
+        );
+        let results = images.filter(img => visibleDirectoryIds.has(img.directoryId || ''));
 
         if (searchQuery) {
             const lowerCaseQuery = searchQuery.toLowerCase();
@@ -179,7 +184,17 @@ export const useImageStore = create<ImageState>((set, get) => {
       return state; // Prevent adding duplicates
     }
     return {
-      directories: [...state.directories, directory]
+      directories: [...state.directories, { ...directory, visible: directory.visible ?? true }]
+    };
+  }),
+
+  toggleDirectoryVisibility: (directoryId) => set(state => {
+    const updatedDirectories = state.directories.map(dir =>
+      dir.id === directoryId ? { ...dir, visible: !(dir.visible ?? true) } : dir
+    );
+    return {
+      ...filterAndSort({ ...state, directories: updatedDirectories }),
+      directories: updatedDirectories,
     };
   }),
 

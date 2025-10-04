@@ -255,6 +255,7 @@ export interface Directory {
   name: string;
   path: string;
   handle: FileSystemDirectoryHandle;
+  visible?: boolean; // Whether images from this directory should be shown (default: true)
 }
 
 export interface FilterOptions {

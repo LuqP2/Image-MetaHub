@@ -51,6 +51,7 @@ export default function App() {
     removeImage,
     removeDirectory,
     updateImage,
+    toggleDirectoryVisibility,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
 
@@ -211,6 +212,7 @@ export default function App() {
             directories={directories}
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
+            onToggleVisibility={toggleDirectoryVisibility}
           />
         </Sidebar>
       )}
