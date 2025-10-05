@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -259,6 +259,9 @@ function createWindow(startupDirectory = null) {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
 
+    // Send initial theme state to the renderer
+    mainWindow.webContents.send('theme-updated', nativeTheme.shouldUseDarkColors);
+
     // If a startup directory was provided via CLI, send it to the renderer
     if (startupDirectory) {
       console.log('Sending startup directory to renderer:', startupDirectory);
@@ -325,6 +328,13 @@ app.whenReady().then(async () => {
   
   // Setup IPC handlers for file operations
   setupFileOperationHandlers();
+
+  // Listen for theme changes and notify the renderer
+  nativeTheme.on('updated', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('theme-updated', nativeTheme.shouldUseDarkColors);
+    }
+  });
 });
 
 // Setup IPC handlers for file operations

@@ -113,6 +113,24 @@ export default function App() {
     handleLoadFromStorage();
   }, [handleLoadFromStorage]);
 
+  // Listen for theme updates from the main process
+  useEffect(() => {
+    const electronAPI = window.electronAPI as any;
+    if (electronAPI && typeof electronAPI.onThemeUpdate === 'function') {
+      const unsubscribe = electronAPI.onThemeUpdate((isDarkMode: boolean) => {
+        console.log('Theme updated:', isDarkMode ? 'Dark' : 'Light');
+        if (isDarkMode) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      });
+
+      // Cleanup the listener when the component unmounts
+      return unsubscribe;
+    }
+  }, []);
+
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
     const electronAPI = window.electronAPI as any;
@@ -181,7 +199,7 @@ export default function App() {
   const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
+    <div className="min-h-screen font-sans">
       <BrowserCompatibilityWarning />
 
       <SettingsModal
@@ -193,8 +211,6 @@ export default function App() {
         <Sidebar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          searchField={searchField}
-          onSearchFieldChange={setSearchField}
           availableModels={availableModels}
           availableLoras={availableLoras}
           availableSchedulers={availableSchedulers}

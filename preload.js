@@ -4,6 +4,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   // --- Listeners for main-to-renderer events ---
+  onThemeUpdate: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('theme-updated', handler);
+    return () => {
+      ipcRenderer.removeListener('theme-updated', handler);
+    };
+  },
+
   onLoadDirectoryFromCLI: (callback) => {
     const handler = (event, ...args) => callback(...args);
     ipcRenderer.on('load-directory-from-cli', handler);
