@@ -166,7 +166,7 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
   if ('workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string')) {
     return true;
   }
-
+  
   // As a fallback, check for the API-style 'prompt' object. This format, where keys are
   // node IDs, is also unique to ComfyUI and distinct from other formats.
   if ('prompt' in metadata && typeof metadata.prompt === 'object' && metadata.prompt !== null && !Array.isArray(metadata.prompt)) {
