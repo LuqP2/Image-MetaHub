@@ -68,7 +68,7 @@ function createNodeMap(workflow: ComfyUIWorkflow | null, prompt: ComfyUIPrompt):
  * @param visited A set to track visited nodes to prevent infinite loops.
  * @returns The found ParserNode or null.
  */
-function traceBackToNode(link: Link | undefined, nodes: NodeMap, targetClassType: string, visited: Set<string> = new Set()): ParserNode | null {
+function traceBackToNode(link: Link | undefined, nodes: NodeMap, predicate: (node: ParserNode) => boolean, visited: Set<string> = new Set()): ParserNode | null {
     if (!link || !Array.isArray(link) || link.length < 2) return null;
 
     const [nodeId, outputIndex] = link;
@@ -79,8 +79,8 @@ function traceBackToNode(link: Link | undefined, nodes: NodeMap, targetClassType
     const node = nodes[nodeId];
     if (!node) return null;
 
-    // 1. Check if the current node is the target
-    if (node.class_type.includes(targetClassType)) {
+    // 1. Check if the current node matches the predicate
+    if (predicate(node)) {
         return node;
     }
 
@@ -88,46 +88,55 @@ function traceBackToNode(link: Link | undefined, nodes: NodeMap, targetClassType
     if (node.class_type.includes('Reroute')) {
         const inputLink = Object.values(node.inputs).find(input => Array.isArray(input));
         if (Array.isArray(inputLink) && inputLink.length >= 2) {
-            return traceBackToNode(inputLink as Link, nodes, targetClassType, visited);
+            return traceBackToNode(inputLink as Link, nodes, predicate, visited);
         }
     }
 
     // 3. Trace the primary input for image/latent data (e.g., from a VAEDecode).
     const upstreamLink = node.inputs.samples || node.inputs.image || node.inputs.latent || node.inputs.latent_image;
     if (Array.isArray(upstreamLink) && upstreamLink.length >= 2) {
-        return traceBackToNode(upstreamLink as Link, nodes, targetClassType, visited);
+        return traceBackToNode(upstreamLink as Link, nodes, predicate, visited);
     }
     
     // 4. Fallback for other potential pass-through nodes.
     const anyInputLink = Object.values(node.inputs).find(input => Array.isArray(input));
     if (Array.isArray(anyInputLink) && anyInputLink.length >= 2) {
-        return traceBackToNode(anyInputLink as Link, nodes, targetClassType, visited);
+        return traceBackToNode(anyInputLink as Link, nodes, predicate, visited);
     }
 
     return null;
 }
 
 /**
- * Finds the source KSampler node responsible for generating the final image.
- * It starts from an output node (like SaveImage) and traces backwards.
+ * Finds the source node responsible for the final image generation (e.g., KSampler, UltimateSDUpscale).
+ * It starts from an output node (like SaveImage) and traces backwards to find a node with sampler-like inputs.
  * @param outputNode The node that saves or previews the final image.
  * @param nodes The complete map of all nodes in the graph.
- * @returns The source KSampler node or null if not found.
+ * @returns The source sampler-like node or null if not found.
  */
-function findSourceSampler(outputNode: ParserNode, nodes: NodeMap): ParserNode | null {
-    // If the output node itself is a sampler, we've found it.
-    if (outputNode.class_type.includes('Sampler')) {
+function findImageSourceNode(outputNode: ParserNode, nodes: NodeMap): ParserNode | null {
+    const isSamplerLike = (node: ParserNode): boolean => {
+        // A node is considered sampler-like if it has these common parameter inputs.
+        // This is a heuristic that should cover KSampler, UltimateSDUpscale, etc.
+        const hasSeed = 'seed' in node.inputs;
+        const hasSteps = 'steps' in node.inputs;
+        const hasCfg = 'cfg' in node.inputs;
+        return hasSeed && hasSteps && hasCfg;
+    };
+
+    // If the output node itself is the sampler, return it.
+    if (isSamplerLike(outputNode)) {
         return outputNode;
     }
 
     // Start tracing back from the 'images' or 'samples' input of the output node.
     const inputLink = outputNode.inputs.images || outputNode.inputs.samples;
-    if (!inputLink) {
+    if (!Array.isArray(inputLink) || inputLink.length < 2) {
         return null;
     }
     
-    // The target is any kind of Sampler node.
-    return traceBackToNode(inputLink, nodes, 'Sampler');
+    // The target is any node that looks like a sampler.
+    return traceBackToNode(inputLink as Link, nodes, isSamplerLike);
 }
 
 function findTargetNode(nodes: NodeMap): ParserNode | null {
@@ -220,60 +229,56 @@ function traceNodeValue(link: Link | undefined, nodes: NodeMap, contextHint: str
 
     const [nodeId, outputIndex] = link;
     const visitKey = `${nodeId}:${outputIndex}:${contextHint}`;
-    if (visited.has(visitKey)) return null; // Cycle detected
+    if (visited.has(visitKey)) return null;
     visited.add(visitKey);
 
     const node = nodes[nodeId];
     if (!node) return null;
     
     const traceNext = (nextLink: any, newContextHint = contextHint) => {
-        return traceNodeValue(nextLink as Link, nodes, newContextHint, visited);
+        if (Array.isArray(nextLink) && nextLink.length >= 2) {
+            return traceNodeValue(nextLink as Link, nodes, newContextHint, visited);
+        }
+        return null;
     }
 
-    // 1. Special handling for prompt nodes to get the text directly.
-    if (node.class_type.includes('CLIPTextEncode')) {
-        // In many workflows (from UI), the text is in widgets_values.
-        if (node.widgets_values && node.widgets_values.length > 0 && typeof node.widgets_values[0] === 'string') {
+    // 1. Check for literal text value. This is the base case for prompt tracing.
+    // Nodes like "String Literal" or a CLIPTextEncode with text in its widget hold the value directly.
+    if (node.class_type.includes('String') || node.class_type.includes('CLIPTextEncode')) {
+        if (node.widgets_values && typeof node.widgets_values[0] === 'string') {
             return node.widgets_values[0];
         }
-        // In the API format, the text is in inputs.text.
-        if (node.inputs.text) {
-            const textValue = node.inputs.text;
-            return Array.isArray(textValue) ? traceNext(textValue, 'text') : textValue;
-        }
+        // If it's a text-like node but the value isn't in the widget, it must be traced from its input.
+        // This handles CLIPTextEncode being fed by a String Literal.
+        return traceNext(node.inputs.string || node.inputs.text, 'text');
     }
 
-    // 2. Handle Pass-through nodes (Reroute, Pipe, and various Conditioning nodes)
-    const passThroughTypes = ['Reroute', 'Pipe', 'ConditioningCombine', 'ConditioningSetTimestepRange', 'ConditioningZeroOut'];
-    const isPassThrough = passThroughTypes.some(type => node.class_type.includes(type));
-    if (isPassThrough) {
-        // For conditioning nodes, the input is 'conditioning' or 'conditioning_1'/'conditioning_2'.
-        // For others, it's usually just one input. We prioritize the most likely candidates.
+    // 2. If no literal value, check if this is a pass-through node and recurse.
+    
+    // 2a. Handle general pass-through nodes for conditioning, pipes, etc.
+    const passThroughTypes = ['Reroute', 'Pipe', 'ConditioningCombine', 'ConditioningSetTimestepRange', 'ConditioningZeroOut', 'ControlNetApplyAdvanced', 'FluxGuidance'];
+    if (passThroughTypes.some(type => node.class_type.includes(type))) {
         const primaryInput = node.inputs.conditioning || node.inputs.conditioning_1;
-        if (primaryInput && Array.isArray(primaryInput)) {
-            return traceNext(primaryInput);
-        }
-        // Fallback for the second input of a Combine node.
+        if (primaryInput) return traceNext(primaryInput);
+        
         const secondaryInput = node.inputs.conditioning_2;
-         if (secondaryInput && Array.isArray(secondaryInput)) {
-            return traceNext(secondaryInput);
-        }
-        // Generic fallback for any other pass-through that doesn't use a standard name.
+        if (secondaryInput) return traceNext(secondaryInput);
+        
         const anyInputLink = Object.values(node.inputs).find(input => Array.isArray(input));
         if (anyInputLink) return traceNext(anyInputLink);
     }
 
-    // 3. Handle Bus nodes
+    // 2c. Handle Bus nodes
     if (node.class_type.includes('Bus')) {
         const contextInput = node.inputs[contextHint];
-        if (contextInput && Array.isArray(contextInput)) {
-            return traceNext(contextInput);
-        }
+        if (contextInput) return traceNext(contextInput);
         const anyInputLink = Object.values(node.inputs).find(input => Array.isArray(input));
         if (anyInputLink) return traceNext(anyInputLink);
     }
+    
+    // 3. If not a pass-through, extract other types of values.
 
-    // 4. Extract literal value from other node types
+    // 3a. Extract literal values from standard input fields (API format, etc.)
     const valueFields = ['string', 'String', 'int', 'float', 'seed', 'sampler_name', 'scheduler', 'populated_text', 'unet_name', 'ckpt_name', 'model_name', 'lora_name', 'guidance', 'wildcard_text'];
     for (const field of valueFields) {
         if (node.inputs[field] !== undefined) {
@@ -282,26 +287,22 @@ function traceNodeValue(link: Link | undefined, nodes: NodeMap, contextHint: str
         }
     }
     
-    // 5. Special case for latent dimensions
-    if (node.class_type.includes("Latent")) {
-        const width = Array.isArray(node.inputs.width) ? traceNext(node.inputs.width, 'width') : node.inputs.width;
-        const height = Array.isArray(node.inputs.height) ? traceNext(node.inputs.height, 'height') : node.inputs.height;
-        if (width && height) return `${width}x${height}`;
-    }
-    
-    // 6. Special case for string concatenation
+    // 3b. Handle special-case nodes like string concatenation or latent dimensions.
     if (node.class_type === 'JWStringConcat') {
         const strA = traceNext(node.inputs.a, 'a') || '';
         const strB = traceNext(node.inputs.b, 'b') || '';
         return `${strA}${strB}`;
     }
+    if (node.class_type.includes("Latent")) {
+        const width = Array.isArray(node.inputs.width) ? traceNext(node.inputs.width, 'width') : node.inputs.width;
+        const height = Array.isArray(node.inputs.height) ? traceNext(node.inputs.height, 'height') : node.inputs.height;
+        if (width && height) return `${width}x${height}`;
+    }
 
-    // 7. Fallback to widget values for non-text nodes
+    // 4. Final fallbacks.
     if (node.widgets_values && node.widgets_values.length > outputIndex) {
         return node.widgets_values[outputIndex];
     }
-
-    // 8. Final fallback: try to trace any input link
     const anyInputLink = Object.values(node.inputs).find(input => Array.isArray(input));
     if (anyInputLink) return traceNext(anyInputLink);
     
@@ -316,25 +317,21 @@ function parseWorkflowAndPrompt(workflow: ComfyUIWorkflow | null, prompt: ComfyU
     
     const outputNode = findTargetNode(nodes);
     if (outputNode) {
-        const samplerNode = findSourceSampler(outputNode, nodes);
+        const imageSourceNode = findImageSourceNode(outputNode, nodes);
 
-        if (samplerNode) {
-            const getSamplerValue = (key: string) => {
-                const input = samplerNode.inputs[key];
-                // If the input is a link, trace it. Otherwise, it's a literal value.
-                return Array.isArray(input) ? traceVal(input, key) : input;
-            };
+        if (imageSourceNode) {
+            // Universal Tracing: Apply recursive tracing to ALL parameters, not just prompts.
+            // This correctly handles workflows where parameters originate in upstream nodes (e.g., BasicScheduler).
+            result.steps = traceVal(imageSourceNode.inputs.steps || imageSourceNode.inputs.sigmas, 'steps');
+            result.cfg_scale = traceVal(imageSourceNode.inputs.cfg, 'cfg');
+            result.seed = traceVal(imageSourceNode.inputs.seed, 'seed');
+            result.sampler = traceVal(imageSourceNode.inputs.sampler_name || imageSourceNode.inputs.sampler, 'sampler');
+            result.scheduler = traceVal(imageSourceNode.inputs.scheduler, 'scheduler');
 
-            result.steps = getSamplerValue('steps');
-            result.cfg_scale = getSamplerValue('cfg');
-            result.seed = getSamplerValue('seed');
-            result.sampler = getSamplerValue('sampler_name');
-            result.scheduler = getSamplerValue('scheduler');
+            result.prompt = traceVal(imageSourceNode.inputs.positive, 'positive');
+            result.negativePrompt = traceVal(imageSourceNode.inputs.negative, 'negative');
 
-            result.prompt = traceVal(samplerNode.inputs.positive, 'positive');
-            result.negativePrompt = traceVal(samplerNode.inputs.negative, 'negative');
-
-            const sizeVal = traceVal(samplerNode.inputs.latent_image, 'latent_image');
+            const sizeVal = traceVal(imageSourceNode.inputs.latent_image, 'latent_image');
             if (sizeVal && typeof sizeVal === 'string' && sizeVal.includes('x')) {
                 const [width, height] = sizeVal.split('x');
                 result.width = parseInt(width, 10);
