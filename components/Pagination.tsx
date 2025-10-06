@@ -42,15 +42,60 @@ const Pagination: React.FC<PaginationProps> = ({
   const showPageControls = totalPages > 1;
 
   return (
-    <div className="flex justify-center items-center gap-4 mt-6 py-4 text-gray-400">
-      {/* Items per page dropdown */}
+    <div className="flex justify-between items-center text-sm text-gray-700">
+      <div className="text-sm text-gray-600">
+        {totalItems} items
+      </div>
+
+      <div className="flex items-center gap-2">
+        {showPageControls && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+
+            {isEditingPage ? (
+              <form onSubmit={handlePageInputSubmit}>
+                <input
+                  type="number"
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onBlur={() => setIsEditingPage(false)}
+                  autoFocus
+                  className="w-16 text-center px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </form>
+            ) : (
+              <span
+                className="cursor-pointer px-2 py-1.5 rounded hover:bg-gray-100"
+                onClick={() => setIsEditingPage(true)}
+              >
+                Page {currentPage} of {totalPages}
+              </span>
+            )}
+
+            <button
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
         <label htmlFor="items-per-page" className="text-sm">Show:</label>
         <select
           id="items-per-page"
           value={itemsPerPage}
           onChange={handleItemsPerPageChange}
-          className="bg-gray-700 border border-gray-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-2 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value={10}>10</option>
           <option value={20}>20</option>
@@ -60,58 +105,6 @@ const Pagination: React.FC<PaginationProps> = ({
           <option value="all">All</option>
         </select>
       </div>
-
-      {showPageControls && (
-        <>
-          <div className="flex-grow" />
-
-          {/* Page navigation */}
-          <div className="flex items-center gap-3">
-        <button
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Prev
-        </button>
-
-        {isEditingPage ? (
-          <form onSubmit={handlePageInputSubmit}>
-            <input
-              type="number"
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              onBlur={() => setIsEditingPage(false)}
-              autoFocus
-              className="w-16 text-center bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </form>
-        ) : (
-          <span
-            className="cursor-pointer hover:text-white"
-            onClick={() => setIsEditingPage(true)}
-          >
-            Page {currentPage} of {totalPages}
-          </span>
-        )}
-
-        <button
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Next
-        </button>
-      </div>
-
-      <div className="flex-grow" />
-
-      {/* Total items display */}
-      <div className="text-sm">
-        {totalItems} items
-      </div>
-        </>
-      )}
     </div>
   );
 };

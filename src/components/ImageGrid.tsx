@@ -1,7 +1,6 @@
-import React from 'react';
-import { IndexedImage } from '../types';
-import { useImageLoader } from '../hooks/useImageLoader';
-import { useSettingsStore } from '../store/useSettingsStore';
+import React, 'react';
+import { IndexedImage } from '../../types';
+import { useImageLoader } from '../../hooks/useImageLoader';
 
 interface ImageThumbnailProps {
   image: IndexedImage;
@@ -48,8 +47,6 @@ interface ImageGridProps {
 }
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
-  const imageSize = useSettingsStore((state) => state.imageSize);
-
   if (images.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -58,12 +55,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     );
   }
 
-  const gridStyle = {
-    gridTemplateColumns: `repeat(auto-fill, minmax(${imageSize}px, 1fr))`,
-  };
-
   return (
-    <div className="grid gap-2" style={gridStyle}>
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
       {images.map(image => (
         <ImageThumbnail
           key={image.id}

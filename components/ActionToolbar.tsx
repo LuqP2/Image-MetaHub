@@ -1,5 +1,4 @@
 import React from 'react';
-import { resetAllCaches } from '../utils/cacheReset';
 import ImageSizeSlider from './ImageSizeSlider';
 
 interface ActionToolbarProps {
@@ -8,7 +7,6 @@ interface ActionToolbarProps {
   selectedCount: number;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
-  onTestBatchReading?: () => void; // Temporary test function
 }
 
 const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -17,44 +15,41 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   selectedCount,
   onClearSelection,
   onDeleteSelected,
-  onTestBatchReading
 }) => {
   return (
-    <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
-      <div className="flex items-center gap-4">
-        <label htmlFor="sortOrder" className="mr-2 text-gray-300">Sort by:</label>
+    <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
+      <div className="flex items-center gap-2">
+        <label htmlFor="sortOrder" className="text-sm text-gray-600">Sort by:</label>
         <select
           id="sortOrder"
           value={sortOrder}
           onChange={(e) => onSortOrderChange(e.target.value)}
-          className="bg-gray-700 text-gray-200 border-gray-600 rounded-md p-1"
+          className="px-2 py-1.5 text-sm border border-gray-300 rounded bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="date-desc">Newest First</option>
           <option value="date-asc">Oldest First</option>
           <option value="asc">A-Z</option>
           <option value="desc">Z-A</option>
         </select>
-        {onTestBatchReading && (
-          <button
-            onClick={onTestBatchReading}
-            className="ml-4 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-500 text-sm"
-          >
-            Test Batch Reading
-          </button>
-        )}
       </div>
 
       <ImageSizeSlider />
 
       <div>
         {selectedCount > 0 && (
-          <div className="flex items-center gap-4">
-            <span className="text-gray-300">{selectedCount} selected</span>
-            <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300">
-              Clear Selection
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">{selectedCount} selected</span>
+            <button
+              onClick={onClearSelection}
+              className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-white rounded hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Clear
             </button>
-            <button onClick={onDeleteSelected} className="text-red-500 hover:text-red-400">
-              Delete Selected
+            <button
+              onClick={onDeleteSelected}
+              className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white rounded hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+            >
+              Delete
             </button>
           </div>
         )}
