@@ -65,6 +65,64 @@ The application underwent a major refactoring to improve modularity and LLM-frie
 
 This architecture transformation significantly improves code maintainability, testability, and LLM comprehension.
 
+## ComfyUI Parser Architecture
+
+### Rule-Based Parsing System
+The ComfyUI parser uses a declarative, rule-based architecture for extracting metadata from complex workflow graphs:
+
+**Core Components:**
+- **`nodeRegistry.ts`** - Declarative registry of ComfyUI node behaviors and parameter mappings
+- **`traversalEngine.ts`** - Graph traversal logic with multi-path exploration and parameter extraction
+- **`comfyUIParser.ts`** - High-level parsing orchestration and terminal node detection
+
+**Node Registry Pattern:**
+```typescript
+export const NodeRegistry: Record<string, NodeDefinition> = {
+  'KSampler (Efficient)': {
+    category: 'SAMPLING',
+    roles: ['SINK'],
+    inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' } },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      seed: { source: 'trace', input: 'seed' },
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      prompt: { source: 'trace', input: 'positive' }
+    },
+    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler']
+  }
+}
+```
+
+**Parameter Mapping Sources:**
+- **`widget`** - Extract from node.widgets_values using key or index
+- **`input`** - Extract from node.inputs object
+- **`trace`** - Follow input connections to other nodes
+- **`custom_extractor`** - Use custom functions for complex logic
+
+**Traversal Strategies:**
+- **Single Path**: Follow one input connection (for unique parameters like seed)
+- **Multi-Path**: Explore all possible paths and select best value (for prompts)
+- **Pass-Through**: Continue traversal through routing/transform nodes
+
+**Key Features:**
+- **Extensible**: Add new node types by registering in NodeRegistry
+- **Robust**: Handles unknown nodes gracefully, supports multiple workflow patterns
+- **Efficient**: Avoids cycles, caches visited paths, uses async processing
+- **Flexible**: Supports CLIPTextEncode, String Literal, Efficient Loader, and custom workflows
+
+### ComfyUI Parser Files
+**Core Architecture Files:**
+- `services/parsers/comfyUIParser.ts` - High-level parsing orchestration and terminal node detection
+- `services/parsers/comfyui/nodeRegistry.ts` - Declarative registry of ComfyUI node behaviors and parameter mappings
+- `services/parsers/comfyui/traversalEngine.ts` - Graph traversal logic with multi-path exploration and parameter extraction
+- `services/parsers/metadataParserFactory.ts` - Factory pattern for automatic parser selection based on metadata format
+
+**Integration Points:**
+- `services/fileIndexer.ts` - Calls resolvePromptFromGraph() for ComfyUI metadata extraction
+- `types.ts` - ComfyUIMetadata interface definition
+
 ## Critical Developer Workflows
 
 ### Development Commands
@@ -358,6 +416,23 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 };
 ```
 
+### ComfyUI Parser Pattern
+```typescript
+// Add new node type to NodeRegistry
+'NewNodeType': {
+  category: 'SAMPLING',
+  roles: ['SINK'],
+  inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' } },
+  outputs: { IMAGE: { type: 'IMAGE' } },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'positive' },
+    steps: { source: 'widget', key: 'steps' },
+    seed: { source: 'input', key: 'seed' }
+  },
+  widget_order: ['seed', 'steps', 'cfg', 'sampler_name']
+}
+```
+
 ### Performance Optimizations
 - **Lazy Loading**: Intersection Observer for image loading
 - **Memory Management**: File handles instead of blob storage
@@ -420,6 +495,13 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 2. Add extraction logic in `services/fileIndexer.ts`
 3. Update caching in `services/cacheManager.ts`
 4. Add display in `ImageModal.tsx` or create new component
+
+### Adding ComfyUI Node Support
+1. Add node definition to `services/parsers/comfyui/nodeRegistry.ts` with proper param_mapping
+2. Define inputs, outputs, and roles for the new node type
+3. Specify parameter mapping sources (widget, input, trace, custom_extractor)
+4. Add widget_order array if using widget-based extraction
+5. Test with sample workflow containing the new node type
 
 ### Browser Compatibility Features
 - `BrowserCompatibilityWarning.tsx` - Detects and warns about unsupported browsers
