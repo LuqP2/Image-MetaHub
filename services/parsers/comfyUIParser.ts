@@ -9,22 +9,27 @@ type Graph = Record<string, ParserNode>;
 function createNodeMap(workflow: any, prompt: any): Graph {
     const graph: Graph = {};
 
+    console.log('[createNodeMap] Has workflow.nodes?', !!workflow?.nodes);
+    console.log('[createNodeMap] Prompt keys:', Object.keys(prompt || {}).slice(0, 5));
+
     // Add/overlay from prompt (execution data: class_type, inputs)
     for (const [id, pNode] of Object.entries(prompt || {})) {
         graph[id] = {
             id,
             class_type: (pNode as any).class_type,
             inputs: (pNode as any).inputs || {},
-            widgets_values: [],
+            widgets_values: (pNode as any).widgets_values,  // Keep undefined if not present
             mode: 0,
         };
     }
 
     // Overlay from workflow (UI data: widgets_values, mode, type if missing)
     if (workflow?.nodes) {
+        console.log('[createNodeMap] Found workflow.nodes, overlaying UI data');
         for (const wNode of workflow.nodes) {
             const id = wNode.id.toString();
             if (graph[id]) {
+                console.log(`[createNodeMap] Overlaying node ${id} (${wNode.type}) with widgets_values:`, wNode.widgets_values);
                 graph[id].widgets_values = wNode.widgets_values || [];
                 graph[id].mode = wNode.mode || 0;
                 graph[id].class_type = graph[id].class_type || wNode.type;
@@ -86,11 +91,16 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     return {};
   }
   
+  console.log('[ComfyUI Parser] Terminal node:', terminalNode.id, terminalNode.class_type);
+  
+  // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
   const results = resolveAll({
     startNode: terminalNode,
     graph: graph,
-    params: ['prompt', 'negativePrompt', 'seed', 'steps', 'cfg', 'width', 'height', 'model', 'sampler_name', 'scheduler', 'lora', 'vae', 'denoise']
+    params: ['prompt', 'negativePrompt', 'seed', 'steps', 'cfg', 'model', 'sampler_name', 'scheduler', 'lora', 'vae', 'denoise']
   });
+
+  console.log('[ComfyUI Parser] Resolved results:', JSON.stringify(results, null, 2));
 
   return results;
 }

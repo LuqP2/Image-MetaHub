@@ -180,8 +180,8 @@ async function processSingleFile(
           negativePrompt: resolvedParams.negativePrompt || '',
           model: resolvedParams.model || '',
           models: resolvedParams.model ? [resolvedParams.model] : [],
-          width: resolvedParams.width || 0,
-          height: resolvedParams.height || 0,
+          width: 0,  // Will be filled from actual image dimensions below
+          height: 0, // Will be filled from actual image dimensions below
           seed: resolvedParams.seed,
           steps: resolvedParams.steps || 0,
           cfg_scale: resolvedParams.cfg,
@@ -193,6 +193,30 @@ async function processSingleFile(
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
+      }
+    }
+
+    // Read actual image dimensions
+    if (normalizedMetadata) {
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            normalizedMetadata!.width = img.width;
+            normalizedMetadata!.height = img.height;
+            URL.revokeObjectURL(objectUrl);
+            resolve();
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('Failed to load image'));
+          };
+          img.src = objectUrl;
+        });
+      } catch (e) {
+        console.warn('Failed to read image dimensions:', e);
+        // Keep width/height as 0 if failed
       }
     }
 

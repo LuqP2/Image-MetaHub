@@ -73,8 +73,22 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'LOADING', roles: ['SOURCE', 'TRANSFORM'],
     inputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
     outputs: { MODEL: { type: 'MODEL' }, 'CONDITIONING+': { type: 'CONDITIONING' }, 'CONDITIONING-': { type: 'CONDITIONING' }, LATENT: { type: 'LATENT' }, VAE: { type: 'VAE' } },
-    param_mapping: { prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, model: { source: 'widget', key: 'ckpt_name' }, vae: { source: 'widget', key: 'vae_name' }, lora: { source: 'widget', key: 'lora_name' }, seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, width: { source: 'widget', key: 'width' }, height: { source: 'widget', key: 'height' }, denoise: { source: 'widget', key: 'denoise' }, },
-    widget_order: ['ckpt_name', 'vae_name', 'clip_skip', 'lora_name', 'lora_model_strength', 'lora_clip_strength', 'positive', 'negative', 'token_normalization', 'weight_interpretation', 'empty_latent_width', 'empty_latent_height', 'batch_size', 'lora_stack', 'cnet_stack', 'seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
+    param_mapping: { 
+      prompt: { source: 'trace', input: 'positive' }, 
+      negativePrompt: { source: 'trace', input: 'negative' }, 
+      model: { source: 'widget', key: 'ckpt_name' }, 
+      vae: { source: 'widget', key: 'vae_name' }, 
+      lora: { source: 'widget', key: 'lora_name' }, 
+      seed: { source: 'widget', key: 'seed' }, 
+      steps: { source: 'widget', key: 'steps' }, 
+      cfg: { source: 'widget', key: 'cfg' }, 
+      sampler_name: { source: 'widget', key: 'sampler_name' }, 
+      scheduler: { source: 'widget', key: 'scheduler' }, 
+      // Note: width/height NOT extracted from workflow - read from actual image dimensions instead
+      denoise: { source: 'widget', key: 'denoise' }, 
+    },
+    // Based on embedded widgets_values array from actual workflow
+    widget_order: ['ckpt_name', 'vae_name', 'clip_skip', 'lora_name', 'lora_model_strength', 'lora_clip_strength', 'positive', 'negative', 'token_normalization', 'weight_interpretation', 'empty_latent_width', 'empty_latent_height', 'batch_size']
   },
   CheckpointLoaderSimple: {
     category: 'LOADING', roles: ['SOURCE'], inputs: {},
@@ -101,8 +115,19 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'SAMPLING', roles: ['SINK'],
     inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, seed: { type: 'INT' }, steps: { type: 'INT' }, cfg: { type: 'FLOAT' }, sampler_name: { type: 'SAMPLER' }, scheduler: { type: 'SCHEDULER' }, denoise: { type: 'FLOAT' }, },
     outputs: { LATENT: { type: 'LATENT' }, IMAGE: { type: 'IMAGE' } },
-    param_mapping: { seed: { source: 'trace', input: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, denoise: { source: 'widget', key: 'denoise' }, model: { source: 'trace', input: 'model' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, },
-    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise', 'preview_method', 'vae_decode']
+    param_mapping: { 
+      seed: { source: 'widget', key: 'seed' },  // Changed from 'trace' to 'widget'
+      steps: { source: 'widget', key: 'steps' }, 
+      cfg: { source: 'widget', key: 'cfg' }, 
+      sampler_name: { source: 'widget', key: 'sampler_name' }, 
+      scheduler: { source: 'widget', key: 'scheduler' }, 
+      denoise: { source: 'widget', key: 'denoise' }, 
+      model: { source: 'trace', input: 'model' }, 
+      prompt: { source: 'trace', input: 'positive' }, 
+      negativePrompt: { source: 'trace', input: 'negative' }, 
+    },
+    // CORRECTED order based on actual embedded widgets_values: [seed, null?, steps, cfg, sampler_name, scheduler, denoise, preview_method, vae_decode]
+    widget_order: ['seed', '__unknown__', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise', 'preview_method', 'vae_decode']
   },
   FaceDetailer: {
     category: 'SAMPLING',
@@ -140,13 +165,16 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'LOADING', roles: ['TRANSFORM'],
     inputs: {}, outputs: { '*': { type: 'ANY' } },
     param_mapping: { lora: { source: 'custom_extractor', extractor: (node) => {
-      const loraCount = node.widgets_values?.[0] || node.inputs?.lora_count || 0;
+      // Try both widgets_values and inputs (workflows may have either)
+      const loraCount = node.widgets_values?.[0] ?? node.inputs?.lora_count ?? 0;
       if (loraCount === 0) return [];
       
       const loras = [];
       for (let i = 1; i <= loraCount; i++) {
-        const loraName = node.widgets_values?.[i * 3] || node.inputs?.[`lora_name_${i}`];
-        if (loraName && loraName !== 'None') {
+        // For widgets: lora_name is at index i*3 (lora_name_1 at 3, lora_name_2 at 6, etc.)
+        // For inputs: lora_name_1, lora_name_2, etc.
+        const loraName = node.widgets_values?.[i * 3] ?? node.inputs?.[`lora_name_${i}`];
+        if (loraName && loraName !== 'None' && !Array.isArray(loraName)) {
           loras.push(loraName);
         }
       }

@@ -114,14 +114,41 @@ function traverse(
 function extractValue(node: ParserNode, rule: ParamMappingRule, state: TraversalState, graph: Graph, accumulator: any[]): any {
     if (rule.source === 'widget') {
         const nodeDef = NodeRegistry[node.class_type];
+        
+        // Try widget_order index first
         const widgetIndex = nodeDef?.widget_order?.indexOf(rule.key) ?? -1;
         if (widgetIndex !== -1 && node.widgets_values?.[widgetIndex] !== undefined) {
+            // Special logging for width/height
+            if (rule.key === 'empty_latent_width' || rule.key === 'empty_latent_height') {
+                console.log(`[extractValue] *** WIDTH/HEIGHT EXTRACTION ***`);
+                console.log(`  Node: ${node.id} (${node.class_type})`);
+                console.log(`  Key: ${rule.key}`);
+                console.log(`  Index: ${widgetIndex}`);
+                console.log(`  Widget order:`, nodeDef?.widget_order);
+                console.log(`  All widgets_values:`, node.widgets_values);
+                console.log(`  Extracted value:`, node.widgets_values[widgetIndex]);
+            } else {
+                console.log(`[extractValue] Widget via index: node ${node.id} (${node.class_type}), key ${rule.key}, index ${widgetIndex}, value:`, node.widgets_values[widgetIndex]);
+            }
             return node.widgets_values[widgetIndex];
         }
+        
+        // FALLBACK: If no widgets_values, try reading directly from inputs (for workflows without UI data)
+        if (!node.widgets_values || node.widgets_values.length === 0) {
+            const inputValue = node.inputs?.[rule.key];
+            // Only return if it's NOT a link (links are arrays)
+            if (inputValue !== undefined && !Array.isArray(inputValue)) {
+                console.log(`[extractValue] Fallback from inputs: node ${node.id} (${node.class_type}), key ${rule.key}, value:`, inputValue);
+                return inputValue;
+            }
+        }
+        
         return undefined;
     }
     if (rule.source === 'input') {
-        return node.inputs?.[rule.key];
+        const value = node.inputs?.[rule.key];
+        // For input source, return the value even if it's a link (extractValue caller handles links separately)
+        return value;
     }
     if (rule.source === 'custom_extractor') {
         return rule.extractor(node);
@@ -244,12 +271,7 @@ function selectBestPromptValue(values: any[], paramType: ComfyTraversableParam):
 export function resolve(args: { startNode: ParserNode, param: ComfyTraversableParam, graph: Graph }): any {
     const initialState = createInitialState(args.param);
     
-    // Para prompts, coletamos todos os valores encontrados e escolhemos o melhor
-    if (args.param === 'prompt' || args.param === 'negativePrompt') {
-        const allValues = collectAllValues(args.startNode, initialState, args.graph);
-        return selectBestPromptValue(allValues, args.param);
-    }
-    
+    // Use simple traverse for all parameters - it follows the correct path based on param_mapping
     return traverse(args.startNode, initialState, args.graph, []);
 }
 
