@@ -37,3 +37,6 @@ release-v1.7.4.md
 .comfyworkflows 
 test-parser.js
 CATS-WORKFLOW-ANALYSIS.md
+analyze-woman.cjs
+test-woman.cjs
+.gitignore

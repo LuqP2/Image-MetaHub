@@ -102,6 +102,23 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
 
   console.log('[ComfyUI Parser] Resolved results:', JSON.stringify(results, null, 2));
 
+  // Post-processing: deduplicate arrays and clean up prompts
+  if (results.lora && Array.isArray(results.lora)) {
+    results.lora = [...new Set(results.lora)]; // Remove duplicates
+  }
+  
+  // Fix duplicated prompts (if clip_l and t5xxl are identical, they get concatenated)
+  if (results.prompt && typeof results.prompt === 'string') {
+    const parts = results.prompt.split(' ').filter(p => p.trim());
+    const half = Math.floor(parts.length / 2);
+    const firstHalf = parts.slice(0, half).join(' ');
+    const secondHalf = parts.slice(half).join(' ');
+    // If both halves are identical, keep only one
+    if (firstHalf === secondHalf && firstHalf.length > 0) {
+      results.prompt = firstHalf;
+    }
+  }
+
   return results;
 }
 

@@ -151,7 +151,7 @@ function extractValue(node: ParserNode, rule: ParamMappingRule, state: Traversal
         return value;
     }
     if (rule.source === 'custom_extractor') {
-        return rule.extractor(node);
+        return rule.extractor(node, state, graph, traverseFromLink);
     }
     if (rule.source === 'trace') {
         const inputLink = node.inputs[rule.input];
