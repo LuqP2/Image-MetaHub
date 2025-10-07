@@ -3,9 +3,14 @@
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, ComfyUIMetadata, InvokeAIMetadata } from '../types';
 import { parse } from 'exifr';
-import { parseComfyUIMetadata } from './parsers/comfyUIParser';
+import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
+
+function sanitizeJson(jsonString: string): string {
+    // Replace NaN with null, as NaN is not valid JSON
+    return jsonString.replace(/:\s*NaN/g, ': null');
+}
 
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
@@ -155,7 +160,35 @@ async function processSingleFile(
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
       if (isComfyUIMetadata(rawMetadata)) {
-        normalizedMetadata = parseComfyUIMetadata(rawMetadata as ComfyUIMetadata);
+        const comfyMetadata = rawMetadata as ComfyUIMetadata;
+        // Parse workflow and prompt if they are strings
+        let workflow = comfyMetadata.workflow;
+        let prompt = comfyMetadata.prompt;
+        try {
+          if (typeof workflow === 'string') {
+            workflow = JSON.parse(sanitizeJson(workflow));
+          }
+          if (typeof prompt === 'string') {
+            prompt = JSON.parse(sanitizeJson(prompt));
+          }
+        } catch (e) {
+          console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
+        }
+        const resolvedParams = resolvePromptFromGraph(workflow, prompt);
+        normalizedMetadata = {
+          prompt: resolvedParams.prompt || '',
+          negativePrompt: resolvedParams.negativePrompt || '',
+          model: resolvedParams.model || '',
+          models: resolvedParams.model ? [resolvedParams.model] : [],
+          width: resolvedParams.width || 0,
+          height: resolvedParams.height || 0,
+          seed: resolvedParams.seed,
+          steps: resolvedParams.steps || 0,
+          cfg_scale: resolvedParams.cfg,
+          scheduler: resolvedParams.scheduler || '',
+          sampler: resolvedParams.sampler_name || '',
+          loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+        };
       } else if (isAutomatic1111Metadata(rawMetadata)) {
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {

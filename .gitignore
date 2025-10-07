@@ -33,3 +33,5 @@ tsconfig.tsbuildinfo
 *.sln
 *.sw?
 release-v1.7.4.md
+# Workflow examples
+.comfyworkflows 

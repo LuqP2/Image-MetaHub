@@ -35,7 +35,8 @@ export type ComfyTraversableParam =
 interface WidgetRule { source: 'widget'; key: string; }
 interface TraceRule { source: 'trace'; input: string; }
 interface CustomExtractorRule { source: 'custom_extractor'; extractor: (node: ParserNode) => any; }
-export type ParamMappingRule = WidgetRule | TraceRule | CustomExtractorRule;
+interface InputRule { source: 'input'; key: string; }
+export type ParamMappingRule = WidgetRule | TraceRule | CustomExtractorRule | InputRule;
 
 export interface InputDefinition { type: ComfyNodeDataType; }
 export interface OutputDefinition { type: ComfyNodeDataType; }
@@ -59,6 +60,7 @@ export interface NodeDefinition {
   param_mapping?: Partial<Record<ComfyTraversableParam, ParamMappingRule>>;
   pass_through_rules?: PassThroughRule[];
   conditional_routing?: ConditionalRoutingRule; // Para nós como ImpactSwitch
+  widget_order?: string[]; // Ordered list of widget names for index-based extraction
 }
 
 // =============================================================================
@@ -68,19 +70,23 @@ export interface NodeDefinition {
 export const NodeRegistry: Record<string, NodeDefinition> = {
   // --- LOADING NODES (Fontes de Verdade) ---
   'Efficient Loader': {
-    category: 'LOADING', roles: ['SOURCE'], inputs: {},
+    category: 'LOADING', roles: ['SOURCE', 'TRANSFORM'],
+    inputs: { positive: { type: 'STRING' }, negative: { type: 'STRING' } },
     outputs: { MODEL: { type: 'MODEL' }, 'CONDITIONING+': { type: 'CONDITIONING' }, 'CONDITIONING-': { type: 'CONDITIONING' }, LATENT: { type: 'LATENT' }, VAE: { type: 'VAE' } },
-    param_mapping: { prompt: { source: 'widget', key: 'positive' }, negativePrompt: { source: 'widget', key: 'negative' }, model: { source: 'widget', key: 'ckpt_name' }, vae: { source: 'widget', key: 'vae_name' }, lora: { source: 'widget', key: 'lora_name' }, seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, width: { source: 'widget', key: 'width' }, height: { source: 'widget', key: 'height' }, denoise: { source: 'widget', key: 'denoise' }, }
+    param_mapping: { prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, model: { source: 'widget', key: 'ckpt_name' }, vae: { source: 'widget', key: 'vae_name' }, lora: { source: 'widget', key: 'lora_name' }, seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, width: { source: 'widget', key: 'width' }, height: { source: 'widget', key: 'height' }, denoise: { source: 'widget', key: 'denoise' }, },
+    widget_order: ['ckpt_name', 'vae_name', 'clip_skip', 'lora_name', 'lora_model_strength', 'lora_clip_strength', 'positive', 'negative', 'token_normalization', 'weight_interpretation', 'empty_latent_width', 'empty_latent_height', 'batch_size', 'lora_stack', 'cnet_stack', 'seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
   },
   CheckpointLoaderSimple: {
     category: 'LOADING', roles: ['SOURCE'], inputs: {},
     outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' }, VAE: { type: 'VAE' }, },
     param_mapping: { model: { source: 'widget', key: 'ckpt_name' } },
+    widget_order: ['ckpt_name']
   },
    VAELoader: {
     category: 'LOADING', roles: ['SOURCE'], inputs: {},
     outputs: { VAE: { type: 'VAE' } },
     param_mapping: { vae: { source: 'widget', key: 'vae_name' } },
+    widget_order: ['vae_name']
   },
 
   // --- SAMPLING NODES (Sinks e Caixas-Pretas) ---
@@ -89,6 +95,14 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, },
     outputs: { LATENT: { type: 'LATENT' } },
     param_mapping: { seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, denoise: { source: 'widget', key: 'denoise' }, model: { source: 'trace', input: 'model' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, },
+    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
+  },
+  'KSampler (Efficient)': {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, seed: { type: 'INT' }, steps: { type: 'INT' }, cfg: { type: 'FLOAT' }, sampler_name: { type: 'SAMPLER' }, scheduler: { type: 'SCHEDULER' }, denoise: { type: 'FLOAT' }, },
+    outputs: { LATENT: { type: 'LATENT' }, IMAGE: { type: 'IMAGE' } },
+    param_mapping: { seed: { source: 'trace', input: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, denoise: { source: 'widget', key: 'denoise' }, model: { source: 'trace', input: 'model' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, },
+    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise', 'preview_method', 'vae_decode']
   },
   FaceDetailer: {
     category: 'SAMPLING',
@@ -96,7 +110,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { image: { type: 'IMAGE' }, model: { type: 'MODEL' }, clip: { type: 'CLIP' }, vae: { type: 'VAE' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, },
     outputs: { IMAGE: { type: 'IMAGE' } },
     param_mapping: { seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, denoise: { source: 'widget', key: 'denoise' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, model: { source: 'trace', input: 'model' }, vae: { source: 'trace', input: 'vae' }, },
-    pass_through_rules: [{ from_input: 'image', to_output: 'IMAGE' }]
+    pass_through_rules: [{ from_input: 'image', to_output: 'IMAGE' }],
+    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
   },
 
   // --- TRANSFORM & PASS-THROUGH NODES ---
@@ -104,6 +119,14 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: { clip: { type: 'CLIP' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
     param_mapping: { prompt: { source: 'widget', key: 'text' }, negativePrompt: { source: 'widget', key: 'text' }, },
+    widget_order: ['text']
+  },
+  'ControlNetApply': {
+    category: 'TRANSFORM', roles: ['TRANSFORM'],
+    inputs: { conditioning: { type: 'CONDITIONING' }, control_net: { type: 'CONTROL_NET' }, image: { type: 'IMAGE' }, },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: { prompt: { source: 'trace', input: 'conditioning' }, negativePrompt: { source: 'trace', input: 'conditioning' }, },
+    pass_through_rules: [{ from_input: 'conditioning', to_output: 'CONDITIONING' }],
   },
   LoraLoader: {
     category: 'LOADING', roles: ['TRANSFORM'],
@@ -111,6 +134,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' } },
     param_mapping: { lora: { source: 'widget', key: 'lora_name' }, model: { source: 'trace', input: 'model' }, },
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }, { from_input: 'clip', to_output: 'CLIP' },],
+    widget_order: ['lora_name', 'strength_model', 'strength_clip']
+  },
+  'LoRA Stacker': {
+    category: 'LOADING', roles: ['TRANSFORM'],
+    inputs: {}, outputs: { '*': { type: 'ANY' } },
+    param_mapping: { lora: { source: 'custom_extractor', extractor: (node) => {
+      const loraCount = node.widgets_values?.[0] || node.inputs?.lora_count || 0;
+      if (loraCount === 0) return [];
+      
+      const loras = [];
+      for (let i = 1; i <= loraCount; i++) {
+        const loraName = node.widgets_values?.[i * 3] || node.inputs?.[`lora_name_${i}`];
+        if (loraName && loraName !== 'None') {
+          loras.push(loraName);
+        }
+      }
+      return loras;
+    }}},
   },
 
   // --- ROUTING NODES (Estático e Dinâmico) ---
@@ -140,6 +181,19 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   SaveImageWithMetaData: {
     category: 'IO', roles: ['SINK'],
     inputs: { images: { type: 'IMAGE' } }, outputs: {},
+    widget_order: ['filename_prefix', 'subdirectory_name', 'output_format', 'quality', 'metadata_scope', 'include_batch_num', 'prefer_nearest']
+  },
+
+  // Common ComfyUI nodes that might appear in workflows
+  SaveImage: {
+    category: 'IO', roles: ['SINK'],
+    inputs: { images: { type: 'IMAGE' }, filename_prefix: { type: 'STRING' } }, outputs: {},
+    widget_order: ['filename_prefix']
+  },
+
+  PreviewImage: {
+    category: 'IO', roles: ['SINK'],
+    inputs: { images: { type: 'IMAGE' } }, outputs: {},
   },
 
   // --- UTILS & PRIMITIVES ---
@@ -147,6 +201,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: {}, outputs: { INT: { type: 'INT' } },
     param_mapping: { steps: { source: 'widget', key: 'int' }, cfg: { source: 'widget', key: 'int' }, },
+    widget_order: ['int']
+  },
+  'String Literal': {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: { string: { type: 'STRING' } }, outputs: { STRING: { type: 'STRING' } },
+    param_mapping: { prompt: { source: 'input', key: 'string' }, negativePrompt: { source: 'input', key: 'string' }, },
+  },
+  'Seed Generator': {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
+    param_mapping: { seed: { source: 'input', key: 'seed' }, },
   },
 };
 
