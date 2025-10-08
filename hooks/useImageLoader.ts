@@ -180,10 +180,40 @@ export function useImageLoader() {
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.metadata.length > 0) {
-                const cachedImages: IndexedImage[] = cachedData.metadata.map(meta => ({
-                    ...meta,
-                    handle: { name: meta.name, kind: 'file' } as any, // Mock handle
-                    directoryId: directory.id,
+                const cachedImages: IndexedImage[] = await Promise.all(cachedData.metadata.map(async meta => {
+                    // Create proper handle with _filePath and getFile() for Electron
+                    let handle: any = { name: meta.name, kind: 'file' };
+                    
+                    if (getIsElectron()) {
+                        // Build the full file path
+                        const joinResult = await window.electronAPI.joinPaths(directory.path, meta.name);
+                        const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
+                        
+                        handle = {
+                            name: meta.name,
+                            kind: 'file' as const,
+                            _filePath: filePath, // For direct file:// protocol access
+                            getFile: async () => {
+                                // CRITICAL: Implement getFile() method for ImageGrid compatibility
+                                if (getIsElectron()) {
+                                    const fileResult = await window.electronAPI.readFile(filePath);
+                                    if (fileResult.success && fileResult.data) {
+                                        const freshData = new Uint8Array(fileResult.data);
+                                        const lowerName = meta.name.toLowerCase();
+                                        const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                        return new File([freshData as any], meta.name, { type });
+                                    }
+                                }
+                                throw new Error(`Failed to read file: ${filePath}`);
+                            }
+                        };
+                    }
+                    
+                    return {
+                        ...meta,
+                        handle,
+                        directoryId: directory.id,
+                    };
                 }));
                 addImages(cachedImages);
                 log(`Loaded ${cachedImages.length} images from cache for ${directory.name}`);
