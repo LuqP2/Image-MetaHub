@@ -118,28 +118,23 @@ function extractValue(node: ParserNode, rule: ParamMappingRule, state: Traversal
         // Try widget_order index first
         const widgetIndex = nodeDef?.widget_order?.indexOf(rule.key) ?? -1;
         if (widgetIndex !== -1 && node.widgets_values?.[widgetIndex] !== undefined) {
-            // Special logging for width/height
-            if (rule.key === 'empty_latent_width' || rule.key === 'empty_latent_height') {
-                console.log(`[extractValue] *** WIDTH/HEIGHT EXTRACTION ***`);
-                console.log(`  Node: ${node.id} (${node.class_type})`);
-                console.log(`  Key: ${rule.key}`);
-                console.log(`  Index: ${widgetIndex}`);
-                console.log(`  Widget order:`, nodeDef?.widget_order);
-                console.log(`  All widgets_values:`, node.widgets_values);
-                console.log(`  Extracted value:`, node.widgets_values[widgetIndex]);
-            } else {
-                console.log(`[extractValue] Widget via index: node ${node.id} (${node.class_type}), key ${rule.key}, index ${widgetIndex}, value:`, node.widgets_values[widgetIndex]);
-            }
             return node.widgets_values[widgetIndex];
         }
         
         // FALLBACK: If no widgets_values, try reading directly from inputs (for workflows without UI data)
         if (!node.widgets_values || node.widgets_values.length === 0) {
             const inputValue = node.inputs?.[rule.key];
-            // Only return if it's NOT a link (links are arrays)
-            if (inputValue !== undefined && !Array.isArray(inputValue)) {
-                console.log(`[extractValue] Fallback from inputs: node ${node.id} (${node.class_type}), key ${rule.key}, value:`, inputValue);
-                return inputValue;
+            if (inputValue !== undefined) {
+                // If it's a direct value (not a link), return it
+                if (!Array.isArray(inputValue)) {
+                    console.log(`[extractValue] Fallback from inputs (direct value): node ${node.id} (${node.class_type}), key ${rule.key}, value:`, inputValue);
+                    return inputValue;
+                }
+                // If it's a link, follow it
+                if (Array.isArray(inputValue) && inputValue.length === 2) {
+                    console.log(`[extractValue] Fallback from inputs (following link): node ${node.id} (${node.class_type}), key ${rule.key}, link:`, inputValue);
+                    return traverseFromLink(inputValue as NodeLink, state, graph, accumulator);
+                }
             }
         }
         

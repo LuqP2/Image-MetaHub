@@ -538,6 +538,146 @@ function sanitizeJson(jsonString: string): string {
 
 ---
 
+## Grouped Workflow Nodes (Advanced)
+
+### Understanding Grouped Workflows
+
+**What are Grouped Workflow Nodes?**
+- Custom composite nodes that encapsulate multiple standard nodes
+- Example: `workflow>Load Model - Flux`, `workflow>CLIP Encode - Flux`, `workflow>Sampler/Scheduler - Flux`
+- ComfyUI exports them as parent nodes (ID 42, 51, 64) with child nodes (42:0, 42:1, 51:6, etc.)
+
+**Critical Architecture Rule:**
+```typescript
+// ❌ WRONG: Do NOT apply parent widgets_values to children
+graph['42:0'].widgets_values = graph['42'].widgets_values; // Breaks indices!
+
+// ✅ CORRECT: Children use prompt.inputs data, parents use workflow.widgets_values
+// Parent node 42: widgets_values = [2419, 'increment', 'euler', 'ddim_uniform', 50, 1] (concatenated)
+// Child node 42:0: inputs = { noise_seed: 2419 } (individual value)
+```
+
+### Data Structure Breakdown
+
+**Workflow Structure (UI Data):**
+```json
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 42,
+        "type": "workflow>Sampler/Scheduler - Flux",
+        "widgets_values": [2419, "increment", "euler", "ddim_uniform", 50, 1]
+      }
+    ]
+  }
+}
+```
+
+**Prompt Structure (Execution Data):**
+```json
+{
+  "prompt": {
+    "42:0": { "class_type": "RandomNoise", "inputs": { "noise_seed": 2419 } },
+    "42:1": { "class_type": "KSamplerSelect", "inputs": { "sampler_name": "euler" } },
+    "42:2": { "class_type": "BasicScheduler", "inputs": { "scheduler": "ddim_uniform", "steps": 50, "denoise": 1.0 } }
+  }
+}
+```
+
+### Extraction Strategy
+
+**Phase 1: Build Graph**
+```typescript
+// createNodeMap() in comfyUIParser.ts
+1. Start with prompt data (accurate child node inputs)
+2. Overlay workflow data (only for parent nodes, NOT children)
+3. Do NOT propagate parent widgets to children
+```
+
+**Phase 2: Extract Values**
+```typescript
+// extractValue() in traversalEngine.ts
+if (rule.source === 'widget') {
+  // Try widget_order index first
+  if (widgetIndex !== -1 && node.widgets_values?.[widgetIndex] !== undefined) {
+    return node.widgets_values[widgetIndex];
+  }
+  
+  // FALLBACK: Use inputs data when widgets_values missing
+  const inputValue = node.inputs?.[rule.key];
+  
+  // Direct value (not a link)
+  if (inputValue !== undefined && !Array.isArray(inputValue)) {
+    return inputValue;
+  }
+  
+  // Link - follow it
+  if (Array.isArray(inputValue) && inputValue.length === 2) {
+    return traverseFromLink(inputValue, state, graph, accumulator);
+  }
+}
+```
+
+### Example: ttN concat Node
+
+**Problem**: Concatenates multiple text inputs (text1, text2, text3) with delimiter
+**Solution**: Custom extractor that follows links
+
+```typescript
+'ttN concat': {
+  category: 'UTILS',
+  roles: ['TRANSFORM'],
+  inputs: { text1: { type: 'STRING' }, text2: { type: 'STRING' }, text3: { type: 'STRING' } },
+  outputs: { concat: { type: 'STRING' } },
+  param_mapping: {
+    prompt: {
+      source: 'custom_extractor',
+      extractor: (node, state, graph, traverseFromLink) => {
+        const texts: string[] = [];
+        const delimiter = node.inputs?.delimiter || ' ';
+        
+        // Resolve each text input (can be direct value or link)
+        ['text1', 'text2', 'text3'].forEach(key => {
+          const input = node.inputs?.[key];
+          if (!input) return;
+          
+          if (Array.isArray(input)) {
+            // Follow link
+            const result = traverseFromLink(input, state, graph, []);
+            if (result) texts.push(String(result));
+          } else {
+            // Direct value
+            texts.push(String(input));
+          }
+        });
+        
+        return texts.filter(t => t.trim()).join(String(delimiter));
+      }
+    }
+  }
+}
+```
+
+### Testing Grouped Workflows
+
+**Validation Checklist:**
+- [ ] Parent nodes have workflow.widgets_values applied
+- [ ] Child nodes use prompt.inputs data (NOT parent widgets)
+- [ ] extractValue falls back to inputs when widgets_values missing
+- [ ] Links in inputs are followed via traverseFromLink
+- [ ] Custom extractors handle multi-input concatenation
+
+**Debug Logs to Check:**
+```
+[createNodeMap] Overlaying node 42 (workflow>Sampler/Scheduler - Flux) with widgets_values: [...]
+[traverse] Node 42:0 (RandomNoise), looking for param: seed
+[extractValue] Fallback from inputs (direct value): node 42:0, key noise_seed, value: 2419
+[extractValue] Fallback from inputs (following link): node 51:4, key text, link: ['51:2', 0]
+```
+
+---
+
 ## Contributing
 
 To contribute improvements to the ComfyUI parser:
@@ -549,7 +689,8 @@ To contribute improvements to the ComfyUI parser:
 
 ---
 
-**Version**: 3.0.0  
+**Version**: 3.1.0  
 **Last Updated**: 2025-10-07  
 **Maintainer**: Image MetaHub Development Team  
-**Status**: Production Ready ✅
+**Status**: Production Ready ✅  
+**Recent Additions**: Grouped workflow support, ttN concat custom extractor, enhanced fallback logic

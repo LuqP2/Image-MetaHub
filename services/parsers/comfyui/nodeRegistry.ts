@@ -112,7 +112,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { model: { type: 'MODEL' }, positive: { type: 'CONDITIONING' }, negative: { type: 'CONDITIONING' }, latent_image: { type: 'LATENT' }, },
     outputs: { LATENT: { type: 'LATENT' } },
     param_mapping: { seed: { source: 'widget', key: 'seed' }, steps: { source: 'widget', key: 'steps' }, cfg: { source: 'widget', key: 'cfg' }, sampler_name: { source: 'widget', key: 'sampler_name' }, scheduler: { source: 'widget', key: 'scheduler' }, denoise: { source: 'widget', key: 'denoise' }, model: { source: 'trace', input: 'model' }, prompt: { source: 'trace', input: 'positive' }, negativePrompt: { source: 'trace', input: 'negative' }, },
-    widget_order: ['seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
+    // CORRECTED: Some workflows export with a placeholder at index 1 (similar to KSampler Efficient)
+    widget_order: ['seed', '__unknown__', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
   },
   'KSampler (Efficient)': {
     category: 'SAMPLING', roles: ['SINK'],
@@ -434,6 +435,330 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { '*': { type: 'ANY' } },
     param_mapping: {},
     pass_through_rules: [{ from_input: '*', to_output: '*' }]
+  },
+
+  // Flux-specific nodes for oreos.json workflow
+  FluxGuidance: {
+    category: 'CONDITIONING', roles: ['TRANSFORM'],
+    inputs: { conditioning: { type: 'CONDITIONING' } },
+    outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {},
+    widget_order: ['guidance'],
+    pass_through_rules: [{ from_input: 'conditioning', to_output: 'CONDITIONING' }]
+  },
+
+  FluxResolutionNode: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { 
+      width: { type: 'INT' },
+      height: { type: 'INT' }
+    },
+    param_mapping: {
+      width: { source: 'input', key: 'width' },
+      height: { source: 'input', key: 'height' }
+    },
+    widget_order: ['megapixel', 'aspect_ratio', 'custom_ratio', 'custom_aspect_ratio']
+  },
+
+  'Automatic CFG - Warp Drive': {
+    category: 'TRANSFORM', roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    widget_order: ['uncond_sigma_start', 'uncond_sigma_end', 'fake_uncond_sigma_end'],
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+
+  UNETLoader: {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {
+      model: { source: 'widget', key: 'unet_name' }
+    },
+    widget_order: ['unet_name', 'weight_dtype']
+  },
+
+  EmptyLatentImage: {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      width: { source: 'input', key: 'width' },
+      height: { source: 'input', key: 'height' }
+    },
+    widget_order: ['width', 'height', 'batch_size']
+  },
+
+  ImageUpscaleWithModel: {
+    category: 'TRANSFORM', roles: ['TRANSFORM'],
+    inputs: { 
+      upscale_model: { type: 'UPSCALE_MODEL' },
+      image: { type: 'IMAGE' }
+    },
+    outputs: { IMAGE: { type: 'IMAGE' } },
+    param_mapping: {},
+    pass_through_rules: []
+  },
+
+  UpscaleModelLoader: {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { UPSCALE_MODEL: { type: 'UPSCALE_MODEL' } },
+    param_mapping: {},
+    widget_order: ['model_name']
+  },
+
+  'LayerUtility: PurgeVRAM': {
+    category: 'UTILS', roles: ['PASS_THROUGH'],
+    inputs: { anything: { type: 'ANY' } },
+    outputs: { '*': { type: 'ANY' } },
+    param_mapping: {},
+    widget_order: ['purge_cache', 'purge_models', 'anything'],
+    pass_through_rules: [{ from_input: 'anything', to_output: '*' }]
+  },
+
+  'easy showAnything': {
+    category: 'UTILS', roles: ['PASS_THROUGH'],
+    inputs: { anything: { type: 'ANY' } },
+    outputs: { '*': { type: 'ANY' } },
+    param_mapping: {},
+    widget_order: ['text', 'anything'],
+    pass_through_rules: [{ from_input: 'anything', to_output: '*' }]
+  },
+
+  DualCLIPLoader: {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { CLIP: { type: 'CLIP' } },
+    param_mapping: {},
+    widget_order: ['clip_name1', 'clip_name2', 'type', 'device']
+  },
+
+  // --- GROUPED/WORKFLOW NODES (Custom Meta-Nodes) ---
+  'workflow>Load Model - Flux': {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' }, VAE: { type: 'VAE' } },
+    param_mapping: {
+      vae: { source: 'widget', key: 'vae_name' },
+      model: { source: 'widget', key: 'unet_name' }
+    },
+    // Widget order from coolpigeon.json node 64: ['FLUX1/ae.safetensors', 'FLUX/flux1-dev.safetensors', 'fp8_e5m2', ...]
+    widget_order: ['vae_name', 'unet_name', 'weight_dtype', 'clip_name1', 'clip_name2', 'clip_type', 'lora1', 'lora1_strength', 'lora2', 'lora2_strength', 'lora3', 'lora3_strength', 'lora4', 'lora4_strength']
+  },
+
+  'workflow>CLIP Encode - Flux': {
+    category: 'CONDITIONING', roles: ['SOURCE', 'TRANSFORM'],
+    inputs: { 
+      clip: { type: 'CLIP' },
+      model: { type: 'MODEL' },
+      anything3: { type: 'ANY' }
+    },
+    outputs: { GUIDER: { type: 'GUIDER' }, LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      prompt: { source: 'widget', key: 'positive_prompt' },
+      negativePrompt: { source: 'widget', key: 'negative_prompt' },
+      seed: { source: 'widget', key: 'seed' }
+    },
+    // Widget order from coolpigeon.json node 51: ['Snapshot of...', 'stunning mens...', true, 1345, 'increment', ...]
+    widget_order: ['positive_prompt', 'negative_prompt', 'wildcard_enabled', 'seed', 'seed_mode', 'wildcard_text', 'resolution', 'upscale_factor', 'width_offset', 'height_offset', 'lora_trigger_1', 'lora_trigger_2', 'credit', 'cfg_scale', 'batch_size']
+  },
+
+  'workflow>Sampler/Scheduler - Flux': {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: {
+      model: { type: 'MODEL' },
+      guider: { type: 'GUIDER' },
+      latent_image: { type: 'LATENT' },
+      vae: { type: 'VAE' }
+    },
+    outputs: { denoised_output: { type: 'LATENT' }, IMAGE: { type: 'IMAGE' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'seed' },
+      steps: { source: 'widget', key: 'steps' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      cfg: { source: 'widget', key: 'cfg' },
+      denoise: { source: 'widget', key: 'denoise' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'guider' }
+    },
+    // Widget order from coolpigeon.json node 42: [seed, seed_mode, sampler, scheduler, steps, denoise]
+    widget_order: ['seed', 'seed_mode', 'sampler_name', 'scheduler', 'steps', 'denoise']
+  },
+
+  // Additional grouped workflow support nodes
+  RandomNoise: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { NOISE: { type: 'NOISE' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'noise_seed' }
+    },
+    widget_order: ['noise_seed', 'seed_mode']
+  },
+
+  KSamplerSelect: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { SAMPLER: { type: 'SAMPLER' } },
+    param_mapping: {
+      sampler_name: { source: 'widget', key: 'sampler_name' }
+    },
+    widget_order: ['sampler_name']
+  },
+
+  BasicScheduler: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { SIGMAS: { type: 'SIGMAS' } },
+    param_mapping: {
+      scheduler: { source: 'widget', key: 'scheduler' },
+      steps: { source: 'widget', key: 'steps' },
+      denoise: { source: 'widget', key: 'denoise' }
+    },
+    widget_order: ['scheduler', 'steps', 'denoise'],
+    pass_through_rules: []
+  },
+
+  SamplerCustomAdvanced: {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: {
+      noise: { type: 'NOISE' },
+      guider: { type: 'GUIDER' },
+      sampler: { type: 'SAMPLER' },
+      sigmas: { type: 'SIGMAS' },
+      latent_image: { type: 'LATENT' }
+    },
+    outputs: { output: { type: 'LATENT' }, denoised_output: { type: 'LATENT' } },
+    param_mapping: {
+      seed: { source: 'trace', input: 'noise' },
+      sampler_name: { source: 'trace', input: 'sampler' },
+      scheduler: { source: 'trace', input: 'sigmas' },
+      steps: { source: 'trace', input: 'sigmas' },
+      prompt: { source: 'trace', input: 'guider' },
+      cfg: { source: 'trace', input: 'guider' }
+    }
+  },
+
+  CFGGuider: {
+    category: 'CONDITIONING', roles: ['TRANSFORM'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' }
+    },
+    outputs: { GUIDER: { type: 'GUIDER' } },
+    param_mapping: {
+      cfg: { source: 'widget', key: 'cfg' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' }
+    },
+    widget_order: ['cfg']
+  },
+
+  CascadeResolutions: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { width: { type: 'INT' }, height: { type: 'INT' } },
+    param_mapping: {
+      width: { source: 'widget', key: 'resolution' },
+      height: { source: 'widget', key: 'resolution' }
+    },
+    widget_order: ['resolution', 'upscale_factor', 'width_offset', 'height_offset']
+  },
+
+  'ttN concat': {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { text1: { type: 'STRING' }, text2: { type: 'STRING' }, text3: { type: 'STRING' } },
+    outputs: { concat: { type: 'STRING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          // Concatenate text1, text2, text3 with delimiter
+          const text1Input = node.inputs?.text1;
+          const text2Input = node.inputs?.text2;
+          const text3Input = node.inputs?.text3;
+          const delimiter = node.inputs?.delimiter || ' ';
+          
+          const texts: string[] = [];
+          
+          // text1: direct value or link
+          if (text1Input) {
+            if (Array.isArray(text1Input)) {
+              const result = traverseFromLink(text1Input as any, state, graph, []);
+              if (result) texts.push(String(result));
+            } else if (text1Input) {
+              texts.push(String(text1Input));
+            }
+          }
+          
+          // text2: direct value or link
+          if (text2Input) {
+            if (Array.isArray(text2Input)) {
+              const result = traverseFromLink(text2Input as any, state, graph, []);
+              if (result) texts.push(String(result));
+            } else if (text2Input) {
+              texts.push(String(text2Input));
+            }
+          }
+          
+          // text3: direct value or link
+          if (text3Input) {
+            if (Array.isArray(text3Input)) {
+              const result = traverseFromLink(text3Input as any, state, graph, []);
+              if (result) texts.push(String(result));
+            } else if (text3Input) {
+              texts.push(String(text3Input));
+            }
+          }
+          
+          return texts.filter(t => t.trim()).join(String(delimiter));
+        }
+      }
+    },
+    widget_order: ['text1', 'text2', 'text3', 'delimiter']
+  },
+
+  ImpactWildcardProcessor: {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'widget', key: 'wildcard_text' }
+    },
+    widget_order: ['wildcard_pattern', 'populated_text', 'mode', 'seed', 'seed_mode', 'select_wildcard']
+  },
+
+  'Anything Everywhere': {
+    category: 'UTILS', roles: ['PASS_THROUGH'],
+    inputs: { anything: { type: 'ANY' } },
+    outputs: {},
+    param_mapping: {},
+    pass_through_rules: []
+  },
+
+  'Anything Everywhere3': {
+    category: 'UTILS', roles: ['PASS_THROUGH'],
+    inputs: { 
+      anything: { type: 'ANY' },
+      anything2: { type: 'ANY' },
+      anything3: { type: 'ANY' }
+    },
+    outputs: {},
+    param_mapping: {},
+    pass_through_rules: []
+  },
+
+  'Save image with extra metadata [Crystools]': {
+    category: 'IO', roles: ['SINK'],
+    inputs: { image: { type: 'IMAGE' } },
+    outputs: { 'Metadata RAW': { type: 'ANY' } },
+    param_mapping: {},
+    widget_order: ['output_path', 'embed_workflow', 'metadata_json']
   },
 };
 

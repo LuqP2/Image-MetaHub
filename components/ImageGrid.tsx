@@ -21,28 +21,43 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
     let currentUrl: string | null = null;
     const fileHandle = image.thumbnailHandle || image.handle;
 
-    fileHandle.getFile().then(file => {
-      if (isMounted) {
-        currentUrl = URL.createObjectURL(file);
-        setImageUrl(currentUrl);
+    // Check if we're in Electron environment
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+
+    if (isElectron) {
+      // In Electron, handle is a file path string
+      const filePath = typeof fileHandle === 'string' ? fileHandle : (fileHandle as any).path;
+      if (filePath) {
+        // Use file:// protocol for local file paths in Electron
+        setImageUrl(`file://${filePath}`);
       }
-    }).catch(error => {
-      console.error('Failed to load image:', error);
-      if (image.thumbnailHandle && isMounted) {
-        image.handle.getFile().then(file => {
+    } else {
+      // In browser, handle is a FileSystemFileHandle
+      if (fileHandle && typeof fileHandle === 'object' && 'getFile' in fileHandle) {
+        (fileHandle as FileSystemFileHandle).getFile().then(file => {
           if (isMounted) {
             currentUrl = URL.createObjectURL(file);
             setImageUrl(currentUrl);
           }
-        }).catch(err => {
-          console.error('Failed to load fallback image:', err);
+        }).catch(error => {
+          console.error('Failed to load image:', error);
+          if (image.thumbnailHandle && isMounted) {
+            (image.handle as FileSystemFileHandle).getFile().then(file => {
+              if (isMounted) {
+                currentUrl = URL.createObjectURL(file);
+                setImageUrl(currentUrl);
+              }
+            }).catch(err => {
+              console.error('Failed to load fallback image:', err);
+            });
+          }
         });
       }
-    });
+    }
 
     return () => {
       isMounted = false;
-      if (currentUrl) {
+      if (currentUrl && !isElectron) {
         URL.revokeObjectURL(currentUrl);
       }
     };
