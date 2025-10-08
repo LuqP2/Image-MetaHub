@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2025-10-08
+
+### Added
+- **Right Sidebar Image Preview**: New collapsible sidebar that displays image preview and metadata when hovering over thumbnails in the grid
+- **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation dialog and automatic state reset
+- **Improved ComfyUI Support**: Enhanced grouped workflow parsing with proper widget value extraction and custom node extractors
+
+### Fixed
+- **Cache Clearing**: Fixed cache clearing functionality to properly reset application state and reload the page
+- **Grouped Workflows**: Fixed parsing of ComfyUI grouped workflow nodes (e.g., "workflow>Load Model - Flux") by using prompt.inputs data directly
+- **Stack Overflow Fix**: Prevented infinite recursion in ImageModal when directory path is undefined
+- **CLI Directory Loading**: Fixed command-line directory loading to properly initialize Directory objects
+
+### Changed
+- **Version Numbering**: Reset version to 0.9.x series, indicating pre-1.0 beta status
+
+### Technical Improvements
+- Enhanced ComfyUI traversal engine with better link following and custom extractors for complex nodes (ttN concat, CFGGuider)
+- Improved error handling and validation in ImageModal to prevent crashes
+- Better state management and cleanup for orphaned image references
+
 ## [1.9.0] - 2025-10-03
 
 ### Added

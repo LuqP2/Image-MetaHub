@@ -30,8 +30,9 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 - **Multi-Format Support:** Works with InvokeAI, Automatic1111, and ComfyUI generated images (PNG and JPEG)
 
 **Enhanced User Experience**
+- **Right Sidebar Preview:** Hover over thumbnails to see instant preview with metadata in a collapsible right sidebar
 - **Multiple Directories:** Add and manage multiple image directories simultaneously
-- **Configurable Settings:** Control cache location and automatic update preferences
+- **Configurable Settings:** Control cache location, automatic update preferences, and cache management
 - **Resizable Grid:** Adjust thumbnail sizes for optimal viewing on any display
 - **Command-Line Support:** Launch with a specified directory for automation workflows
 - **Developer Mode:** Access development server from local network devices
@@ -98,9 +99,10 @@ The dev server automatically binds to `0.0.0.0`, making it accessible from other
 1. Launch the application and click "Change Folder" to select your AI-generated images directory
 2. Choose whether to scan subfolders recursively or limit to the selected folder only
 3. Wait for initial indexing (may take a few minutes for large collections)
-4. Use the sidebar to search and filter your images by metadata, models, or generation parameters
-5. Click any image to view detailed metadata and management options
-6. Use "Update" button to quickly index new images without re-processing the entire collection
+4. Hover over any thumbnail to see instant preview with metadata in the right sidebar
+5. Use the left sidebar to search and filter your images by metadata, models, or generation parameters
+6. Click any image to view detailed metadata in fullscreen modal with management options
+7. Use "Update" button to quickly index new images without re-processing the entire collection
 
 ## Technical Details
 

@@ -54,6 +54,7 @@ export default function App() {
     removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
+    resetState,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
 
@@ -83,9 +84,19 @@ export default function App() {
       }
       console.log(`Initializing cache with base path: ${path}`);
       await cacheManager.init(path || undefined);
+      
+      // Validate cached images have valid file handles (for hot reload scenarios)
+      if (images.length > 0) {
+        const firstImage = images[0];
+        const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
+        if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+          console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
+          resetState();
+        }
+      }
     };
     initializeCache().catch(console.error);
-  }, []);
+  }, [images, resetState]);
 
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {

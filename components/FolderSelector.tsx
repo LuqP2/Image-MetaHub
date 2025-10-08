@@ -15,6 +15,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
       </svg>
       <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub</h2>
+      <p className="text-xs text-gray-500 mb-4">v0.9.1</p>
       <p className="text-gray-400 max-w-md mb-6">
         To get started, please select the root folder where your AI generated images are stored. The application will scan for images and their metadata locally.
       </p>
