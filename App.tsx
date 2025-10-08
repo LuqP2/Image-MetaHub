@@ -19,6 +19,7 @@ import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
+import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 
 export default function App() {
   // --- Hooks ---
@@ -34,6 +35,7 @@ export default function App() {
     progress,
     error,
     success,
+    previewImage,
     selectedImage,
     selectedImages,
     searchQuery,
@@ -97,7 +99,7 @@ export default function App() {
       }
       
       // Create directory object for Electron environment
-      const dirName = path.split(/[/\\]/).pop() || path;
+      const dirName = path.split(/[\\/]/).pop() || path;
       const mockHandle = { 
         name: dirName,
         kind: 'directory' as const
@@ -107,7 +109,7 @@ export default function App() {
         id: path,
         name: dirName,
         path: path,
-        handle: mockHandle as FileSystemDirectoryHandle
+        handle: mockHandle as unknown as FileSystemDirectoryHandle
       };
       
       // Load the directory using the hook's loadDirectory function
@@ -235,8 +237,10 @@ export default function App() {
           />
         </Sidebar>
       )}
+      
+      <ImagePreviewSidebar />
 
-      <div className={`${hasDirectories ? 'ml-80' : ''} h-screen flex flex-col`}>
+      <div className={`${hasDirectories ? 'ml-80' : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}

@@ -14,6 +14,7 @@ interface ImageState {
   success: string | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
+  previewImage: IndexedImage | null;
   scanSubfolders: boolean;
 
   // Filter & Sort State
@@ -51,6 +52,7 @@ interface ImageState {
   filterAndSortImages: () => void;
 
   // Selection Actions
+  setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
   toggleImageSelection: (imageId: string) => void;
   clearImageSelection: () => void;
@@ -168,6 +170,7 @@ export const useImageStore = create<ImageState>((set, get) => {
   error: null,
   success: null,
   selectedImage: null,
+  previewImage: null,
   selectedImages: new Set(),
   searchQuery: '',
   availableModels: [],
@@ -294,6 +297,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
   setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
 
+  setPreviewImage: (image) => set({ previewImage: image }),
   setSelectedImage: (image) => set({ selectedImage: image }),
 
   toggleImageSelection: (imageId) => {

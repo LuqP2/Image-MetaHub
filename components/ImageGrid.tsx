@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect, CSSProperties, memo } from 'react';
 import { FixedSizeGrid as Grid } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useImageStore } from '../store/useImageStore'; // Import useImageStore
 
 // --- ImageCard Component ---
-// This component is now simpler and does not need to be aware of virtualization.
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -15,6 +14,7 @@ interface ImageCardProps {
 
 const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
   useEffect(() => {
     let isMounted = true;
@@ -48,6 +48,11 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
     };
   }, [image.handle, image.thumbnailHandle]);
 
+  const handlePreviewClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering onImageClick
+    setPreviewImage(image);
+  };
+
   return (
     <div
       className={`aspect-square bg-gray-800 rounded-lg overflow-hidden shadow-lg cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-blue-500/30 group relative h-full w-full ${
@@ -55,6 +60,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
       }`}
       onClick={(e) => onImageClick(image, e)}
     >
+      {/* Checkmark for selected */}
       {isSelected && (
         <div className="absolute top-2 right-2 z-10">
           <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
@@ -64,6 +70,18 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
           </div>
         </div>
       )}
+
+      {/* Info button for preview */}
+      <button 
+        onClick={handlePreviewClick}
+        className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
+        title="Show details"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+        </svg>
+      </button>
+
       {imageUrl ? (
         <img src={imageUrl} alt={image.name} className="w-full h-full object-cover" loading="lazy" />
       ) : (
@@ -78,8 +96,6 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
 
 
 // --- GridCell Component ---
-// This is the memoized cell renderer for react-window.
-// It receives positioning `style` from the grid and `data` via the `itemData` prop.
 const GridCell = memo(({ columnIndex, rowIndex, style, data }: {
   columnIndex: number;
   rowIndex: number;
@@ -95,7 +111,7 @@ const GridCell = memo(({ columnIndex, rowIndex, style, data }: {
   const index = rowIndex * columnCount + columnIndex;
 
   if (index >= images.length) {
-    return null; // Do not render anything for out-of-bounds indices
+    return null;
   }
 
   const image = images[index];
@@ -114,7 +130,6 @@ const GridCell = memo(({ columnIndex, rowIndex, style, data }: {
 
 
 // --- ImageGrid Component ---
-// This component now correctly uses AutoSizer and FixedSizeGrid.
 interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -132,7 +147,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     <div className="h-full w-full">
       <AutoSizer>
         {({ height, width }) => {
-          const PADDING = 8; // p-1 on cell is 4px, so total gap is 8px
+          const PADDING = 8;
           const cardWidthUnconstrained = imageSize;
 
           const columnCount = Math.floor((width) / (cardWidthUnconstrained + PADDING)) || 1;
@@ -153,7 +168,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               columnWidth={cardWidth}
               height={height}
               rowCount={rowCount}
-              rowHeight={cardWidth} // For square aspect ratio
+              rowHeight={cardWidth}
               width={width}
               itemData={itemData}
             >
