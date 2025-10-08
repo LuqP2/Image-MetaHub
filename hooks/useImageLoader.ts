@@ -123,10 +123,17 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     const handles: {handle: FileSystemFileHandle, path: string}[] = [];
 
     if (getIsElectron()) {
-        // Batch join paths for better performance
-        const joinResults = await Promise.all(
-            fileNames.map(fileName => window.electronAPI.joinPaths(directoryPath, fileName))
-        );
+        // Process paths in smaller chunks to avoid overwhelming IPC
+        const CHUNK_SIZE = 1000;
+        const joinResults: any[] = [];
+        
+        for (let i = 0; i < fileNames.length; i += CHUNK_SIZE) {
+            const chunk = fileNames.slice(i, i + CHUNK_SIZE);
+            const chunkResults = await Promise.all(
+                chunk.map(fileName => window.electronAPI.joinPaths(directoryPath, fileName))
+            );
+            joinResults.push(...chunkResults);
+        }
 
         for (let i = 0; i < fileNames.length; i++) {
             const fileName = fileNames[i];
