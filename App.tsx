@@ -85,8 +85,10 @@ export default function App() {
       console.log(`Initializing cache with base path: ${path}`);
       await cacheManager.init(path || undefined);
       
-      // Validate cached images have valid file handles (for hot reload scenarios)
-      if (images.length > 0) {
+      // Validate cached images have valid file handles (BROWSER ONLY - for hot reload scenarios)
+      // Skip validation in Electron as it uses file paths, not File System Access API handles
+      const isElectron = typeof window !== 'undefined' && window.electronAPI;
+      if (!isElectron && images.length > 0) {
         const firstImage = images[0];
         const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
         if (!fileHandle || typeof fileHandle.getFile !== 'function') {
