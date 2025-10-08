@@ -46,24 +46,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
   const handleClearCache = async () => {
     const confirmed = window.confirm(
-      'Clear All Cache?\n\n' +
-      'This will:\n' +
-      '• Delete all indexed image metadata from IndexedDB\n' +
-      '• Clear all app settings from localStorage\n' +
-      '• Clear session data\n\n' +
-      'Your image files will NOT be deleted, but you will need to re-index all directories.\n\n' +
-      'This action cannot be undone. Continue?'
+      '⚠️ CLEAR ALL CACHE & RESET APP ⚠️\n\n' +
+      'This will completely reset the application:\n\n' +
+      '🗑️ DATA:\n' +
+      '  • Delete all indexed image metadata (IndexedDB)\n' +
+      '  • Remove all loaded directories\n' +
+      '  • Clear all search filters and selections\n\n' +
+      '⚙️ SETTINGS:\n' +
+      '  • Reset cache location to default\n' +
+      '  • Reset auto-update preference\n' +
+      '  • Clear all localStorage preferences\n\n' +
+      '📁 YOUR FILES ARE SAFE:\n' +
+      '  • Image files will NOT be deleted\n' +
+      '  • You will need to re-add directories\n\n' +
+      '🔄 The app will reload automatically after clearing.\n\n' +
+      'This action CANNOT be undone. Continue?'
     );
 
     if (confirmed) {
       try {
         await resetAllCaches();
-        alert('Cache cleared successfully! Please refresh the page to start fresh.');
-        // Optionally close the modal
+        alert('✅ Cache cleared successfully!\n\nThe app will now reload to complete the reset.');
         onClose();
+        
+        // Force a complete page reload to reset the app state
+        window.location.reload();
       } catch (error) {
         console.error('Failed to clear cache:', error);
-        alert('Failed to clear cache. Check console for details.');
+        alert('❌ Failed to clear cache. Check console for details.');
       }
     }
   };

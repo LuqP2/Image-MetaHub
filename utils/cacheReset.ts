@@ -5,25 +5,43 @@
 
 /// <reference lib="dom" />
 
+import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+
 export async function resetAllCaches(): Promise<void> {
   console.log('🧹 Starting complete cache reset...');
 
   try {
-    // 1. Clear IndexedDB cache
-    console.log('📦 Clearing IndexedDB cache...');
-    const dbName = 'invokeai-browser-cache';
-    const deleteRequest = indexedDB.deleteDatabase(dbName);
-
-    await new Promise<void>((resolve, reject) => {
-      deleteRequest.onsuccess = () => {
-        console.log('✅ IndexedDB cache cleared');
-        resolve();
-      };
-      deleteRequest.onerror = () => {
-        console.error('❌ Failed to clear IndexedDB:', deleteRequest.error);
-        reject(deleteRequest.error);
-      };
-    });
+    // 1. Clear ALL IndexedDB databases (not just one)
+    console.log('📦 Clearing ALL IndexedDB databases...');
+    
+    // Get all database names
+    const databases = await indexedDB.databases();
+    console.log(`Found ${databases.length} IndexedDB databases to delete`);
+    
+    // Delete each database
+    for (const db of databases) {
+      if (db.name) {
+        console.log(`🗑️ Deleting database: ${db.name}`);
+        const deleteRequest = indexedDB.deleteDatabase(db.name);
+        
+        await new Promise<void>((resolve, reject) => {
+          deleteRequest.onsuccess = () => {
+            console.log(`✅ Deleted database: ${db.name}`);
+            resolve();
+          };
+          deleteRequest.onerror = () => {
+            console.error(`❌ Failed to delete database ${db.name}:`, deleteRequest.error);
+            reject(deleteRequest.error);
+          };
+          deleteRequest.onblocked = () => {
+            console.warn(`⚠️ Delete blocked for database ${db.name}, retrying...`);
+            // Continue anyway
+            resolve();
+          };
+        });
+      }
+    }
 
   } catch (error) {
     console.error('❌ Error clearing IndexedDB:', error);
@@ -37,6 +55,9 @@ export async function resetAllCaches(): Promise<void> {
       'image-metahub-items-per-page',
       'image-metahub-electron-directory-path',
       'image-metahub-directory-name',
+      'image-metahub-directories', // CRITICAL: List of loaded directories (Electron)
+      'image-metahub-settings', // Zustand persist storage
+      'image-metahub-scan-subfolders',
       'invokeai-advanced-expanded'
     ];
 
@@ -44,6 +65,15 @@ export async function resetAllCaches(): Promise<void> {
       if (localStorage.getItem(key)) {
         localStorage.removeItem(key);
         console.log(`🗑️ Removed localStorage key: ${key}`);
+      }
+    });
+
+    // Also clear any keys that match patterns (for dynamic directory caches)
+    const allKeys = Object.keys(localStorage);
+    allKeys.forEach(key => {
+      if (key.startsWith('image-metahub-') || key.startsWith('invokeai-')) {
+        localStorage.removeItem(key);
+        console.log(`🗑️ Removed localStorage key (pattern match): ${key}`);
       }
     });
 
@@ -63,8 +93,24 @@ export async function resetAllCaches(): Promise<void> {
     console.error('❌ Error clearing sessionStorage:', error);
   }
 
-  console.log('🎉 All caches cleared successfully!');
-  console.log('🔄 Please refresh the page to start fresh.');
+  try {
+    // 4. Reset Zustand stores
+    console.log('🔄 Resetting application state...');
+    
+    // Reset ImageStore (images, directories, filters, etc.)
+    useImageStore.getState().resetState();
+    console.log('✅ Image store reset');
+    
+    // Reset SettingsStore (preferences, cache path, auto-update)
+    useSettingsStore.getState().resetState();
+    console.log('✅ Settings store reset');
+
+  } catch (error) {
+    console.error('❌ Error resetting stores:', error);
+  }
+
+  console.log('🎉 All caches and app state cleared successfully!');
+  console.log('🔄 App will reload to complete the reset.');
 }
 
 /**

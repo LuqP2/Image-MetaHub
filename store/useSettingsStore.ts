@@ -41,6 +41,7 @@ interface SettingsState {
   setImageSize: (size: number) => void;
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
+  resetState: () => void;
 }
 
 // Check if running in Electron
@@ -64,6 +65,14 @@ export const useSettingsStore = create<SettingsState>()(
       setImageSize: (size) => set({ imageSize: size }),
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
+      resetState: () => set({
+        sortOrder: 'desc',
+        itemsPerPage: 20,
+        scanSubfolders: true,
+        imageSize: 120,
+        cachePath: null,
+        autoUpdate: true,
+      }),
     }),
     {
       name: 'image-metahub-settings',
