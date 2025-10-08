@@ -19,6 +19,7 @@ import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
+import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 
 export default function App() {
   // --- Hooks ---
@@ -34,6 +35,7 @@ export default function App() {
     progress,
     error,
     success,
+    previewImage,
     selectedImage,
     selectedImages,
     searchQuery,
@@ -67,6 +69,7 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- Effects ---
   // Initialize the cache manager on startup
@@ -87,25 +90,36 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
-      // Create a directory object
+      console.log('Loading directory from CLI path:', path);
+      
+      // Check if directory already exists in the store
+      const existingDir = directories.find(d => d.path === path);
+      if (existingDir) {
+        console.log('Directory already loaded, skipping:', path);
+        return;
+      }
+      
+      // Create directory object for Electron environment
+      const dirName = path.split(/[\\/]/).pop() || path;
       const mockHandle = { 
-        name: path.split(/[/\\]/).pop() || path,
+        name: dirName,
         kind: 'directory' as const
       };
 
       const newDirectory: Directory = {
         id: path,
-        name: mockHandle.name,
+        name: dirName,
         path: path,
-        handle: mockHandle as FileSystemDirectoryHandle
+        handle: mockHandle as unknown as FileSystemDirectoryHandle
       };
       
-      // Add the directory through handleSelectFolder which will handle all the necessary setup
-      await handleSelectFolder();
+      // Load the directory using the hook's loadDirectory function
+      await loadDirectory(newDirectory, false);
+      
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [handleSelectFolder]);
+  }, [loadDirectory, directories]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
@@ -138,6 +152,14 @@ export default function App() {
   useEffect(() => {
     imageStoreSetSortOrder(sortOrder);
   }, [sortOrder, imageStoreSetSortOrder]);
+
+  // Clean up selectedImage if its directory no longer exists
+  useEffect(() => {
+    if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
+      console.warn('Selected image directory no longer exists, clearing selection');
+      setSelectedImage(null);
+    }
+  }, [selectedImage, directories, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
@@ -191,6 +213,8 @@ export default function App() {
 
       {hasDirectories && (
         <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           searchField={searchField}
@@ -216,8 +240,10 @@ export default function App() {
           />
         </Sidebar>
       )}
+      
+      <ImagePreviewSidebar />
 
-      <div className={`${hasDirectories ? 'ml-80' : ''} h-screen flex flex-col`}>
+      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}

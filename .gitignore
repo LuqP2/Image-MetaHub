@@ -33,17 +33,3 @@ tsconfig.tsbuildinfo
 *.sln
 *.sw?
 release-v1.7.4.md
-analyze-woman.cjs
-CATS-WORKFLOW-ANALYSIS.md
-test-parser.js
-test-woman.cjs
-.comfyworkflows/bunny
-.comfyworkflows/cats.json
-.comfyworkflows/coolpigeon_prompt.json
-.comfyworkflows/coolpigeon.json
-.comfyworkflows/grok_report.txt
-.comfyworkflows/image1.json
-.comfyworkflows/image2.json
-.comfyworkflows/oreos.json
-.comfyworkflows/samurai.json
-.comfyworkflows/woman.json

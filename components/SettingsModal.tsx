@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { X } from 'lucide-react';
+import { resetAllCaches } from '../utils/cacheReset';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,40 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const handleResetCacheDirectory = () => {
     setCachePath(defaultCachePath);
     setCurrentCachePath(defaultCachePath);
+  };
+
+  const handleClearCache = async () => {
+    const confirmed = window.confirm(
+      '⚠️ CLEAR ALL CACHE & RESET APP ⚠️\n\n' +
+      'This will completely reset the application:\n\n' +
+      '🗑️ DATA:\n' +
+      '  • Delete all indexed image metadata (IndexedDB)\n' +
+      '  • Remove all loaded directories\n' +
+      '  • Clear all search filters and selections\n\n' +
+      '⚙️ SETTINGS:\n' +
+      '  • Reset cache location to default\n' +
+      '  • Reset auto-update preference\n' +
+      '  • Clear all localStorage preferences\n\n' +
+      '📁 YOUR FILES ARE SAFE:\n' +
+      '  • Image files will NOT be deleted\n' +
+      '  • You will need to re-add directories\n\n' +
+      '🔄 The app will reload automatically after clearing.\n\n' +
+      'This action CANNOT be undone. Continue?'
+    );
+
+    if (confirmed) {
+      try {
+        await resetAllCaches();
+        alert('✅ Cache cleared successfully!\n\nThe app will now reload to complete the reset.');
+        onClose();
+        
+        // Force a complete page reload to reset the app state
+        window.location.reload();
+      } catch (error) {
+        console.error('Failed to clear cache:', error);
+        alert('❌ Failed to clear cache. Check console for details.');
+      }
+    }
   };
 
   if (!isOpen) {
@@ -107,6 +142,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
+          </div>
+
+          {/* Cache Management Setting */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Cache Management</h3>
+            <p className="text-sm text-gray-400 mb-3">
+              Clear all cached image metadata and app settings. Use this if you encounter issues or want to start fresh.
+            </p>
+            <button
+              onClick={handleClearCache}
+              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md text-sm font-medium"
+            >
+              Clear All Cache
+            </button>
+            <p className="text-xs text-gray-500 mt-2">
+              This will delete indexed metadata but keep your image files intact.
+            </p>
           </div>
         </div>
 

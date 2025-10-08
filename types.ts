@@ -160,71 +160,24 @@ export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Au
 }
 
 export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {
-  // Check for workflow or prompt fields (can be objects or strings)
-  const hasWorkflow = 'workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string');
-  const hasPrompt = 'prompt' in metadata && (typeof metadata.prompt === 'object' || typeof metadata.prompt === 'string');
-
-  // Must have at least one of workflow or prompt
-  if (!hasWorkflow && !hasPrompt) {
-    return false;
+  // The presence of a 'workflow' property is the most reliable and unique indicator for ComfyUI.
+  // This check is intentionally lenient, trusting the dedicated parser to handle the details.
+  // An overly strict type guard was the cause of previous parsing failures.
+  if ('workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string')) {
+    return true;
+  }
+  
+  // As a fallback, check for the API-style 'prompt' object. This format, where keys are
+  // node IDs, is also unique to ComfyUI and distinct from other formats.
+  if ('prompt' in metadata && typeof metadata.prompt === 'object' && metadata.prompt !== null && !Array.isArray(metadata.prompt)) {
+    // A minimal structural check to ensure it's not just a random object.
+    // It should contain values that look like ComfyUI nodes.
+    return Object.values(metadata.prompt).some(
+      (node: any) => node && typeof node === 'object' && 'class_type' in node && 'inputs' in node
+    );
   }
 
-  // Additional check: try to validate the content looks like ComfyUI format
-  try {
-    if (hasWorkflow && typeof metadata.workflow === 'string') {
-      const parsed = JSON.parse(metadata.workflow);
-      // Check if it looks like a ComfyUI workflow (has nodes array with nodes that have class_type)
-      const hasValidStructure = parsed && typeof parsed === 'object' && parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
-        node && typeof node === 'object' && (node.class_type || node.type)
-      );
-      // Debug logging removed for performance
-      if (!hasValidStructure) {
-        // Debug logging removed for performance
-      }
-      return hasValidStructure;
-    }
-    if (hasPrompt && typeof metadata.prompt === 'string') {
-      const parsed = JSON.parse(metadata.prompt);
-      // Check if it looks like a ComfyUI prompt (has nodes with class_type)
-      const hasValidStructure = parsed && typeof parsed === 'object' && ((parsed.nodes && Array.isArray(parsed.nodes) && parsed.nodes.some((node: any) =>
-        node && typeof node === 'object' && (node.class_type || node.type)
-      )) || Object.values(parsed).some((node: any) =>
-        node && typeof node === 'object' && (node.class_type || node.type)
-      ));
-      // Debug logging removed for performance
-      if (!hasValidStructure) {
-        // Debug logging removed for performance
-      }
-      return hasValidStructure;
-    }
-    if (hasWorkflow && typeof metadata.workflow === 'object') {
-      // Check if object format looks like ComfyUI - check the nodes array
-      const workflow = metadata.workflow as any;
-      const hasValidStructure = workflow.nodes && Array.isArray(workflow.nodes) && workflow.nodes.some((node: any) =>
-        node && typeof node === 'object' && (node.class_type || node.type)
-      );
-      // Debug logging removed for performance
-      if (!hasValidStructure) {
-        // Debug logging removed for performance
-      }
-      return hasValidStructure;
-    }
-    if (hasPrompt && typeof metadata.prompt === 'object') {
-      // Check if object format looks like ComfyUI
-      const hasValidStructure = Object.values(metadata.prompt).some((node: any) =>
-        node && typeof node === 'object' && (node.class_type || node.type)
-      );
-      // Debug logging removed for performance
-      return hasValidStructure;
-    }
-  } catch (error) {
-    // If parsing fails, it's not valid ComfyUI format
-    // Debug logging removed for performance
-    return false;
-  }
-
-  // Debug logging removed for performance
-  return true;
+  return false;
 }
 
 export interface IndexedImage {

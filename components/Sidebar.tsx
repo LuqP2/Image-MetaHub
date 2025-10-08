@@ -17,6 +17,8 @@ interface SidebarProps {
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
   children?: React.ReactNode;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -34,7 +36,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLoraChange,
   onSchedulerChange,
   onClearAllFilters,
-  children
+  children,
+  isCollapsed,
+  onToggleCollapse
 }) => {
 
   const [expandedSections, setExpandedSections] = useState({
@@ -42,8 +46,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     loras: true,
     schedulers: true
   });
-
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -92,9 +94,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   if (isCollapsed) {
     return (
-      <div className="fixed left-0 top-0 h-full w-12 bg-gray-800 border-r border-gray-700 z-40 flex flex-col items-center py-4">
+      <div className="fixed left-0 top-0 h-full w-12 bg-gray-800 border-r border-gray-700 z-40 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
         <button
-          onClick={() => setIsCollapsed(false)}
+          onClick={onToggleCollapse}
           className="text-gray-400 hover:text-white transition-colors mb-4"
           title="Expand sidebar"
         >
@@ -112,12 +114,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
-    <div className="fixed left-0 top-0 h-full w-80 bg-gray-800 border-r border-gray-700 z-40 flex flex-col">
+    <div className="fixed left-0 top-0 h-full w-80 bg-gray-800 border-r border-gray-700 z-40 flex flex-col transition-all duration-300 ease-in-out">
       {/* Header with collapse button */}
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <h2 className="text-lg font-semibold text-gray-200">Filters</h2>
         <button
-          onClick={() => setIsCollapsed(true)}
+          onClick={onToggleCollapse}
           className="text-gray-400 hover:text-white transition-colors"
           title="Collapse sidebar"
         >
