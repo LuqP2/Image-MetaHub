@@ -69,6 +69,7 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- Effects ---
   // Initialize the cache manager on startup
@@ -212,6 +213,8 @@ export default function App() {
 
       {hasDirectories && (
         <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           searchField={searchField}
@@ -240,7 +243,7 @@ export default function App() {
       
       <ImagePreviewSidebar />
 
-      <div className={`${hasDirectories ? 'ml-80' : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
