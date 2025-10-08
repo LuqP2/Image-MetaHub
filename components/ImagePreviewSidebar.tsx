@@ -44,6 +44,11 @@ const ImagePreviewSidebar: React.FC = () => {
     if (previewImage) {
       const loadImage = async () => {
         if (!isMounted) return;
+        
+        // Revoke previous URL if it exists
+        if (imageUrl && imageUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(imageUrl);
+        }
         setImageUrl(null); // Reset while loading
 
         const directoryPath = directories.find(d => d.id === previewImage.directoryId)?.path;
@@ -101,8 +106,11 @@ const ImagePreviewSidebar: React.FC = () => {
 
     return () => {
       isMounted = false;
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
+      if (currentUrl && currentUrl.startsWith('blob:')) {
+        // Small delay to ensure image is no longer being used before revoking
+        setTimeout(() => {
+          URL.revokeObjectURL(currentUrl);
+        }, 100);
       }
     };
   }, [previewImage, directories]);

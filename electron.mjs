@@ -108,16 +108,25 @@ if (autoUpdater) {
         }
       }
 
-      // Limit changelog length for dialog
-      if (changelogText.length > 500) {
-        changelogText = changelogText.substring(0, 497) + '...';
+      // Limit changelog length for dialog (show main highlights only)
+      if (changelogText.length > 400) {
+        changelogText = changelogText.substring(0, 397) + '...';
       }
+
+      // If still "No release notes available", try to extract from other fields
+      if (changelogText === 'No release notes available.' && info.releaseName) {
+        changelogText = `Release: ${info.releaseName}`;
+      }
+
+      // Add link to full changelog
+      const changelogUrl = `https://github.com/LuqP2/image-metahub/releases/tag/v${info.version}`;
+      const fullMessage = `What's new:\n\n${changelogText}\n\nView full changelog: ${changelogUrl}\n\nWould you like to download this update now?`;
 
       dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: '🎉 Update Available',
         message: `Version ${info.version} is ready to download!`,
-        detail: `What's new:\n\n${changelogText}\n\nWould you like to download this update now?`,
+        detail: fullMessage,
         buttons: ['Download Now', 'Download Later', 'Skip this version'],
         defaultId: 0,
         cancelId: 2,
