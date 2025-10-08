@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Improved ComfyUI Support**: Enhanced grouped workflow parsing with proper widget value extraction and custom node extractors
 
 ### Fixed
+- **ComfyUI NaN Parsing**: Fixed "Unexpected token 'N', ...\"changed\": NaN..." JSON parsing errors for ComfyUI workflows with invalid numeric values
 - **Cache Clearing**: Fixed cache clearing functionality to properly reset application state and reload the page
 - **Grouped Workflows**: Fixed parsing of ComfyUI grouped workflow nodes (e.g., "workflow>Load Model - Flux") by using prompt.inputs data directly
 - **Stack Overflow Fix**: Prevented infinite recursion in ImageModal when directory path is undefined
