@@ -293,7 +293,7 @@ export async function processFiles(
   const total = imageFiles.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
-  const CONCURRENCY_LIMIT = 10; // Limit of files processed in parallel
+  const CONCURRENCY_LIMIT = 20; // Limit of files processed in parallel (increased for Electron IPC)
   let batch: IndexedImage[] = [];
 
   // Async pool implementation for controlled concurrency

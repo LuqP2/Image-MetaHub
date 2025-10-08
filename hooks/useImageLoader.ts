@@ -123,13 +123,16 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     const handles: {handle: FileSystemFileHandle, path: string}[] = [];
 
     if (getIsElectron()) {
-        // Create lightweight handles that will be read during processing
-        for (const fileName of fileNames) {
-            // Use the new IPC call to join paths correctly on any OS
-            const joinResult = await window.electronAPI.joinPaths(directoryPath, fileName);
+        // Batch join paths for better performance
+        const joinResults = await Promise.all(
+            fileNames.map(fileName => window.electronAPI.joinPaths(directoryPath, fileName))
+        );
 
-            // Use the joined path, or fallback to manual concatenation if the IPC call fails
+        for (let i = 0; i < fileNames.length; i++) {
+            const fileName = fileNames[i];
+            const joinResult = joinResults[i];
             const filePath = joinResult.success ? joinResult.path : `${directoryPath}/${fileName}`;
+            
             if (!joinResult.success) {
                 console.error("Failed to join paths, falling back to manual concatenation:", joinResult.error);
             }
@@ -137,7 +140,6 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
             const mockHandle = {
                 name: fileName,
                 kind: 'file' as const,
-                // Store file path for later retrieval during processing
                 _filePath: filePath,
                 getFile: async () => {
                     // Read file directly when needed (during processFiles)
@@ -180,11 +182,36 @@ export function useImageLoader() {
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.metadata.length > 0) {
-                const cachedImages: IndexedImage[] = cachedData.metadata.map(meta => ({
-                    ...meta,
-                    handle: { name: meta.name, kind: 'file' } as any, // Mock handle
-                    directoryId: directory.id,
-                }));
+                const cachedImages: IndexedImage[] = cachedData.metadata.map(meta => {
+                    // Create proper mock handle with getFile() method for Electron
+                    const filePath = getIsElectron() 
+                        ? `${directory.path}/${meta.name}`.replace(/\\/g, '/') 
+                        : null;
+                    
+                    const mockHandle = {
+                        name: meta.name,
+                        kind: 'file' as const,
+                        _filePath: filePath,
+                        getFile: async () => {
+                            if (getIsElectron() && filePath) {
+                                const fileResult = await window.electronAPI.readFile(filePath);
+                                if (fileResult.success && fileResult.data) {
+                                    const freshData = new Uint8Array(fileResult.data);
+                                    const lowerName = meta.name.toLowerCase();
+                                    const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                    return new File([freshData as any], meta.name, { type });
+                                }
+                            }
+                            throw new Error(`Failed to read file: ${meta.name}`);
+                        }
+                    };
+
+                    return {
+                        ...meta,
+                        handle: mockHandle as any,
+                        directoryId: directory.id,
+                    };
+                });
                 addImages(cachedImages);
                 log(`Loaded ${cachedImages.length} images from cache for ${directory.name}`);
             }

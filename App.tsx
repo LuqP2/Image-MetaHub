@@ -85,24 +85,15 @@ export default function App() {
       console.log(`Initializing cache with base path: ${path}`);
       await cacheManager.init(path || undefined);
       
-      // Validate cached images have valid file handles
-      // In Electron: clear persisted state as it can't serialize file paths properly
-      // In Browser: check if file handles are valid (can break after hot reload)
+      // Validate cached images have valid file handles (for hot reload scenarios in browser)
+      // Note: In Electron, mock handles are created with proper getFile() implementation
       const isElectron = typeof window !== 'undefined' && window.electronAPI;
-      
-      if (images.length > 0) {
-        if (isElectron) {
-          // Electron can't persist file paths in Zustand - always clear on startup
-          console.warn('🔄 Electron detected - clearing persisted state (file paths cannot be serialized)');
+      if (!isElectron && images.length > 0) {
+        const firstImage = images[0];
+        const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
+        if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+          console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
           resetState();
-        } else {
-          // Browser: validate file handles
-          const firstImage = images[0];
-          const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
-          if (!fileHandle || typeof fileHandle.getFile !== 'function') {
-            console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
-            resetState();
-          }
         }
       }
     };
