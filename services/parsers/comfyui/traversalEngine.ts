@@ -127,12 +127,10 @@ function extractValue(node: ParserNode, rule: ParamMappingRule, state: Traversal
             if (inputValue !== undefined) {
                 // If it's a direct value (not a link), return it
                 if (!Array.isArray(inputValue)) {
-                    console.log(`[extractValue] Fallback from inputs (direct value): node ${node.id} (${node.class_type}), key ${rule.key}, value:`, inputValue);
                     return inputValue;
                 }
                 // If it's a link, follow it
                 if (Array.isArray(inputValue) && inputValue.length === 2) {
-                    console.log(`[extractValue] Fallback from inputs (following link): node ${node.id} (${node.class_type}), key ${rule.key}, link:`, inputValue);
                     return traverseFromLink(inputValue as NodeLink, state, graph, accumulator);
                 }
             }
