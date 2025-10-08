@@ -234,9 +234,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       try {
-        // Primary method: Use FileSystemFileHandle
-        if (image.handle && typeof image.handle.getFile === 'function') {
-          const file = await image.handle.getFile();
+        // Primary method: Use thumbnail if available, otherwise full image
+        const fileHandle = image.thumbnailHandle || image.handle;
+        
+        if (fileHandle && typeof fileHandle.getFile === 'function') {
+          const file = await fileHandle.getFile();
           if (isMounted) {
             currentUrl = URL.createObjectURL(file);
             setImageUrl(currentUrl);
