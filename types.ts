@@ -112,8 +112,37 @@ export interface ComfyUIMetadata {
   [key: string]: any;
 }
 
+export interface SwarmUIMetadata {
+  sui_image_params?: {
+    prompt?: string;
+    negativeprompt?: string;
+    model?: string;
+    images?: number;
+    seed?: number;
+    steps?: number;
+    cfgscale?: number;
+    aspectratio?: string;
+    width?: number;
+    height?: number;
+    sidelength?: number;
+    sampler?: string;
+    scheduler?: string;
+    automaticvae?: boolean;
+    loras?: string[];
+    loraweights?: string[];
+    swarm_version?: string;
+    date?: string;
+    generation_time?: string;
+    [key: string]: any;
+  };
+  sui_extra_data?: any;
+  // Additional fields that might be present
+  normalizedMetadata?: BaseMetadata;
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -155,8 +184,12 @@ export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeA
   return (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111;
 }
 
+export function isSwarmUIMetadata(metadata: ImageMetadata): metadata is SwarmUIMetadata {
+  return 'sui_image_params' in metadata && typeof metadata.sui_image_params === 'object';
+}
+
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
-  return 'parameters' in metadata && typeof metadata.parameters === 'string';
+  return 'parameters' in metadata && typeof metadata.parameters === 'string' && !('sui_image_params' in metadata);
 }
 
 export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {

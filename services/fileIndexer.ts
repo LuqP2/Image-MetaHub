@@ -1,11 +1,12 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, ComfyUIMetadata, InvokeAIMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
+import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -99,31 +100,43 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 // Main parsing function for JPEG files
 async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   try {
-    const exifData = await parse(buffer, { pick: ['UserComment', 'ImageDescription'] });
+    const exifData = await parse(buffer, { pick: ['UserComment', 'ImageDescription', 'Parameters'] });
     if (!exifData) return null;
     
-    const metadataText = exifData.UserComment || exifData.ImageDescription || '';
+    // Check UserComment first (A1111 and SwarmUI store metadata here in JPEGs)
+    // Then fall back to Parameters (some formats) and ImageDescription
+    const metadataText = exifData.UserComment || exifData.Parameters || exifData.ImageDescription || '';
 
     if (!metadataText) return null;
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:')) {
-      // console.log(`✅ Detected A1111-style parameters in JPEG.`);
+      console.log(`✅ Detected A1111-style parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
-    // Try to parse as JSON for other formats like InvokeAI or ComfyUI
+    // Try to parse as JSON for other formats like SwarmUI, InvokeAI or ComfyUI
     try {
       const parsedMetadata = JSON.parse(metadataText);
+      
+      // Check for SwarmUI format (sui_image_params)
+      if (parsedMetadata.sui_image_params) {
+        console.log(`✅ Detected SwarmUI metadata in JPEG.`);
+        return parsedMetadata;
+      }
+      
       if (isInvokeAIMetadata(parsedMetadata)) {
-        // console.log(`✅ Successfully parsed InvokeAI JSON metadata from JPEG.`);
+        console.log(`✅ Successfully parsed InvokeAI JSON metadata from JPEG.`);
+        return parsedMetadata;
+      } else if (isComfyUIMetadata(parsedMetadata)) {
+        console.log(`✅ Successfully parsed ComfyUI JSON metadata from JPEG.`);
         return parsedMetadata;
       } else {
-        // console.log(`✅ Successfully parsed ComfyUI JSON metadata from JPEG.`);
+        console.log(`✅ Successfully parsed generic JSON metadata from JPEG.`);
         return parsedMetadata;
       }
     } catch (jsonError) {
-      // console.warn(`⚠️ Could not parse JPEG metadata as any known format.`);
+      console.warn(`⚠️ Could not parse JPEG metadata as JSON, might be plain text format.`);
       return null;
     }
   } catch (error) {
@@ -159,7 +172,9 @@ async function processSingleFile(
 
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
-      if (isComfyUIMetadata(rawMetadata)) {
+      if (isSwarmUIMetadata(rawMetadata)) {
+        normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
+      } else if (isComfyUIMetadata(rawMetadata)) {
         const comfyMetadata = rawMetadata as ComfyUIMetadata;
         // Parse workflow and prompt if they are strings
         let workflow = comfyMetadata.workflow;

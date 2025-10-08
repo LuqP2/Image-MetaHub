@@ -1,6 +1,7 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
+import { parseSwarmUIMetadata } from './swarmUIParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -13,6 +14,9 @@ interface ParserModule {
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
+    if ('sui_image_params' in metadata) {
+        return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data) };
+    }
     if ('workflow' in metadata || ('prompt' in metadata && typeof metadata.prompt === 'object')) {
         return {
             parse: (data: ComfyUIMetadata) => {
