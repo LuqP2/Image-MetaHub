@@ -87,25 +87,36 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
-      // Create a directory object
+      console.log('Loading directory from CLI path:', path);
+      
+      // Check if directory already exists in the store
+      const existingDir = directories.find(d => d.path === path);
+      if (existingDir) {
+        console.log('Directory already loaded, skipping:', path);
+        return;
+      }
+      
+      // Create directory object for Electron environment
+      const dirName = path.split(/[/\\]/).pop() || path;
       const mockHandle = { 
-        name: path.split(/[/\\]/).pop() || path,
+        name: dirName,
         kind: 'directory' as const
       };
 
       const newDirectory: Directory = {
         id: path,
-        name: mockHandle.name,
+        name: dirName,
         path: path,
         handle: mockHandle as FileSystemDirectoryHandle
       };
       
-      // Add the directory through handleSelectFolder which will handle all the necessary setup
-      await handleSelectFolder();
+      // Load the directory using the hook's loadDirectory function
+      await loadDirectory(newDirectory, false);
+      
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [handleSelectFolder]);
+  }, [loadDirectory, directories]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
@@ -138,6 +149,14 @@ export default function App() {
   useEffect(() => {
     imageStoreSetSortOrder(sortOrder);
   }, [sortOrder, imageStoreSetSortOrder]);
+
+  // Clean up selectedImage if its directory no longer exists
+  useEffect(() => {
+    if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
+      console.warn('Selected image directory no longer exists, clearing selection');
+      setSelectedImage(null);
+    }
+  }, [selectedImage, directories, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {

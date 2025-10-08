@@ -223,6 +223,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const loadImage = async () => {
       if (!isMounted) return;
 
+      // Validate directoryPath before attempting to load (prevents recursion)
+      if (!directoryPath && window.electronAPI) {
+        console.error('Cannot load image: directoryPath is undefined');
+        if (isMounted) {
+          setImageUrl(null);
+          alert('Failed to load image: Directory path is not available.');
+        }
+        return;
+      }
+
       try {
         // Primary method: Use FileSystemFileHandle
         if (image.handle && typeof image.handle.getFile === 'function') {
