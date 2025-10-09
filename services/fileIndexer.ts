@@ -105,7 +105,21 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     
     // Check UserComment first (A1111 and SwarmUI store metadata here in JPEGs)
     // Then fall back to Parameters (some formats) and ImageDescription
-    const metadataText = exifData.UserComment || exifData.Parameters || exifData.ImageDescription || '';
+    let metadataText = exifData.UserComment || exifData.Parameters || exifData.ImageDescription || '';
+
+    // Handle case where exifr already parsed UserComment as an object (SwarmUI format)
+    if (typeof metadataText === 'object' && metadataText !== null) {
+      console.log(`✅ Detected pre-parsed object in JPEG UserComment (likely SwarmUI).`);
+      
+      // Check for SwarmUI format (sui_image_params)
+      if (metadataText.sui_image_params) {
+        console.log(`✅ Detected SwarmUI metadata in JPEG.`);
+        return metadataText;
+      }
+      
+      // Otherwise convert back to JSON string for further processing
+      metadataText = JSON.stringify(metadataText);
+    }
 
     if (!metadataText) return null;
 
