@@ -100,28 +100,56 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 // Main parsing function for JPEG files
 async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   try {
-    const exifData = await parse(buffer, { pick: ['UserComment', 'ImageDescription', 'Parameters'] });
+    // Extract EXIF data with UserComment support
+    const exifData = await parse(buffer, {
+      userComment: true,
+      mergeOutput: true,
+      sanitize: false,
+      reviveValues: true
+    });
+    
     if (!exifData) return null;
     
-    // Check UserComment first (A1111 and SwarmUI store metadata here in JPEGs)
-    // Then fall back to Parameters (some formats) and ImageDescription
-    let metadataText = exifData.UserComment || exifData.Parameters || exifData.ImageDescription || '';
-
-    // Handle case where exifr already parsed UserComment as an object (SwarmUI format)
-    if (typeof metadataText === 'object' && metadataText !== null) {
-      console.log(`✅ Detected pre-parsed object in JPEG UserComment (likely SwarmUI).`);
-      
-      // Check for SwarmUI format (sui_image_params)
-      if (metadataText.sui_image_params) {
-        console.log(`✅ Detected SwarmUI metadata in JPEG.`);
-        return metadataText;
+    // Check all possible field names for UserComment (A1111 and SwarmUI store metadata here in JPEGs)
+    let metadataText: any = 
+      exifData.UserComment || 
+      exifData.userComment ||
+      exifData['User Comment'] ||
+      exifData.ImageDescription || 
+      exifData.Parameters ||
+      null;
+    
+    if (!metadataText) return null;
+    
+    // Convert Uint8Array to string if needed (exifr returns UserComment as Uint8Array)
+    if (metadataText instanceof Uint8Array) {
+      // UserComment in EXIF has 8-byte character code prefix (e.g., "ASCII\0\0\0", "UNICODE\0")
+      // Find where the actual data starts (look for '{' character for JSON data)
+      let startOffset = 0;
+      for (let i = 0; i < Math.min(20, metadataText.length); i++) {
+        if (metadataText[i] === 0x7B) { // '{' character
+          startOffset = i;
+          break;
+        }
       }
       
-      // Otherwise convert back to JSON string for further processing
-      metadataText = JSON.stringify(metadataText);
+      // If no JSON found at start, skip the standard 8-byte prefix
+      if (startOffset === 0 && metadataText.length > 8) {
+        startOffset = 8;
+      }
+      
+      // Remove null bytes (0x00) that can interfere with decoding
+      const cleanedData = Array.from(metadataText.slice(startOffset)).filter(byte => byte !== 0x00);
+      metadataText = new TextDecoder('utf-8').decode(new Uint8Array(cleanedData));
+    } else if (typeof metadataText !== 'string') {
+      // Convert other types to string
+      metadataText = typeof metadataText === 'object' ? JSON.stringify(metadataText) : String(metadataText);
     }
 
-    if (!metadataText) return null;
+    if (!metadataText) {
+      console.log('⚠️ No UserComment or similar field found in JPEG');
+      return null;
+    }
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:')) {
