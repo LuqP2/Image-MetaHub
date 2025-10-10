@@ -13,7 +13,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onThemeUpdated: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('theme-updated', handler);
+    return () => {
+      ipcRenderer.removeListener('theme-updated', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
+  getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),

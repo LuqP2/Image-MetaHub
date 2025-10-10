@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -297,6 +297,15 @@ function createWindow(startupDirectory = null) {
 
 // App event handlers
 app.whenReady().then(async () => {
+  // Listen for theme changes and notify renderer
+  nativeTheme.on('updated', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('theme-updated', {
+        shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+      });
+    }
+  });
+
   let startupDirectory = null;
 
   // Check for a directory path provided as a command-line argument
@@ -396,6 +405,12 @@ function setupFileOperationHandlers() {
     } catch (error) {
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('get-theme', () => {
+    return {
+      shouldUseDarkColors: nativeTheme.shouldUseDarkColors
+    };
   });
   // --- End Settings IPC ---
 

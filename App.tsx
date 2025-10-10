@@ -73,6 +73,35 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- Effects ---
+  useEffect(() => {
+    const applyTheme = (shouldUseDarkColors) => {
+      if (shouldUseDarkColors) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    if (window.electronAPI) {
+      // Get initial theme
+      window.electronAPI.getTheme().then(({ shouldUseDarkColors }) => {
+        applyTheme(shouldUseDarkColors);
+      });
+
+      // Listen for theme updates
+      const unsubscribe = window.electronAPI.onThemeUpdated(({ shouldUseDarkColors }) => {
+        applyTheme(shouldUseDarkColors);
+      });
+
+      // Cleanup
+      return () => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      };
+    }
+  }, []);
+
   // Initialize the cache manager on startup
   useEffect(() => {
     const initializeCache = async () => {
@@ -216,7 +245,7 @@ export default function App() {
   const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-200 font-sans">
+    <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
 
       <SettingsModal

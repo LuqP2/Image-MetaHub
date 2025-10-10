@@ -2,6 +2,7 @@ import React, { useEffect, useState, FC } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -29,7 +30,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
             <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white" title={`Copy ${label}`}>
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"></path></svg>
+                <Copy className="w-4 h-4" />
             </button>
         )}
       </div>
@@ -60,6 +61,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [activeTab, setActiveTab] = useState('prompt');
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 
@@ -70,7 +72,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
     navigator.clipboard.writeText(text).then(() => {
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = `${type} copied to clipboard!`;
       document.body.appendChild(notification);
       setTimeout(() => document.body.removeChild(notification), 2000);
@@ -91,7 +93,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       await navigator.clipboard.writeText(text);
 
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
       notification.textContent = `${type} copied to clipboard!`;
       document.body.appendChild(notification);
       setTimeout(() => document.body.removeChild(notification), 2000);
@@ -378,15 +380,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div>
             {isRenaming ? (
               <div className="flex gap-2">
-                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="bg-gray-900 text-white border border-gray-600 rounded px-2 py-1 w-full" autoFocus onKeyDown={e => e.key === 'Enter' && confirmRename()}/>
-                <button onClick={confirmRename} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded">Cancel</button>
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="bg-gray-900 text-white border border-gray-600 rounded-lg px-2 py-1 w-full" autoFocus onKeyDown={e => e.key === 'Enter' && confirmRename()}/>
+                <button onClick={confirmRename} className="bg-green-600 text-white px-3 py-1 rounded-lg">Save</button>
+                <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded-lg">Cancel</button>
               </div>
             ) : (
               <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2">
                 {image.name}
-                <button onClick={() => setIsRenaming(true)} className="text-gray-400 hover:text-orange-400 p-1">✏️</button>
-                <button onClick={handleDelete} className="text-gray-400 hover:text-red-400 p-1">🗑️</button>
+                <button onClick={() => setIsRenaming(true)} className="text-gray-400 hover:text-orange-400 p-1"><Pencil size={16} /></button>
+                <button onClick={handleDelete} className="text-gray-400 hover:text-red-400 p-1"><Trash2 size={16} /></button>
               </h2>
             )}
             <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
@@ -394,29 +396,55 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {nMeta ? (
             <>
-              <h3 className="text-base font-semibold text-gray-300 border-b border-gray-600 pb-2">📋 METADATA</h3>
-              <div className="space-y-3">
-                <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
-                <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
-                <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
-                <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
-
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                    <MetadataItem label="Steps" value={nMeta.steps} />
-                    <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
-                    <MetadataItem label="Seed" value={nMeta.seed} />
-                    <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
-                    <MetadataItem label="Sampler" value={nMeta.sampler} />
-                    <MetadataItem label="Scheduler" value={nMeta.scheduler} />
-                </div>
+              <div className="border-b border-gray-700">
+                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                  <button
+                    onClick={() => setActiveTab('prompt')}
+                    className={`${
+                      activeTab === 'prompt'
+                        ? 'border-accent text-accent'
+                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors`}
+                  >
+                    Prompt
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('details')}
+                    className={`${
+                      activeTab === 'details'
+                        ? 'border-accent text-accent'
+                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors`}
+                  >
+                    Details
+                  </button>
+                </nav>
               </div>
 
-              {nMeta.loras && nMeta.loras.length > 0 && (
-                 <>
-                    <h3 className="text-base font-semibold text-gray-300 pt-2 border-b border-gray-600 pb-2">🎨 ADDITIONAL DETAILS</h3>
-                    <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
-                 </>
-              )}
+              <div className="mt-4">
+                {activeTab === 'prompt' && (
+                  <div className="space-y-3">
+                    <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
+                    <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
+                  </div>
+                )}
+                {activeTab === 'details' && (
+                  <div className="space-y-3">
+                    <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+                    {nMeta.loras && nMeta.loras.length > 0 && (
+                      <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                        <MetadataItem label="Steps" value={nMeta.steps} />
+                        <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                        <MetadataItem label="Seed" value={nMeta.seed} />
+                        <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
+                        <MetadataItem label="Sampler" value={nMeta.sampler} />
+                        <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
@@ -425,23 +453,34 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           <div className="flex flex-wrap gap-2 pt-2">
-            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Prompt</button>
-            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Copy Raw Metadata</button>
+            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Prompt</button>
+            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Raw Metadata</button>
             <button onClick={async () => {
               if (!directoryPath) {
                 alert('Cannot determine file location: directory path is missing.');
                 return;
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
-            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Show in Folder</button>
+            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
+            <div className="relative group">
+              <button
+                disabled
+                className="bg-gray-500 text-gray-300 px-3 py-1 rounded-lg text-xs font-medium cursor-not-allowed"
+              >
+                Analyze
+              </button>
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max bg-black/80 text-white text-xs rounded-lg py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                Pro Feature
+              </div>
+            </div>
           </div>
 
           <div>
             <button onClick={() => setShowRawMetadata(!showRawMetadata)} className="text-gray-400 text-sm w-full text-left mt-4 py-1 border-t border-gray-700 flex items-center gap-1">
-              {showRawMetadata ? '▼' : '▶'} Raw Metadata
+              {showRawMetadata ? <ChevronDown size={16} /> : <ChevronRight size={16} />} Raw Metadata
             </button>
             {showRawMetadata && (
-              <pre className="bg-black/50 p-2 rounded text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
+              <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
                 {JSON.stringify(image.metadata, null, 2)}
               </pre>
             )}
@@ -460,9 +499,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onClick={copyImage}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
-            </svg>
+            <Copy className="w-4 h-4" />
             Copy to Clipboard
           </button>
           
@@ -473,9 +510,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!nMeta?.prompt}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
-            </svg>
+            <Copy className="w-4 h-4" />
             Copy Prompt
           </button>
           <button
@@ -483,9 +518,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!nMeta?.negativePrompt}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
-            </svg>
+            <Copy className="w-4 h-4" />
             Copy Negative Prompt
           </button>
           <button
@@ -493,9 +526,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!nMeta?.seed}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
-            </svg>
+            <Copy className="w-4 h-4" />
             Copy Seed
           </button>
           <button
@@ -503,9 +534,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!nMeta?.model}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
-            </svg>
+            <Copy className="w-4 h-4" />
             Copy Model
           </button>
           
@@ -515,9 +544,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onClick={showInFolder}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2 6a2 2 0 012-2h5a2 2 0 012 2v2H2V6zM2 10h10v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/>
-            </svg>
+            <Folder className="w-4 h-4" />
             Show in Folder
           </button>
           
@@ -525,9 +552,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onClick={exportImage}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.409l-7-14z"/>
-            </svg>
+            <Download className="w-4 h-4" />
             Export Image
           </button>
         </div>
