@@ -13,7 +13,7 @@ const StatusBar: React.FC<StatusBarProps> = ({ filteredCount, totalCount, direct
       <span>
         Found <span className="font-bold text-blue-400">{filteredCount}</span> of <span className="font-bold text-green-400">{totalCount}</span> images across <span className="font-bold text-purple-400">{directoryCount}</span> {folderText}
       </span>
-      <span className="text-xs text-gray-500">v0.9.1</span>
+      <span className="text-xs text-gray-500">v0.9.2-beta.1</span>
     </div>
   );
 };

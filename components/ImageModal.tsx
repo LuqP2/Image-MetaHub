@@ -61,7 +61,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
-  const [activeTab, setActiveTab] = useState('prompt');
+  const [showDetails, setShowDetails] = useState(true);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 
@@ -395,57 +395,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
 
           {nMeta ? (
-            <>
-              <div className="border-b border-gray-700">
-                <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                  <button
-                    onClick={() => setActiveTab('prompt')}
-                    className={`${
-                      activeTab === 'prompt'
-                        ? 'border-accent text-accent'
-                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors`}
-                  >
-                    Prompt
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('details')}
-                    className={`${
-                      activeTab === 'details'
-                        ? 'border-accent text-accent'
-                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                    } whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors`}
-                  >
-                    Details
-                  </button>
-                </nav>
+            <div className="space-y-4">
+              {/* Prompt Section - Always Visible */}
+              <div className="space-y-3">
+                <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
+                <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
               </div>
 
-              <div className="mt-4">
-                {activeTab === 'prompt' && (
-                  <div className="space-y-3">
-                    <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
-                    <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
-                  </div>
-                )}
-                {activeTab === 'details' && (
-                  <div className="space-y-3">
+              {/* Details Section - Collapsible */}
+              <div>
+                <button 
+                  onClick={() => setShowDetails(!showDetails)} 
+                  className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                >
+                  <span className="font-semibold">Generation Details</span>
+                  {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {showDetails && (
+                  <div className="space-y-3 mt-3">
                     <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
                     {nMeta.loras && nMeta.loras.length > 0 && (
                       <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
                     )}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                        <MetadataItem label="Steps" value={nMeta.steps} />
-                        <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
-                        <MetadataItem label="Seed" value={nMeta.seed} />
-                        <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
-                        <MetadataItem label="Sampler" value={nMeta.sampler} />
-                        <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <MetadataItem label="Steps" value={nMeta.steps} />
+                      <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                      <MetadataItem label="Seed" value={nMeta.seed} />
+                      <MetadataItem label="Sampler" value={nMeta.sampler} />
+                      <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                      <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
                     </div>
                   </div>
                 )}
               </div>
-            </>
+            </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
                 No normalized metadata available.
