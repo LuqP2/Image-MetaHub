@@ -5,59 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.6] - 2025-10-12
-
-### Added
-- **Forge Metadata Support**: Added complete support for Forge (A1111-based) generated images with automatic metadata parsing
-- **Forge Parameter Extraction**: Comprehensive parsing of Forge parameters including hires upscaling, denoising, and model information
-- **Gradio Integration**: Support for Gradio-based Forge interfaces with automatic format detection
-
-### Technical Improvements
-- **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
-- **A1111 Compatibility**: Forge parser reuses A1111 parsing logic while adding Forge-specific features
-- **Hires Parameter Support**: Extraction of high-resolution upscaling parameters (upscaler, upscale factor, steps, denoising)
-
-## [0.9.5] - 2025-10-12
+## [0.9.2] - 2025-10-12
 
 ### Added
 - **Midjourney Metadata Support**: Added complete support for Midjourney-generated images with automatic metadata parsing from PNG parameters
 - **Midjourney Parameter Extraction**: Regex-based parsing for Midjourney parameters (--v, --ar, --q, --s, --seed)
 - **Aspect Ratio Processing**: Automatic dimension calculation from --ar parameters
-
-### Technical Improvements
-- **Modular Parser Architecture**: Extended parser factory to include Midjourney format detection and parsing
-- **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
-
-## [0.9.4] - 2025-10-12
-
-### Added
+- **Forge Metadata Support**: Added complete support for Forge (A1111-based) generated images with automatic metadata parsing
+- **Forge Parameter Extraction**: Comprehensive parsing of Forge parameters including hires upscaling, denoising, and model information
+- **Gradio Integration**: Support for Gradio-based Forge interfaces with automatic format detection
 - **Easy Diffusion Sidecar JSON Support**: Added support for reading metadata from sidecar JSON files alongside PNG/JPEG images
 - **Enhanced Easy Diffusion Parsing**: Improved detection and parsing with fallback to embedded metadata when JSON not available
+- **Easy Diffusion Metadata Support**: Added complete support for Easy Diffusion-generated images with automatic metadata parsing from PNG parameters field
+- **Enhanced Format Detection**: Improved automatic detection to distinguish Easy Diffusion from Automatic1111 based on metadata patterns
+- **SwarmUI Metadata Support**: Added complete support for SwarmUI-generated images with automatic metadata parsing, model extraction, and LoRA detection
 - **Debug Logging**: Added comprehensive logging for JSON detection and parsing operations
 
 ### Technical Improvements
+- **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, and SwarmUI format detection and parsing
+- **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
+- **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
+- **A1111 Compatibility**: Forge parser reuses A1111 parsing logic while adding Forge-specific features
+- **Hires Parameter Support**: Extraction of high-resolution upscaling parameters (upscaler, upscale factor, steps, denoising)
 - **Sidecar JSON Detection**: Automatic detection of .json files with same name as images (e.g., image.png + image.json)
 - **Electron-Compatible File Reading**: Uses electronAPI.readFile for secure file access
 - **Fallback Mechanism**: Falls back to embedded PNG metadata if sidecar JSON unavailable
 - **Type-Safe JSON Parsing**: Proper TypeScript interfaces for Easy Diffusion JSON format
-
-## [0.9.3] - 2025-10-12
-
-### Added
-- **Easy Diffusion Metadata Support**: Added complete support for Easy Diffusion-generated images with automatic metadata parsing from PNG parameters field
-- **Enhanced Format Detection**: Improved automatic detection to distinguish Easy Diffusion from Automatic1111 based on metadata patterns
-
-### Technical Improvements
-- **Modular Parser Architecture**: Extended parser factory to include Easy Diffusion format detection and parsing
 - **Parameter-based Parsing**: Added regex-based parsing for Easy Diffusion's text format (Prompt, Negative prompt, Steps, CFG scale, etc.)
-
-## [0.9.2] - 2025-10-12
-
-### Added
-- **SwarmUI Metadata Support**: Added complete support for SwarmUI-generated images with automatic metadata parsing, model extraction, and LoRA detection
-
-### Technical Improvements
-- **Modular Parser Architecture**: Extended parser factory to include SwarmUI format detection and parsing
 - **Enhanced Metadata Detection**: Improved automatic format detection to recognize SwarmUI's sui_image_params structure
 
 ## [0.9.1] - 2025-10-08
