@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -14,6 +14,7 @@ import { parseForgeMetadata } from './parsers/forgeParser';
 import { parseDalleMetadata } from './parsers/dalleParser';
 import { parseFireflyMetadata } from './parsers/fireflyParser';
 import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
+import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -224,6 +225,15 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
+    // Draw Things (iOS/Mac AI app) uses SD-like format with mobile device indicators
+    if ((metadataText.includes('iPhone') || metadataText.includes('iPad') || metadataText.includes('iPod') || metadataText.includes('Draw Things')) &&
+        metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('CFG scale:') &&
+        !metadataText.includes('Model hash:') && !metadataText.includes('Forge') && !metadataText.includes('Gradio') &&
+        !metadataText.includes('DreamStudio') && !metadataText.includes('Stability AI') && !metadataText.includes('--niji')) {
+      console.log(`✅ Detected Draw Things parameters in JPEG UserComment.`);
+      return { parameters: metadataText };
+    }
+
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI, ComfyUI, or DALL-E
     try {
       const parsedMetadata = JSON.parse(metadataText);
@@ -351,6 +361,9 @@ async function processSingleFile(
       } else if (isDreamStudioMetadata(rawMetadata)) {
         console.log(`✅ Successfully parsed DreamStudio metadata.`);
         normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);
+      } else if (isDrawThingsMetadata(rawMetadata)) {
+        console.log(`✅ Successfully parsed Draw Things metadata.`);
+        normalizedMetadata = parseDrawThingsMetadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

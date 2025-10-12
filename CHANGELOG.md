@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.2] - 2025-10-12
 
 ### Added
+- **Draw Things Metadata Support**: Added complete support for Draw Things (iOS/Mac AI app) generated images with SD-like parameter parsing
+- **Mobile AI Workflow Analysis**: BI Pro support for analyzing creative workflows from iOS/Mac Stable Diffusion apps
+- **Device Model Detection**: Automatic extraction of device models (iPhone, iPad, iPod) for mobile workflow categorization
+- **App Version Tracking**: Support for Draw Things app version extraction and mobile app identification
+- **Mobile-Specific Tags**: Automatic tagging with 'Mobile AI', device types (iPhone, iPad, iOS), and generation quality indicators
+- **SD Parameter Compatibility**: Full support for Stable Diffusion parameters (Prompt, Negative prompt, Steps, CFG scale, Seed, Size, Model)
+- **iOS/macOS Integration**: Optimized parsing for Draw Things PNG metadata format with mobile device indicators
 - **Adobe Firefly Metadata Support**: Added complete support for Adobe Firefly generated images with C2PA/EXIF metadata parsing
 - **Firefly C2PA Manifest Parsing**: Comprehensive extraction of Content Credentials, edit history, and generation parameters
 - **Creative Asset Analysis**: BI Pro support for analyzing edit actions and creative workflows from Firefly's C2PA data
@@ -42,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added Unit Tests:** Created an initial test suite for the `automatic1111Parser`, demonstrating how to write effective unit tests for the application's parsers.
 - **Added ESLint:** Set up ESLint with a modern `eslint.config.js` configuration, including rules for TypeScript and React.
 - **Configured ESLint Rules:** Established a practical ESLint ruleset that flags potential issues without being overly disruptive, such as downgrading `no-explicit-any` to a warning.
+
+### Changed
+- **Image Grid Virtualization**: Migrated the main image grid from `react-virtualized` Masonry to `react-window` FixedSizeGrid for improved performance and stability with large collections (20k+ images)
+- **Dynamic Column Calculation**: Grid now adapts column count and cell size responsively to zoom and window size, eliminating layout bugs and overflows
+- **Consistent Thumbnail Layout**: Fixed issues with overlapping, excessive spacing, and unpredictable cell heights during zoom in/out
+- **Simplified Codebase**: Removed complex Masonry logic and cell measurement, making the grid code easier to maintain and debug
+- **Performance**: Achieved smooth scrolling and instant rendering even with tens of thousands of images
 
 ### Technical Improvements
 - **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing

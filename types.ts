@@ -215,8 +215,16 @@ export interface FireflyMetadata {
   [key: string]: any;
 }
 
+export interface DrawThingsMetadata {
+  parameters: string; // Draw Things uses SD-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
+  device_model?: string; // Mobile device model (e.g., "iPhone 15 Pro", "iPad Pro")
+  app_version?: string; // Draw Things app version
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -356,6 +364,24 @@ export function isFireflyMetadata(metadata: ImageMetadata): metadata is FireflyM
   }
 
   return false;
+}
+
+export function isDrawThingsMetadata(metadata: ImageMetadata): metadata is DrawThingsMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         (metadata.parameters.includes('Draw Things') || 
+          metadata.parameters.includes('iPhone') || 
+          metadata.parameters.includes('iPad') ||
+          (metadata.parameters.includes('Prompt:') && 
+           metadata.parameters.includes('Steps:') && 
+           metadata.parameters.includes('Seed:') &&
+           !metadata.parameters.includes('Model hash:') && // Exclude A1111
+           !metadata.parameters.includes('Forge') && // Exclude Forge
+           !metadata.parameters.includes('Gradio') && // Exclude Forge
+           !metadata.parameters.includes('DreamStudio') && // Exclude DreamStudio
+           !metadata.parameters.includes('Stability AI') && // Exclude DreamStudio
+           !metadata.parameters.includes('--niji') && // Exclude Niji Journey
+           !metadata.parameters.includes('Midjourney'))); // Exclude Midjourney
 }
 
 export function isDreamStudioMetadata(metadata: ImageMetadata): metadata is DreamStudioMetadata {

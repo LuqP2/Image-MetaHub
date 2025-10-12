@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -9,6 +9,7 @@ import { parseForgeMetadata } from './forgeParser';
 import { parseDalleMetadata } from './dalleParser';
 import { parseFireflyMetadata } from './fireflyParser';
 import { parseDreamStudioMetadata } from './dreamStudioParser';
+import { parseDrawThingsMetadata } from './drawThingsParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -103,6 +104,25 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
           !metadata.parameters.includes('Forge') &&
           !metadata.parameters.includes('Gradio')))) {
         return { parse: (data: DreamStudioMetadata) => parseDreamStudioMetadata(data.parameters) };
+    }
+    // Check for Draw Things (iOS/Mac AI app) - after DreamStudio, similar format
+    if ('parameters' in metadata && 
+        typeof metadata.parameters === 'string' && 
+        (metadata.parameters.includes('iPhone') || 
+         metadata.parameters.includes('iPad') || 
+         metadata.parameters.includes('iPod') ||
+         metadata.parameters.includes('Draw Things') ||
+         (metadata.parameters.includes('Prompt:') && 
+          metadata.parameters.includes('Steps:') && 
+          metadata.parameters.includes('CFG scale:') &&
+          !metadata.parameters.includes('Model hash:') &&
+          !metadata.parameters.includes('Forge') &&
+          !metadata.parameters.includes('Gradio') &&
+          !metadata.parameters.includes('DreamStudio') &&
+          !metadata.parameters.includes('Stability AI') &&
+          !metadata.parameters.includes('--niji') &&
+          !metadata.parameters.includes('Midjourney')))) {
+        return { parse: (data: DrawThingsMetadata) => parseDrawThingsMetadata(data.parameters) };
     }
     if ('parameters' in metadata && 
         typeof metadata.parameters === 'string' && 
