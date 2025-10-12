@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import SearchBar, { SearchField } from './SearchBar';
+import AdvancedFilters from './AdvancedFilters';
 import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -18,6 +19,9 @@ interface SidebarProps {
   onLoraChange: (loras: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
+  advancedFilters: any;
+  onAdvancedFiltersChange: (filters: any) => void;
+  onClearAdvancedFilters: () => void;
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -38,6 +42,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onLoraChange,
   onSchedulerChange,
   onClearAllFilters,
+  advancedFilters,
+  onAdvancedFiltersChange,
+  onClearAdvancedFilters,
   children,
   isCollapsed,
   onToggleCollapse
@@ -331,10 +338,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
+        {/* Advanced Filters */}
+        <AdvancedFilters
+          advancedFilters={advancedFilters}
+          onAdvancedFiltersChange={onAdvancedFiltersChange}
+          onClearAdvancedFilters={onClearAdvancedFilters}
+        />
+
       </div>
 
       {/* Clear All Filters */}
-      {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
+      {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0 || Object.keys(advancedFilters || {}).length > 0) && (
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClearAllFilters}

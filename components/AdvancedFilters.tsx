@@ -1,0 +1,215 @@
+import React, { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, X, Calendar, Settings } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface AdvancedFiltersProps {
+  advancedFilters: any;
+  onAdvancedFiltersChange: (filters: any) => void;
+  onClearAdvancedFilters: () => void;
+}
+
+const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
+  advancedFilters,
+  onAdvancedFiltersChange,
+  onClearAdvancedFilters
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [localFilters, setLocalFilters] = useState(advancedFilters || {});
+
+  // Available dimensions from common AI image sizes
+  const availableDimensions = [
+    '512x512', '512x768', '768x512', '768x768', '768x1024', '1024x768', '1024x1024',
+    '640x480', '800x600', '1024x576', '1280x720', '1920x1080'
+  ];
+
+  useEffect(() => {
+    setLocalFilters(advancedFilters || {});
+  }, [advancedFilters]);
+
+  const updateFilter = (key: string, value: any) => {
+    const newFilters = { ...localFilters, [key]: value };
+    // Remove empty filters
+    Object.keys(newFilters).forEach(k => {
+      if (newFilters[k] === null || newFilters[k] === undefined ||
+          (typeof newFilters[k] === 'object' && Object.keys(newFilters[k]).length === 0)) {
+        delete newFilters[k];
+      }
+    });
+    setLocalFilters(newFilters);
+    onAdvancedFiltersChange(newFilters);
+  };
+
+  const hasActiveFilters = Object.keys(advancedFilters || {}).length > 0;
+
+  return (
+    <div className="border-b border-gray-700">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+      >
+        <div className="flex items-center space-x-2">
+          <Settings className="w-4 h-4 text-gray-400" />
+          <span className="text-gray-300 font-medium">Advanced Filters</span>
+          {hasActiveFilters && (
+            <span className="text-xs bg-purple-600 text-purple-100 px-2 py-1 rounded-lg">
+              {Object.keys(advancedFilters).length} active
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          {hasActiveFilters && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClearAdvancedFilters();
+              }}
+              className="text-xs text-gray-400 hover:text-red-400"
+              title="Clear advanced filters"
+            >
+              <X size={16} />
+            </button>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-4 space-y-4">
+
+              {/* Dimensions Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Dimensions
+                </label>
+                <select
+                  value={localFilters.dimension || ''}
+                  onChange={(e) => updateFilter('dimension', e.target.value || null)}
+                  className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                >
+                  <option value="">All dimensions</option>
+                  {availableDimensions.map(dim => (
+                    <option key={dim} value={dim}>{dim}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Steps Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Steps Range: {localFilters.steps ? `${localFilters.steps.min} - ${localFilters.steps.max}` : 'All'}
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={localFilters.steps?.min || ''}
+                    onChange={(e) => {
+                      const min = parseInt(e.target.value) || 0;
+                      const max = localFilters.steps?.max || 100;
+                      updateFilter('steps', { min: Math.max(0, min), max: Math.max(min + 1, max) });
+                    }}
+                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    min="0"
+                    max="100"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={localFilters.steps?.max || ''}
+                    onChange={(e) => {
+                      const max = parseInt(e.target.value) || 100;
+                      const min = localFilters.steps?.min || 0;
+                      updateFilter('steps', { min: Math.min(min, max - 1), max: Math.min(100, max) });
+                    }}
+                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              </div>
+
+              {/* CFG Scale Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  CFG Scale: {localFilters.cfg ? `${localFilters.cfg.min} - ${localFilters.cfg.max}` : 'All'}
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    step="0.1"
+                    value={localFilters.cfg?.min || ''}
+                    onChange={(e) => {
+                      const min = parseFloat(e.target.value) || 0;
+                      const max = localFilters.cfg?.max || 20;
+                      updateFilter('cfg', { min: Math.max(0, min), max: Math.max(min + 0.1, max) });
+                    }}
+                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    min="0"
+                    max="20"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    step="0.1"
+                    value={localFilters.cfg?.max || ''}
+                    onChange={(e) => {
+                      const max = parseFloat(e.target.value) || 20;
+                      const min = localFilters.cfg?.min || 0;
+                      updateFilter('cfg', { min: Math.min(min, max - 0.1), max: Math.min(20, max) });
+                    }}
+                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    min="0"
+                    max="20"
+                  />
+                </div>
+              </div>
+
+              {/* Date Range */}
+              <div>
+                <label className="flex items-center text-sm font-medium text-gray-300 mb-2">
+                  <Calendar className="w-4 h-4 mr-1" />
+                  Date Range
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="date"
+                    value={localFilters.date?.from || ''}
+                    onChange={(e) => {
+                      const from = e.target.value;
+                      const to = localFilters.date?.to || '';
+                      updateFilter('date', { from, to });
+                    }}
+                    className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={localFilters.date?.to || ''}
+                    onChange={(e) => {
+                      const to = e.target.value;
+                      const from = localFilters.date?.from || '';
+                      updateFilter('date', { from, to });
+                    }}
+                    className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                  />
+                </div>
+              </div>
+
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default AdvancedFilters;

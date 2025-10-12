@@ -273,6 +273,9 @@ export default function App() {
           onClearAllFilters={() => {
             setSelectedFilters({ models: [], loras: [], schedulers: [] });
           }}
+          advancedFilters={advancedFilters}
+          onAdvancedFiltersChange={setAdvancedFilters}
+          onClearAdvancedFilters={() => setAdvancedFilters({})}
         >
           <DirectoryList
             directories={directories}
