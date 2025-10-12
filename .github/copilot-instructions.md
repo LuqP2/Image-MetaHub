@@ -129,6 +129,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 ```bash
 npm run dev              # Start Vite dev server (port 5173)
 npm run build            # TypeScript compilation + Vite build
+npm run test             # Run Vitest tests
+npm run lint             # Run ESLint
 npm run electron-dev     # Run desktop app in development (concurrent with dev server)
 npm run electron-pack    # Build desktop installer (all platforms)
 npm run electron-dist    # Build desktop installer without publishing
@@ -546,6 +548,12 @@ const extractPrompt = (metadata: InvokeAIMetadata): string => {
 - Try-catch blocks around async operations
 - User-friendly error messages
 - Graceful degradation for missing features
+
+### Testing & Linting
+- **Vitest**: Use Vitest for unit testing with `jsdom` environment for DOM-related tests
+- **ESLint**: Follow the configured ESLint rules for TypeScript and React code quality
+- **Test Coverage**: Write unit tests for parsers and critical business logic
+- **Linting Rules**: ESLint is configured to warn on `no-explicit-any` instead of erroring, allowing flexibility while encouraging better typing
 
 ### Performance Considerations
 - Avoid unnecessary re-renders

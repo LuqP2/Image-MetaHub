@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **EXIF Metadata Extraction**: Extraction of OpenAI DALL-E specific EXIF tags and generation metadata
 - **AI Content Tagging**: Automatic tagging of AI-generated content for filtering and organization
 - **Debug Logging**: Added comprehensive logging for JSON detection and parsing operations
+- **Added Vitest:** Integrated the Vitest testing framework and configured it with a `jsdom` environment.
+- **Added Unit Tests:** Created an initial test suite for the `automatic1111Parser`, demonstrating how to write effective unit tests for the application's parsers.
+- **Added ESLint:** Set up ESLint with a modern `eslint.config.js` configuration, including rules for TypeScript and React.
+- **Configured ESLint Rules:** Established a practical ESLint ruleset that flags potential issues without being overly disruptive, such as downgrading `no-explicit-any` to a warning.
 
 ### Technical Improvements
 - **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing
