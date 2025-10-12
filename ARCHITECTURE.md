@@ -98,7 +98,8 @@ src/
 │       ├── parseComfyUI.ts # ComfyUI metadata parser
 │       ├── parseInvokeAI.ts # InvokeAI metadata parser
 │       ├── swarmUIParser.ts # SwarmUI metadata parser
-│       └── easyDiffusionParser.ts # Easy Diffusion metadata parser (PNG + JSON sidecar)
+│       ├── easyDiffusionParser.ts # Easy Diffusion metadata parser (PNG + JSON sidecar)
+│       └── midjourneyParser.ts # Midjourney metadata parser
 ├── store/                 # State management
 │   └── useImageStore.ts   # Zustand store for global state
 ├── utils/                 # Utility functions
@@ -243,10 +244,11 @@ const mockHandle = {
   - `parseA1111.ts`: Automatic1111 parameters parsing
   - `swarmUIParser.ts`: SwarmUI metadata parsing
   - `easyDiffusionParser.ts`: Easy Diffusion parameters parsing (PNG embedded + JSON sidecar)
+  - `midjourneyParser.ts`: Midjourney parameter flag parsing (--v, --ar, --q, --s)
 - **Parser Factory**: Intelligent format detection and parser selection
 - **PNG Chunk Parsing**: Extracts metadata from PNG tEXt chunks
 - **JPEG EXIF Parsing**: Extracts metadata from JPEG EXIF data using exifr library
-- **Multi-Format Support**: Unified interface for InvokeAI, ComfyUI, Automatic1111, SwarmUI, and Easy Diffusion (PNG/JPEG + JSON sidecar)
+- **Multi-Format Support**: Unified interface for InvokeAI, ComfyUI, Automatic1111, SwarmUI, Easy Diffusion, and Midjourney (PNG/JPEG + JSON sidecar)
 - **Error-Resilient Parsing**: Graceful handling of malformed metadata
 - **Normalized Metadata**: Consistent data structure across all formats
 - **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects

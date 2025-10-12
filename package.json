@@ -3,7 +3,7 @@
   "description": "Image MetaHub",
   "author": "LuqP2 <github.com/LuqP2>",
   "private": true,
-  "version": "0.9.4",
+  "version": "0.9.5",
   "type": "module",
   "main": "electron.mjs",
   "homepage": "./",

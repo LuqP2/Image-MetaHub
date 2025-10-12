@@ -1,8 +1,9 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffusionParser';
+import { parseMidjourneyMetadata } from './midjourneyParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -67,6 +68,15 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
     if ('prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata)) {
         return { parse: (data: EasyDiffusionJson) => parseEasyDiffusionJson(data) };
+    }
+    if ('parameters' in metadata && 
+        typeof metadata.parameters === 'string' && 
+        (metadata.parameters.includes('Midjourney') || 
+         metadata.parameters.includes('--v') || 
+         metadata.parameters.includes('--ar') ||
+         metadata.parameters.includes('--q') ||
+         metadata.parameters.includes('--s'))) {
+        return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters) };
     }
     return null;
 }

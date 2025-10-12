@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2025-10-12
+
+### Added
+- **Midjourney Metadata Support**: Added complete support for Midjourney-generated images with automatic metadata parsing from PNG parameters
+- **Midjourney Parameter Extraction**: Regex-based parsing for Midjourney parameters (--v, --ar, --q, --s, --seed)
+- **Aspect Ratio Processing**: Automatic dimension calculation from --ar parameters
+
+### Technical Improvements
+- **Modular Parser Architecture**: Extended parser factory to include Midjourney format detection and parsing
+- **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
+
 ## [0.9.4] - 2025-10-12
 
 ### Added

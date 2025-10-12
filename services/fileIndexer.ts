@@ -1,13 +1,14 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
+import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -205,6 +206,12 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
+    // Midjourney uses parameter flags like --v, --ar, --q, --s
+    if (metadataText.includes('--v') || metadataText.includes('--ar') || metadataText.includes('--q') || metadataText.includes('--s') || metadataText.includes('Midjourney')) {
+      console.log(`✅ Detected Midjourney parameters in JPEG UserComment.`);
+      return { parameters: metadataText };
+    }
+
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI or ComfyUI
     try {
       const parsedMetadata = JSON.parse(metadataText);
@@ -309,6 +316,8 @@ async function processSingleFile(
         normalizedMetadata = parseEasyDiffusionMetadata(rawMetadata.parameters);
       } else if (isEasyDiffusionJson(rawMetadata)) {
         normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
+      } else if (isMidjourneyMetadata(rawMetadata)) {
+        normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

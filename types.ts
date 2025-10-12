@@ -163,8 +163,14 @@ export interface EasyDiffusionJson {
   [key: string]: any;
 }
 
+export interface MidjourneyMetadata {
+  parameters: string; // Midjourney uses format like: "prompt --v 5 --ar 16:9" or "Prompt: prompt text --v 5"
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -220,6 +226,16 @@ export function isEasyDiffusionMetadata(metadata: ImageMetadata): metadata is Ea
 
 export function isEasyDiffusionJson(metadata: ImageMetadata): metadata is EasyDiffusionJson {
   return 'prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata);
+}
+
+export function isMidjourneyMetadata(metadata: ImageMetadata): metadata is MidjourneyMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         (metadata.parameters.includes('Midjourney') || 
+          metadata.parameters.includes('--v') || 
+          metadata.parameters.includes('--ar') ||
+          metadata.parameters.includes('--q') ||
+          metadata.parameters.includes('--s'));
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {

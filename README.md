@@ -27,7 +27,7 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 **Advanced Search & Filtering**
 - **Deep Metadata Search:** Full-text search across all PNG and JPEG metadata including prompts, models, and generation parameters
 - **Precise Filtering:** Filter by Models, LoRAs, Schedulers, image dimensions, generation steps, CFG Scale, and date ranges
-- **Multi-Format Support:** Works with InvokeAI, Automatic1111, ComfyUI, SwarmUI, and Easy Diffusion generated images (PNG and JPEG, including sidecar JSON)
+- **Multi-Format Support:** Works with InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, and Midjourney generated images (PNG and JPEG, including sidecar JSON)
 
 **Enhanced User Experience**
 - **Right Sidebar Preview:** Hover over thumbnails to see instant preview with metadata in a collapsible right sidebar
@@ -110,7 +110,7 @@ The dev server automatically binds to `0.0.0.0`, making it accessible from other
 - **Desktop:** Electron with integrated auto-updater
 - **Storage:** IndexedDB for persistent local caching
 - **File Access:** File System Access API (browser) / Node.js filesystem (desktop)
-- **Metadata Support:** InvokeAI, Automatic1111, ComfyUI, SwarmUI, and Easy Diffusion PNG/JPEG metadata formats (with sidecar JSON support)
+- **Metadata Support:** InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, and Midjourney PNG/JPEG metadata formats (with sidecar JSON support)
 - **Directory Scanning:** Configurable recursive subfolder scanning with user preference persistence
 
 For comprehensive technical information, see [ARCHITECTURE.md](./ARCHITECTURE.md).
@@ -135,7 +135,7 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 - Configurable subfolder scanning
 
 **Medium-Term**
-- ComfyUI, SwarmUI, and Easy Diffusion metadata support (complete)
+- ComfyUI, SwarmUI, Easy Diffusion, and Midjourney metadata support (complete)
 - Custom tagging system
 - Image comparison view
 
