@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -12,6 +12,7 @@ import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 import { parseNijiMetadata } from './parsers/nijiParser';
 import { parseForgeMetadata } from './parsers/forgeParser';
 import { parseDalleMetadata } from './parsers/dalleParser';
+import { parseFireflyMetadata } from './parsers/fireflyParser';
 import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -344,6 +345,9 @@ async function processSingleFile(
         normalizedMetadata = parseForgeMetadata(rawMetadata);
       } else if (isDalleMetadata(rawMetadata)) {
         normalizedMetadata = parseDalleMetadata(rawMetadata);
+      } else if (isFireflyMetadata(rawMetadata)) {
+        console.log(`✅ Successfully parsed Adobe Firefly metadata.`);
+        normalizedMetadata = parseFireflyMetadata(rawMetadata);
       } else if (isDreamStudioMetadata(rawMetadata)) {
         console.log(`✅ Successfully parsed DreamStudio metadata.`);
         normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);

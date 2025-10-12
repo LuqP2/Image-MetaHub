@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -7,6 +7,7 @@ import { parseMidjourneyMetadata } from './midjourneyParser';
 import { parseNijiMetadata } from './nijiParser';
 import { parseForgeMetadata } from './forgeParser';
 import { parseDalleMetadata } from './dalleParser';
+import { parseFireflyMetadata } from './fireflyParser';
 import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
@@ -26,6 +27,25 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         ('prompt' in metadata && 'model_version' in metadata && 
          (metadata.model_version?.includes('dall-e') || metadata.model_version?.includes('DALL-E')))) {
         return { parse: (data: DalleMetadata) => parseDalleMetadata(data) };
+    }
+
+    // Check for Adobe Firefly C2PA/EXIF metadata (after DALL-E, similar structure)
+    if ('c2pa_manifest' in metadata) {
+        const manifest = metadata.c2pa_manifest as any;
+        if (manifest?.['adobe:firefly'] || 
+            (typeof manifest === 'string' && manifest.includes('adobe:firefly')) ||
+            (manifest?.['c2pa.actions'] && JSON.stringify(manifest['c2pa.actions']).includes('firefly'))) {
+            return { parse: (data: FireflyMetadata) => parseFireflyMetadata(data) };
+        }
+    }
+    if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
+        const exif = metadata.exif_data as any;
+        if (exif?.['adobe:firefly'] || exif?.Software?.includes('Firefly')) {
+            return { parse: (data: FireflyMetadata) => parseFireflyMetadata(data) };
+        }
+    }
+    if ('firefly_version' in metadata || ('ai_generated' in metadata && metadata.ai_generated === true)) {
+        return { parse: (data: FireflyMetadata) => parseFireflyMetadata(data) };
     }
     
     if ('sui_image_params' in metadata) {

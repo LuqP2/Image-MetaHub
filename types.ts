@@ -201,8 +201,22 @@ export interface DreamStudioMetadata {
   [key: string]: any;
 }
 
+export interface FireflyMetadata {
+  // C2PA/EXIF embedded metadata for Adobe Firefly images
+  c2pa_manifest?: any; // C2PA manifest data with actions and content credentials
+  exif_data?: any; // EXIF metadata
+  prompt?: string; // Original user prompt
+  edit_history?: any[]; // Array of edit actions from C2PA
+  firefly_version?: string; // Adobe Firefly model version
+  generation_params?: any; // Generation parameters (style, size, etc.)
+  ai_generated?: boolean; // AI generated content flag
+  content_credentials?: any; // Content Credentials data
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -304,6 +318,40 @@ export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetad
   // Check for DALL-E specific fields
   if ('prompt' in metadata && 'model_version' in metadata && 
       (metadata.model_version?.includes('dall-e') || metadata.model_version?.includes('DALL-E'))) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isFireflyMetadata(metadata: ImageMetadata): metadata is FireflyMetadata {
+  // Check for C2PA manifest with Firefly indicators
+  if ('c2pa_manifest' in metadata) {
+    const manifest = metadata.c2pa_manifest as any;
+    // Check for Adobe Firefly specific indicators
+    if (manifest?.['adobe:firefly'] || 
+        (typeof manifest === 'string' && manifest.includes('adobe:firefly'))) {
+      return true;
+    }
+    // Check c2pa.actions for Firefly signatures
+    if (manifest?.['c2pa.actions']) {
+      const actions = JSON.stringify(manifest['c2pa.actions']);
+      if (actions.includes('firefly') || actions.includes('adobe.com/firefly')) {
+        return true;
+      }
+    }
+  }
+
+  // Check for Adobe Firefly specific EXIF data
+  if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
+    const exif = metadata.exif_data as any;
+    if (exif['adobe:firefly'] || exif['Software']?.includes('Firefly') || exif['Software']?.includes('Adobe Firefly')) {
+      return true;
+    }
+  }
+
+  // Check for Firefly specific fields
+  if ('firefly_version' in metadata || 'ai_generated' in metadata) {
     return true;
   }
 

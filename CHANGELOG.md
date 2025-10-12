@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.2] - 2025-10-12
 
 ### Added
+- **Adobe Firefly Metadata Support**: Added complete support for Adobe Firefly generated images with C2PA/EXIF metadata parsing
+- **Firefly C2PA Manifest Parsing**: Comprehensive extraction of Content Credentials, edit history, and generation parameters
+- **Creative Asset Analysis**: BI Pro support for analyzing edit actions and creative workflows from Firefly's C2PA data
+- **AI Generated Tags**: Automatic tagging with 'AI Generated', 'Firefly', version tags, and content-based tags (Photography, Artwork, Illustration, 3D Render)
+- **Edit History Tracking**: Parse and display complete edit history from C2PA actions for creative asset management
+- **Regex Fallback Parsing**: Enhanced EXIF/C2PA parsing with regex fallback for description fields when structured data unavailable
+- **Firefly Version Detection**: Support for Adobe Firefly version extraction and model identification
 - **Niji Journey Metadata Support**: Added complete support for Niji Journey generated images with automatic metadata parsing from PNG parameters
 - **Niji Journey Parameter Extraction**: Regex-based parsing for Niji Journey parameters (--niji, --v, --ar, --q, --s, --seed)
 - **Anime Tag Support**: Automatic tagging of Niji Journey images with 'Anime' for filtering
