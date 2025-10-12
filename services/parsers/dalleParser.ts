@@ -163,7 +163,7 @@ function extractFromEXIF(exifData: any): Partial<DalleMetadata> {
 // Extract prompts from merged data
 function extractPrompts(data: Partial<DalleMetadata>): { prompt: string; revisedPrompt?: string } {
   let prompt = data.prompt || '';
-  let revisedPrompt = data.revised_prompt;
+  const revisedPrompt = data.revised_prompt;
 
   // Fallback: try regex extraction from any string fields
   if (!prompt) {

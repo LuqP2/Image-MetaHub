@@ -57,6 +57,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
       const result = await (window as any).electronAPI.showItemInFolder(fullPath);
 
       if (result.success) {
+        // File opened successfully
       } else {
         console.error('❌ Failed to open file in explorer:', result.error);
       }
@@ -76,6 +77,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         try {
           await navigator.clipboard.writeText(imageOrPath);
         } catch (clipboardError) {
+          // Ignore clipboard errors
         }
 
         return { success: true };
@@ -94,6 +96,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         try {
           await navigator.clipboard.writeText(imageOrPath.id);
         } catch (clipboardError) {
+          // Ignore clipboard errors
         }
 
         return { success: true };
@@ -144,9 +147,11 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
 
     // Show confirmation messages
     if (isElectron) {
+      // Electron handles its own confirmation
     } else {
       // Show additional context if we have directory name
       if (image.directoryName) {
+        // Browser-specific handling
       }
     }
 

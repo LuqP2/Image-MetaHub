@@ -23,7 +23,7 @@ function extractModelName(modelData: any): string | null {
     }
     if (modelData.key && typeof modelData.key === 'string') {
       const key = modelData.key.trim();
-      if (key.length > 20 && /^[a-f0-9\-]+$/i.test(key)) {
+      if (key.length > 20 && /^[a-f0-9-]+$/i.test(key)) {
         const type = modelData.mechanism || modelData.type || 'Model';
         return `${type} (${key.substring(0, 8)}...)`;
       }
