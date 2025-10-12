@@ -63,6 +63,47 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
+  // Full screen browser API functions
+  const enterFullscreen = async () => {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      }
+    } catch (error) {
+      console.error('Failed to enter fullscreen:', error);
+    }
+  };
+
+  const exitFullscreen = async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Failed to exit fullscreen:', error);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (isFullscreen) {
+      exitFullscreen();
+    } else {
+      enterFullscreen();
+    }
+  };
+
+  // Listen for fullscreen changes (ESC key, etc.)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 
   const copyToClipboard = (text: string, type: string) => {
@@ -303,7 +344,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isRenaming) return;
       if (event.key === 'Escape') {
-        if (isFullscreen) setIsFullscreen(false);
+        if (isFullscreen) exitFullscreen();
         else onClose();
       }
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
@@ -355,15 +396,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm ${isFullscreen ? 'p-0' : ''}`}
+      className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
       onClick={onClose}
     >
       <div
-        className={`bg-gray-800 rounded-lg shadow-2xl w-full ${isFullscreen ? 'h-full max-w-none rounded-none' : 'max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
+        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Image Display Section */}
-        <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center p-4 relative group`}>
+        <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-4'} relative group`}>
           {imageUrl ? <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" onContextMenu={handleContextMenu} /> : <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>}
 
           {onNavigatePrevious && <button onClick={onNavigatePrevious} className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">←</button>}
@@ -372,7 +413,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
-          <button onClick={() => setIsFullscreen(!isFullscreen)} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{isFullscreen ? 'Exit' : 'Fullscreen'}</button>
+          <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{isFullscreen ? 'Exit' : 'Fullscreen'}</button>
         </div>
 
         {/* Metadata Panel */}
