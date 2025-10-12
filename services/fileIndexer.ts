@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, isDalleMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, isDalleMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -11,6 +11,7 @@ import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/ea
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 import { parseForgeMetadata } from './parsers/forgeParser';
 import { parseDalleMetadata } from './parsers/dalleParser';
+import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -339,6 +340,9 @@ async function processSingleFile(
         normalizedMetadata = parseForgeMetadata(rawMetadata);
       } else if (isDalleMetadata(rawMetadata)) {
         normalizedMetadata = parseDalleMetadata(rawMetadata);
+      } else if (isDreamStudioMetadata(rawMetadata)) {
+        console.log(`✅ Successfully parsed DreamStudio metadata.`);
+        normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -6,6 +6,7 @@ import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffus
 import { parseMidjourneyMetadata } from './midjourneyParser';
 import { parseForgeMetadata } from './forgeParser';
 import { parseDalleMetadata } from './dalleParser';
+import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -68,6 +69,19 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
     if ('parameters' in metadata && typeof metadata.parameters === 'string') {
         return { parse: (data: Automatic1111Metadata) => parseA1111Metadata(data.parameters) };
+    }
+    if ('parameters' in metadata && 
+        typeof metadata.parameters === 'string' && 
+        (metadata.parameters.includes('DreamStudio') || 
+         metadata.parameters.includes('Stability AI') ||
+         (metadata.parameters.includes('Prompt:') && 
+          metadata.parameters.includes('Negative prompt:') && 
+          metadata.parameters.includes('Steps:') && 
+          metadata.parameters.includes('Guidance:') &&
+          !metadata.parameters.includes('Model hash:') &&
+          !metadata.parameters.includes('Forge') &&
+          !metadata.parameters.includes('Gradio')))) {
+        return { parse: (data: DreamStudioMetadata) => parseDreamStudioMetadata(data.parameters) };
     }
     if ('parameters' in metadata && 
         typeof metadata.parameters === 'string' && 

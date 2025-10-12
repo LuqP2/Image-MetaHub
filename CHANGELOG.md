@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.2] - 2025-10-12
 
 ### Added
+- **DreamStudio Metadata Support**: Added complete support for DreamStudio (Stability AI) generated images with automatic metadata parsing from PNG parameters
+- **DreamStudio Parameter Extraction**: Comprehensive parsing of DreamStudio parameters including style presets, guidance scale, and model variants
+- **Stability AI Format Detection**: Automatic detection of DreamStudio format with proper distinction from A1111 and Forge formats
 - **Midjourney Metadata Support**: Added complete support for Midjourney-generated images with automatic metadata parsing from PNG parameters
 - **Midjourney Parameter Extraction**: Regex-based parsing for Midjourney parameters (--v, --ar, --q, --s, --seed)
 - **Aspect Ratio Processing**: Automatic dimension calculation from --ar parameters

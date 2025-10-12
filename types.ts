@@ -188,8 +188,14 @@ export interface DalleMetadata {
   [key: string]: any;
 }
 
+export interface DreamStudioMetadata {
+  parameters: string; // DreamStudio uses A1111-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata | DalleMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -289,6 +295,18 @@ export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetad
   }
 
   return false;
+}
+
+export function isDreamStudioMetadata(metadata: ImageMetadata): metadata is DreamStudioMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         (metadata.parameters.includes('DreamStudio') || 
+          metadata.parameters.includes('Stability AI') ||
+          (metadata.parameters.includes('Prompt:') && 
+           metadata.parameters.includes('Steps:') && 
+           !metadata.parameters.includes('Model hash:') && // Exclude A1111
+           !metadata.parameters.includes('Forge') && // Exclude Forge
+           !metadata.parameters.includes('Gradio'))); // Exclude Forge
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
