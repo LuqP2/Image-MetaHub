@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.9.2] - 2025-10-12
 
 ### Added
+- **Niji Journey Metadata Support**: Added complete support for Niji Journey generated images with automatic metadata parsing from PNG parameters
+- **Niji Journey Parameter Extraction**: Regex-based parsing for Niji Journey parameters (--niji, --v, --ar, --q, --s, --seed)
+- **Anime Tag Support**: Automatic tagging of Niji Journey images with 'Anime' for filtering
+- **Niji Version Detection**: Support for Niji Journey version extraction (--niji 5, --niji 6, etc.)
 - **DreamStudio Metadata Support**: Added complete support for DreamStudio (Stability AI) generated images with automatic metadata parsing from PNG parameters
 - **DreamStudio Parameter Extraction**: Comprehensive parsing of DreamStudio parameters including style presets, guidance scale, and model variants
 - **Stability AI Format Detection**: Automatic detection of DreamStudio format with proper distinction from A1111 and Forge formats

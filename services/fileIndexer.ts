@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, isDalleMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isDreamStudioMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -9,6 +9,7 @@ import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
+import { parseNijiMetadata } from './parsers/nijiParser';
 import { parseForgeMetadata } from './parsers/forgeParser';
 import { parseDalleMetadata } from './parsers/dalleParser';
 import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
@@ -336,6 +337,9 @@ async function processSingleFile(
         normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
       } else if (isMidjourneyMetadata(rawMetadata)) {
         normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
+      } else if (isNijiMetadata(rawMetadata)) {
+        console.log(`✅ Successfully parsed Niji Journey metadata.`);
+        normalizedMetadata = parseNijiMetadata(rawMetadata.parameters);
       } else if (isForgeMetadata(rawMetadata)) {
         normalizedMetadata = parseForgeMetadata(rawMetadata);
       } else if (isDalleMetadata(rawMetadata)) {

@@ -27,7 +27,7 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 **Advanced Search & Filtering**
 - **Deep Metadata Search:** Full-text search across all PNG and JPEG metadata including prompts, models, and generation parameters
 - **Precise Filtering:** Filter by Models, LoRAs, Schedulers, image dimensions, generation steps, CFG Scale, and date ranges
-- **Multi-Format Support:** Works with InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, Midjourney, Forge, DALL-E, and DreamStudio generated images (PNG and JPEG, including sidecar JSON)
+- **Multi-Format Support:** Works with InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, Midjourney, Niji Journey, Forge, DALL-E, and DreamStudio generated images (PNG and JPEG, including sidecar JSON)
 
 **Enhanced User Experience**
 - **Right Sidebar Preview:** Hover over thumbnails to see instant preview with metadata in a collapsible right sidebar

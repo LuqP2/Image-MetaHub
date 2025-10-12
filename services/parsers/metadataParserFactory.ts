@@ -1,9 +1,10 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffusionParser';
 import { parseMidjourneyMetadata } from './midjourneyParser';
+import { parseNijiMetadata } from './nijiParser';
 import { parseForgeMetadata } from './forgeParser';
 import { parseDalleMetadata } from './dalleParser';
 import { parseDreamStudioMetadata } from './dreamStudioParser';
@@ -101,6 +102,11 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
          metadata.parameters.includes('--q') ||
          metadata.parameters.includes('--s'))) {
         return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters) };
+    }
+    if ('parameters' in metadata && 
+        typeof metadata.parameters === 'string' && 
+        metadata.parameters.includes('--niji')) {
+        return { parse: (data: NijiMetadata) => parseNijiMetadata(data.parameters) };
     }
     if ('parameters' in metadata && 
         typeof metadata.parameters === 'string' && 

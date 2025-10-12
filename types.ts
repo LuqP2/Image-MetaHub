@@ -169,6 +169,13 @@ export interface MidjourneyMetadata {
   [key: string]: any;
 }
 
+export interface NijiMetadata {
+  parameters: string; // Niji Journey uses format like: "prompt --niji --v 5 --ar 16:9" or "Prompt: prompt text --niji 5"
+  niji_version?: number; // Niji version (5, 6, etc.)
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 export interface ForgeMetadata {
   parameters: string; // Forge uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
   // Additional fields that might be present
@@ -195,7 +202,7 @@ export interface DreamStudioMetadata {
 }
 
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -261,6 +268,12 @@ export function isMidjourneyMetadata(metadata: ImageMetadata): metadata is Midjo
           metadata.parameters.includes('--ar') ||
           metadata.parameters.includes('--q') ||
           metadata.parameters.includes('--s'));
+}
+
+export function isNijiMetadata(metadata: ImageMetadata): metadata is NijiMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         metadata.parameters.includes('--niji');
 }
 
 export function isForgeMetadata(metadata: ImageMetadata): metadata is ForgeMetadata {
