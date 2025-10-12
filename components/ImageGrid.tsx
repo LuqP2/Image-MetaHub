@@ -1,18 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import Masonry from 'react-masonry-css';
+import React, { useState, useEffect, useRef } from 'react';
+import { FixedSizeGrid as Grid } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { Check, Info } from 'lucide-react';
 
-// --- ImageCard Component ---
+// --- ImageCard Component (with slight modifications) ---
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
+  style: React.CSSProperties; // Added for react-virtualized
+  onImageLoad: () => void; // Added to notify parent of image load
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
@@ -55,7 +58,8 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
 
   return (
     <div
-      className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transform transition-all duration-300 hover:scale-105 hover:shadow-blue-500/30 group relative ${
+      style={style}
+      className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative masonry-cell ${
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
@@ -67,7 +71,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
           </div>
         </div>
       )}
-      <button 
+      <button
         onClick={handlePreviewClick}
         className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
         title="Show details"
@@ -76,7 +80,13 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
       </button>
 
       {imageUrl ? (
-        <img src={imageUrl} alt={image.name} className="w-full h-auto object-cover" loading="lazy" />
+        <img
+          src={imageUrl}
+          alt={image.name}
+          className="w-full h-auto object-cover"
+          loading="lazy"
+          onLoad={onImageLoad}
+        />
       ) : (
         <div className="w-full h-48 animate-pulse bg-gray-700"></div>
       )}
@@ -87,12 +97,15 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected }
   );
 };
 
+
 // --- ImageGrid Component ---
 interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
 }
+
+const GUTTER_SIZE = 8; // Space between images
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
@@ -101,34 +114,51 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
 
-  const breakpointColumnsObj = {
-    default: Math.max(1, Math.floor(3840 / imageSize)), // 4K resolution
-    3840: Math.max(1, Math.floor(3840 / imageSize)),    // 4K (UHD)
-    2560: Math.max(1, Math.floor(2560 / imageSize)),    // 2K (QHD)
-    1920: Math.max(1, Math.floor(1920 / imageSize)),    // Full HD
-    1536: Math.max(1, Math.floor(1536 / imageSize)),    // Laptop
-    1280: Math.max(1, Math.floor(1280 / imageSize)),    // HD
-    1024: Math.max(1, Math.floor(1024 / imageSize)),    // Tablet landscape
-    768: Math.max(1, Math.floor(768 / imageSize)),      // Tablet portrait
-    640: Math.max(1, Math.floor(640 / imageSize)),      // Mobile
-  };
-
   return (
-    <div className="h-full w-full overflow-y-auto">
-      <Masonry
-        breakpointCols={breakpointColumnsObj}
-        className="masonry-grid"
-        columnClassName="masonry-grid_column"
-      >
-        {images.map(image => (
-          <ImageCard
-            key={image.id}
-            image={image}
-            onImageClick={onImageClick}
-            isSelected={selectedImages.has(image.id)}
-          />
-        ))}
-      </Masonry>
+    <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }}>
+      <AutoSizer>
+        {({ height, width }) => {
+          if (width === 0 || height === 0) return null;
+          // Calculate columns based on available width and image size
+          const columnCount = Math.max(1, Math.floor(width / (imageSize + GUTTER_SIZE)));
+          const rowCount = Math.ceil(images.length / columnCount);
+
+          return (
+            <Grid
+              columnCount={columnCount}
+              rowCount={rowCount}
+              columnWidth={imageSize + GUTTER_SIZE}
+              rowHeight={imageSize + GUTTER_SIZE}
+              height={height}
+              width={width}
+              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount }}
+              overscanRowCount={4}
+              overscanColumnCount={2}
+            >
+              {GridCell}
+            </Grid>
+          );
+        }}
+      </AutoSizer>
+    </div>
+  );
+};
+
+// Cell renderer for react-window grid
+const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
+  const { images, onImageClick, selectedImages, imageSize, columnCount } = data;
+  const index = rowIndex * columnCount + columnIndex;
+  const image = images[index];
+  if (!image) return null;
+  return (
+    <div style={{ ...style, padding: GUTTER_SIZE / 2 }}>
+      <ImageCard
+        image={image}
+        onImageClick={onImageClick}
+        isSelected={selectedImages.has(image.id)}
+        style={{ width: '100%' }}
+        onImageLoad={() => {}}
+      />
     </div>
   );
 };
