@@ -1,10 +1,11 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffusionParser';
 import { parseMidjourneyMetadata } from './midjourneyParser';
 import { parseForgeMetadata } from './forgeParser';
+import { parseDalleMetadata } from './dalleParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -17,6 +18,14 @@ interface ParserModule {
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
+    // Check for DALL-E C2PA/EXIF metadata first (most specific)
+    if ('c2pa_manifest' in metadata || 
+        ('exif_data' in metadata && typeof metadata.exif_data === 'object') ||
+        ('prompt' in metadata && 'model_version' in metadata && 
+         (metadata.model_version?.includes('dall-e') || metadata.model_version?.includes('DALL-E')))) {
+        return { parse: (data: DalleMetadata) => parseDalleMetadata(data) };
+    }
+    
     if ('sui_image_params' in metadata) {
         return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data) };
     }

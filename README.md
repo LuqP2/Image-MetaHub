@@ -110,7 +110,7 @@ The dev server automatically binds to `0.0.0.0`, making it accessible from other
 - **Desktop:** Electron with integrated auto-updater
 - **Storage:** IndexedDB for persistent local caching
 - **File Access:** File System Access API (browser) / Node.js filesystem (desktop)
-- **Metadata Support:** InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, Midjourney, and Forge PNG/JPEG metadata formats (with sidecar JSON support)
+- **Metadata Support:** InvokeAI, Automatic1111, ComfyUI, SwarmUI, Easy Diffusion, Midjourney, Forge, and DALL-E PNG/JPEG metadata formats (with sidecar JSON support)
 - **Directory Scanning:** Configurable recursive subfolder scanning with user preference persistence
 
 For comprehensive technical information, see [ARCHITECTURE.md](./ARCHITECTURE.md).
@@ -135,7 +135,7 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 - Configurable subfolder scanning
 
 **Medium-Term**
-- ComfyUI, SwarmUI, Easy Diffusion, Midjourney, and Forge metadata support (complete)
+- ComfyUI, SwarmUI, Easy Diffusion, Midjourney, Forge, and DALL-E metadata support (complete)
 - Custom tagging system
 - Image comparison view
 

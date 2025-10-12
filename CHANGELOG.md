@@ -19,10 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Easy Diffusion Metadata Support**: Added complete support for Easy Diffusion-generated images with automatic metadata parsing from PNG parameters field
 - **Enhanced Format Detection**: Improved automatic detection to distinguish Easy Diffusion from Automatic1111 based on metadata patterns
 - **SwarmUI Metadata Support**: Added complete support for SwarmUI-generated images with automatic metadata parsing, model extraction, and LoRA detection
+- **DALL-E 3 Metadata Support**: Added complete support for DALL-E 3 generated images with C2PA/EXIF metadata parsing
+- **C2PA Manifest Parsing**: Offline parsing of Content Authenticity Initiative (C2PA) manifests for DALL-E images
+- **EXIF Metadata Extraction**: Extraction of OpenAI DALL-E specific EXIF tags and generation metadata
+- **AI Content Tagging**: Automatic tagging of AI-generated content for filtering and organization
 - **Debug Logging**: Added comprehensive logging for JSON detection and parsing operations
 
 ### Technical Improvements
-- **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, and SwarmUI format detection and parsing
+- **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing
 - **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
 - **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
 - **A1111 Compatibility**: Forge parser reuses A1111 parsing logic while adding Forge-specific features
@@ -33,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Type-Safe JSON Parsing**: Proper TypeScript interfaces for Easy Diffusion JSON format
 - **Parameter-based Parsing**: Added regex-based parsing for Easy Diffusion's text format (Prompt, Negative prompt, Steps, CFG scale, etc.)
 - **Enhanced Metadata Detection**: Improved automatic format detection to recognize SwarmUI's sui_image_params structure
+- **C2PA/EXIF Parsing**: Offline parsing of C2PA manifests and EXIF metadata for DALL-E images
+- **AI Content Detection**: Automatic detection and tagging of AI-generated content
 
 ## [0.9.1] - 2025-10-08
 

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, isDalleMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata, DalleMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -10,6 +10,7 @@ import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 import { parseForgeMetadata } from './parsers/forgeParser';
+import { parseDalleMetadata } from './parsers/dalleParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -220,9 +221,17 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
-    // Try to parse as JSON for other formats like SwarmUI, InvokeAI or ComfyUI
+    // Try to parse as JSON for other formats like SwarmUI, InvokeAI, ComfyUI, or DALL-E
     try {
       const parsedMetadata = JSON.parse(metadataText);
+      
+      // Check for DALL-E C2PA manifest
+      if (parsedMetadata.c2pa_manifest || 
+          (parsedMetadata.exif_data && (parsedMetadata.exif_data['openai:dalle'] || 
+                                        parsedMetadata.exif_data.Software?.includes('DALL-E')))) {
+        console.log(`✅ Detected DALL-E C2PA/EXIF metadata in JPEG.`);
+        return parsedMetadata;
+      }
       
       // Check for SwarmUI format (sui_image_params)
       if (parsedMetadata.sui_image_params) {
@@ -328,6 +337,8 @@ async function processSingleFile(
         normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
       } else if (isForgeMetadata(rawMetadata)) {
         normalizedMetadata = parseForgeMetadata(rawMetadata);
+      } else if (isDalleMetadata(rawMetadata)) {
+        normalizedMetadata = parseDalleMetadata(rawMetadata);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

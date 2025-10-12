@@ -175,8 +175,21 @@ export interface ForgeMetadata {
   [key: string]: any;
 }
 
+export interface DalleMetadata {
+  // C2PA/EXIF embedded metadata for DALL-E 3 images
+  c2pa_manifest?: any; // C2PA manifest data
+  exif_data?: any; // EXIF metadata
+  prompt?: string; // Original user prompt
+  revised_prompt?: string; // DALL-E's revised/enhanced prompt
+  model_version?: string; // DALL-E model version (e.g., "dall-e-3")
+  generation_date?: string; // ISO date string of generation
+  ai_tags?: string[]; // AI-generated content tags
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata | DalleMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -252,6 +265,30 @@ export function isForgeMetadata(metadata: ImageMetadata): metadata is ForgeMetad
           (metadata.parameters.includes('Steps:') && 
            metadata.parameters.includes('Sampler:') && 
            metadata.parameters.includes('Model hash:'))); // Similar to A1111 but with Forge/Gradio indicators
+}
+
+export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetadata {
+  // Check for C2PA manifest (primary indicator)
+  if ('c2pa_manifest' in metadata) {
+    return true;
+  }
+
+  // Check for OpenAI/DALL-E specific EXIF data
+  if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
+    const exif = metadata.exif_data as any;
+    // Look for OpenAI/DALL-E indicators in EXIF
+    if (exif['openai:dalle'] || exif['Software']?.includes('DALL-E') || exif['Software']?.includes('OpenAI')) {
+      return true;
+    }
+  }
+
+  // Check for DALL-E specific fields
+  if ('prompt' in metadata && 'model_version' in metadata && 
+      (metadata.model_version?.includes('dall-e') || metadata.model_version?.includes('DALL-E'))) {
+    return true;
+  }
+
+  return false;
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
