@@ -102,12 +102,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }
 
   const breakpointColumnsObj = {
-    default: Math.max(1, Math.floor(2000 / imageSize)),
-    1536: Math.max(1, Math.floor(1536 / imageSize)),
-    1280: Math.max(1, Math.floor(1280 / imageSize)),
-    1024: Math.max(1, Math.floor(1024 / imageSize)),
-    768: Math.max(1, Math.floor(768 / imageSize)),
-    640: Math.max(1, Math.floor(640 / imageSize)),
+    default: Math.max(1, Math.floor(3840 / imageSize)), // 4K resolution
+    3840: Math.max(1, Math.floor(3840 / imageSize)),    // 4K (UHD)
+    2560: Math.max(1, Math.floor(2560 / imageSize)),    // 2K (QHD)
+    1920: Math.max(1, Math.floor(1920 / imageSize)),    // Full HD
+    1536: Math.max(1, Math.floor(1536 / imageSize)),    // Laptop
+    1280: Math.max(1, Math.floor(1280 / imageSize)),    // HD
+    1024: Math.max(1, Math.floor(1024 / imageSize)),    // Tablet landscape
+    768: Math.max(1, Math.floor(768 / imageSize)),      // Tablet portrait
+    640: Math.max(1, Math.floor(640 / imageSize)),      // Mobile
   };
 
   return (
