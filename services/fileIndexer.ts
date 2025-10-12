@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isForgeMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -9,6 +9,7 @@ import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
+import { parseForgeMetadata } from './parsers/forgeParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -212,6 +213,13 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
+    // Forge uses A1111-style parameters but includes "Forge" or "Gradio" indicators
+    if ((metadataText.includes('Forge') || metadataText.includes('Gradio')) && 
+        metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
+      console.log(`✅ Detected Forge parameters in JPEG UserComment.`);
+      return { parameters: metadataText };
+    }
+
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI or ComfyUI
     try {
       const parsedMetadata = JSON.parse(metadataText);
@@ -318,6 +326,8 @@ async function processSingleFile(
         normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
       } else if (isMidjourneyMetadata(rawMetadata)) {
         normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
+      } else if (isForgeMetadata(rawMetadata)) {
+        normalizedMetadata = parseForgeMetadata(rawMetadata);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

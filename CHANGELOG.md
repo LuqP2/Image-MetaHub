@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2025-10-12
+
+### Added
+- **Forge Metadata Support**: Added complete support for Forge (A1111-based) generated images with automatic metadata parsing
+- **Forge Parameter Extraction**: Comprehensive parsing of Forge parameters including hires upscaling, denoising, and model information
+- **Gradio Integration**: Support for Gradio-based Forge interfaces with automatic format detection
+
+### Technical Improvements
+- **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
+- **A1111 Compatibility**: Forge parser reuses A1111 parsing logic while adding Forge-specific features
+- **Hires Parameter Support**: Extraction of high-resolution upscaling parameters (upscaler, upscale factor, steps, denoising)
+
 ## [0.9.5] - 2025-10-12
 
 ### Added

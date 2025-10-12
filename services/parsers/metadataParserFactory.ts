@@ -1,9 +1,10 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, ForgeMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffusionParser';
 import { parseMidjourneyMetadata } from './midjourneyParser';
+import { parseForgeMetadata } from './forgeParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -77,6 +78,15 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
          metadata.parameters.includes('--q') ||
          metadata.parameters.includes('--s'))) {
         return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters) };
+    }
+    if ('parameters' in metadata && 
+        typeof metadata.parameters === 'string' && 
+        (metadata.parameters.includes('Forge') || 
+         metadata.parameters.includes('Gradio') ||
+         (metadata.parameters.includes('Steps:') && 
+          metadata.parameters.includes('Sampler:') && 
+          metadata.parameters.includes('Model hash:')))) {
+        return { parse: (data: ForgeMetadata) => parseForgeMetadata(data) };
     }
     return null;
 }

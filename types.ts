@@ -169,8 +169,14 @@ export interface MidjourneyMetadata {
   [key: string]: any;
 }
 
+export interface ForgeMetadata {
+  parameters: string; // Forge uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | ForgeMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -236,6 +242,16 @@ export function isMidjourneyMetadata(metadata: ImageMetadata): metadata is Midjo
           metadata.parameters.includes('--ar') ||
           metadata.parameters.includes('--q') ||
           metadata.parameters.includes('--s'));
+}
+
+export function isForgeMetadata(metadata: ImageMetadata): metadata is ForgeMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         (metadata.parameters.includes('Forge') || 
+          metadata.parameters.includes('Gradio') ||
+          (metadata.parameters.includes('Steps:') && 
+           metadata.parameters.includes('Sampler:') && 
+           metadata.parameters.includes('Model hash:'))); // Similar to A1111 but with Forge/Gradio indicators
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
