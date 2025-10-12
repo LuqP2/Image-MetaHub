@@ -1,8 +1,8 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
-import { parseEasyDiffusionMetadata } from './easyDiffusionParser';
+import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './easyDiffusionParser';
 import { resolvePromptFromGraph } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -64,6 +64,9 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         !('sui_image_params' in metadata) && 
         !metadata.parameters.includes('Model hash:')) {
         return { parse: (data: EasyDiffusionMetadata) => parseEasyDiffusionMetadata(data.parameters) };
+    }
+    if ('prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata)) {
+        return { parse: (data: EasyDiffusionJson) => parseEasyDiffusionJson(data) };
     }
     return null;
 }

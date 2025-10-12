@@ -34,7 +34,7 @@ This is a React + TypeScript + Electron application that provides local browsing
 - `hooks/useImageSelection.ts` - Image selection management
 - `components/` - Modular UI components (Header, StatusBar, ActionToolbar, ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
 - `services/` - Business logic (fileIndexer, cacheManager, fileOperations)
-- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, ComfyUI, SwarmUI, and Easy Diffusion formats
+- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, ComfyUI, SwarmUI, and Easy Diffusion formats (PNG + JSON sidecar)
 - `types.ts` - TypeScript interfaces for InvokeAI metadata and file handles
 
 ### Data Flow Patterns

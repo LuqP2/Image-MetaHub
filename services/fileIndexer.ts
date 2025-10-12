@@ -1,13 +1,13 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
-import { parseEasyDiffusionMetadata } from './parsers/easyDiffusionParser';
+import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -16,6 +16,47 @@ function sanitizeJson(jsonString: string): string {
 
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
+/**
+ * Attempts to read a sidecar JSON file for Easy Diffusion metadata
+ * @param imagePath Path to the image file (e.g., /path/to/image.png)
+ * @returns Parsed JSON metadata or null if not found/valid
+ */
+async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyDiffusionJson | null> {
+  try {
+    // Generate JSON path by replacing extension with .json
+    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '.json');
+    
+    if (!isElectron || !jsonPath || jsonPath === imagePath) {
+      return null; // Only works in Electron environment
+    }
+
+    console.log(`🔍 Checking for Easy Diffusion sidecar JSON: ${jsonPath}`);
+    
+    // Try to read the JSON file
+    const result = await (window as any).electronAPI.readFile(jsonPath);
+    if (!result.success || !result.data) {
+      console.log(`📄 No sidecar JSON found at: ${jsonPath}`);
+      return null;
+    }
+
+    // Parse the JSON
+    const jsonText = result.data.toString('utf-8');
+    const parsedJson = JSON.parse(jsonText);
+    
+    // Validate that it looks like Easy Diffusion JSON
+    if (typeof parsedJson === 'object' && parsedJson.prompt && typeof parsedJson.prompt === 'string') {
+      console.log(`✅ Found valid Easy Diffusion sidecar JSON: ${jsonPath}`);
+      return parsedJson as EasyDiffusionJson;
+    } else {
+      console.log(`⚠️ JSON found but doesn't match Easy Diffusion format: ${jsonPath}`);
+      return null;
+    }
+  } catch (error) {
+    console.warn(`❌ Error reading/parsing Easy Diffusion sidecar JSON for ${imagePath}:`, error);
+    return null;
+  }
+}
 
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
@@ -217,7 +258,16 @@ async function processSingleFile(
 ): Promise<IndexedImage | null> {
   try {
     const file = await fileEntry.handle.getFile();
-    const rawMetadata = await parseImageMetadata(file);
+    let rawMetadata = await parseImageMetadata(file);
+
+    // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
+    if (!rawMetadata || (!isEasyDiffusionMetadata(rawMetadata) && !isEasyDiffusionJson(rawMetadata))) {
+      const sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path);
+      if (sidecarJson) {
+        rawMetadata = sidecarJson;
+        console.log(`🎯 Using Easy Diffusion sidecar JSON metadata for: ${fileEntry.path}`);
+      }
+    }
 
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
@@ -257,6 +307,8 @@ async function processSingleFile(
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
       } else if (isEasyDiffusionMetadata(rawMetadata)) {
         normalizedMetadata = parseEasyDiffusionMetadata(rawMetadata.parameters);
+      } else if (isEasyDiffusionJson(rawMetadata)) {
+        normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

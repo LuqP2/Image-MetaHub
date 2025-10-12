@@ -1,4 +1,4 @@
-import { EasyDiffusionMetadata, BaseMetadata } from '../../types';
+import { EasyDiffusionMetadata, EasyDiffusionJson, BaseMetadata } from '../../types';
 
 // --- Extraction Functions ---
 
@@ -68,6 +68,27 @@ export function parseEasyDiffusionMetadata(parameters: string): BaseMetadata {
   // Extract arrays
   result.models = result.model ? [result.model] : [];
   result.loras = extractLorasFromEasyDiffusion({ parameters });
+
+  return result as BaseMetadata;
+}
+
+export function parseEasyDiffusionJson(metadata: EasyDiffusionJson): BaseMetadata {
+  const result: Partial<BaseMetadata> = {};
+
+  // Map JSON fields to BaseMetadata
+  result.prompt = metadata.prompt || '';
+  result.negativePrompt = metadata.negative_prompt || '';
+  result.model = metadata.model || '';
+  result.width = metadata.width || 0;
+  result.height = metadata.height || 0;
+  result.seed = metadata.seed;
+  result.steps = metadata.steps || 0;
+  result.cfg_scale = metadata.cfg_scale;
+  result.sampler = metadata.sampler || '';
+
+  // Extract arrays
+  result.models = result.model ? [result.model] : [];
+  result.loras = []; // JSON format might not include LoRAs in the same way
 
   return result as BaseMetadata;
 }

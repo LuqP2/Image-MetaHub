@@ -149,8 +149,22 @@ export interface EasyDiffusionMetadata {
   [key: string]: any;
 }
 
+export interface EasyDiffusionJson {
+  prompt?: string;
+  negative_prompt?: string;
+  steps?: number;
+  cfg_scale?: number;
+  sampler?: string;
+  seed?: number;
+  model?: string;
+  width?: number;
+  height?: number;
+  // Additional fields that might be present in Easy Diffusion JSON
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -202,6 +216,10 @@ export function isEasyDiffusionMetadata(metadata: ImageMetadata): metadata is Ea
          metadata.parameters.includes('Prompt:') && 
          !('sui_image_params' in metadata) && 
          !metadata.parameters.includes('Model hash:'); // Distinguish from A1111
+}
+
+export function isEasyDiffusionJson(metadata: ImageMetadata): metadata is EasyDiffusionJson {
+  return 'prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata);
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
