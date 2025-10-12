@@ -143,8 +143,14 @@ export interface SwarmUIMetadata {
   [key: string]: any;
 }
 
+export interface EasyDiffusionMetadata {
+  parameters: string; // Easy Diffusion uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -188,6 +194,14 @@ export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeA
 
 export function isSwarmUIMetadata(metadata: ImageMetadata): metadata is SwarmUIMetadata {
   return 'sui_image_params' in metadata && typeof metadata.sui_image_params === 'object';
+}
+
+export function isEasyDiffusionMetadata(metadata: ImageMetadata): metadata is EasyDiffusionMetadata {
+  return 'parameters' in metadata && 
+         typeof metadata.parameters === 'string' && 
+         metadata.parameters.includes('Prompt:') && 
+         !('sui_image_params' in metadata) && 
+         !metadata.parameters.includes('Model hash:'); // Distinguish from A1111
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {

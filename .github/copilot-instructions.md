@@ -34,7 +34,7 @@ This is a React + TypeScript + Electron application that provides local browsing
 - `hooks/useImageSelection.ts` - Image selection management
 - `components/` - Modular UI components (Header, StatusBar, ActionToolbar, ImageGrid, SearchBar, ImageModal, Sidebar, BrowserCompatibilityWarning, etc.)
 - `services/` - Business logic (fileIndexer, cacheManager, fileOperations)
-- `services/parsers/` - Modular metadata parsers (InvokeAI, A1111, ComfyUI)
+- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, ComfyUI, SwarmUI, and Easy Diffusion formats
 - `types.ts` - TypeScript interfaces for InvokeAI metadata and file handles
 
 ### Data Flow Patterns
@@ -60,7 +60,7 @@ The application underwent a major refactoring to improve modularity and LLM-frie
 - `ActionToolbar.tsx` - Action buttons and controls
 
 **Parser Modularization**: The monolithic `fileIndexer.ts` was broken down into smaller, focused parser modules:
-- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, and ComfyUI formats
+- `services/parsers/` - Modular metadata parsers for InvokeAI, A1111, ComfyUI, and SwarmUI formats
 - Factory pattern for automatic parser selection based on metadata format
 
 This architecture transformation significantly improves code maintainability, testability, and LLM comprehension.

@@ -96,7 +96,9 @@ src/
 │       ├── index.ts       # Parser factory and exports
 │       ├── parseA1111.ts  # Automatic1111 metadata parser
 │       ├── parseComfyUI.ts # ComfyUI metadata parser
-│       └── parseInvokeAI.ts # InvokeAI metadata parser
+│       ├── parseInvokeAI.ts # InvokeAI metadata parser
+│       ├── swarmUIParser.ts # SwarmUI metadata parser
+│       └── easyDiffusionParser.ts # Easy Diffusion metadata parser
 ├── store/                 # State management
 │   └── useImageStore.ts   # Zustand store for global state
 ├── utils/                 # Utility functions
@@ -239,10 +241,12 @@ const mockHandle = {
   - `parseInvokeAI.ts`: InvokeAI workflow and metadata parsing
   - `parseComfyUI.ts`: ComfyUI workflow parsing
   - `parseA1111.ts`: Automatic1111 parameters parsing
+  - `swarmUIParser.ts`: SwarmUI metadata parsing
+  - `easyDiffusionParser.ts`: Easy Diffusion parameters parsing
 - **Parser Factory**: Intelligent format detection and parser selection
 - **PNG Chunk Parsing**: Extracts metadata from PNG tEXt chunks
 - **JPEG EXIF Parsing**: Extracts metadata from JPEG EXIF data using exifr library
-- **Multi-Format Support**: Unified interface for InvokeAI, ComfyUI, and Automatic1111
+- **Multi-Format Support**: Unified interface for InvokeAI, ComfyUI, Automatic1111, SwarmUI, and Easy Diffusion
 - **Error-Resilient Parsing**: Graceful handling of malformed metadata
 - **Normalized Metadata**: Consistent data structure across all formats
 - **Model/LoRA Extraction**: Intelligent parsing of complex metadata objects

@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
+import { parseEasyDiffusionMetadata } from './parsers/easyDiffusionParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -152,8 +153,14 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
-    if (metadataText.includes('Steps:') && metadataText.includes('Sampler:')) {
+    if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
       console.log(`✅ Detected A1111-style parameters in JPEG UserComment.`);
+      return { parameters: metadataText };
+    }
+
+    // Easy Diffusion uses similar format but without Model hash
+    if (metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('Sampler:') && !metadataText.includes('Model hash:')) {
+      console.log(`✅ Detected Easy Diffusion parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
@@ -248,6 +255,8 @@ async function processSingleFile(
         };
       } else if (isAutomatic1111Metadata(rawMetadata)) {
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
+      } else if (isEasyDiffusionMetadata(rawMetadata)) {
+        normalizedMetadata = parseEasyDiffusionMetadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2025-10-12
+
+### Added
+- **Easy Diffusion Metadata Support**: Added complete support for Easy Diffusion-generated images with automatic metadata parsing from PNG parameters field
+- **Enhanced Format Detection**: Improved automatic detection to distinguish Easy Diffusion from Automatic1111 based on metadata patterns
+
+### Technical Improvements
+- **Modular Parser Architecture**: Extended parser factory to include Easy Diffusion format detection and parsing
+- **Parameter-based Parsing**: Added regex-based parsing for Easy Diffusion's text format (Prompt, Negative prompt, Steps, CFG scale, etc.)
+
+## [0.9.2] - 2025-10-12
+
+### Added
+- **SwarmUI Metadata Support**: Added complete support for SwarmUI-generated images with automatic metadata parsing, model extraction, and LoRA detection
+
+### Technical Improvements
+- **Modular Parser Architecture**: Extended parser factory to include SwarmUI format detection and parsing
+- **Enhanced Metadata Detection**: Improved automatic format detection to recognize SwarmUI's sui_image_params structure
+
 ## [0.9.1] - 2025-10-08
 
 ### Added
