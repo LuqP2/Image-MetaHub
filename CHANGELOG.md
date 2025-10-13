@@ -58,6 +58,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Performance**: Achieved smooth scrolling and instant rendering even with tens of thousands of images
 
 ### Technical Improvements
+- **Enhanced ComfyUI Parser - Phase 1**: Aggressive payload detection with multiple decompression strategies (JSON, Base64, zlib/gzip) and regex fallback for robust metadata extraction
+- **Parser Telemetry**: Local logging system for debugging with detection method tracking, unknown nodes count, and warnings (no external data exfiltration)
+- **Intelligent Fallback Parsing**: Regex-based parameter extraction from text strings when structured parsing fails (Prompt, Steps, CFG, Sampler, Seed, Model)
+- **Payload Detection**: Checks all PNG chunks for ComfyUI indicators (comfyui, workflow, nodes, class_type) and detects large JSON blocks via regex
+- **Layered Decompression**: Try-catch layers for JSON.parse, Base64 decode, and zlib inflate with magic byte detection (\x78\x9c for zlib)
+- **Enhanced ComfyUI Parser - Phase 2**: Advanced parameter extraction with multiple seed formats, model hash mapping, and comprehensive modifier detection
+- **Advanced Seed Extraction**: Support for numeric, hex (0x), and derived seeds with approximateSeed flag for randomized seeds
+- **Model Hash Mapping**: Automatic mapping of unknown models to "unknown (hash: xxxx)" format when model name unavailable
+- **ControlNet/LoRA/VAE Detection**: Comprehensive extraction with weights, modules, and applied_to information
+- **Edit History Tracking**: Parse SaveImage and LoadImage nodes to reconstruct image generation workflow history
+- **ComfyUI Version Detection**: Automatic extraction of ComfyUI version from workflow metadata
 - **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing
 - **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
 - **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
