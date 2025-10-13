@@ -11,9 +11,10 @@ interface DirectoryListProps {
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
+  isIndexing?: boolean;
 }
 
-export default function DirectoryList({ directories, onRemoveDirectory, onUpdateDirectory, onToggleVisibility }: DirectoryListProps) {
+export default function DirectoryList({ directories, onRemoveDirectory, onUpdateDirectory, onToggleVisibility, isIndexing = false }: DirectoryListProps) {
   return (
     <div className="p-4 border-t border-gray-700">
       <h3 className="text-lg font-semibold text-gray-300 mb-3">Folders</h3>
@@ -39,15 +40,17 @@ export default function DirectoryList({ directories, onRemoveDirectory, onUpdate
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => onUpdateDirectory(dir.id)}
-                className="text-gray-400 hover:text-white transition-colors"
-                title="Refresh folder"
+                disabled={isIndexing}
+                className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                title={isIndexing ? "Cannot refresh during indexing" : "Refresh folder"}
               >
                 <RefreshIcon />
               </button>
               <button
                 onClick={() => onRemoveDirectory(dir.id)}
-                className="text-gray-400 hover:text-red-500 transition-colors"
-                title="Remove folder"
+                disabled={isIndexing}
+                className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                title={isIndexing ? "Cannot remove during indexing" : "Remove folder"}
               >
                 <TrashIcon />
               </button>

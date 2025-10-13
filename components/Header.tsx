@@ -5,9 +5,10 @@ import { Settings, Plus, GalleryHorizontal } from 'lucide-react';
 interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
+  isIndexing?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings }) => {
+const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false }) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
   const directories = useImageStore((state) => state.directories);
   const hasDirectories = directories.length > 0;
@@ -39,8 +40,13 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings }) => {
           )}
           <button
             onClick={onAddFolder}
-            className="bg-accent hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 hover:shadow-lg hover:shadow-accent/30"
-            title="Add a folder to scan"
+            disabled={isIndexing}
+            className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+              isIndexing 
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                : 'bg-accent hover:bg-blue-700 text-white hover:shadow-lg hover:shadow-accent/30'
+            }`}
+            title={isIndexing ? "Cannot add folder during indexing" : "Add a folder to scan"}
           >
             <Plus size={18} />
             Add Folder

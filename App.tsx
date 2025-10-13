@@ -276,6 +276,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
+            isIndexing={progress.total > 0 && progress.current < progress.total}
           />
         </Sidebar>
       )}
@@ -286,6 +287,7 @@ export default function App() {
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          isIndexing={progress.total > 0 && progress.current < progress.total}
         />
 
         <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
@@ -344,6 +346,7 @@ export default function App() {
             onNavigateNext={handleNavigateNext}
             onNavigatePrevious={handleNavigatePrevious}
             directoryPath={directoryPath}
+            isIndexing={progress.total > 0 && progress.current < progress.total}
           />
         )}
       </div>

@@ -14,6 +14,7 @@ interface ImageModalProps {
   onNavigateNext?: () => void;
   onNavigatePrevious?: () => void;
   directoryPath?: string;
+  isIndexing?: boolean;
 }
 
 // Helper component for consistently rendering metadata items
@@ -53,7 +54,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   totalImages = 0,
   onNavigateNext,
   onNavigatePrevious,
-  directoryPath
+  directoryPath,
+  isIndexing = false
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -428,8 +430,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
             ) : (
               <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2">
                 {image.name}
-                <button onClick={() => setIsRenaming(true)} className="text-gray-400 hover:text-orange-400 p-1"><Pencil size={16} /></button>
-                <button onClick={handleDelete} className="text-gray-400 hover:text-red-400 p-1"><Trash2 size={16} /></button>
+                <button 
+                  onClick={() => setIsRenaming(true)} 
+                  disabled={isIndexing}
+                  className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
+                  title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
+                >
+                  <Pencil size={16} />
+                </button>
+                <button 
+                  onClick={handleDelete} 
+                  disabled={isIndexing}
+                  className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
+                  title={isIndexing ? "Cannot delete during indexing" : "Delete image"}
+                >
+                  <Trash2 size={16} />
+                </button>
               </h2>
             )}
             <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
