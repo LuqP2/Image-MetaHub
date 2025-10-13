@@ -22,12 +22,19 @@
     "release-workflow": "node release-workflow.js",
     "auto-release": "node auto-release.js",
     "reset-cache": "node reset-cache.js",
-    "test": "vitest"
+    "test": "vitest",
+    "cli:parse": "tsx cli.ts parse",
+    "cli:index": "tsx cli.ts index"
+  },
+  "bin": {
+    "imagemetahub-cli": "./cli.ts"
   },
   "dependencies": {
+    "commander": "^14.0.1",
     "electron-updater": "^6.6.2",
     "exifr": "^7.1.3",
     "framer-motion": "^12.23.24",
+    "pngjs": "^7.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-masonry-css": "^1.0.16",
@@ -56,6 +63,7 @@
     "postcss": "^8.5.6",
     "react-virtualized": "^9.22.6",
     "tailwindcss": "^3.4.18",
+    "tsx": "^4.20.6",
     "typescript": "^5.2.2",
     "typescript-eslint": "^8.46.0",
     "vite": "^5.0.8",

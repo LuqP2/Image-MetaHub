@@ -1,0 +1,55 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 20,
+        "type": "ControlNetLoader",
+        "widgets_values": ["control_v11p_sd15_canny.pth"],
+        "mode": 0
+      },
+      {
+        "id": 21,
+        "type": "ControlNetApply",
+        "widgets_values": [0.85],
+        "mode": 0
+      },
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [99999, "fixed", 25, 7, "euler_a", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "20": {
+      "class_type": "ControlNetLoader",
+      "inputs": {
+        "control_net_name": "control_v11p_sd15_canny.pth"
+      }
+    },
+    "21": {
+      "class_type": "ControlNetApply",
+      "inputs": {
+        "strength": 0.85,
+        "conditioning": ["6", 0],
+        "control_net": ["20", 0],
+        "image": ["22", 0]
+      }
+    },
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 99999,
+        "steps": 25,
+        "cfg": 7,
+        "sampler_name": "euler_a",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["21", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

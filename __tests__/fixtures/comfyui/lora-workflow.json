@@ -1,0 +1,60 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 10,
+        "type": "LoraLoader",
+        "widgets_values": ["style_lora_v1.safetensors", 0.8, 0.8],
+        "mode": 0
+      },
+      {
+        "id": 11,
+        "type": "LoraLoader",
+        "widgets_values": ["detail_tweaker.safetensors", 0.5, 0.5],
+        "mode": 0
+      },
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [54321, "fixed", 30, 7.5, "dpmpp_2m", "karras", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "10": {
+      "class_type": "LoraLoader",
+      "inputs": {
+        "lora_name": "style_lora_v1.safetensors",
+        "strength_model": 0.8,
+        "strength_clip": 0.8,
+        "model": ["4", 0],
+        "clip": ["4", 1]
+      }
+    },
+    "11": {
+      "class_type": "LoraLoader",
+      "inputs": {
+        "lora_name": "detail_tweaker.safetensors",
+        "strength_model": 0.5,
+        "strength_clip": 0.5,
+        "model": ["10", 0],
+        "clip": ["10", 1]
+      }
+    },
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 54321,
+        "steps": 30,
+        "cfg": 7.5,
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "denoise": 1,
+        "model": ["11", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

@@ -1,6 +1,15 @@
 import { resolveAll } from './comfyui/traversalEngine';
 import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
-import * as zlib from 'zlib';
+
+// Conditional zlib import for Node.js environment
+let zlib: any = null;
+if (typeof window === 'undefined') {
+  try {
+    zlib = require('zlib');
+  } catch (e) {
+    console.warn('[ComfyUI Parser] zlib not available, compression support disabled');
+  }
+}
 
 type Graph = Record<string, ParserNode>;
 
@@ -33,17 +42,19 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
     warnings.push('Base64 decode failed');
   }
   
-  // 3. zlib/gzip decompression
-  try {
-    // Detect zlib magic bytes (\x78\x9c)
-    const buffer = Buffer.from(raw, 'base64');
-    if (buffer[0] === 0x78 && buffer[1] === 0x9c) {
-      const inflated = zlib.inflateSync(buffer);
-      const parsed = JSON.parse(inflated.toString('utf8'));
-      return { data: parsed, detectionMethod: 'compressed', warnings };
+  // 3. zlib/gzip decompression (Node.js only)
+  if (zlib && typeof Buffer !== 'undefined') {
+    try {
+      // Detect zlib magic bytes (\x78\x9c)
+      const buffer = Buffer.from(raw, 'base64');
+      if (buffer[0] === 0x78 && buffer[1] === 0x9c) {
+        const inflated = zlib.inflateSync(buffer);
+        const parsed = JSON.parse(inflated.toString('utf8'));
+        return { data: parsed, detectionMethod: 'compressed', warnings };
+      }
+    } catch (e) {
+      warnings.push('zlib decompression failed');
     }
-  } catch (e) {
-    warnings.push('zlib decompression failed');
   }
   
   // 4. Regex fallback - find large JSON blocks
@@ -133,21 +144,27 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
     return { seed: node.inputs.seed };
   }
   
+  // Try hex format as string in inputs: "seed": "0xabc123"
+  if (typeof node.inputs?.seed === 'string' && node.inputs.seed.startsWith('0x')) {
+    const hexSeed = parseInt(node.inputs.seed, 16);
+    if (!isNaN(hexSeed)) {
+      return { seed: hexSeed };
+    }
+  }
+  
   // Try widgets_values for numeric seed
   if (Array.isArray(node.widgets_values)) {
     for (const value of node.widgets_values) {
       if (typeof value === 'number' && value >= 0 && value <= 18446744073709551615) {
         return { seed: value };
       }
-    }
-  }
-  
-  // Try hex format: "0xabc123"
-  const hexMatch = JSON.stringify(node).match(/"seed"\s*:\s*"(0x[0-9a-fA-F]+)"/);
-  if (hexMatch) {
-    const hexSeed = parseInt(hexMatch[1], 16);
-    if (!isNaN(hexSeed)) {
-      return { seed: hexSeed };
+      // Try hex in widgets_values
+      if (typeof value === 'string' && value.startsWith('0x')) {
+        const hexSeed = parseInt(value, 16);
+        if (!isNaN(hexSeed)) {
+          return { seed: hexSeed };
+        }
+      }
     }
   }
   
@@ -219,12 +236,30 @@ function extractAdvancedModifiers(graph: Graph): {
     const node = graph[nodeId];
     const classType = node.class_type.toLowerCase();
     
-    // ControlNet detection
-    if (classType.includes('controlnet')) {
-      const name = node.inputs?.control_net_name || node.inputs?.model || 'unknown';
-      const weight = node.inputs?.strength || node.inputs?.weight || 1.0;
-      const module = node.inputs?.preprocessor || node.inputs?.module;
-      const applied_to = node.inputs?.image ? 'image' : node.inputs?.latent ? 'latent' : undefined;
+    // ControlNet detection (only from loaders, not apply nodes)
+    if (classType.includes('controlnet') && classType.includes('loader')) {
+      const name = node.inputs?.control_net_name || node.inputs?.model || node.widgets_values?.[0] || 'unknown';
+      
+      // Try to find corresponding apply node for weight
+      let weight = 1.0;
+      let module = node.inputs?.preprocessor || node.inputs?.module;
+      let applied_to = undefined;
+      
+      // Search for ControlNetApply nodes that reference this loader
+      for (const applyNodeId in graph) {
+        const applyNode = graph[applyNodeId];
+        if (applyNode.class_type.toLowerCase().includes('controlnetapply')) {
+          // Check if this apply node uses our loader
+          if (applyNode.inputs?.control_net && Array.isArray(applyNode.inputs.control_net)) {
+            const [refId] = applyNode.inputs.control_net;
+            if (refId === nodeId) {
+              weight = applyNode.inputs?.strength || applyNode.inputs?.weight || applyNode.widgets_values?.[0] || 1.0;
+              applied_to = applyNode.inputs?.image ? 'image' : applyNode.inputs?.latent ? 'latent' : undefined;
+              break;
+            }
+          }
+        }
+      }
       
       controlnets.push({ name, weight, module, applied_to });
     }

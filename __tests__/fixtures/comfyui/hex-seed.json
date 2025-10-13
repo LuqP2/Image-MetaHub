@@ -1,0 +1,28 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": ["0xABCDEF12", "fixed", 20, 8, "euler", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": "0xABCDEF12",
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

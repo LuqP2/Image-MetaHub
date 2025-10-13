@@ -678,19 +678,392 @@ if (rule.source === 'widget') {
 
 ---
 
+## Common Failure Modes
+
+This section documents real-world parsing failures and how the parser handles them.
+
+### 1. Custom Node Without Registry Entry
+
+**Symptom**: Parser encounters `CustomNodeXYZ` not in nodeRegistry.ts
+
+**How Parser Handles It**:
+```typescript
+// Parser automatically logs unknown nodes in telemetry
+telemetry.unknown_nodes_count++;
+telemetry.warnings.push('Unknown node type: CustomNodeXYZ');
+
+// Falls back to:
+// 1. Generic param extraction from inputs
+// 2. Widget extraction using index 0, 1, 2...
+// 3. Regex fallback on workflow JSON text if terminal node missing
+```
+
+**Example**:
+```json
+{
+  "_telemetry": {
+    "detection_method": "standard",
+    "unknown_nodes_count": 1,
+    "warnings": ["Unknown node type: CustomSampler2000"]
+  },
+  "seed": 12345,  // Still extracted from inputs
+  "steps": 20,    // Still extracted from widgets
+  "_raw_parsed_with_regex": false
+}
+```
+
+**Developer Action**: Add node to registry if widely used (see "How to Add a New Node" below)
+
+---
+
+### 2. Compressed/Encoded Workflow Payload
+
+**Symptom**: PNG chunk contains Base64-encoded or zlib-compressed workflow data
+
+**How Parser Handles It**:
+```typescript
+// tryParseComfyPayload attempts multiple strategies:
+// 1. Direct JSON.parse
+// 2. Base64 decode → JSON.parse
+// 3. Base64 decode → zlib inflate → JSON.parse (Node.js only)
+// 4. Regex fallback to find large JSON blocks
+
+const parseResult = await tryParseComfyPayload(rawChunk);
+// Returns: { data, detectionMethod: 'compressed', warnings: [] }
+```
+
+**Example**:
+```json
+{
+  "_parse_telemetry": {
+    "detection_method": "compressed",
+    "warnings": ["Direct JSON parse failed", "Base64 decode failed"]
+  },
+  "prompt": "beautiful landscape",
+  "seed": 12345
+}
+```
+
+**Developer Action**: No action needed - parser handles automatically
+
+---
+
+### 3. Missing Terminal Node (No SINK)
+
+**Symptom**: Workflow has no KSampler, SaveImage, or other SINK node
+
+**How Parser Handles It**:
+```typescript
+// findTerminalNode returns null → parser falls back to regex
+if (!terminalNode) {
+  const workflowText = JSON.stringify(workflow) + JSON.stringify(prompt);
+  const regexParams = extractParamsWithRegex(workflowText);
+  
+  // extractParamsWithRegex searches for:
+  // - Prompt[:\n]\s*(.+?)
+  // - Seed[:=]\s*(\d+)
+  // - Steps[:=]\s*(\d{1,4})
+  // - CFG[:=]\s*([0-9]*\.?[0-9]+)
+  // etc.
+}
+```
+
+**Example**:
+```json
+{
+  "_telemetry": {
+    "detection_method": "regex_fallback",
+    "warnings": ["No terminal node found"]
+  },
+  "prompt": "abstract art",
+  "seed": 54321,
+  "steps": 30,
+  "raw_parsed_with_regex": true
+}
+```
+
+**Developer Action**: Verify workflow structure, may indicate corrupted/incomplete export
+
+---
+
+### 4. Hex Seed Format (0xABCDEF)
+
+**Symptom**: Seed is stored as hex string instead of numeric
+
+**How Parser Handles It**:
+```typescript
+// extractAdvancedSeed handles multiple formats
+if (typeof node.inputs?.seed === 'string' && node.inputs.seed.startsWith('0x')) {
+  const hexSeed = parseInt(node.inputs.seed, 16);
+  return { seed: hexSeed };  // Converts 0xABCDEF12 → 2882400018
+}
+```
+
+**Example**:
+```json
+{
+  "seed": 2882400018,  // Converted from 0xABCDEF12
+  "steps": 20
+}
+```
+
+**Developer Action**: No action needed - parser handles automatically
+
+---
+
+### 5. Derived/Random Seed
+
+**Symptom**: Workflow uses `derived_seed` or `random_seed` node with no fixed value
+
+**How Parser Handles It**:
+```typescript
+// extractAdvancedSeed generates approximate seed
+if (node.inputs?.derived_seed || node.inputs?.random_seed) {
+  const approximateSeed = Math.floor(Date.now() / 1000) % 2147483647;
+  return { seed: approximateSeed, approximateSeed: true };
+}
+```
+
+**Example**:
+```json
+{
+  "seed": 1728700123,  // Timestamp-based approximation
+  "approximateSeed": true,  // Flag indicates seed is not exact
+  "_telemetry": {
+    "warnings": ["Seed is approximate (derived from derived_seed or random_seed)"]
+  }
+}
+```
+
+**Developer Action**: Understand that reproducibility is limited with derived seeds
+
+---
+
+### 6. Model Hash Instead of Name
+
+**Symptom**: CheckpointLoader has `model_hash` but no `model_name` or `ckpt_name`
+
+**How Parser Handles It**:
+```typescript
+// extractAdvancedModel maps hash to "unknown (hash: xxxx)"
+const hashMatch = JSON.stringify(node).match(/"(?:model_hash|hash)"\s*:\s*"([0-9a-fA-F]{8,})"/);
+if (hashMatch) {
+  return `unknown (hash: ${hashMatch[1].substring(0, 8)})`;
+}
+```
+
+**Example**:
+```json
+{
+  "model": "unknown (hash: a1b2c3d4)",
+  "seed": 12345
+}
+```
+
+**Developer Action**: User can manually map hash to model name later
+
+---
+
+## How to Add a New Node to the Registry
+
+If you encounter a custom node frequently and want first-class support, follow this guide:
+
+### Step 1: Identify Node Behavior
+
+Determine the node's **role** in the workflow:
+- **SOURCE**: Generates data (CheckpointLoader, CLIPTextEncode)
+- **SINK**: Terminal node (KSampler, SaveImage, UltimateSDUpscale)
+- **TRANSFORM**: Modifies data (VAEDecode, UpscaleModel)
+- **PASS_THROUGH**: Routes unchanged (Reroute)
+- **ROUTING**: Conditional logic (Switch, Selector)
+
+### Step 2: Analyze Inputs/Outputs
+
+Inspect the workflow JSON to understand:
+- Input slots: `inputs: { model: ['4', 0], positive: ['6', 0] }`
+- Output slots: `outputs: { MODEL: { type: 'MODEL' } }`
+- Widget values: `widgets_values: [12345, 'fixed', 20, 8, 'euler']`
+
+### Step 3: Define Node in nodeRegistry.ts
+
+**Example: Adding a Custom Sampler Node**
+
+```typescript
+// In services/parsers/comfyui/nodeRegistry.ts
+
+'MySuperSampler': {
+  category: 'SAMPLING',
+  roles: ['SINK'],
+  
+  // Define inputs (connections from other nodes)
+  inputs: {
+    model: { type: 'MODEL' },
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    latent_image: { type: 'LATENT' }
+  },
+  
+  // Define outputs (what this node produces)
+  outputs: {
+    LATENT: { type: 'LATENT' }
+  },
+  
+  // Map parameters to sources
+  param_mapping: {
+    // Extract seed from inputs (follows connection)
+    seed: { 
+      source: 'trace', 
+      input: 'seed' 
+    },
+    
+    // Extract steps from widgets_values[2] (fixed index)
+    steps: { 
+      source: 'widget', 
+      key: 'steps' 
+    },
+    
+    // Extract cfg from inputs (direct value)
+    cfg: { 
+      source: 'input', 
+      key: 'cfg' 
+    },
+    
+    // Extract sampler_name from widgets_values[4]
+    sampler_name: { 
+      source: 'widget', 
+      key: 'sampler_name' 
+    },
+    
+    // Extract prompt by tracing 'positive' connection
+    prompt: { 
+      source: 'trace', 
+      input: 'positive' 
+    },
+    
+    // Custom extraction function for complex logic
+    custom_param: {
+      source: 'custom_extractor',
+      extractor: (node, graph, targetParam, state) => {
+        // Your custom logic here
+        return { value: node.inputs?.custom_param || 'default' };
+      }
+    }
+  },
+  
+  // Specify widget_values array order (if using widget source)
+  widget_order: ['seed', 'control_after_generate', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise']
+}
+```
+
+### Step 4: Parameter Mapping Source Types
+
+**Available Sources:**
+
+| Source | Description | Example |
+|--------|-------------|---------|
+| `widget` | Extract from `widgets_values` array using `key` or index | `{ source: 'widget', key: 'steps' }` |
+| `input` | Extract from `inputs` object (direct value) | `{ source: 'input', key: 'cfg' }` |
+| `trace` | Follow connection to another node | `{ source: 'trace', input: 'positive' }` |
+| `custom_extractor` | Use custom function for complex logic | `{ source: 'custom_extractor', extractor: (node, graph) => {...} }` |
+
+### Step 5: Test with Real Workflows
+
+**Create a test fixture in `__tests__/fixtures/comfyui/`:**
+
+```json
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 3,
+        "type": "MySuperSampler",
+        "widgets_values": [12345, "fixed", 20, 8, "euler", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "3": {
+      "class_type": "MySuperSampler",
+      "inputs": {
+        "seed": 12345,
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}
+```
+
+**Add test case in `__tests__/comfyui-parser.test.ts`:**
+
+```typescript
+describe('ComfyUI Parser - MySuperSampler', () => {
+  it('should parse MySuperSampler node', () => {
+    const fixture = loadFixture('my-super-sampler.json');
+    const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+    
+    expect(result.seed).toBe(12345);
+    expect(result.steps).toBe(20);
+    expect(result.cfg).toBe(8);
+    expect(result.sampler_name).toBe('euler');
+    expect(result.scheduler).toBe('normal');
+  });
+});
+```
+
+### Step 6: Submit Pull Request
+
+**PR Checklist:**
+- [ ] Node definition added to `nodeRegistry.ts`
+- [ ] Test fixture added to `__tests__/fixtures/comfyui/`
+- [ ] Test case added to `__tests__/comfyui-parser.test.ts`
+- [ ] Tests pass: `npm test -- __tests__/comfyui-parser.test.ts`
+- [ ] Description includes: node purpose, source (custom/official), common use case
+
+**PR Template:**
+
+```markdown
+## Add Support for MySuperSampler Node
+
+**Node Type**: Custom sampling node from ComfyUI-SuperNodes extension
+
+**Purpose**: Advanced sampling with enhanced quality controls
+
+**Common Use Cases**:
+- High-quality image generation with custom schedulers
+- Multi-pass sampling workflows
+- Professional studio workflows
+
+**Testing**:
+- [x] Added test fixture `my-super-sampler.json`
+- [x] Added test case with assertions
+- [x] All tests passing (13/13 ✅)
+
+**Screenshots**:
+![MySuperSampler workflow](screenshot.png)
+```
+
+---
+
 ## Contributing
 
 To contribute improvements to the ComfyUI parser:
 
 1. **Test with Real Workflows**: Submit problematic workflows to improve coverage
-2. **Document Node Types**: Add widget_order specs for new nodes
+2. **Document Node Types**: Add widget_order specs for new nodes using guide above
 3. **Report Issues**: Include workflow JSON and expected vs actual results
-4. **Submit PRs**: Follow the testing checklist above
+4. **Submit PRs**: Follow the testing checklist and PR template above
 
 ---
 
-**Version**: 3.1.0  
-**Last Updated**: 2025-10-07  
+**Version**: 3.2.0  
+**Last Updated**: 2025-01-12  
 **Maintainer**: Image MetaHub Development Team  
 **Status**: Production Ready ✅  
-**Recent Additions**: Grouped workflow support, ttN concat custom extractor, enhanced fallback logic
+**Recent Additions**: Common failure modes documentation, "How to Add a New Node" guide, enhanced CLI support, comprehensive test suite

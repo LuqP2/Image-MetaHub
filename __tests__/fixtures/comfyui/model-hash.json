@@ -1,0 +1,40 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 4,
+        "type": "CheckpointLoaderSimple",
+        "widgets_values": [],
+        "mode": 0
+      },
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [11111, "fixed", 20, 8, "euler", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "4": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "model_hash": "a1b2c3d4e5f6"
+      }
+    },
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 11111,
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

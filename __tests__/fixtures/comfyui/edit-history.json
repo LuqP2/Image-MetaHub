@@ -1,0 +1,54 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 30,
+        "type": "LoadImage",
+        "widgets_values": ["base_image.png"],
+        "mode": 0
+      },
+      {
+        "id": 31,
+        "type": "SaveImage",
+        "widgets_values": ["output"],
+        "mode": 0
+      },
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [77777, "fixed", 20, 8, "euler", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "30": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "base_image.png"
+      }
+    },
+    "31": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "output",
+        "images": ["8", 0],
+        "timestamp": 1728700000
+      }
+    },
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 77777,
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

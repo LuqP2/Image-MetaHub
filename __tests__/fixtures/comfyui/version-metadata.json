@@ -1,0 +1,32 @@
+{
+  "workflow": {
+    "version": "1.2.3",
+    "meta": {
+      "comfyui_version": "1.2.3"
+    },
+    "nodes": [
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [88888, "fixed", 20, 8, "euler", "normal", 1],
+        "mode": 0
+      }
+    ]
+  },
+  "prompt": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 88888,
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0]
+      }
+    }
+  }
+}

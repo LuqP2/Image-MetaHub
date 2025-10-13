@@ -66,9 +66,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced ComfyUI Parser - Phase 2**: Advanced parameter extraction with multiple seed formats, model hash mapping, and comprehensive modifier detection
 - **Advanced Seed Extraction**: Support for numeric, hex (0x), and derived seeds with approximateSeed flag for randomized seeds
 - **Model Hash Mapping**: Automatic mapping of unknown models to "unknown (hash: xxxx)" format when model name unavailable
-- **ControlNet/LoRA/VAE Detection**: Comprehensive extraction with weights, modules, and applied_to information
+- **ControlNet/LoRA/VAE Detection**: Comprehensive extraction with weights, modules, and applied_to information from loader and apply nodes
 - **Edit History Tracking**: Parse SaveImage and LoadImage nodes to reconstruct image generation workflow history
 - **ComfyUI Version Detection**: Automatic extraction of ComfyUI version from workflow metadata
+- **Enhanced ComfyUI Parser - Phase 3 (Testing & CLI)**: Comprehensive test suite with 13 test cases covering all parser features, CLI tooling for developers
+- **Automated Testing**: Vitest test suite with fixtures for basic workflows, LoRA, ControlNet, hex seeds, model hashes, edit history, and version detection
+- **Test Coverage**: 13/13 tests passing covering detection methods, error handling, telemetry, and advanced features
+- **CLI Tooling**: New `imagemetahub-cli` command-line tool for parsing single files and batch indexing directories
+- **Developer Documentation**: Added "Common Failure Modes" and "How to Add a New Node" sections to COMFYUI-PARSER-GUIDE.md with real-world examples
 - **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing
 - **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
 - **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
