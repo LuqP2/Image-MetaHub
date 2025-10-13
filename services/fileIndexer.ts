@@ -24,6 +24,15 @@ function sanitizeJson(jsonString: string): string {
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
+// Helper function to chunk array into smaller arrays
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
+
 /**
  * Attempts to read a sidecar JSON file for Easy Diffusion metadata
  * @param imagePath Path to the image file (e.g., /path/to/image.png)
@@ -34,16 +43,16 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
     // Generate JSON path by replacing extension with .json
     const jsonPath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '.json');
     
-    if (!isElectron || !jsonPath || jsonPath === imagePath) {
-      return null; // Only works in Electron environment
+    // Check if path is absolute (has drive letter on Windows or starts with / on Unix)
+    const isAbsolutePath = /^[a-zA-Z]:\\/.test(jsonPath) || jsonPath.startsWith('/');
+    
+    if (!isElectron || !jsonPath || jsonPath === imagePath || !isAbsolutePath) {
+      return null; // Only works in Electron environment with absolute paths
     }
 
-    console.log(`🔍 Checking for Easy Diffusion sidecar JSON: ${jsonPath}`);
-    
-    // Try to read the JSON file
+    // Try to read the JSON file (silent - no logging)
     const result = await (window as any).electronAPI.readFile(jsonPath);
     if (!result.success || !result.data) {
-      console.log(`📄 No sidecar JSON found at: ${jsonPath}`);
       return null;
     }
 
@@ -53,14 +62,12 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
     
     // Validate that it looks like Easy Diffusion JSON
     if (typeof parsedJson === 'object' && parsedJson.prompt && typeof parsedJson.prompt === 'string') {
-      console.log(`✅ Found valid Easy Diffusion sidecar JSON: ${jsonPath}`);
       return parsedJson as EasyDiffusionJson;
     } else {
-      console.log(`⚠️ JSON found but doesn't match Easy Diffusion format: ${jsonPath}`);
       return null;
     }
   } catch (error) {
-    console.warn(`❌ Error reading/parsing Easy Diffusion sidecar JSON for ${imagePath}:`, error);
+    // Silent error - most images won't have sidecar JSON
     return null;
   }
 }
@@ -71,8 +78,12 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   let offset = 8;
   const decoder = new TextDecoder();
   const chunks: { [key: string]: string } = {};
+  
+  // OPTIMIZATION: Stop early if we found all needed chunks
+  let foundChunks = 0;
+  const maxChunks = 4; // invokeai_metadata, parameters, workflow, prompt
 
-  while (offset < view.byteLength) {
+  while (offset < view.byteLength && foundChunks < maxChunks) {
     const length = view.getUint32(offset);
     const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
 
@@ -82,6 +93,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       const [keyword, text] = chunkString.split('\0');
       if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
         chunks[keyword] = text;
+        foundChunks++;
       }
     } else if (type === 'iTXt') {
       const chunkData = new Uint8Array(buffer.slice(offset + 8, offset + 8 + length));
@@ -114,6 +126,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
           const text = decoder.decode(chunkData.slice(currentIndex));
           chunks[keyword] = text;
+          foundChunks++;
         }
       }
     }
@@ -287,15 +300,36 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
 
 /**
  * Processes a single file entry to extract metadata and create an IndexedImage object.
- * This function encapsulates the logic that was previously duplicated.
+ * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
  */
-async function processSingleFile(
+async function processSingleFileOptimized(
   fileEntry: { handle: FileSystemFileHandle, path: string },
-  directoryId: string
+  directoryId: string,
+  fileData?: ArrayBuffer
 ): Promise<IndexedImage | null> {
   try {
-    const file = await fileEntry.handle.getFile();
-    let rawMetadata = await parseImageMetadata(file);
+    let file: File;
+    let rawMetadata: ImageMetadata | null;
+
+    // If file data is provided (from batch read), parse directly from buffer
+    if (fileData) {
+      // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
+      const view = new DataView(fileData);
+      if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+        rawMetadata = await parsePNGMetadata(fileData);
+      } else if (view.getUint16(0) === 0xFFD8) {
+        rawMetadata = await parseJPEGMetadata(fileData);
+      } else {
+        rawMetadata = null;
+      }
+      // Create File object for dimension reading (if needed later)
+      const blob = new Blob([fileData]);
+      file = new File([blob], fileEntry.handle.name, { lastModified: Date.now() });
+    } else {
+      // Fallback to individual file read (browser path)
+      file = await fileEntry.handle.getFile();
+      rawMetadata = await parseImageMetadata(file);
+    }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
     if (!rawMetadata || (!isEasyDiffusionMetadata(rawMetadata) && !isEasyDiffusionJson(rawMetadata))) {
@@ -369,8 +403,8 @@ async function processSingleFile(
       }
     }
 
-    // Read actual image dimensions
-    if (normalizedMetadata) {
+    // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
+    if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {
       try {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
@@ -418,7 +452,7 @@ async function processSingleFile(
       handle: fileEntry.handle,
       directoryId,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
-      metadataString: JSON.stringify(rawMetadata) || '',
+      metadataString: rawMetadata ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata
       lastModified: sortDate, // Use the determined sort date
       models: normalizedMetadata?.models || [],
       loras: normalizedMetadata?.loras || [],
@@ -438,8 +472,19 @@ async function processSingleFile(
 }
 
 /**
+ * Processes a single file entry (wrapper for backward compatibility).
+ */
+async function processSingleFile(
+  fileEntry: { handle: FileSystemFileHandle, path: string },
+  directoryId: string
+): Promise<IndexedImage | null> {
+  return processSingleFileOptimized(fileEntry, directoryId, undefined);
+}
+
+/**
  * Processes an array of file entries in batches to avoid blocking the main thread.
  * Invokes a callback with each batch of processed images.
+ * OPTIMIZED: Uses batch file reading in Electron to reduce IPC overhead.
  */
 export async function processFiles(
   fileEntries: { handle: FileSystemFileHandle, path: string }[],
@@ -451,9 +496,102 @@ export async function processFiles(
   const total = imageFiles.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
-  const CONCURRENCY_LIMIT = 20; // Limit of files processed in parallel (increased for Electron IPC)
+  const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
+  const CONCURRENCY_LIMIT = isElectron ? 50 : 20; // Higher concurrency in Electron (less IPC overhead)
   let batch: IndexedImage[] = [];
 
+  // Check if we're in Electron and can use optimized batch reading
+  const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
+
+  // ===== OPTIMIZED PATH: Batch file reading (Electron only) =====
+  if (useOptimizedPath) {
+    console.log(`🚀 Using optimized batch file reading for ${total} images`);
+    
+    // Split files into read batches to reduce IPC overhead
+    const fileReadBatches = chunkArray(imageFiles, FILE_READ_BATCH_SIZE);
+    
+    for (const readBatch of fileReadBatches) {
+      // Extract ABSOLUTE file paths for batch reading (required for security check)
+      const filePaths = readBatch.map(entry => {
+        const filePath = (entry.handle as any)._filePath;
+        if (!filePath) {
+          console.error('Missing _filePath on file handle:', entry.handle.name);
+        }
+        return filePath;
+      }).filter(Boolean);
+      
+      // Read all files in this batch at once via IPC
+      const batchReadResult = await (window as any).electronAPI.readFilesBatch(filePaths);
+      
+      if (!batchReadResult.success) {
+        console.error('Batch file read failed, falling back to individual reads');
+        // Fall back to processing files individually
+        for (const fileEntry of readBatch) {
+          const indexedImage = await processSingleFile(fileEntry, directoryId);
+          processedCount++;
+          setProgress({ current: processedCount, total });
+          
+          if (indexedImage) {
+            batch.push(indexedImage);
+            if (batch.length >= BATCH_SIZE) {
+              onBatchProcessed(batch);
+              batch = [];
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
+          }
+        }
+        continue;
+      }
+      
+      // Process files with pre-loaded data
+      const fileDataMap = new Map<string, ArrayBuffer>();
+      for (const fileResult of batchReadResult.files) {
+        if (fileResult.success && fileResult.data) {
+          fileDataMap.set(fileResult.path, fileResult.data.buffer || fileResult.data);
+        }
+      }
+      
+      // Process this read batch with concurrency (all in parallel since data is pre-loaded)
+      const results = await Promise.all(
+        readBatch.map(async (fileEntry) => {
+          const filePath = (fileEntry.handle as any)._filePath;
+          const fileData = fileDataMap.get(filePath);
+          
+          const indexedImage = await processSingleFileOptimized(fileEntry, directoryId, fileData);
+          processedCount++;
+          
+          return indexedImage;
+        })
+      );
+      
+      // Update progress once per batch (more efficient)
+      setProgress({ current: processedCount, total });
+      
+      // Collect results into batches
+      for (const indexedImage of results) {
+        if (indexedImage) {
+          batch.push(indexedImage);
+          if (batch.length >= BATCH_SIZE) {
+            onBatchProcessed(batch);
+            batch = [];
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+      }
+    }
+    
+    // Process any remaining images
+    if (batch.length > 0) {
+      onBatchProcessed(batch);
+    }
+    
+    console.log(`✅ Completed optimized batch processing of ${total} images`);
+    return;
+  }
+  
+  // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
+  console.log(`📂 Using standard file reading for ${total} images`);
+  
   // Async pool implementation for controlled concurrency
   async function asyncPool<T, R>(
     concurrency: number,

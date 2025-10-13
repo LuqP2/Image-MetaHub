@@ -422,9 +422,11 @@ function setupFileOperationHandlers() {
       }
       allowedDirectoryPaths.clear();
       for (const p of paths) {
-        allowedDirectoryPaths.add(path.normalize(p));
+        const normalized = path.normalize(p);
+        allowedDirectoryPaths.add(normalized);
+        console.log('[Main] Added allowed directory:', normalized);
       }
-      // console.log('Updated allowed directories:', Array.from(allowedDirectoryPaths));
+      console.log('[Main] Total allowed directories:', allowedDirectoryPaths.size);
       return { success: true };
     } catch (error) {
       console.error('Error updating allowed paths:', error);
@@ -636,6 +638,9 @@ function setupFileOperationHandlers() {
 
       if (!isPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+        console.error('  [read-file] Requested path:', filePath);
+        console.error('  [read-file] Normalized path:', path.normalize(filePath));
+        console.error('  [read-file] Allowed directories:', Array.from(allowedDirectoryPaths));
         return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
       }
 
@@ -685,7 +690,10 @@ function setupFileOperationHandlers() {
       // --- SECURITY CHECK ---
       for (const filePath of filePaths) {
         if (!isPathAllowed(filePath)) {
-          console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories:', filePath);
+          console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+          console.error('  Requested path:', filePath);
+          console.error('  Normalized path:', path.normalize(filePath));
+          console.error('  Allowed directories:', Array.from(allowedDirectoryPaths));
           return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
         }
       }
@@ -751,7 +759,8 @@ function setupFileOperationHandlers() {
       if (!paths || paths.length === 0) {
         return { success: false, error: 'No paths provided to join' };
       }
-      const joinedPath = path.join(...paths);
+      // Use path.resolve to ensure we get an absolute path
+      const joinedPath = path.resolve(...paths);
       return { success: true, path: joinedPath };
     } catch (error) {
       console.error('Error joining paths:', error);

@@ -4,14 +4,31 @@ interface StatusBarProps {
   filteredCount: number;
   totalCount: number;
   directoryCount: number;
+  isIndexing?: boolean;
+  progress?: { current: number; total: number };
 }
 
-const StatusBar: React.FC<StatusBarProps> = ({ filteredCount, totalCount, directoryCount }) => {
+const StatusBar: React.FC<StatusBarProps> = ({ 
+  filteredCount, 
+  totalCount, 
+  directoryCount,
+  isIndexing = false,
+  progress
+}) => {
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
+  
   return (
     <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700 text-gray-300 flex justify-between items-center">
       <span>
-        Found <span className="font-bold text-blue-400">{filteredCount}</span> of <span className="font-bold text-green-400">{totalCount}</span> images across <span className="font-bold text-purple-400">{directoryCount}</span> {folderText}
+        {isIndexing && progress ? (
+          <>
+            🔄 <span className="font-bold text-yellow-400">Indexing:</span> {progress.current} / {progress.total} files processed
+          </>
+        ) : (
+          <>
+            Found <span className="font-bold text-blue-400">{filteredCount}</span> of <span className="font-bold text-green-400">{totalCount}</span> images across <span className="font-bold text-purple-400">{directoryCount}</span> {folderText}
+          </>
+        )}
       </span>
       <span className="text-xs text-gray-500">v0.9.2-beta.1</span>
     </div>

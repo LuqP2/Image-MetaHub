@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
@@ -182,6 +182,72 @@ export function useImageLoader() {
         setFilterOptions, removeImages, addImages, clearImages
     } = useImageStore();
 
+    useEffect(() => {
+        if (!getIsElectron()) return;
+
+        const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
+            setProgress(progress);
+        });
+
+        let isFirstBatch = true;
+        const removeBatchListener = (window as any).electronAPI.onIndexingBatchResult(({ batch }: { batch: IndexedImage[] }) => {
+            addImages(batch);
+            // Remove loading overlay after first batch
+            if (isFirstBatch) {
+                setLoading(false);
+                isFirstBatch = false;
+            }
+        });
+
+        const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
+            setError(`Indexing error in ${directoryId}: ${error}`);
+            setLoading(false); // Stop loading on error
+        });
+
+        const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
+            console.log(`[Renderer] Received indexing complete for ${directoryId}`);
+            const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
+            if (directory) {
+                finalizeDirectoryLoad(directory);
+            }
+        });
+
+        return () => {
+            removeProgressListener();
+            removeBatchListener();
+            removeErrorListener();
+            removeCompleteListener();
+        };
+    }, [addImages, setProgress, setError, setLoading]);
+
+    const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
+        console.log(`Finalizing load for ${directory.name}`);
+        const allImages = useImageStore.getState().images;
+        const models = new Set<string>();
+        const loras = new Set<string>();
+        const schedulers = new Set<string>();
+
+        for (const image of allImages) {
+            if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
+            if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
+            if (image.scheduler) schedulers.add(image.scheduler);
+        }
+
+        setFilterOptions({
+            models: Array.from(models).sort(),
+            loras: Array.from(loras).sort(),
+            schedulers: Array.from(schedulers).sort(),
+        });
+
+        const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+        const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+        await cacheManager.cacheData(directory.path, directory.name, finalDirectoryImages, shouldScanSubfolders);
+
+        setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        setLoading(false);
+    }, [setFilterOptions, setSuccess, setLoading]);
+
+
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
             await cacheManager.init();
@@ -280,76 +346,46 @@ export function useImageLoader() {
             }
 
             if (diff.newAndModifiedFiles.length > 0) {
-                const filesToProcessNames = diff.newAndModifiedFiles.map(f => f.name);
+                // Sort files by lastModified descending (newest first)
+                const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
+                const filesToProcessNames = sortedFiles.map(f => f.name);
                 const fileHandles = await getFileHandles(directory.handle, directory.path, filesToProcessNames);
-
                 setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
 
-                const newlyProcessedImages: IndexedImage[] = [];
                 const handleBatchProcessed = (batch: IndexedImage[]) => {
                     addImages(batch);
-                    newlyProcessedImages.push(...batch);
                 };
 
                 const throttledSetProgress = throttle(setProgress, 200);
 
-                await processFiles(fileHandles, throttledSetProgress, handleBatchProcessed, directory.id);
+                // This now delegates to the main process in Electron, and is awaited in browser
+                const processPromise = processFiles(
+                    fileHandles,
+                    throttledSetProgress,
+                    handleBatchProcessed,
+                    directory.id
+                );
 
-                finalImages = [...finalImages, ...newlyProcessedImages];
+                // In browser, we wait here. In Electron, this resolves immediately.
+                if (!getIsElectron()) {
+                    await processPromise;
+                    finalizeDirectoryLoad(directory);
+                }
+                // In Electron, the 'onIndexingComplete' listener will call finalizeDirectoryLoad.
+
+            } else {
+                // No new files to process, just finalize with what we have
+                 finalizeDirectoryLoad(directory);
             }
-
-            // After a directory is loaded/updated, re-calculate filters from all images in the store.
-            const allImages = useImageStore.getState().images;
-            const models = new Set<string>();
-            const loras = new Set<string>();
-            const schedulers = new Set<string>();
-
-            for (const image of allImages) {
-                if (image.models && image.models.length > 0) {
-                    image.models.forEach(model => {
-                        if (typeof model === 'string' && model.trim() !== '') {
-                            models.add(model);
-                        } else {
-                            console.warn('[useImageLoader] Invalid model value:', model, 'type:', typeof model, 'image:', image.id);
-                        }
-                    });
-                }
-                if (image.loras && image.loras.length > 0) {
-                    image.loras.forEach(lora => {
-                        if (typeof lora === 'string' && lora.trim() !== '') {
-                            loras.add(lora);
-                        } else {
-                            console.warn('[useImageLoader] Invalid lora value:', lora, 'type:', typeof lora, 'image:', image.id);
-                        }
-                    });
-                }
-                if (image.scheduler) {
-                    if (typeof image.scheduler === 'string' && image.scheduler.trim() !== '') {
-                        schedulers.add(image.scheduler);
-                    } else {
-                        console.warn('[useImageLoader] Invalid scheduler value:', image.scheduler, 'type:', typeof image.scheduler, 'image:', image.id);
-                    }
-                }
-            }
-
-            setFilterOptions({
-                models: Array.from(models).sort(),
-                loras: Array.from(loras).sort(),
-                schedulers: Array.from(schedulers).sort(),
-            });
-
-            await cacheManager.cacheData(directory.path, directory.name, finalImages, shouldScanSubfolders);
-            setSuccess(`Loaded ${finalImages.length} images from ${directory.name}. ${diff.newAndModifiedFiles.length} new/updated, ${diff.cachedImages.length} from cache.`);
 
         } catch (err) {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
                 setError(`Failed to load directory ${directory.name}. Check console for details.`);
             }
-        } finally {
-            setLoading(false);
+             setLoading(false);
         }
-    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess]);
+    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
 
     const handleSelectFolder = useCallback(async () => {
@@ -446,31 +482,9 @@ export function useImageLoader() {
                     const schedulers = new Set<string>();
 
                     for (const image of allImages) {
-                        if (image.models && image.models.length > 0) {
-                            image.models.forEach(model => {
-                                if (typeof model === 'string' && model.trim() !== '') {
-                                    models.add(model);
-                                } else {
-                                    console.warn('[useImageLoader] Invalid model value:', model, 'type:', typeof model, 'image:', image.id);
-                                }
-                            });
-                        }
-                        if (image.loras && image.loras.length > 0) {
-                            image.loras.forEach(lora => {
-                                if (typeof lora === 'string' && lora.trim() !== '') {
-                                    loras.add(lora);
-                                } else {
-                                    console.warn('[useImageLoader] Invalid lora value:', lora, 'type:', typeof lora, 'image:', image.id);
-                                }
-                            });
-                        }
-                        if (image.scheduler) {
-                            if (typeof image.scheduler === 'string' && image.scheduler.trim() !== '') {
-                                schedulers.add(image.scheduler);
-                            } else {
-                                console.warn('[useImageLoader] Invalid scheduler value:', image.scheduler, 'type:', typeof image.scheduler, 'image:', image.id);
-                            }
-                        }
+                        if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
+                        if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
+                        if (image.scheduler) schedulers.add(image.scheduler);
                     }
 
                     setFilterOptions({

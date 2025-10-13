@@ -57,12 +57,11 @@ export default function App() {
     resetState,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
+  const sortOrder = useImageStore((state) => state.sortOrder);
 
   // --- Settings Store State ---
   const {
-    sortOrder,
     itemsPerPage,
-    setSortOrder,
     setItemsPerPage,
   } = useSettingsStore();
 
@@ -190,11 +189,6 @@ export default function App() {
     setCurrentPage(1);
   }, [filteredImages]);
 
-  // Sync settings store with image store for sorting
-  useEffect(() => {
-    imageStoreSetSortOrder(sortOrder);
-  }, [sortOrder, imageStoreSetSortOrder]);
-
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
     if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
@@ -298,20 +292,22 @@ export default function App() {
           {error && <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4">{error}</div>}
           {success && <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4">{success}</div>}
 
-          {isLoading && <Loader progress={progress} />}
+          {isLoading && progress.total === 0 && <Loader progress={progress} />}
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
-          {hasDirectories && !isLoading && (
+          {hasDirectories && (
             <>
               <StatusBar
                 filteredCount={filteredImages.length}
                 totalCount={images.length}
                 directoryCount={directories.length}
+                isIndexing={progress.total > 0 && progress.current < progress.total}
+                progress={progress}
               />
 
               <ActionToolbar
                 sortOrder={sortOrder}
-                onSortOrderChange={setSortOrder}
+                onSortOrderChange={imageStoreSetSortOrder}
                 selectedCount={selectedImages.size}
                 onClearSelection={clearSelection}
                 onDeleteSelected={handleDeleteSelectedImages}

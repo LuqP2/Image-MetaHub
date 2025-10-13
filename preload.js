@@ -21,6 +21,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onIndexingProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('indexing-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('indexing-progress', handler);
+    };
+  },
+
+  onIndexingBatchResult: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('indexing-batch-result', handler);
+    return () => {
+      ipcRenderer.removeListener('indexing-batch-result', handler);
+    };
+  },
+
+  onIndexingError: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('indexing-error', handler);
+    return () => {
+      ipcRenderer.removeListener('indexing-error', handler);
+    };
+  },
+
+  onIndexingComplete: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('indexing-complete', handler);
+    return () => {
+      ipcRenderer.removeListener('indexing-complete', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
