@@ -5,7 +5,7 @@ import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
 let zlib: any = null;
 if (typeof window === 'undefined') {
   try {
-    zlib = require('zlib');
+    zlib = await import('zlib');
   } catch (e) {
     console.warn('[ComfyUI Parser] zlib not available, compression support disabled');
   }
@@ -118,7 +118,7 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
   if (cfgMatch) params.cfg = parseFloat(cfgMatch[1]);
   
   // Sampler
-  const samplerMatch = text.match(/Sampler[:=]\s*([A-Za-z0-9\-\_+]+)/i);
+  const samplerMatch = text.match(/Sampler[:=]\s*([A-Za-z0-9\-_+]+)/i);
   if (samplerMatch) params.sampler_name = samplerMatch[1];
   
   // Seed
@@ -155,7 +155,7 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
   // Try widgets_values for numeric seed
   if (Array.isArray(node.widgets_values)) {
     for (const value of node.widgets_values) {
-      if (typeof value === 'number' && value >= 0 && value <= 18446744073709551615) {
+      if (typeof value === 'number' && value >= 0 && value <= 18446744073709551615n) {
         return { seed: value };
       }
       // Try hex in widgets_values
@@ -242,7 +242,7 @@ function extractAdvancedModifiers(graph: Graph): {
       
       // Try to find corresponding apply node for weight
       let weight = 1.0;
-      let module = node.inputs?.preprocessor || node.inputs?.module;
+      const module = node.inputs?.preprocessor || node.inputs?.module;
       let applied_to = undefined;
       
       // Search for ControlNetApply nodes that reference this loader
