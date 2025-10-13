@@ -194,7 +194,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto">
-                    {availableModels.map((model, index) => (
+                    {availableModels
+                      .filter(model => typeof model === 'string' && model.trim() !== '')
+                      .map((model, index) => (
                       <label key={`model-${index}-${model}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
                         <input
                           type="checkbox"
@@ -257,7 +259,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto">
-                    {availableLoras.map((lora, index) => (
+                    {availableLoras
+                      .filter(lora => typeof lora === 'string' && lora.trim() !== '')
+                      .map((lora, index) => (
                       <label key={`lora-${index}-${lora}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
                         <input
                           type="checkbox"
@@ -320,7 +324,9 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto">
-                    {availableSchedulers.map((scheduler, index) => (
+                    {availableSchedulers
+                      .filter(scheduler => typeof scheduler === 'string' && scheduler.trim() !== '')
+                      .map((scheduler, index) => (
                       <label key={`scheduler-${index}-${scheduler}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
                         <input
                           type="checkbox"

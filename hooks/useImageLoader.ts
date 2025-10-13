@@ -305,9 +305,31 @@ export function useImageLoader() {
             const schedulers = new Set<string>();
 
             for (const image of allImages) {
-                if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
-                if (image.scheduler) schedulers.add(image.scheduler);
+                if (image.models && image.models.length > 0) {
+                    image.models.forEach(model => {
+                        if (typeof model === 'string' && model.trim() !== '') {
+                            models.add(model);
+                        } else {
+                            console.warn('[useImageLoader] Invalid model value:', model, 'type:', typeof model, 'image:', image.id);
+                        }
+                    });
+                }
+                if (image.loras && image.loras.length > 0) {
+                    image.loras.forEach(lora => {
+                        if (typeof lora === 'string' && lora.trim() !== '') {
+                            loras.add(lora);
+                        } else {
+                            console.warn('[useImageLoader] Invalid lora value:', lora, 'type:', typeof lora, 'image:', image.id);
+                        }
+                    });
+                }
+                if (image.scheduler) {
+                    if (typeof image.scheduler === 'string' && image.scheduler.trim() !== '') {
+                        schedulers.add(image.scheduler);
+                    } else {
+                        console.warn('[useImageLoader] Invalid scheduler value:', image.scheduler, 'type:', typeof image.scheduler, 'image:', image.id);
+                    }
+                }
             }
 
             setFilterOptions({
@@ -424,9 +446,31 @@ export function useImageLoader() {
                     const schedulers = new Set<string>();
 
                     for (const image of allImages) {
-                        if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                        if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
-                        if (image.scheduler) schedulers.add(image.scheduler);
+                        if (image.models && image.models.length > 0) {
+                            image.models.forEach(model => {
+                                if (typeof model === 'string' && model.trim() !== '') {
+                                    models.add(model);
+                                } else {
+                                    console.warn('[useImageLoader] Invalid model value:', model, 'type:', typeof model, 'image:', image.id);
+                                }
+                            });
+                        }
+                        if (image.loras && image.loras.length > 0) {
+                            image.loras.forEach(lora => {
+                                if (typeof lora === 'string' && lora.trim() !== '') {
+                                    loras.add(lora);
+                                } else {
+                                    console.warn('[useImageLoader] Invalid lora value:', lora, 'type:', typeof lora, 'image:', image.id);
+                                }
+                            });
+                        }
+                        if (image.scheduler) {
+                            if (typeof image.scheduler === 'string' && image.scheduler.trim() !== '') {
+                                schedulers.add(image.scheduler);
+                            } else {
+                                console.warn('[useImageLoader] Invalid scheduler value:', image.scheduler, 'type:', typeof image.scheduler, 'image:', image.id);
+                            }
+                        }
                     }
 
                     setFilterOptions({
