@@ -1,14 +1,22 @@
 import { resolveAll } from './comfyui/traversalEngine';
 import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
 
-// Conditional zlib import for Node.js environment
-let zlib: any = null;
-if (typeof window === 'undefined') {
-  try {
-    zlib = await import('zlib');
-  } catch (e) {
-    console.warn('[ComfyUI Parser] zlib not available, compression support disabled');
+// Lazy-loaded zlib for Node.js environment
+let zlibPromise: Promise<any> | null = null;
+
+async function getZlib(): Promise<any> {
+  if (typeof window !== 'undefined') {
+    return null; // Browser environment
   }
+
+  if (!zlibPromise) {
+    zlibPromise = import('zlib').catch(() => {
+      console.warn('[ComfyUI Parser] zlib not available, compression support disabled');
+      return null;
+    });
+  }
+
+  return zlibPromise;
 }
 
 type Graph = Record<string, ParserNode>;
@@ -43,6 +51,7 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   }
   
   // 3. zlib/gzip decompression (Node.js only)
+  const zlib = await getZlib();
   if (zlib && typeof Buffer !== 'undefined') {
     try {
       // Detect zlib magic bytes (\x78\x9c)

@@ -49,6 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added Unit Tests:** Created an initial test suite for the `automatic1111Parser`, demonstrating how to write effective unit tests for the application's parsers.
 - **Added ESLint:** Set up ESLint with a modern `eslint.config.js` configuration, including rules for TypeScript and React.
 - **Configured ESLint Rules:** Established a practical ESLint ruleset that flags potential issues without being overly disruptive, such as downgrading `no-explicit-any` to a warning.
+- **Progressive Loading**: Removed blocking loading overlay after first batch of images, allowing immediate navigation while indexing continues in background
+- **Indexing Progress Display**: Status bar now shows real-time indexing progress ("🔄 Indexing: 200 / 21727 files processed") instead of generic loading message
+- **Newest Files First**: Files are now sorted by modification date (newest first) during indexing for better user experience with recent images
+- **Indexing Safety Controls**: Disabled Add Folder, Reload Folder, and Delete/Rename buttons during indexing to prevent conflicts and data corruption
+- **Incremental Filter Updates**: Fixed sidebar filters disappearing during refresh by updating filter options incrementally as images are processed
+
+### Fixed
+- **Refresh Filter Loss**: Fixed issue where sidebar filters would disappear during folder refresh operations
 
 ### Changed
 - **Image Grid Virtualization**: Migrated the main image grid from `react-virtualized` Masonry to `react-window` FixedSizeGrid for improved performance and stability with large collections (20k+ images)
@@ -86,7 +94,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parameter-based Parsing**: Added regex-based parsing for Easy Diffusion's text format (Prompt, Negative prompt, Steps, CFG scale, etc.)
 - **Enhanced Metadata Detection**: Improved automatic format detection to recognize SwarmUI's sui_image_params structure
 - **C2PA/EXIF Parsing**: Offline parsing of C2PA manifests and EXIF metadata for DALL-E images
-- **AI Content Detection**: Automatic detection and tagging of AI-generated content
+- **File Processing Order**: Changed file processing order to sort by lastModified date descending (newest first) for better user experience
+- **UI Safety During Indexing**: Added isIndexing prop to Header, DirectoryList, and ImageModal components to disable destructive operations during indexing
+- **IPC Listener Management**: Added onIndexingProgress, onIndexingBatchResult, onIndexingError, and onIndexingComplete listeners to preload.js for real-time indexing feedback
+- **Batch Processing Logic**: Modified handleBatchProcessed callback to remove loading overlay after first batch while continuing to add images progressively
+
+### Changed
+- **Progressive Loading Implementation**: Modified useImageLoader.ts to remove loading overlay after first batch and show images progressively during indexing
+- **Status Bar Enhancement**: Updated StatusBar.tsx to display indexing progress with file counts when indexing is active
+- **File Processing Order**: Changed file processing order to sort by lastModified date descending (newest first) for better user experience
+- **UI Safety During Indexing**: Added isIndexing prop to Header, DirectoryList, and ImageModal components to disable destructive operations during indexing
 
 ## [0.9.1] - 2025-10-08
 

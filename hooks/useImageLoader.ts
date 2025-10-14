@@ -185,6 +185,25 @@ export function useImageLoader() {
     useEffect(() => {
         if (!getIsElectron()) return;
 
+        const updateGlobalFilters = () => {
+            const allImages = useImageStore.getState().images;
+            const models = new Set<string>();
+            const loras = new Set<string>();
+            const schedulers = new Set<string>();
+
+            for (const image of allImages) {
+                if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
+                if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
+                if (image.scheduler) schedulers.add(image.scheduler);
+            }
+
+            setFilterOptions({
+                models: Array.from(models).sort(),
+                loras: Array.from(loras).sort(),
+                schedulers: Array.from(schedulers).sort(),
+            });
+        };
+
         const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
             setProgress(progress);
         });
@@ -197,6 +216,8 @@ export function useImageLoader() {
                 setLoading(false);
                 isFirstBatch = false;
             }
+            // Update filters incrementally as new images are processed
+            updateGlobalFilters();
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
@@ -205,7 +226,7 @@ export function useImageLoader() {
         });
 
         const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
-            console.log(`[Renderer] Received indexing complete for ${directoryId}`);
+            console.log(`[Renderer] Received indexing complete for ${directoryId} - CALLING FINALIZE FROM ELECTRON`);
             const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
             if (directory) {
                 finalizeDirectoryLoad(directory);
@@ -221,31 +242,35 @@ export function useImageLoader() {
     }, [addImages, setProgress, setError, setLoading]);
 
     const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
-        console.log(`Finalizing load for ${directory.name}`);
-        const allImages = useImageStore.getState().images;
-        const models = new Set<string>();
-        const loras = new Set<string>();
-        const schedulers = new Set<string>();
-
-        for (const image of allImages) {
-            if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-            if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
-            if (image.scheduler) schedulers.add(image.scheduler);
+        console.log(`🏁 FINALIZING LOAD for ${directory.name} (${directory.path})`);
+        
+        // Prevent multiple finalizations for the same directory
+        const finalizationKey = `finalized_${directory.id}`;
+        if ((window as any)[finalizationKey]) {
+            console.log(`⚠️ Directory ${directory.name} already finalized, skipping`);
+            return;
         }
-
-        setFilterOptions({
-            models: Array.from(models).sort(),
-            loras: Array.from(loras).sort(),
-            schedulers: Array.from(schedulers).sort(),
-        });
-
+        (window as any)[finalizationKey] = true;
+        
+        // Wait a bit to ensure all images are added to the store
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+        console.log(`📊 Found ${finalDirectoryImages.length} images for directory ${directory.name}`);
+        
+        if (finalDirectoryImages.length === 0) {
+            console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
+            setSuccess(`Loaded 0 images from ${directory.name}.`);
+            setLoading(false);
+            return;
+        }
+        
         const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
         await cacheManager.cacheData(directory.path, directory.name, finalDirectoryImages, shouldScanSubfolders);
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
-    }, [setFilterOptions, setSuccess, setLoading]);
+    }, [setSuccess, setLoading]);
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
@@ -309,17 +334,13 @@ export function useImageLoader() {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
 
-            if (isUpdate) {
-                // Clear images for this specific directory before refreshing
-                clearImages(directory.id);
-                // NOTE: We do NOT clear the cache here!
-                // validateCacheAndGetDiff will intelligently detect:
-                // - New files (to be processed)
-                // - Deleted files (to be removed)
-                // - Modified files (to be re-processed)
-                // - Unchanged files (loaded from cache - super fast!)
-            }
-            // Note: On first load (isUpdate=false), we don't clear anything - just add new images
+            // Note: We do NOT clear images before validation!
+            // validateCacheAndGetDiff will intelligently detect:
+            // - New files (to be processed)
+            // - Deleted files (to be removed from UI)
+            // - Modified files (to be re-processed)
+            // - Unchanged files (loaded from cache - super fast!)
+            
             const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
@@ -329,18 +350,21 @@ export function useImageLoader() {
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
-            const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
-                ...img,
-                handle: handleMap.get(img.name)!,
-                directoryId: directory.id, // CRITICAL: Associate cached images with current directory
-            }));
+            // Only add cached images if this is NOT an update (first load)
+            // On update, cached images are already in the store, no need to re-add
+            if (!isUpdate) {
+                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
+                    ...img,
+                    handle: handleMap.get(img.name)!,
+                    directoryId: directory.id,
+                }));
 
-            if (finalCachedImages.length > 0) {
-                addImages(finalCachedImages);
+                if (finalCachedImages.length > 0) {
+                    addImages(finalCachedImages);
+                }
             }
 
-            let finalImages: IndexedImage[] = finalCachedImages;
-
+            // Remove deleted files from the UI
             if (diff.deletedFileIds.length > 0) {
                 removeImages(diff.deletedFileIds);
             }
@@ -475,23 +499,6 @@ export function useImageLoader() {
                     const allPaths = useImageStore.getState().directories.map(d => d.path);
                     await window.electronAPI.updateAllowedPaths(allPaths);
 
-                    // And finally, update the filter options from all the loaded images.
-                    const allImages = useImageStore.getState().images;
-                    const models = new Set<string>();
-                    const loras = new Set<string>();
-                    const schedulers = new Set<string>();
-
-                    for (const image of allImages) {
-                        if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                        if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
-                        if (image.scheduler) schedulers.add(image.scheduler);
-                    }
-
-                    setFilterOptions({
-                        models: Array.from(models).sort(),
-                        loras: Array.from(loras).sort(),
-                        schedulers: Array.from(schedulers).sort(),
-                    });
                     setSuccess(`Loaded ${directoriesToLoad.length} director(y|ies) from cache.`);
                 } catch (e) {
                     error("Error loading from storage", e);

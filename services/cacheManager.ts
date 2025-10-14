@@ -35,6 +35,7 @@ class CacheManager {
 
   async init(basePath?: string): Promise<void> {
     if (this.isInitialized) {
+      console.log(`ℹ️ Cache already initialized with DB: ${this.dbName}`);
       return;
     }
 
@@ -43,6 +44,7 @@ class CacheManager {
       // Sanitize the path to be a valid DB name
       this.dbName = `image-metahub-cache-${basePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
     }
+    console.log(`🔧 Initializing cache with basePath: "${basePath}" -> DB name: "${this.dbName}"`);
 
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.dbVersion);
@@ -99,12 +101,21 @@ class CacheManager {
       return null;
     }
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    console.log(`🔍 Looking for cache with ID: ${cacheId} in DB: ${this.dbName}`);
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(['cache'], 'readonly');
       const store = transaction.objectStore('cache');
       const request = store.get(cacheId);
       request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || null);
+      request.onsuccess = () => {
+        const result = request.result;
+        if (result) {
+          console.log(`✅ Cache found for ${cacheId}: ${result.imageCount} images`);
+        } else {
+          console.log(`❌ No cache found for ${cacheId}`);
+        }
+        resolve(result || null);
+      };
     });
   }
 
@@ -119,6 +130,7 @@ class CacheManager {
       return;
     }
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    console.log(`💾 Saving cache for ${directoryName} (${cacheId}): ${images.length} images to DB: ${this.dbName}`);
     const cacheEntry: CacheEntry = {
       id: cacheId,
       directoryPath,
@@ -139,12 +151,25 @@ class CacheManager {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(['cache'], 'readwrite');
       const store = transaction.objectStore('cache');
+      
+      transaction.oncomplete = () => {
+        console.log(`✅ Transaction completed for cache ${cacheId}`);
+      };
+      
+      transaction.onerror = () => {
+        console.error('❌ Transaction failed for cache:', transaction.error);
+        reject(transaction.error);
+      };
+      
       const request = store.put(cacheEntry);
       request.onerror = () => {
-        console.error('❌ CACHE SAVE FAILED:', request.error);
+        console.error('❌ CACHE SAVE REQUEST FAILED:', request.error);
         reject(request.error);
       };
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        console.log(`✅ Cache saved successfully for ${cacheId}`);
+        resolve();
+      };
     });
   }
 
@@ -194,6 +219,10 @@ class CacheManager {
         let cleanedCount = 0;
         for (const entry of cacheEntries) {
           const invalidImages = entry.metadata.filter(meta => {
+            // Skip validation for images without metadata (they're still valid)
+            if (!meta.metadataString || meta.metadataString.trim() === '') {
+              return false;
+            }
             try {
               const parsed = JSON.parse(meta.metadataString);
               return !parsed.normalizedMetadata;
