@@ -6,7 +6,7 @@ interface StatusBarProps {
   totalCount: number;
   directoryCount: number;
   indexingState?: 'idle' | 'indexing' | 'paused';
-  progress?: { current: number; total: number };
+  progress?: { current: number; total: number } | null;
   onPauseIndexing?: () => void;
   onResumeIndexing?: () => void;
   onCancelIndexing?: () => void;

@@ -9,7 +9,7 @@ interface ImageState {
 
   // UI State
   isLoading: boolean;
-  progress: { current: number; total: number };
+  progress: { current: number; total: number } | null;
   indexingState: 'idle' | 'indexing' | 'paused';
   error: string | null;
   success: string | null;
@@ -34,7 +34,7 @@ interface ImageState {
   removeDirectory: (directoryId: string) => void;
   toggleDirectoryVisibility: (directoryId: string) => void;
   setLoading: (loading: boolean) => void;
-  setProgress: (progress: { current: number; total: number }) => void;
+  setProgress: (progress: { current: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused') => void;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
@@ -186,7 +186,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         filteredImages: [],
         directories: [],
         isLoading: false,
-        progress: { current: 0, total: 0 },
+        progress: null,
         indexingState: 'idle',
         error: null,
         success: null,

@@ -102,7 +102,7 @@ export default function App() {
     cancelIndexing();
     setIndexingState('idle');
     setLoading(false);
-    setProgress({ current: 0, total: 0 });
+    setProgress(null);
   }, [cancelIndexing, setIndexingState, setLoading, setProgress]);
 
   // --- Effects ---
@@ -305,7 +305,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
-            isIndexing={progress.total > 0 && progress.current < progress.total}
+            isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           />
         </Sidebar>
       )}
@@ -316,7 +316,7 @@ export default function App() {
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
-          isIndexing={progress.total > 0 && progress.current < progress.total}
+          isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           isIndexingPaused={indexingState === 'paused'}
         />
 
@@ -324,7 +324,7 @@ export default function App() {
           {error && <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4">{error}</div>}
           {success && <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4">{success}</div>}
 
-          {isLoading && progress.total === 0 && <Loader progress={progress} />}
+          {isLoading && progress && progress.total === 0 && <Loader progress={progress} />}
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
           {hasDirectories && (
@@ -389,7 +389,7 @@ export default function App() {
             onNavigateNext={handleNavigateNext}
             onNavigatePrevious={handleNavigatePrevious}
             directoryPath={directoryPath}
-            isIndexing={progress.total > 0 && progress.current < progress.total}
+            isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           />
         )}
       </div>

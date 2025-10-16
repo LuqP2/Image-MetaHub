@@ -257,6 +257,7 @@ export function useImageLoader() {
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
             setError(`Indexing error in ${directoryId}: ${error}`);
             setLoading(false); // Stop loading on error
+            setProgress(null);
         });
 
         const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
@@ -308,6 +309,7 @@ export function useImageLoader() {
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
         setIndexingState('idle');
+        setProgress(null);
     }, [setSuccess, setLoading]);
 
 
@@ -489,6 +491,7 @@ export function useImageLoader() {
             }
              setLoading(false);
              setIndexingState('idle');
+             setProgress(null);
         }
     }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
