@@ -28,7 +28,7 @@ import ImageTable from './components/ImageTable'; // Verify this file exists or 
 
 export default function App() {
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, cancelIndexing } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -38,6 +38,7 @@ export default function App() {
     directories,
     isLoading,
     progress,
+    indexingState,
     error,
     success,
     previewImage,
@@ -60,6 +61,9 @@ export default function App() {
     updateImage,
     toggleDirectoryVisibility,
     resetState,
+    setIndexingState,
+    setLoading,
+    setProgress,
     handleNavigateNext,
     handleNavigatePrevious,
     cleanupInvalidImages,
@@ -84,15 +88,22 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
 
-  // --- Hotkeys ---
-  const { commands, registeredHotkeys } = useHotkeys({
-    isCommandPaletteOpen,
-    setIsCommandPaletteOpen,
-    isHotkeyHelpOpen,
-    setIsHotkeyHelpOpen,
-    isSettingsModalOpen,
-    setIsSettingsModalOpen,
-  });
+  // --- Indexing Control Functions ---
+  const handlePauseIndexing = useCallback(() => {
+    setIndexingState('paused');
+  }, [setIndexingState]);
+
+  const handleResumeIndexing = useCallback(() => {
+    setIndexingState('indexing');
+  }, [setIndexingState]);
+
+  const handleCancelIndexing = useCallback(() => {
+    // Abort any ongoing indexing operation
+    cancelIndexing();
+    setIndexingState('idle');
+    setLoading(false);
+    setProgress({ current: 0, total: 0 });
+  }, [cancelIndexing, setIndexingState, setLoading, setProgress]);
 
   // --- Effects ---
   useEffect(() => {
@@ -252,7 +263,7 @@ export default function App() {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        commands={commands}
+        commands={[]}
       />
 
       <HotkeyHelp
@@ -306,6 +317,7 @@ export default function App() {
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           isIndexing={progress.total > 0 && progress.current < progress.total}
+          isIndexingPaused={indexingState === 'paused'}
         />
 
         <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
@@ -322,7 +334,11 @@ export default function App() {
                 totalCount={images.length}
                 directoryCount={directories.length}
                 isIndexing={progress.total > 0 && progress.current < progress.total}
+                indexingState={indexingState}
                 progress={progress}
+                onPauseIndexing={handlePauseIndexing}
+                onResumeIndexing={handleResumeIndexing}
+                onCancelIndexing={handleCancelIndexing}
               />
 
               <ActionToolbar

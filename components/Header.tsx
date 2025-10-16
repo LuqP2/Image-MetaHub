@@ -6,9 +6,10 @@ interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
   isIndexing?: boolean;
+  isIndexingPaused?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false }) => {
+const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false, isIndexingPaused = false }) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
   const directories = useImageStore((state) => state.directories);
   const hasDirectories = directories.length > 0;
@@ -40,13 +41,13 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing
           )}
           <button
             onClick={onAddFolder}
-            disabled={isIndexing}
+            disabled={isIndexing || isIndexingPaused}
             className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
-              isIndexing 
+              isIndexing || isIndexingPaused
                 ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
                 : 'bg-accent hover:bg-blue-700 text-white hover:shadow-lg hover:shadow-accent/30'
             }`}
-            title={isIndexing ? "Cannot add folder during indexing" : "Add a folder to scan"}
+            title={isIndexing || isIndexingPaused ? "Cannot add folder during indexing" : "Add a folder to scan"}
           >
             <Plus size={18} />
             Add Folder

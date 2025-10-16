@@ -496,8 +496,15 @@ export async function processFiles(
   directoryId: string,
   directoryName: string,
   scanSubfolders: boolean,
-  onDeletion: (deletedFileIds: string[]) => void
+  onDeletion: (deletedFileIds: string[]) => void,
+  abortSignal?: AbortSignal,
+  waitWhilePaused?: () => Promise<void>
 ): Promise<void> {
+  // Check for cancellation at the start
+  if (abortSignal?.aborted) {
+    return;
+  }
+
   const currentFiles = fileEntries.map((entry) => ({
     name: entry.handle.name,
     lastModified: entry.lastModified,
@@ -565,6 +572,19 @@ export async function processFiles(
     const fileReadBatches = chunkArray(imageFiles, FILE_READ_BATCH_SIZE);
     
     for (const readBatch of fileReadBatches) {
+      // Check for cancellation before processing each batch
+      if (abortSignal?.aborted) {
+        break;
+      }
+
+      // Wait while paused
+      if (waitWhilePaused) {
+        await waitWhilePaused();
+        if (abortSignal?.aborted) {
+          break;
+        }
+      }
+
       // Extract ABSOLUTE file paths for batch reading (required for security check)
       const filePaths = readBatch.map(entry => {
         const filePath = (entry.handle as ElectronFileHandle)._filePath!;
@@ -646,6 +666,19 @@ export async function processFiles(
     // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
     
     const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string, lastModified: number }): Promise<IndexedImage | null> => {
+      // Check for cancellation before processing each file
+      if (abortSignal?.aborted) {
+        return null;
+      }
+
+      // Wait while paused
+      if (waitWhilePaused) {
+        await waitWhilePaused();
+        if (abortSignal?.aborted) {
+          return null;
+        }
+      }
+
       const indexedImage = await processSingleFile(fileEntry, directoryId);
       processedCount++;
 
@@ -678,6 +711,11 @@ export async function processFiles(
       onBatchProcessed(batch);
       newlyProcessedImages.push(...batch);
     }
+  }
+
+  // Check for cancellation before caching
+  if (abortSignal?.aborted) {
+    return;
   }
 
   const allImages = [...diff.cachedImages, ...newlyProcessedImages];

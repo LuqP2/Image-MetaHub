@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
@@ -180,8 +180,29 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, clearImages
+        setFilterOptions, removeImages, addImages, clearImages, indexingState, setIndexingState
     } = useImageStore();
+
+    // AbortController for cancelling ongoing operations
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Helper function to check if indexing should be paused
+    const shouldPauseIndexing = useCallback(() => {
+        return indexingState === 'paused';
+    }, [indexingState]);
+
+    // Helper function to check if indexing should be cancelled
+    const shouldCancelIndexing = useCallback(() => {
+        return abortControllerRef.current?.signal.aborted || indexingState === 'idle';
+    }, [indexingState]);
+
+    // Function to wait while paused
+    const waitWhilePaused = useCallback(async () => {
+        while (shouldPauseIndexing()) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (shouldCancelIndexing()) break;
+        }
+    }, [shouldPauseIndexing, shouldCancelIndexing]);
 
     useEffect(() => {
         if (!getIsElectron()) return;
@@ -338,6 +359,10 @@ export function useImageLoader() {
         setLoading(true);
         setError(null);
         setSuccess(null);
+        setIndexingState('indexing');
+
+        // Initialize AbortController for this indexing operation
+        abortControllerRef.current = new AbortController();
 
         try {
       // Always update the allowed paths in the main process
@@ -408,13 +433,24 @@ export function useImageLoader() {
                     directory.id,
                     directory.name,
                     shouldScanSubfolders,
-                    handleDeletion
+                    handleDeletion,
+                    abortControllerRef.current?.signal,
+                    waitWhilePaused
                 );
+
+                // Check for cancellation before starting
+                if (shouldCancelIndexing()) {
+                    setIndexingState('idle');
+                    setLoading(false);
+                    return;
+                }
 
                 // In browser, we wait here. In Electron, this resolves immediately.
                 if (!getIsElectron()) {
                     await processPromise;
-                    finalizeDirectoryLoad(directory);
+                    if (!shouldCancelIndexing()) {
+                        finalizeDirectoryLoad(directory);
+                    }
                 }
                 // In Electron, the 'onIndexingComplete' listener will call finalizeDirectoryLoad.
 
@@ -559,7 +595,12 @@ export function useImageLoader() {
         handleLoadFromStorage,
         handleRemoveDirectory,
         loadDirectory,
-        loadDirectoryFromCache
+        loadDirectoryFromCache,
+        cancelIndexing: () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        }
     };
 }
 
