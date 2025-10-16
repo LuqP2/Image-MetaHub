@@ -308,9 +308,9 @@ export function useImageLoader() {
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
-        setIndexingState('idle');
+        setIndexingState('done');
         setProgress(null);
-    }, [setSuccess, setLoading]);
+    }, [setSuccess, setLoading, setIndexingState, setProgress]);
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
