@@ -84,9 +84,20 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
+
+  const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
+    setSettingsTab(tab);
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleOpenHotkeySettings = () => {
+    setIsHotkeyHelpOpen(false);
+    handleOpenSettings('hotkeys');
+  };
 
   // --- Indexing Control Functions ---
   const handlePauseIndexing = useCallback(() => {
@@ -269,11 +280,13 @@ export default function App() {
       <HotkeyHelp
         isOpen={isHotkeyHelpOpen}
         onClose={() => setIsHotkeyHelpOpen(false)}
+        onOpenSettings={handleOpenHotkeySettings}
       />
 
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        initialTab={settingsTab}
       />
 
       {hasDirectories && (
@@ -315,7 +328,7 @@ export default function App() {
       <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onAddFolder={handleSelectFolder}
-          onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenSettings={() => handleOpenSettings()}
           isIndexing={progress.total > 0 && progress.current < progress.total}
           isIndexingPaused={indexingState === 'paused'}
         />

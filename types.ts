@@ -464,10 +464,17 @@ export interface Directory {
 export interface FilterOptions {
   models: string[];
   loras: string[];
-  schedulers: string[];
+  schedulers:string[];
   selectedModel: string;
   selectedLora: string;
   selectedScheduler: string;
+}
+
+export interface Keymap {
+  version: string;
+  [scope: string]: {
+    [action: string]: string;
+  } | string;
 }
 
 // File System Access API - extended Window interface

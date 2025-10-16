@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { X } from 'lucide-react';
+import { X, Wrench, Keyboard } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
+import { HotkeySettings } from './HotkeySettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'general' | 'hotkeys';
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
+type Tab = 'general' | 'hotkeys';
+
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general' }) => {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const cachePath = useSettingsStore((state) => state.cachePath);
   const autoUpdate = useSettingsStore((state) => state.autoUpdate);
   const setCachePath = useSettingsStore((state) => state.setCachePath);
@@ -85,17 +90,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
       <div className="bg-gray-800 text-white rounded-lg shadow-xl p-6 w-full max-w-lg">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Settings</h2>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-700">
             <X size={24} />
           </button>
         </div>
 
-        <div className="space-y-6">
-          {/* Cache Location Setting */}
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Cache Location</h3>
+        <div className="flex border-b border-gray-700 mb-6">
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'general' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Wrench size={16} />
+              <span>General</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('hotkeys')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'hotkeys' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Keyboard size={16} />
+              <span>Keyboard Shortcuts</span>
+            </button>
+        </div>
+
+        {activeTab === 'general' && (
+          <div className="space-y-6">
+            {/* Cache Location Setting */}
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Cache Location</h3>
             <p className="text-sm text-gray-400 mb-2">
               The directory where the image index cache is stored.
             </p>
@@ -161,6 +184,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
             </p>
           </div>
         </div>
+        )}
+
+        {activeTab === 'hotkeys' && (
+          <HotkeySettings />
+        )}
 
         <div className="mt-6 text-center">
             <p className="text-xs text-gray-500">Changes are saved automatically. You may need to restart the application for some changes to take full effect.</p>
