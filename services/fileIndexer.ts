@@ -581,8 +581,8 @@ export async function processFiles(
   const filesToProcess = fileEntries.filter((entry) =>
     diff.newAndModifiedFiles.some((file) => file.name === entry.handle.name)
   );
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
-  const total = imageFiles.length;
+  const imageFiles = filesToProcess.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
+  const total = filesToProcess.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
   const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
@@ -591,6 +591,8 @@ export async function processFiles(
 
   // Check if we're in Electron and can use optimized batch reading
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
+
+  let newlyProcessedImages: IndexedImage[] = [];
 
   // ===== OPTIMIZED PATH: Batch file reading (Electron only) =====
   if (useOptimizedPath) {
@@ -624,6 +626,7 @@ export async function processFiles(
             batch.push(indexedImage);
             if (batch.length >= BATCH_SIZE) {
               onBatchProcessed(batch);
+              newlyProcessedImages.push(...batch);
               batch = [];
               await new Promise(resolve => setTimeout(resolve, 0));
             }
@@ -662,6 +665,7 @@ export async function processFiles(
           batch.push(indexedImage);
           if (batch.length >= BATCH_SIZE) {
             onBatchProcessed(batch);
+            newlyProcessedImages.push(...batch);
             batch = [];
             await new Promise(resolve => setTimeout(resolve, 0));
           }
@@ -672,69 +676,75 @@ export async function processFiles(
     // Process any remaining images
     if (batch.length > 0) {
       onBatchProcessed(batch);
+      newlyProcessedImages.push(...batch);
     }
     
     console.log(`✅ Completed optimized batch processing of ${total} images`);
-    return;
-  }
-  
-  // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
-  console.log(`📂 Using standard file reading for ${total} images`);
-  
-  // Async pool implementation for controlled concurrency
-  async function asyncPool<T, R>(
-    concurrency: number,
-    iterable: T[],
-    iteratorFn: (item: T) => Promise<R>
-  ): Promise<R[]> {
-    const ret: Promise<R>[] = [];
-    const executing = new Set<Promise<R>>();
 
-    for (const item of iterable) {
-      const p = Promise.resolve().then(() => iteratorFn(item));
-      ret.push(p);
-      executing.add(p);
+  } else {
+    // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
+    console.log(`📂 Using standard file reading for ${total} images`);
+    
+    // Async pool implementation for controlled concurrency
+    async function asyncPool<T, R>(
+      concurrency: number,
+      iterable: T[],
+      iteratorFn: (item: T) => Promise<R>
+    ): Promise<R[]> {
+      const ret: Promise<R>[] = [];
+      const executing = new Set<Promise<R>>();
 
-      const clean = () => executing.delete(p);
-      p.then(clean).catch(clean);
+      for (const item of iterable) {
+        const p = Promise.resolve().then(() => iteratorFn(item));
+        ret.push(p);
+        executing.add(p);
 
-      if (executing.size >= concurrency) {
-        await Promise.race(executing);
+        const clean = () => executing.delete(p);
+        p.then(clean).catch(clean);
+
+        if (executing.size >= concurrency) {
+          await Promise.race(executing);
+        }
+      }
+
+      return Promise.all(ret);
+    }
+
+    const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> => {
+      const indexedImage = await processSingleFile(fileEntry, directoryId);
+      processedCount++;
+
+      // Update progress after each file
+      setProgress({ current: processedCount, total });
+
+      return indexedImage;
+    };
+
+    // Process files with controlled concurrency
+    const results = await asyncPool(CONCURRENCY_LIMIT, imageFiles, iteratorFn);
+
+    // Filter valid images and collect them into batches
+    for (const indexedImage of results) {
+      if (indexedImage) {
+        batch.push(indexedImage);
+
+        if (batch.length >= BATCH_SIZE) {
+          onBatchProcessed(batch);
+          newlyProcessedImages.push(...batch);
+          batch = [];
+          // Yield to the main thread to allow UI updates after a batch is sent
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
       }
     }
 
-    return Promise.all(ret);
-  }
-
-  const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> => {
-    const indexedImage = await processSingleFile(fileEntry, directoryId);
-    processedCount++;
-
-    // Update progress after each file
-    setProgress({ current: processedCount, total });
-
-    return indexedImage;
-  };
-
-  // Process files with controlled concurrency
-  const results = await asyncPool(CONCURRENCY_LIMIT, imageFiles, iteratorFn);
-
-  // Filter valid images and collect them into batches
-  for (const indexedImage of results) {
-    if (indexedImage) {
-      batch.push(indexedImage);
-
-      if (batch.length >= BATCH_SIZE) {
-        onBatchProcessed(batch);
-        batch = [];
-        // Yield to the main thread to allow UI updates after a batch is sent
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
+    // Process any remaining images in the last batch
+    if (batch.length > 0) {
+      onBatchProcessed(batch);
+      newlyProcessedImages.push(...batch);
     }
   }
 
-  // Process any remaining images in the last batch
-  if (batch.length > 0) {
-    onBatchProcessed(batch);
-  }
+  const allImages = [...diff.cachedImages, ...newlyProcessedImages];
+  await cacheManager.cacheData(directoryId, directoryName, allImages, scanSubfolders);
 }

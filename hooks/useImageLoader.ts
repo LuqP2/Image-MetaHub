@@ -382,12 +382,19 @@ export function useImageLoader() {
 
                 const throttledSetProgress = throttle(setProgress, 200);
 
+                const handleDeletion = (deletedFileIds: string[]) => {
+                    removeImages(deletedFileIds);
+                };
+
                 // This now delegates to the main process in Electron, and is awaited in browser
                 const processPromise = processFiles(
                     fileHandles,
                     throttledSetProgress,
                     handleBatchProcessed,
-                    directory.id
+                    directory.id,
+                    directory.name,
+                    shouldScanSubfolders,
+                    handleDeletion
                 );
 
                 // In browser, we wait here. In Electron, this resolves immediately.
