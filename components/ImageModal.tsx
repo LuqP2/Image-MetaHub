@@ -403,7 +403,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
     >
       <div
         className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          hideContextMenu();
+        }}
       >
         {/* Image Display Section */}
         <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-4'} relative group`}>
