@@ -26,7 +26,7 @@ export const useHotkeys = ({
     selectedImage,
     setSelectedImage,
     selectedImages,
-    clearSelection,
+    clearImageSelection,
     setPreviewImage,
     previewImage,
     directories,
@@ -77,12 +77,12 @@ export const useHotkeys = ({
     });
 
     // File / Folder
-    hotkeyManager.on('ctrl+o, cmd+o', 'Add Folder', handleSelectFolder);
-    hotkeyManager.on('ctrl+shift+r, cmd+shift+r', 'Rescan Folders', handleLoadFromStorage);
+    hotkeyManager.on('ctrl+o, cmd+o', 'Add Folder', () => { handleSelectFolder(); });
+    hotkeyManager.on('ctrl+shift+r, cmd+shift+r', 'Rescan Folders', () => { handleLoadFromStorage(); });
 
     // Selection & Actions
     hotkeyManager.on('ctrl+a, cmd+a', 'Select All', selectAllImages);
-    hotkeyManager.on('delete', 'Delete Selected', handleDeleteSelectedImages);
+    hotkeyManager.on('delete', 'Delete Selected', () => { handleDeleteSelectedImages(); });
     hotkeyManager.on('space', 'Toggle Quick Preview', (e) => {
         e.preventDefault();
         if (selectedImage) {
@@ -109,7 +109,7 @@ export const useHotkeys = ({
       else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
       else if (previewImage) setPreviewImage(null);
       else if (selectedImage) setSelectedImage(null);
-      else if (selectedImages.size > 0) clearSelection();
+      else if (selectedImages.size > 0) clearImageSelection();
     });
 
     // Set scope based on focused element
@@ -146,7 +146,7 @@ export const useHotkeys = ({
     isHotkeyHelpOpen,
     isSettingsModalOpen,
     selectedImages,
-    clearSelection,
+    clearImageSelection,
     toggleViewMode
   ]);
 

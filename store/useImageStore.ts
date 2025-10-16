@@ -60,8 +60,12 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
 
-  // Reset Actions
-  resetState: () => void;
+  // Navigation Actions
+  handleNavigateNext: () => void;
+  handleNavigatePrevious: () => void;
+
+  // Cleanup invalid images
+  cleanupInvalidImages: () => void;
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
@@ -335,6 +339,26 @@ export const useImageStore = create<ImageState>((set, get) => {
             set({ scanSubfolders: scan });
         },
 
+        handleNavigateNext: () => {
+            const state = get();
+            if (!state.selectedImage) return;
+            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
+            if (currentIndex < state.filteredImages.length - 1) {
+                const nextImage = state.filteredImages[currentIndex + 1];
+                set({ selectedImage: nextImage });
+            }
+        },
+
+        handleNavigatePrevious: () => {
+            const state = get();
+            if (!state.selectedImage) return;
+            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
+            if (currentIndex > 0) {
+                const prevImage = state.filteredImages[currentIndex - 1];
+                set({ selectedImage: prevImage });
+            }
+        },
+
         resetState: () => set({
             images: [],
             filteredImages: [],
@@ -353,6 +377,25 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedLoras: [],
             selectedSchedulers: [],
             advancedFilters: {},
-        })
+        }),
+
+        cleanupInvalidImages: () => {
+            const state = get();
+            const isElectron = typeof window !== 'undefined' && window.electronAPI;
+            
+            const validImages = state.images.filter(image => {
+                const fileHandle = image.thumbnailHandle || image.handle;
+                return isElectron || (fileHandle && typeof fileHandle.getFile === 'function');
+            });
+            
+            if (validImages.length !== state.images.length) {
+                console.log(`Cleaned up ${state.images.length - validImages.length} invalid images`);
+                set(state => ({
+                    ...state,
+                    images: validImages,
+                    ...filterAndSort({ ...state, images: validImages })
+                }));
+            }
+        }
     }
 });

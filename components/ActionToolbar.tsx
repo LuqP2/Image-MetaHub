@@ -1,6 +1,7 @@
 import React from 'react';
 import { resetAllCaches } from '../utils/cacheReset';
 import ImageSizeSlider from './ImageSizeSlider';
+import { Grid3X3, List } from 'lucide-react';
 
 interface ActionToolbarProps {
   sortOrder: string;
@@ -8,6 +9,8 @@ interface ActionToolbarProps {
   selectedCount: number;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
+  viewMode: 'grid' | 'list';
+  onViewModeChange: (mode: 'grid' | 'list') => void;
   onTestBatchReading?: () => void; // Temporary test function
 }
 
@@ -17,6 +20,8 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   selectedCount,
   onClearSelection,
   onDeleteSelected,
+  viewMode,
+  onViewModeChange,
   onTestBatchReading
 }) => {
   return (
@@ -44,7 +49,16 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
         )}
       </div>
 
-      <ImageSizeSlider />
+      <div className="flex items-center gap-2">
+        <ImageSizeSlider />
+        <button
+          onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
+          className="p-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
+          title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}
+        >
+          {viewMode === 'grid' ? <List className="h-5 w-5" /> : <Grid3X3 className="h-5 w-5" />}
+        </button>
+      </div>
 
       <div>
         {selectedCount > 0 && (

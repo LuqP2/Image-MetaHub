@@ -24,13 +24,23 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     let currentUrl: string | null = null;
     const fileHandle = image.thumbnailHandle || image.handle;
 
+    // Check if we can actually load this image
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+    if (!isElectron && (!fileHandle || typeof fileHandle.getFile !== 'function')) {
+      // In browser mode with invalid handles, don't try to load
+      return;
+    }
+
     fileHandle.getFile().then(file => {
       if (isMounted) {
         currentUrl = URL.createObjectURL(file);
         setImageUrl(currentUrl);
       }
     }).catch(error => {
-      console.error('Failed to load image:', error);
+      // Only log error if we're in Electron mode - browser mode failures are expected
+      if (isElectron) {
+        console.error('Failed to load image:', error);
+      }
       if (image.thumbnailHandle && isMounted) {
         image.handle.getFile().then(file => {
           if (isMounted) {
@@ -38,7 +48,9 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
             setImageUrl(currentUrl);
           }
         }).catch(err => {
-          console.error('Failed to load fallback image:', err);
+          if (isElectron) {
+            console.error('Failed to load fallback image:', err);
+          }
         });
       }
     });

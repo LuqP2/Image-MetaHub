@@ -23,7 +23,8 @@ import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
-import ImageTable from './components/ImageTable';
+// Ensure the correct path to ImageTable
+import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
   // --- Hooks ---
@@ -61,6 +62,7 @@ export default function App() {
     resetState,
     handleNavigateNext,
     handleNavigatePrevious,
+    cleanupInvalidImages,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
@@ -70,6 +72,7 @@ export default function App() {
     itemsPerPage,
     setItemsPerPage,
     viewMode,
+    toggleViewMode,
     theme,
   } = useSettingsStore();
 
@@ -141,6 +144,9 @@ export default function App() {
           console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
           resetState();
         }
+      } else if (images.length > 0) {
+        // Clean up any invalid images that might have been loaded
+        cleanupInvalidImages();
       }
     };
     initializeCache().catch(console.error);
@@ -325,6 +331,8 @@ export default function App() {
                 selectedCount={selectedImages.size}
                 onClearSelection={clearSelection}
                 onDeleteSelected={handleDeleteSelectedImages}
+                viewMode={viewMode}
+                onViewModeChange={toggleViewMode}
               />
 
               <div className="flex-1 min-h-0">

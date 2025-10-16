@@ -281,6 +281,7 @@ export function useImageLoader() {
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.metadata.length > 0) {
+                const isElectron = getIsElectron();
                 const filePaths = await Promise.all(
                     cachedData.metadata.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
                 );
@@ -294,7 +295,7 @@ export function useImageLoader() {
                         kind: 'file' as const,
                         _filePath: filePath,
                         getFile: async () => {
-                            if (getIsElectron() && filePath) {
+                            if (isElectron && filePath) {
                                 const fileResult = await window.electronAPI.readFile(filePath);
                                 if (fileResult.success && fileResult.data) {
                                     const freshData = new Uint8Array(fileResult.data);
@@ -313,8 +314,19 @@ export function useImageLoader() {
                         directoryId: directory.id,
                     };
                 });
-                addImages(cachedImages);
-                log(`Loaded ${cachedImages.length} images from cache for ${directory.name}`);
+                
+                // Filter out images that can't be loaded in current environment
+                const validImages = cachedImages.filter(image => {
+                    const fileHandle = image.thumbnailHandle || image.handle;
+                    return isElectron || (fileHandle && typeof fileHandle.getFile === 'function');
+                });
+                
+                if (validImages.length !== cachedImages.length) {
+                    console.warn(`Filtered out ${cachedImages.length - validImages.length} cached images that can't be loaded in current environment`);
+                }
+                
+                addImages(validImages);
+                log(`Loaded ${validImages.length} images from cache for ${directory.name}`);
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
