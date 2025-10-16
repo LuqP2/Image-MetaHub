@@ -10,75 +10,94 @@ export const HotkeySettings = () => {
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     if (!recording) return;
 
-    event.preventDefault();
-    event.stopPropagation();
-
+    // Allow Escape to propagate to close the modal
     if (event.key === 'Escape') {
       setRecording(null);
       return;
     }
 
-    const { ctrlKey, metaKey, altKey, shiftKey, key } = event;
-    const keyParts = [];
+    event.preventDefault();
+    event.stopPropagation();
 
+    const { ctrlKey, metaKey, altKey, shiftKey, key } = event;
+
+    // Ignore modifier-only key presses
+    const isModifier = ['Control', 'Meta', 'Alt', 'Shift'].includes(key);
+    if (isModifier) {
+      return;
+    }
+
+    const keyParts = [];
     if (ctrlKey) keyParts.push('ctrl');
     if (metaKey) keyParts.push('cmd');
     if (altKey) keyParts.push('alt');
     if (shiftKey) keyParts.push('shift');
+    keyParts.push(key.toLowerCase());
 
-    // Add the main key, avoiding modifiers
-    if (!['Control', 'Meta', 'Alt', 'Shift'].includes(key)) {
-      keyParts.push(key.toLowerCase());
+    // Prevent single modifier keys from being set as hotkeys
+    if (keyParts.length === 1 && ['ctrl', 'cmd', 'alt', 'shift'].includes(keyParts[0])) {
+        return;
     }
 
-    if (keyParts.length > 0) {
-      const newKeybinding = keyParts.join('+');
+    const newKeybinding = keyParts.join('+');
 
-      // --- Conflict Detection ---
-      let conflict: { action: string, scope: string } | null = null;
-      for (const scope in keymap) {
-        if (scope === 'version') continue;
-        const scopeActions = keymap[scope] as Record<string, string>;
-        for (const action in scopeActions) {
-          if (scopeActions[action] === newKeybinding && (scope !== recording.scope || action !== recording.action)) {
-            conflict = { action, scope };
-            break;
+      if (newKeybinding) {
+        // --- Conflict Detection ---
+        let conflict: { action: string, scope: string } | null = null;
+        for (const scope in keymap) {
+          if (scope === 'version') continue;
+          const scopeActions = keymap[scope] as Record<string, string>;
+          for (const action in scopeActions) {
+            if (scopeActions[action] === newKeybinding && (scope !== recording.scope || action !== recording.action)) {
+              conflict = { action, scope };
+              break;
+            }
           }
+          if (conflict) break;
         }
-        if (conflict) break;
-      }
 
-      if (conflict) {
-        const conflictingActionName = hotkeyConfig.find(h => h.id === conflict.action)?.name || conflict.action;
-        const recordingActionName = hotkeyConfig.find(h => h.id === recording.action)?.name || recording.action;
+        if (conflict) {
+            const conflictingActionName = hotkeyConfig.find(h => h.id === conflict.action)?.name || conflict.action;
+            const recordingActionName = hotkeyConfig.find(h => h.id === recording.action)?.name || recording.action;
 
-        const autoRemapKey = `shift+${newKeybinding}`; // Suggest a remapping
-        const confirmed = window.confirm(
-          `Hotkey "${newKeybinding}" is already assigned to "${conflictingActionName}".\n\n` +
-          `Do you want to assign it to "${recordingActionName}" and automatically remap "${conflictingActionName}" to "${autoRemapKey}"?`
-        );
+            // Find a new available hotkey
+            const findAvailableHotkey = (baseKey: string) => {
+                const modifiers = ['shift', 'ctrl', 'alt'];
+                for (const mod of modifiers) {
+                    if (!baseKey.includes(mod)) {
+                        const newKey = `${mod}+${baseKey}`;
+                        const isTaken = Object.values(keymap).some(scope => typeof scope === 'object' && Object.values(scope).includes(newKey));
+                        if (!isTaken) return newKey;
+                    }
+                }
+                return null;
+            };
 
-        if (confirmed) {
-          // Check if the suggested remap key is also taken
-          const isAutoRemapKeyTaken = Object.values(keymap).some(scope =>
-            typeof scope === 'object' && Object.values(scope).includes(autoRemapKey)
-          );
+            const autoRemapKey = findAvailableHotkey(newKeybinding);
 
-          if (isAutoRemapKeyTaken) {
-            alert(`Could not automatically remap "${conflictingActionName}" because the suggested hotkey "${autoRemapKey}" is also in use. Please remap it manually.`);
-            updateKeybinding(conflict.scope, conflict.action, ''); // Unbind original
+            let confirmationMessage = `Hotkey "${newKeybinding}" is already assigned to "${conflictingActionName}".\n\nAssign it to "${recordingActionName}"?`;
+            if (autoRemapKey) {
+                confirmationMessage += `\n\nWe can automatically remap "${conflictingActionName}" to "${autoRemapKey}".`;
+            } else {
+                confirmationMessage += `\n\nWarning: Could not find an available alternative for "${conflictingActionName}". It will be unassigned.`;
+            }
+
+            const confirmed = window.confirm(confirmationMessage);
+
+            if (confirmed) {
+                if (autoRemapKey) {
+                    updateKeybinding(conflict.scope, conflict.action, autoRemapKey); // Remap original
+                } else {
+                    updateKeybinding(conflict.scope, conflict.action, ''); // Unbind original
+                }
+                updateKeybinding(recording.scope, recording.action, newKeybinding); // Bind new
+            }
           } else {
-            updateKeybinding(conflict.scope, conflict.action, autoRemapKey); // Remap original
+            updateKeybinding(recording.scope, recording.action, newKeybinding);
           }
-          updateKeybinding(recording.scope, recording.action, newKeybinding); // Bind new
+          setRecording(null);
         }
-      } else {
-        updateKeybinding(recording.scope, recording.action, newKeybinding);
-      }
-
-      setRecording(null);
-    }
-  }, [recording, updateKeybinding]);
+    }, [recording, updateKeybinding, keymap]);
 
   useEffect(() => {
     if (recording) {
@@ -137,43 +156,42 @@ export const HotkeySettings = () => {
   }, {} as Record<string, typeof hotkeyConfig>);
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Keyboard Shortcuts</h2>
-      {Object.entries(groupedHotkeys).map(([scope, hotkeys]) => (
-        <div key={scope}>
-          <h3 className="text-lg font-medium mb-2">{scope}</h3>
-          <div className="space-y-2">
-            {hotkeys.map((hotkey) => (
-              <div key={hotkey.id} className="flex items-center justify-between p-2 rounded-md bg-gray-100 dark:bg-gray-800">
-                <div>
-                  <p className="font-semibold">{hotkey.name}</p>
+    <div className="flex flex-col h-full">
+      <div className="flex-grow overflow-y-auto pr-2 space-y-6 max-h-[60vh]">
+        {Object.entries(groupedHotkeys).map(([scope, hotkeys]) => (
+          <div key={scope}>
+            <h3 className="text-lg font-semibold mb-3 text-gray-200 border-b border-gray-700 pb-2">{scope}</h3>
+            <div className="space-y-2">
+              {hotkeys.map((hotkey) => (
+                <div key={hotkey.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
+                  <p className="text-gray-300">{hotkey.name}</p>
+                  <div className="flex items-center space-x-4">
+                    <button
+                      onClick={() => setRecording({ scope: hotkey.scope, action: hotkey.id })}
+                      className={`px-3 py-1 w-36 text-center text-sm font-mono rounded-md transition-colors ${
+                        recording?.action === hotkey.id
+                          ? 'bg-blue-600 text-white animate-pulse'
+                          : 'bg-gray-900 text-gray-200 border border-gray-600'
+                      }`}
+                    >
+                      {recording?.action === hotkey.id
+                        ? 'Recording...'
+                        : (keymap[hotkey.scope] as Record<string, string>)?.[hotkey.id] || 'Unset'}
+                    </button>
+                    <button
+                      onClick={() => updateKeybinding(hotkey.scope, hotkey.id, hotkey.defaultKey)}
+                      className="text-xs text-gray-400 hover:text-white hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setRecording({ scope: hotkey.scope, action: hotkey.id })}
-                    className={`px-2 py-1 text-sm font-mono rounded-md ${
-                      recording?.action === hotkey.id
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700'
-                    }`}
-                  >
-                    {recording?.action === hotkey.id
-                      ? 'Press a key...'
-                      : (keymap[hotkey.scope] as Record<string, string>)?.[hotkey.id] || hotkey.defaultKey}
-                  </button>
-                  <button
-                    onClick={() => updateKeybinding(hotkey.scope, hotkey.id, hotkey.defaultKey)}
-                    className="px-2 py-1 text-xs rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-      <div className="flex justify-end space-x-4 pt-4">
+        ))}
+      </div>
+      <div className="flex justify-end space-x-4 pt-4 mt-4 border-t border-gray-700">
         <input type="file" id="import-keymap" className="hidden" accept=".json" onChange={handleImport} />
         <button
             onClick={() => document.getElementById('import-keymap')?.click()}
