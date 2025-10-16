@@ -11,7 +11,7 @@ This guide helps verify that the cache retention fix is working correctly.
 
 ### Solution
 1. **Consistent Cache DB Name**: The cache now uses a consistent database name across sessions:
-   - Default: `image-metahub-cache-default` (when no custom cache path is set)
+   - Default: `invokeai-browser-cache` (when no custom cache path is set)
    - Custom: `image-metahub-cache-{sanitized_path}` (when custom cache path is configured)
 
 2. **basePath Tracking**: The cache manager now tracks which basePath was used for initialization and properly reinitializes if it changes.
@@ -33,8 +33,8 @@ This guide helps verify that the cache retention fix is working correctly.
 
 **Verification in Console:**
 ```
-🔧 Initializing cache with basePath: "undefined" -> DB name: "image-metahub-cache-default"
-✅ IndexedDB initialized successfully: image-metahub-cache-default
+🔧 Initializing cache with basePath: "undefined" -> DB name: "invokeai-browser-cache"
+✅ IndexedDB initialized successfully: invokeai-browser-cache
 ✅ CACHE FOUND for "YourFolderName". Analyzing diff...
    - 0 new or modified files to process.
    - 0 deleted files to remove.
@@ -117,7 +117,7 @@ This guide helps verify that the cache retention fix is working correctly.
    - Look for "🔄 Cache basePath changed" messages (should not appear after initial setup)
 3. **Check browser/Electron dev tools**:
    - Open IndexedDB inspector
-   - Verify `image-metahub-cache-default` database exists
+   - Verify `invokeai-browser-cache` database exists
    - Check that it contains cache entries
 
 ### Still Reindexing Everything?
@@ -133,7 +133,7 @@ This guide helps verify that the cache retention fix is working correctly.
 ## Implementation Details
 
 ### Cache Database Structure
-- **Database Name**: `image-metahub-cache-default` or `image-metahub-cache-{sanitized_path}`
+- **Database Name**: `invokeai-browser-cache` or `image-metahub-cache-{sanitized_path}`
 - **Version**: 3
 - **Object Stores**:
   - `cache`: Stores directory metadata and image information

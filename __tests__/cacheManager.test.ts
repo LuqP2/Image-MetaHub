@@ -46,8 +46,8 @@ describe('CacheManager basePath tracking', () => {
 
     await cacheManager.init(undefined);
     
-    // Check that indexedDB.open was called with consistent default name
-    expect(global.indexedDB.open).toHaveBeenCalledWith('image-metahub-cache-default', expect.any(Number));
+    // Check that indexedDB.open was called with backward-compatible default name
+    expect(global.indexedDB.open).toHaveBeenCalledWith('invokeai-browser-cache', expect.any(Number));
   });
 
   it('should use custom DB name when basePath is provided', async () => {

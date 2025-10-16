@@ -1,6 +1,5 @@
 import { useCallback, useEffect } from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { processFiles } from '../services/fileIndexer';
 import { cacheManager } from '../services/cacheManager';
 import { IndexedImage, Directory } from '../types';
@@ -276,8 +275,7 @@ export function useImageLoader() {
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
-            const cachePath = useSettingsStore.getState().cachePath;
-            await cacheManager.init(cachePath || undefined);
+            await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
@@ -333,8 +331,7 @@ export function useImageLoader() {
         await window.electronAPI.updateAllowedPaths(allPaths);
             }
 
-            const cachePath = useSettingsStore.getState().cachePath;
-            await cacheManager.init(cachePath || undefined);
+            await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
 
             // Note: We do NOT clear images before validation!

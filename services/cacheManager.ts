@@ -28,7 +28,7 @@ export interface CacheDiff {
 }
 
 class CacheManager {
-  private dbName = 'image-metahub-cache-default'; // Default name changed for consistency
+  private dbName = 'invokeai-browser-cache'; // Default name (kept for backward compatibility)
   private dbVersion = 3;
   private db: IDBDatabase | null = null;
   private isInitialized = false;
@@ -59,8 +59,8 @@ class CacheManager {
       // Sanitize the path to be a valid DB name
       this.dbName = `image-metahub-cache-${basePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
     } else {
-      // Use consistent default name when no basePath provided
-      this.dbName = 'image-metahub-cache-default';
+      // Keep default name for backward compatibility with existing caches
+      this.dbName = 'invokeai-browser-cache';
     }
     console.log(`🔧 Initializing cache with basePath: "${basePath}" -> DB name: "${this.dbName}"`);
 

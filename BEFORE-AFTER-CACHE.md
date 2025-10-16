@@ -17,7 +17,7 @@ Session 2:
 ├── User opens app
 ├── App tries to load cache...
 │   ├── Looking for: 'invokeai-browser-cache' 
-│   └── ❌ NOT FOUND (actually saved as 'image-metahub-cache-default')
+│   └── ❌ NOT FOUND (actually saved as 'invokeai-browser-cache')
 ├── App indexes all 18,000 images AGAIN (3.5 minutes) ⏳
 └── Images displayed ✓
 
@@ -26,7 +26,7 @@ User adds 10 new images and clicks refresh...
 Refresh:
 ├── User clicks refresh button
 ├── App tries to use cache...
-│   ├── Looking for: 'image-metahub-cache-default'
+│   ├── Looking for: 'invokeai-browser-cache'
 │   └── ❌ NOT FOUND (inconsistent naming)
 ├── App indexes all 18,000 + 10 images (3.5 minutes) ⏳
 └── All images displayed ✓
@@ -41,7 +41,7 @@ Session 1:
 ├── User opens app
 ├── Selects folder with 18,000 images
 ├── App indexes all 18,000 images (3.5 minutes) ⏳
-├── Saves to cache: 'image-metahub-cache-default' 💾
+├── Saves to cache: 'invokeai-browser-cache' 💾
 └── Images displayed ✓
 
 User closes app and reopens...
@@ -49,7 +49,7 @@ User closes app and reopens...
 Session 2:
 ├── User opens app
 ├── App loads cache...
-│   ├── Looking for: 'image-metahub-cache-default'
+│   ├── Looking for: 'invokeai-browser-cache'
 │   └── ✅ FOUND! Loading 18,000 images from cache...
 ├── Images displayed INSTANTLY ⚡ (< 1 second)
 └── Success! ✓
@@ -100,7 +100,7 @@ Total time saved: From 7 minutes to 2 seconds! 🚀
 ┌─────────────────────────────────────────────────────────────┐
 │                    Cache Manager State                       │
 ├─────────────────────────────────────────────────────────────┤
-│  dbName: 'image-metahub-cache-default'                      │
+│  dbName: 'invokeai-browser-cache'                      │
 │  initializedBasePath: undefined (tracked)                    │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -114,7 +114,7 @@ Total time saved: From 7 minutes to 2 seconds! 🚀
           └──────────────┬───────────────┘
                          ▼
               Both use SAME cachePath
-         (undefined → 'image-metahub-cache-default')
+         (undefined → 'invokeai-browser-cache')
                          
                     ✅ CACHE HIT!
           Same DB = Same data = Cache working perfectly

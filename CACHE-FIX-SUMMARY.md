@@ -11,7 +11,7 @@ Your cache retention issue has been fixed! The app will now:
 
 The cache system was creating **different cache databases** depending on when and how it was initialized:
 - Sometimes it used `'invokeai-browser-cache'` (old default)
-- Sometimes it used `'image-metahub-cache-default'` (new default)
+- Sometimes it used `'invokeai-browser-cache'` (new default)
 - Sometimes it used a custom path-based name
 - **Result**: Cache was never found because the wrong database name was being used!
 
@@ -19,10 +19,10 @@ Additionally, the cache manager didn't track which `basePath` was used, so it co
 
 ## 🛠️ What Was Fixed?
 
-### 1. Consistent Cache Database Naming
+### 1. Backward-Compatible Cache Naming
 ```
-Before: 'invokeai-browser-cache' (sometimes)
-After:  'image-metahub-cache-default' (always, when no custom path)
+Default: 'invokeai-browser-cache' (kept for backward compatibility)
+Custom:  'image-metahub-cache-{sanitized_path}' (when custom path set)
 ```
 
 ### 2. basePath Tracking
@@ -80,7 +80,7 @@ Examples:
   - /home/user/pictures-flat
 
 Database Names:
-  - Default: image-metahub-cache-default
+  - Default: invokeai-browser-cache
   - Custom: image-metahub-cache-{sanitized_path}
 ```
 
@@ -103,8 +103,8 @@ For each cached file:
 
 **Good (Cache Working):**
 ```
-🔧 Initializing cache with basePath: "undefined" -> DB name: "image-metahub-cache-default"
-✅ IndexedDB initialized successfully: image-metahub-cache-default
+🔧 Initializing cache with basePath: "undefined" -> DB name: "invokeai-browser-cache"
+✅ IndexedDB initialized successfully: invokeai-browser-cache
 ✅ Cache found for /your/folder-recursive: 18000 images
    - 0 new or modified files to process.
    - 0 deleted files to remove.
@@ -162,7 +162,7 @@ If you had issues before, you might have corrupted cache entries. To start fresh
 
 ### Troubleshooting Steps
 1. Check console logs for cache initialization messages
-2. Verify you see "image-metahub-cache-default" database name
+2. Verify you see "invokeai-browser-cache" database name
 3. Open browser DevTools → Application → IndexedDB
 4. Verify database exists and contains cache entries
 5. Try clearing cache and reindexing once
