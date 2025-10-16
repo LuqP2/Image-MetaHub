@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
+import { cacheManager } from './cacheManager';
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
@@ -550,8 +551,36 @@ export async function processFiles(
   fileEntries: { handle: FileSystemFileHandle, path: string }[],
   setProgress: (progress: { current: number; total: number }) => void,
   onBatchProcessed: (batch: IndexedImage[]) => void,
-  directoryId: string
+  directoryId: string,
+  directoryName: string,
+  scanSubfolders: boolean,
+  onDeletion: (deletedFileIds: string[]) => void
 ): Promise<void> {
+  const currentFiles = await Promise.all(
+    fileEntries.map(async (entry) => ({
+      name: entry.handle.name,
+      lastModified: (await entry.handle.getFile()).lastModified,
+    }))
+  );
+
+  const diff = await cacheManager.validateCacheAndGetDiff(
+    directoryId,
+    directoryName,
+    currentFiles,
+    scanSubfolders
+  );
+
+  if (diff.cachedImages.length > 0) {
+    onBatchProcessed(diff.cachedImages);
+  }
+
+  if (diff.deletedFileIds.length > 0) {
+    onDeletion(diff.deletedFileIds);
+  }
+
+  const filesToProcess = fileEntries.filter((entry) =>
+    diff.newAndModifiedFiles.some((file) => file.name === entry.handle.name)
+  );
   const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
   const total = imageFiles.length;
   let processedCount = 0;

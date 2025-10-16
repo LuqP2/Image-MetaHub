@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Incremental Filter Updates**: Fixed sidebar filters disappearing during refresh by updating filter options incrementally as images are processed
 
 ### Fixed
+- **Context Menu Auto-Close**: Fixed ImageModal context menu not closing when clicking outside the menu - now closes when clicking anywhere within the modal except the menu itself
 - **Refresh Filter Loss**: Fixed issue where sidebar filters would disappear during folder refresh operations
 
 ### Changed
