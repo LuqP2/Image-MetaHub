@@ -28,21 +28,39 @@ export interface CacheDiff {
 }
 
 class CacheManager {
-  private dbName = 'invokeai-browser-cache'; // Default name
+  private dbName = 'image-metahub-cache-default'; // Default name changed for consistency
   private dbVersion = 3;
   private db: IDBDatabase | null = null;
   private isInitialized = false;
+  private initializedBasePath: string | undefined = undefined; // Track which basePath was used
 
   async init(basePath?: string): Promise<void> {
-    if (this.isInitialized) {
+    // Check if already initialized with the SAME basePath
+    if (this.isInitialized && this.initializedBasePath === basePath) {
       console.log(`ℹ️ Cache already initialized with DB: ${this.dbName}`);
       return;
     }
+
+    // If basePath changed, we need to reinitialize
+    if (this.isInitialized && this.initializedBasePath !== basePath) {
+      console.log(`🔄 Cache basePath changed from "${this.initializedBasePath}" to "${basePath}", reinitializing...`);
+      this.isInitialized = false;
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+    }
+
+    // Store the basePath we're initializing with
+    this.initializedBasePath = basePath;
 
     // Create a unique DB name from the base path to avoid collisions
     if (basePath) {
       // Sanitize the path to be a valid DB name
       this.dbName = `image-metahub-cache-${basePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    } else {
+      // Use consistent default name when no basePath provided
+      this.dbName = 'image-metahub-cache-default';
     }
     console.log(`🔧 Initializing cache with basePath: "${basePath}" -> DB name: "${this.dbName}"`);
 
