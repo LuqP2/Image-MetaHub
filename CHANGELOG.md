@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Newest Files First**: Files are now sorted by modification date (newest first) during indexing for better user experience with recent images
 - **Indexing Safety Controls**: Disabled Add Folder, Reload Folder, and Delete/Rename buttons during indexing to prevent conflicts and data corruption
 - **Incremental Filter Updates**: Fixed sidebar filters disappearing during refresh by updating filter options incrementally as images are processed
+- **Feedback & Bugs Button**: Added a feedback and bug reporting button in the header that links to the GitHub issues page
+- **Keyboard Shortcuts**: Added comprehensive keyboard shortcuts for better productivity, including Shift+Click for range selection, view mode switching, and quick access to common actions
+- **List View Mode**: Added a new table view mode for browsing images in a detailed list format alongside the existing grid view
+- **Context Menu Support**: Added right-click context menu to ImageGrid and ImageTable with the same options as ImageModal (copy prompt, seed, model, show in folder, export image) when a single image is selected
 
 ### Fixed
 - **Context Menu Auto-Close**: Fixed ImageModal context menu not closing when clicking outside the menu - now closes when clicking anywhere within the modal except the menu itself
@@ -105,6 +109,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Status Bar Enhancement**: Updated StatusBar.tsx to display indexing progress with file counts when indexing is active
 - **File Processing Order**: Changed file processing order to sort by lastModified date descending (newest first) for better user experience
 - **UI Safety During Indexing**: Added isIndexing prop to Header, DirectoryList, and ImageModal components to disable destructive operations during indexing
+- **Filter Synchronization**: The addImages function in the store now recalculates available filters whenever new images are added
+- **Reusable Filter Recalculation**: Created a reusable helper function for recalculating filters that modifies all actions that alter the image list (addImages, removeImages, clearImages, etc.) - this ensures sidebar filters are always synchronized with visible images
 
 ## [0.9.1] - 2025-10-08
 

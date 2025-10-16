@@ -4,7 +4,8 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
-import { Check, Info } from 'lucide-react';
+import { useContextMenu } from '../hooks/useContextMenu';
+import { Check, Info, Copy, Folder, Download } from 'lucide-react';
 
 // --- ImageCard Component (with slight modifications) ---
 interface ImageCardProps {
@@ -13,9 +14,11 @@ interface ImageCardProps {
   isSelected: boolean;
   style: React.CSSProperties; // Added for react-virtualized
   onImageLoad: () => void; // Added to notify parent of image load
+  onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
+  directoryPath?: string;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
@@ -75,6 +78,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
+      onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
       {isSelected && (
         <div className="absolute top-2 right-2 z-10">
@@ -121,10 +125,31 @@ const GUTTER_SIZE = 8; // Space between images
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
+  const directories = useImageStore((state) => state.directories);
+  const {
+    contextMenu,
+    showContextMenu,
+    hideContextMenu,
+    copyPrompt,
+    copyNegativePrompt,
+    copySeed,
+    copyImage,
+    copyModel,
+    showInFolder,
+    exportImage
+  } = useContextMenu();
 
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
+
+  const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
+    // Only show context menu if only one image is selected
+    if (selectedImages.size === 1 && selectedImages.has(image.id)) {
+      const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
+      showContextMenu(e, image, directoryPath);
+    }
+  };
 
   return (
     <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }} data-area="grid" tabIndex={-1}>
@@ -143,7 +168,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               rowHeight={imageSize + GUTTER_SIZE}
               height={height}
               width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount }}
+              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories }}
               overscanRowCount={4}
               overscanColumnCount={2}
             >
@@ -152,16 +177,88 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           );
         }}
       </AutoSizer>
+
+      {contextMenu.visible && (
+        <div
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={copyImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Copy to Clipboard
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={copyPrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.prompt}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Prompt
+          </button>
+          <button
+            onClick={copyNegativePrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.negativePrompt}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Negative Prompt
+          </button>
+          <button
+            onClick={copySeed}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.seed}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Seed
+          </button>
+          <button
+            onClick={copyModel}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.models?.[0] && !contextMenu.image?.metadata?.model}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Model
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={showInFolder}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Folder className="w-4 h-4" />
+            Show in Folder
+          </button>
+
+          <button
+            onClick={exportImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export Image
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
 // Cell renderer for react-window grid
 const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount } = data;
+  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu } = data;
   const index = rowIndex * columnCount + columnIndex;
   const image = images[index];
   if (!image) return null;
+
+  const directoryPath = data.directories?.find((d: any) => d.id === image.directoryId)?.path;
+
   return (
     <div style={{ ...style, padding: GUTTER_SIZE / 2 }}>
       <ImageCard
@@ -170,6 +267,8 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
         isSelected={selectedImages.has(image.id)}
         style={{ width: '100%' }}
         onImageLoad={() => {}}
+        onContextMenu={handleContextMenu}
+        directoryPath={directoryPath}
       />
     </div>
   );

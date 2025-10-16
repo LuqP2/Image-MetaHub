@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { type IndexedImage } from '../types';
+import { useContextMenu } from '../hooks/useContextMenu';
+import { useImageStore } from '../store/useImageStore';
+import { Copy, Folder, Download } from 'lucide-react';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -8,6 +11,27 @@ interface ImageTableProps {
 }
 
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
+  const directories = useImageStore((state) => state.directories);
+  const {
+    contextMenu,
+    showContextMenu,
+    hideContextMenu,
+    copyPrompt,
+    copyNegativePrompt,
+    copySeed,
+    copyImage,
+    copyModel,
+    showInFolder,
+    exportImage
+  } = useContextMenu();
+
+  const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
+    // Only show context menu if only one image is selected
+    if (selectedImages.size === 1 && selectedImages.has(image.id)) {
+      const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
+      showContextMenu(e, image, directoryPath);
+    }
+  };
   return (
     <div className="h-full overflow-auto">
       <table className="w-full text-sm">
@@ -27,10 +51,80 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
               image={image}
               onImageClick={onImageClick}
               isSelected={selectedImages.has(image.id)}
+              onContextMenu={handleContextMenu}
             />
           ))}
         </tbody>
       </table>
+
+      {contextMenu.visible && (
+        <div
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={copyImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Copy to Clipboard
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={copyPrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.prompt}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Prompt
+          </button>
+          <button
+            onClick={copyNegativePrompt}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.negativePrompt}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Negative Prompt
+          </button>
+          <button
+            onClick={copySeed}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.seed}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Seed
+          </button>
+          <button
+            onClick={copyModel}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.models?.[0] && !contextMenu.image?.metadata?.model}
+          >
+            <Copy className="w-4 h-4" />
+            Copy Model
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={showInFolder}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Folder className="w-4 h-4" />
+            Show in Folder
+          </button>
+
+          <button
+            onClick={exportImage}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export Image
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -40,9 +134,10 @@ interface ImageTableRowProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
+  onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -104,6 +199,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
         isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
+      onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
       <td className="px-4 py-2">
         <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden flex items-center justify-center">
