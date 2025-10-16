@@ -691,38 +691,27 @@ function setupFileOperationHandlers() {
       for (const filePath of filePaths) {
         if (!isPathAllowed(filePath)) {
           console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+          console.error('  Requested path:', filePath);
+          console.error('  Normalized path:', path.normalize(filePath));
+          console.error('  Allowed directories:', Array.from(allowedDirectoryPaths));
           return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
         }
       }
       // --- END SECURITY CHECK ---
 
-      const FILE_READ_CONCURRENCY = 20; // Limit concurrent file reads in main process
+      const promises = filePaths.map(filePath => fs.readFile(filePath));
+      const results = await Promise.allSettled(promises);
 
-      const results = [];
-      const executing = new Set();
-
-      for (const filePath of filePaths) {
-        const p = fs.readFile(filePath)
-          .then(data => ({ success: true, data, path: filePath }))
-          .catch(error => {
-            if (!error.message?.includes('ENOENT')) {
-              console.error('Error reading file in batch:', filePath, error);
-            }
-            return { success: false, error: error.message, path: filePath };
-          });
-
-        results.push(p);
-        executing.add(p);
-
-        const clean = () => executing.delete(p);
-        p.then(clean).catch(clean);
-
-        if (executing.size >= FILE_READ_CONCURRENCY) {
-          await Promise.race(executing);
+      const data = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return { success: true, data: result.value, path: filePaths[index] };
+        } else {
+          if (!result.reason.message?.includes('ENOENT')) {
+            console.error('Error reading file in batch:', filePaths[index], result.reason);
+          }
+          return { success: false, error: result.reason.message, path: filePaths[index] };
         }
-      }
-
-      const data = await Promise.all(results);
+      });
 
       return { success: true, files: data };
     } catch (error) {

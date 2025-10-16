@@ -526,7 +526,7 @@ export async function processFiles(
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
   const CONCURRENCY_LIMIT = isElectron ? 50 : 20; // Higher concurrency in Electron (less IPC overhead)
-  const FILE_READ_BATCH_SIZE = CONCURRENCY_LIMIT; // Number of files to read at once (Electron only)
+  const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
   let batch: IndexedImage[] = [];
 
   // Async pool implementation for controlled concurrency
