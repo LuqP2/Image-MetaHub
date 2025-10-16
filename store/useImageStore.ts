@@ -234,8 +234,32 @@ export const useImageStore = create<ImageState>((set, get) => {
     set(state => {
       const existingIds = new Set(state.images.map(img => img.id));
       const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
+      if (uniqueNewImages.length === 0) {
+        return state; // No changes, no need to re-render
+      }
+
       const allImages = [...state.images, ...uniqueNewImages];
-      return { ...filterAndSort({ ...state, images: allImages }), images: allImages };
+
+      // Recalculate available filters
+      const models = new Set<string>();
+      const loras = new Set<string>();
+      const schedulers = new Set<string>();
+
+      for (const image of allImages) {
+        image.models?.forEach(model => models.add(model));
+        image.loras?.forEach(lora => loras.add(lora));
+        if (image.scheduler) schedulers.add(image.scheduler);
+      }
+
+      const newState = {
+        ...state,
+        images: allImages,
+        availableModels: Array.from(models).sort(),
+        availableLoras: Array.from(loras).sort(),
+        availableSchedulers: Array.from(schedulers).sort(),
+      };
+
+      return { ...filterAndSort(newState), ...newState };
     });
   },
 
