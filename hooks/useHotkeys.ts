@@ -102,6 +102,7 @@ export const useHotkeys = ({
 
     // Bind all registered actions initially
     hotkeyManager.bindAllActions();
+    hotkeyManager.setScope('global'); // Set the initial scope to global
 
     // Set scope based on focused element
     const handleFocusChange = () => {
