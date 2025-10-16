@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -15,6 +15,7 @@ import { parseDalleMetadata } from './parsers/dalleParser';
 import { parseFireflyMetadata } from './parsers/fireflyParser';
 import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
+import { parseFooocusMetadata } from './parsers/fooocusParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -74,6 +75,7 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
 
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+  console.log('🔍 Starting PNG metadata parsing...');
   const view = new DataView(buffer);
   let offset = 8;
   const decoder = new TextDecoder();
@@ -86,14 +88,38 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   while (offset < view.byteLength && foundChunks < maxChunks) {
     const length = view.getUint32(offset);
     const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
+    
+    // Log ALL chunk types found
+    console.log(`🔍 Found PNG chunk type: ${type} (length: ${length})`);
 
     if (type === 'tEXt') {
       const chunkData = buffer.slice(offset + 8, offset + 8 + length);
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
-      if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword) && text) {
-        chunks[keyword] = text;
+      
+      // Log ALL text chunks found, not just the expected ones
+      console.log(`📦 Found PNG text chunk: "${keyword}" (length: ${text?.length || 0})`);
+      if (text && text.length > 0) {
+        console.log(`   Content preview: ${text.substring(0, 150)}${text.length > 150 ? '...' : ''}`);
+      }
+      
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt'].includes(keyword) && text) {
+        chunks[keyword.toLowerCase()] = text;
         foundChunks++;
+        console.log(`✅ Added to processing queue: ${keyword} -> ${keyword.toLowerCase()}`);
+        
+        // Special logging for Fooocus detection
+        if (keyword.toLowerCase() === 'parameters') {
+          console.log('🎯 Found parameters chunk - checking for Fooocus patterns:');
+          console.log(`   Contains 'Fooocus': ${text.includes('Fooocus')}`);
+          console.log(`   Contains 'Version: f2.': ${text.match(/Version:\s*f2\./i) ? 'YES' : 'NO'}`);
+          console.log(`   Contains 'flux': ${text.match(/Model:\s*flux/i) ? 'YES' : 'NO'}`);
+          console.log(`   Contains 'Module 1: ae': ${text.match(/Module\s*1:\s*ae/i) ? 'YES' : 'NO'}`);
+          
+          // Log full content for debugging
+          console.log('🎯 Full parameters content for analysis:');
+          console.log(text);
+        }
       }
     } else if (type === 'iTXt') {
       const chunkData = new Uint8Array(buffer.slice(offset + 8, offset + 8 + length));
@@ -104,7 +130,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
 
-      if (['invokeai_metadata', 'parameters', 'workflow', 'prompt'].includes(keyword)) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         if (compressionFlag === 0) {
           // 0 -> uncompressed, which is what we expect from A1111
@@ -135,7 +161,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   }
 
   // Configure debug logging
-  const DEBUG = false;
+  const DEBUG = true;
   const log = (...args: any[]) => DEBUG && console.log(...args);
 
   // Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
@@ -147,6 +173,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return comfyMetadata;
   } else if (chunks.parameters) {
     log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
+    console.log('🔍 Parameters content preview:', chunks.parameters.substring(0, 100));
     return { parameters: chunks.parameters };
   } else if (chunks.invokeai_metadata) {
     log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
@@ -154,6 +181,20 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   } else if (chunks.prompt) {
     log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
     return { prompt: chunks.prompt };
+  }
+
+  // If no PNG chunks found, try to extract EXIF data from PNG (some tools like Fooocus save metadata in EXIF)
+  console.log('🔍 No PNG text chunks found, trying EXIF extraction from PNG...');
+  try {
+    const exifResult = await parseJPEGMetadata(buffer);
+    if (exifResult) {
+      console.log('✅ Found EXIF metadata in PNG file!');
+      return exifResult;
+    } else {
+      console.log('❌ No EXIF metadata found in PNG file');
+    }
+  } catch (exifError) {
+    console.log('❌ EXIF extraction from PNG failed:', exifError);
   }
 
   return null;
@@ -182,6 +223,14 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       null;
     
     if (!metadataText) return null;
+    
+    console.log('📋 Found EXIF metadata text from field:', 
+      exifData.UserComment ? 'UserComment' :
+      exifData.userComment ? 'userComment' :
+      exifData['User Comment'] ? 'User Comment' :
+      exifData.ImageDescription ? 'ImageDescription' :
+      exifData.Parameters ? 'Parameters' : 'unknown'
+    );
     
     // Convert Uint8Array to string if needed (exifr returns UserComment as Uint8Array)
     if (metadataText instanceof Uint8Array) {
@@ -316,6 +365,7 @@ async function processSingleFileOptimized(
       // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
       const view = new DataView(fileData);
       if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+        console.log(`🖼️ Processing PNG file: ${fileEntry.handle.name}`);
         rawMetadata = await parsePNGMetadata(fileData);
       } else if (view.getUint16(0) === 0xFFD8) {
         rawMetadata = await parseJPEGMetadata(fileData);
@@ -342,7 +392,17 @@ async function processSingleFileOptimized(
 
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
-      if (isSwarmUIMetadata(rawMetadata)) {
+      // Check for Fooocus first (before other parsers)
+      if ('parameters' in rawMetadata && 
+          typeof rawMetadata.parameters === 'string' && 
+          (rawMetadata.parameters.includes('Fooocus') ||
+           rawMetadata.parameters.match(/Version:\s*f2\./i) ||
+           rawMetadata.parameters.match(/Model:\s*flux/i) ||
+           rawMetadata.parameters.includes('Distilled CFG Scale') ||
+           rawMetadata.parameters.match(/Module\s*1:\s*ae/i))) {
+        console.log('🎯 Detected Fooocus metadata, parsing...');
+        normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
+      } else if (isSwarmUIMetadata(rawMetadata)) {
         normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
       } else if (isComfyUIMetadata(rawMetadata)) {
         const comfyMetadata = rawMetadata as ComfyUIMetadata;
@@ -391,7 +451,7 @@ async function processSingleFileOptimized(
         normalizedMetadata = parseDalleMetadata(rawMetadata);
       } else if (isFireflyMetadata(rawMetadata)) {
         console.log(`✅ Successfully parsed Adobe Firefly metadata.`);
-        normalizedMetadata = parseFireflyMetadata(rawMetadata);
+        normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
       } else if (isDreamStudioMetadata(rawMetadata)) {
         console.log(`✅ Successfully parsed DreamStudio metadata.`);
         normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);

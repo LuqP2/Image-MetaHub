@@ -30,6 +30,8 @@
     "imagemetahub-cli": "./cli.ts"
   },
   "dependencies": {
+    "cbor-js": "^0.1.0",
+    "cbor-web": "^10.0.11",
     "commander": "^14.0.1",
     "electron-updater": "^6.6.2",
     "exifr": "^7.1.3",

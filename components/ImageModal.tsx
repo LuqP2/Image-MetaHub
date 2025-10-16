@@ -471,6 +471,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {showDetails && (
                   <div className="space-y-3 mt-3">
                     <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+                    {nMeta.generator && (
+                      <MetadataItem label="Generator" value={nMeta.generator} />
+                    )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
                       <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
                     )}

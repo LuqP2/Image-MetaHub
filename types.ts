@@ -223,8 +223,14 @@ export interface DrawThingsMetadata {
   [key: string]: any;
 }
 
+export interface FooocusMetadata {
+  parameters: string; // Fooocus uses SD-like format with Flux backend support
+  // Additional fields that might be present
+  [key: string]: any;
+}
+
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata;
 
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
@@ -240,6 +246,7 @@ export interface BaseMetadata {
   scheduler: string;
   sampler?: string;
   loras?: string[];
+  generator?: string; // Name of the AI generator/parser used
   // Additional normalized fields
   [key: string]: any;
 }

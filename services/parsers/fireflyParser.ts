@@ -1,4 +1,5 @@
 import { FireflyMetadata, isFireflyMetadata, BaseMetadata } from '../../types';
+import * as cbor from 'cbor-js'; // Browser-compatible CBOR decoder
 
 /**
  * Adobe Firefly Parser - Handles Adobe Firefly metadata from C2PA/EXIF embedded data
@@ -6,7 +7,12 @@ import { FireflyMetadata, isFireflyMetadata, BaseMetadata } from '../../types';
  * Reuses DALL-E parsing logic with Firefly-specific enhancements
  */
 
-export function parseFireflyMetadata(metadata: any): BaseMetadata | null {
+// UUIDs for C2PA boxes (from C2PA specs)
+const C2PA_UUID = new Uint8Array([0x00, 0x11, 0x00, 0x10, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71]); // Common UUID prefix for c2pa
+const CBOR_BOX_TYPE = 'cbor';
+const JUMBF_SUPERBOX_TYPE = 'jumbf';
+
+export function parseFireflyMetadata(metadata: any, fileBuffer: ArrayBuffer): BaseMetadata | null { // Add fileBuffer param pra binary parsing
   if (!isFireflyMetadata(metadata)) {
     return null;
   }
@@ -15,7 +21,7 @@ export function parseFireflyMetadata(metadata: any): BaseMetadata | null {
 
   try {
     // Extract data from C2PA manifest (primary source)
-    const c2paData = extractFromC2PA(metadata.c2pa_manifest);
+    const c2paData = extractFromC2PA(fileBuffer); // Now parses binary
     console.log('📋 C2PA data extracted:', c2paData);
 
     // Extract data from EXIF (secondary source)
@@ -62,9 +68,9 @@ export function parseFireflyMetadata(metadata: any): BaseMetadata | null {
       models: model ? [model] : ['Adobe Firefly'],
       width: width || 0,
       height: height || 0,
-      seed: undefined, // Firefly doesn't expose seed
-      steps: 0, // Firefly doesn't expose steps
-      cfg_scale: undefined, // Firefly doesn't expose CFG
+      seed: mergedData.seed || undefined, // New: from params if present
+      steps: mergedData.steps || 0, // New: from params if present
+      cfg_scale: mergedData.cfg_scale || undefined, // New: if in params
       scheduler: 'Adobe Firefly',
       sampler: 'Adobe Firefly',
       loras: [], // Firefly doesn't use LoRAs
@@ -83,75 +89,85 @@ export function parseFireflyMetadata(metadata: any): BaseMetadata | null {
   }
 }
 
-// Extract data from C2PA manifest
-function extractFromC2PA(c2paManifest: any): Partial<FireflyMetadata> {
-  if (!c2paManifest) return {};
-
+// Enhanced C2PA extraction with JUMBF/CBOR parsing from file buffer
+function extractFromC2PA(fileBuffer: ArrayBuffer): Partial<FireflyMetadata> {
   const result: Partial<FireflyMetadata> = {};
 
   try {
-    // Check for adobe:firefly specific data
-    if (c2paManifest['adobe:firefly']) {
-      const fireflyData = c2paManifest['adobe:firefly'];
-      result.prompt = fireflyData.prompt || fireflyData.description;
-      result.firefly_version = fireflyData.version || fireflyData.model_version;
-      result.generation_params = fireflyData.params || fireflyData.generation_params;
-      result.ai_generated = true;
-    }
+    const view = new DataView(fileBuffer);
+    const bytes = new Uint8Array(fileBuffer);
 
-    // Check for c2pa.actions (edit history)
-    if (c2paManifest['c2pa.actions']) {
-      result.edit_history = c2paManifest['c2pa.actions'];
-    }
-
-    // Check for content credentials
-    if (c2paManifest.content_credentials || c2paManifest.credentials) {
-      result.content_credentials = c2paManifest.content_credentials || c2paManifest.credentials;
-    }
-
-    // Try to extract prompt from various C2PA fields
-    if (!result.prompt) {
-      // Check assertions
-      if (c2paManifest.assertions) {
-        for (const assertion of c2paManifest.assertions) {
-          if (assertion.label?.includes('prompt') || assertion.label?.includes('description')) {
-            result.prompt = assertion.data?.prompt || assertion.data?.description || assertion.data;
-            break;
-          }
-          // Check for creative work assertion
-          if (assertion.label?.includes('stds.schema-org.CreativeWork')) {
-            result.prompt = assertion.data?.description || assertion.data?.name;
-            if (assertion.data?.author) {
-              result.firefly_version = assertion.data.author;
+    // Find JUMBF superbox in JPEG (after SOI 0xFFD8, scan segments)
+    let offset = 0;
+    while (offset < bytes.length - 8) {
+      if (bytes[offset] === 0xFF && bytes[offset + 1] === 0xE1) { // APP1 segment for metadata
+        const segmentLength = view.getUint16(offset + 2);
+        const segmentData = bytes.subarray(offset + 4, offset + 2 + segmentLength);
+        if (isJUMBF(segmentData)) {
+          const jumbfBoxes = parseJUMBF(segmentData);
+          for (const box of jumbfBoxes) {
+            if (box.type === CBOR_BOX_TYPE && box.label.includes('c2pa.actions')) {
+              const actions = cbor.decode(box.data);
+              result.edit_history = actions.actions || [];
+              if (actions.actions && actions.actions[0]?.parameters) {
+                const params = actions.actions[0].parameters;
+                result.prompt = params.prompt || params.description || result.prompt;
+                result.firefly_version = params['com.adobe.firefly.version'] || result.firefly_version;
+                result.steps = params.steps || result.steps; // If embed
+                result.seed = params.seed || result.seed; // If embed
+                result.cfg_scale = params.cfg_scale || result.cfg_scale; // If embed
+                result.generation_params = params;
+              }
+            } else if (box.label.includes('c2pa.claim')) {
+              const claim = cbor.decode(box.data);
+              result.content_credentials = claim.credentials || result.content_credentials;
+              result.prompt = claim.prompt || result.prompt; // Fallback
+            } else if (box.label.includes('c2pa.ingredient')) {
+              const ingredient = cbor.decode(box.data);
+              result.prompt = ingredient.description || result.prompt; // From ref if main
             }
           }
         }
-      }
-
-      // Check ingredients for generation info
-      if (c2paManifest.ingredients && Array.isArray(c2paManifest.ingredients)) {
-        for (const ingredient of c2paManifest.ingredients) {
-          if (ingredient.title?.includes('Firefly') || ingredient.description?.includes('Firefly')) {
-            result.firefly_version = ingredient.title || ingredient.description;
-          }
-        }
+        offset += 2 + segmentLength;
+      } else {
+        offset++;
       }
     }
 
-    // Regex fallback for description fields
-    if (!result.prompt && typeof c2paManifest === 'object') {
-      const manifestStr = JSON.stringify(c2paManifest);
-      const promptMatch = manifestStr.match(/"(?:prompt|description|text)":\s*"([^"]+)"/i);
-      if (promptMatch) {
-        result.prompt = promptMatch[1];
-      }
+    // Regex fallback on stringified if no CBOR found
+    if (Object.keys(result).length === 0) {
+      const fileStr = new TextDecoder().decode(bytes);
+      const promptMatch = fileStr.match(/"(?:prompt|description)":\s*"([^"]+)"/i);
+      if (promptMatch) result.prompt = promptMatch[1];
     }
 
   } catch (error) {
-    console.warn('⚠️ Error extracting C2PA data:', error);
+    console.warn('⚠️ Error extracting C2PA/JUMBF data:', error);
   }
 
   return result;
+}
+
+// Helper to check if segment is JUMBF
+function isJUMBF(data: Uint8Array): boolean {
+  return data.slice(0, 4).every((b, i) => b === JUMBF_SUPERBOX_TYPE.charCodeAt(i)) && data.slice(8, 20).every((b, i) => b === C2PA_UUID[i]);
+}
+
+// Helper to parse JUMBF boxes (recursive for sub-boxes)
+function parseJUMBF(data: Uint8Array): { type: string; label: string; data: Uint8Array }[] {
+  const boxes: { type: string; label: string; data: Uint8Array }[] = [];
+  let offset = 0;
+  while (offset < data.length) {
+    const boxLength = new DataView(data.buffer).getUint32(offset);
+    const boxType = new TextDecoder().decode(data.slice(offset + 4, offset + 8));
+    const boxUUID = data.slice(offset + 8, offset + 20);
+    const boxLabelLength = new DataView(data.buffer).getUint16(offset + 20);
+    const boxLabel = new TextDecoder().decode(data.slice(offset + 22, offset + 22 + boxLabelLength));
+    const boxData = data.slice(offset + 22 + boxLabelLength, offset + boxLength);
+    boxes.push({ type: boxType, label: boxLabel, data: boxData });
+    offset += boxLength;
+  }
+  return boxes;
 }
 
 // Extract data from EXIF metadata
@@ -166,7 +182,7 @@ function extractFromEXIF(exifData: any): Partial<FireflyMetadata> {
       const fireflyData = exifData['adobe:firefly'];
       result.prompt = fireflyData.prompt || fireflyData.description;
       result.firefly_version = fireflyData.version || fireflyData.model_version;
-      result.generation_params = fireflyData.params;
+      result.generation_params = fireflyData.params || fireflyData.generation_params;
       result.ai_generated = true;
     }
 
