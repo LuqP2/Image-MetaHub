@@ -49,7 +49,7 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         <ImageSizeSlider />
         <button
           onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
@@ -58,19 +58,20 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
         >
           {viewMode === 'grid' ? <List className="h-5 w-5" /> : <Grid3X3 className="h-5 w-5" />}
         </button>
-      </div>
 
-      <div>
         {selectedCount > 0 && (
-          <div className="flex items-center gap-4">
-            <span className="text-gray-300">{selectedCount} selected</span>
-            <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300">
-              Clear Selection
-            </button>
-            <button onClick={onDeleteSelected} className="text-red-500 hover:text-red-400">
-              Delete Selected
-            </button>
-          </div>
+          <>
+            <div className="border-l border-gray-600 h-6 mx-2"></div>
+            <div className="flex items-center gap-4">
+              <span className="text-gray-300">{selectedCount} selected</span>
+              <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300">
+                Clear Selection
+              </button>
+              <button onClick={onDeleteSelected} className="text-red-500 hover:text-red-400">
+                Delete Selected
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>
