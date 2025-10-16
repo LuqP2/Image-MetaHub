@@ -17,19 +17,14 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
     return null;
   }
 
-  console.log('🎨 Parsing Fooocus metadata...');
-  console.log('   Raw parameters:', params.substring(0, 200) + (params.length > 200 ? '...' : ''));
-
   try {
     // Extract prompt (everything before "Negative prompt:" or first parameter)
     const promptMatch = params.match(/^([\s\S]*?)(?=Negative prompt:|Steps:|Sampler:|$)/i);
     const prompt = promptMatch ? promptMatch[1].trim() : '';
-    console.log('   Extracted prompt:', prompt.substring(0, 100) + (prompt.length > 100 ? '...' : ''));
 
     // Extract negative prompt
     const negativePromptMatch = params.match(/Negative prompt:\s*([\s\S]*?)(?=Steps:|Sampler:|$)/i);
     const negativePrompt = negativePromptMatch ? negativePromptMatch[1].trim() : '';
-    console.log('   Extracted negative prompt:', negativePrompt.substring(0, 50) + (negativePrompt.length > 50 ? '...' : ''));
 
     // Extract parameters using regex
     const steps = parseInt(params.match(/Steps:\s*(\d+)/i)?.[1] || '0');
@@ -67,15 +62,6 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
       }
     }
 
-    console.log('✅ Fooocus parsing successful:', {
-      prompt: prompt.substring(0, 50) + '...',
-      model,
-      steps,
-      width,
-      height,
-      loras: loras.length
-    });
-
     const result = {
       prompt,
       negativePrompt,
@@ -92,17 +78,9 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
       generator: 'Fooocus',
     };
     
-    console.log('✅ Fooocus parser returning:', {
-      prompt: result.prompt?.substring(0, 30) + '...',
-      model: result.model,
-      generator: result.generator,
-      steps: result.steps
-    });
-    
     return result;
 
-  } catch (error) {
-    console.error('❌ Error parsing Fooocus metadata:', error);
+  } catch {
     return null;
   }
 }

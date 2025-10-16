@@ -548,7 +548,7 @@ async function processSingleFile(
  * OPTIMIZED: Uses batch file reading in Electron to reduce IPC overhead.
  */
 export async function processFiles(
-  fileEntries: { handle: FileSystemFileHandle, path: string }[],
+  fileEntries: { handle: FileSystemFileHandle, path: string, lastModified: number }[],
   setProgress: (progress: { current: number; total: number }) => void,
   onBatchProcessed: (batch: IndexedImage[]) => void,
   directoryId: string,
@@ -556,12 +556,10 @@ export async function processFiles(
   scanSubfolders: boolean,
   onDeletion: (deletedFileIds: string[]) => void
 ): Promise<void> {
-  const currentFiles = await Promise.all(
-    fileEntries.map(async (entry) => ({
-      name: entry.handle.name,
-      lastModified: (await entry.handle.getFile()).lastModified,
-    }))
-  );
+  const currentFiles = fileEntries.map(entry => ({
+    name: entry.handle.name,
+    lastModified: entry.lastModified,
+  }));
 
   const diff = await cacheManager.validateCacheAndGetDiff(
     directoryId,

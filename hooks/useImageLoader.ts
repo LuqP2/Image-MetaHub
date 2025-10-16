@@ -119,12 +119,13 @@ async function getHandleFromPath(rootHandle: FileSystemDirectoryHandle, path: st
     return currentHandle.kind === 'file' ? currentHandle as FileSystemFileHandle : null;
 }
 
-async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, fileNames: string[]): Promise<{handle: FileSystemFileHandle, path: string}[]> {
-    const handles: {handle: FileSystemFileHandle, path: string}[] = [];
+async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, files: { name: string; lastModified: number }[]): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number}[]> {
+    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number}[] = [];
 
     if (getIsElectron()) {
         // Process paths in smaller chunks to avoid overwhelming IPC
         const CHUNK_SIZE = 1000;
+        const fileNames = files.map(f => f.name);
         const joinResults: any[] = [];
         
         for (let i = 0; i < fileNames.length; i += CHUNK_SIZE) {
@@ -135,17 +136,17 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
             joinResults.push(...chunkResults);
         }
 
-        for (let i = 0; i < fileNames.length; i++) {
-            const fileName = fileNames[i];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
             const joinResult = joinResults[i];
-            const filePath = joinResult.success ? joinResult.path : `${directoryPath}/${fileName}`;
+            const filePath = joinResult.success ? joinResult.path : `${directoryPath}/${file.name}`;
             
             if (!joinResult.success) {
                 console.error("Failed to join paths, falling back to manual concatenation:", joinResult.error);
             }
 
             const mockHandle = {
-                name: fileName,
+                name: file.name,
                 kind: 'file' as const,
                 _filePath: filePath,
                 getFile: async () => {
@@ -154,22 +155,22 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
                         const fileResult = await window.electronAPI.readFile(filePath);
                         if (fileResult.success && fileResult.data) {
                             const freshData = new Uint8Array(fileResult.data);
-                            const lowerName = fileName.toLowerCase();
+                            const lowerName = file.name.toLowerCase();
                             const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                            return new File([freshData as any], fileName, { type });
+                            return new File([freshData as any], file.name, { type });
                         }
                     }
                     throw new Error(`Failed to read file: ${filePath}`);
                 }
             };
-            handles.push({ handle: mockHandle as any, path: fileName });
+            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified });
         }
     } else {
         // Browser implementation needs to handle sub-paths
-        for (const fileName of fileNames) {
-            const handle = await getHandleFromPath(directoryHandle, fileName);
+        for (const file of files) {
+            const handle = await getHandleFromPath(directoryHandle, file.name);
             if (handle) {
-                handles.push({ handle, path: fileName });
+                handles.push({ handle, path: file.name, lastModified: file.lastModified });
             }
         }
     }
@@ -280,12 +281,14 @@ export function useImageLoader() {
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.metadata.length > 0) {
-                const cachedImages: IndexedImage[] = cachedData.metadata.map(meta => {
-                    // Create proper mock handle with getFile() method for Electron
-                    const filePath = getIsElectron() 
-                        ? `${directory.path}/${meta.name}`.replace(/\\/g, '/') 
-                        : null;
-                    
+                const filePaths = await Promise.all(
+                    cachedData.metadata.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
+                );
+
+                const cachedImages: IndexedImage[] = cachedData.metadata.map((meta, i) => {
+                    const joinResult = filePaths[i];
+                    const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
+
                     const mockHandle = {
                         name: meta.name,
                         kind: 'file' as const,
@@ -372,8 +375,7 @@ export function useImageLoader() {
             if (diff.newAndModifiedFiles.length > 0) {
                 // Sort files by lastModified descending (newest first)
                 const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
-                const filesToProcessNames = sortedFiles.map(f => f.name);
-                const fileHandles = await getFileHandles(directory.handle, directory.path, filesToProcessNames);
+                const fileHandles = await getFileHandles(directory.handle, directory.path, sortedFiles);
                 setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
 
                 const handleBatchProcessed = (batch: IndexedImage[]) => {
