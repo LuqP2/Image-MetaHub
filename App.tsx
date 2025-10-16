@@ -3,6 +3,7 @@ import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
+import { useHotkeys } from './hooks/useHotkeys';
 import { Directory } from './types';
 
 import FolderSelector from './components/FolderSelector';
@@ -20,6 +21,9 @@ import SettingsModal from './components/SettingsModal';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
+import CommandPalette from './components/CommandPalette';
+import HotkeyHelp from './components/HotkeyHelp';
+import ImageTable from './components/ImageTable';
 
 export default function App() {
   // --- Hooks ---
@@ -55,6 +59,8 @@ export default function App() {
     updateImage,
     toggleDirectoryVisibility,
     resetState,
+    handleNavigateNext,
+    handleNavigatePrevious,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
@@ -63,6 +69,8 @@ export default function App() {
   const {
     itemsPerPage,
     setItemsPerPage,
+    viewMode,
+    theme,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -70,11 +78,23 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
+
+  // --- Hotkeys ---
+  const { commands, registeredHotkeys } = useHotkeys({
+    isCommandPaletteOpen,
+    setIsCommandPaletteOpen,
+    isHotkeyHelpOpen,
+    setIsHotkeyHelpOpen,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+  });
 
   // --- Effects ---
   useEffect(() => {
-    const applyTheme = (shouldUseDarkColors) => {
-      if (shouldUseDarkColors) {
+    const applyTheme = (themeValue, systemShouldUseDark) => {
+      if (themeValue === 'dark' || (themeValue === 'system' && systemShouldUseDark)) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
@@ -82,24 +102,22 @@ export default function App() {
     };
 
     if (window.electronAPI) {
-      // Get initial theme
       window.electronAPI.getTheme().then(({ shouldUseDarkColors }) => {
-        applyTheme(shouldUseDarkColors);
+        applyTheme(theme, shouldUseDarkColors);
       });
 
-      // Listen for theme updates
       const unsubscribe = window.electronAPI.onThemeUpdated(({ shouldUseDarkColors }) => {
-        applyTheme(shouldUseDarkColors);
+        applyTheme(theme, shouldUseDarkColors);
       });
 
-      // Cleanup
       return () => {
-        if (unsubscribe) {
-          unsubscribe();
-        }
+        if (unsubscribe) unsubscribe();
       };
+    } else {
+      // Fallback for browser
+      applyTheme(theme, window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
-  }, []);
+  }, [theme]);
 
   // Initialize the cache manager on startup
   useEffect(() => {
@@ -213,23 +231,6 @@ export default function App() {
     return filteredImages.findIndex(img => img.id === selectedImage.id);
   }, [selectedImage, filteredImages]);
 
-  const handleNavigateNext = useCallback(() => {
-    if (!selectedImage) return;
-    const currentIndex = getCurrentImageIndex();
-    if (currentIndex < filteredImages.length - 1) {
-      setSelectedImage(filteredImages[currentIndex + 1]);
-    }
-  }, [selectedImage, filteredImages, getCurrentImageIndex, setSelectedImage]);
-
-  const handleNavigatePrevious = useCallback(() => {
-    if (!selectedImage) return;
-    const currentIndex = getCurrentImageIndex();
-    if (currentIndex > 0) {
-      setSelectedImage(filteredImages[currentIndex - 1]);
-    }
-  }, [selectedImage, filteredImages, getCurrentImageIndex, setSelectedImage]);
-
-
   // --- Render Logic ---
   const paginatedImages = itemsPerPage === 'all'
     ? filteredImages
@@ -241,6 +242,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        commands={commands}
+      />
+
+      <HotkeyHelp
+        isOpen={isHotkeyHelpOpen}
+        onClose={() => setIsHotkeyHelpOpen(false)}
+      />
 
       <SettingsModal
         isOpen={isSettingsModalOpen}
@@ -316,11 +328,19 @@ export default function App() {
               />
 
               <div className="flex-1 min-h-0">
-                <ImageGrid
-                  images={paginatedImages}
-                  onImageClick={handleImageSelection}
-                  selectedImages={selectedImages}
-                />
+                {viewMode === 'grid' ? (
+                    <ImageGrid
+                      images={paginatedImages}
+                      onImageClick={handleImageSelection}
+                      selectedImages={selectedImages}
+                    />
+                  ) : (
+                    <ImageTable
+                      images={paginatedImages}
+                      onImageClick={handleImageSelection}
+                      selectedImages={selectedImages}
+                    />
+                )}
               </div>
 
               <Pagination

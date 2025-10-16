@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFooocusMetadata } from '../../services/parsers/fooocusParser';
+import { parseFooocusMetadata } from '../services/parsers/fooocusParser';
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -115,7 +115,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }
 
   return (
-    <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }}>
+    <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }} data-area="grid" tabIndex={-1}>
       <AutoSizer>
         {({ height, width }) => {
           if (width === 0 || height === 0) return null;

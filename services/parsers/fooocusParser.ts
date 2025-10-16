@@ -18,12 +18,16 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
   }
 
   try {
-    // Extract prompt (everything before "Negative prompt:" or first parameter)
-    const promptMatch = params.match(/^([\s\S]*?)(?=Negative prompt:|Steps:|Sampler:|$)/i);
-    const prompt = promptMatch ? promptMatch[1].trim() : '';
+    // Extract prompt (everything before "Negative prompt:" or other parameters)
+    const promptMatch = params.match(/^([\s\S]*?)(?=Negative prompt:|Steps:|Sampler:|Model:|Version:|Size:|Seed:|CFG scale:|$)/i);
+    let prompt = promptMatch ? promptMatch[1].trim() : '';
+    // Remove trailing period if it exists
+    if (prompt.endsWith('.')) {
+      prompt = prompt.slice(0, -1);
+    }
 
     // Extract negative prompt
-    const negativePromptMatch = params.match(/Negative prompt:\s*([\s\S]*?)(?=Steps:|Sampler:|$)/i);
+    const negativePromptMatch = params.match(/Negative prompt:\s*([\s\S]*?)(?=Steps:|Sampler:|Model:|Version:|Size:|Seed:|CFG scale:|$)/i);
     const negativePrompt = negativePromptMatch ? negativePromptMatch[1].trim() : '';
 
     // Extract parameters using regex
@@ -35,8 +39,10 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
                               params.match(/Guidance scale:\s*([\d.]+)/i)?.[1] || '0');
     const seed = parseInt(params.match(/Seed:\s*(\d+)/i)?.[1] || '0');
 
-    // Extract model
+    // Extract model, version, and module
     const model = params.match(/Model:\s*([A-Za-z0-9_.-]+)/i)?.[1] || '';
+    const version = params.match(/Version:\s*([A-Za-z0-9_.-]+)/i)?.[1] || '';
+    const module = params.match(/Module 1:\s*([A-Za-z0-9_.-]+)/i)?.[1] || '';
 
     // Extract dimensions
     const sizeMatch = params.match(/Size:\s*(\d+)x(\d+)/i);
@@ -62,7 +68,7 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
       }
     }
 
-    const result = {
+    const result: BaseMetadata = {
       prompt,
       negativePrompt,
       model: model || 'Fooocus',
@@ -76,6 +82,8 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
       sampler: sampler + (scheduler ? ` (${scheduler})` : ''),
       loras,
       generator: 'Fooocus',
+      version,
+      module,
     };
     
     return result;

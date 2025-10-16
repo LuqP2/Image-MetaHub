@@ -55,6 +55,7 @@ interface ImageState {
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
   toggleImageSelection: (imageId: string) => void;
+  selectAllImages: () => void;
   clearImageSelection: () => void;
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
@@ -316,6 +317,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return { selectedImages: newSelection };
             });
         },
+
+        selectAllImages: () => set(state => {
+            const allImageIds = new Set(state.filteredImages.map(img => img.id));
+            return { selectedImages: allImageIds };
+        }),
 
         clearImageSelection: () => set({ selectedImages: new Set() }),
 

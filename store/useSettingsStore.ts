@@ -33,6 +33,7 @@ interface SettingsState {
   imageSize: number;
   cachePath: string | null;
   autoUpdate: boolean;
+  viewMode: 'grid' | 'list';
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -41,6 +42,7 @@ interface SettingsState {
   setImageSize: (size: number) => void;
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
+  toggleViewMode: () => void;
   resetState: () => void;
 }
 
@@ -57,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
       imageSize: 120,
       cachePath: null, // Default cache path, null means use app data dir
       autoUpdate: true, // Check for updates by default
+      viewMode: 'grid',
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -65,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()(
       setImageSize: (size) => set({ imageSize: size }),
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
+      toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       resetState: () => set({
         sortOrder: 'desc',
         itemsPerPage: 20,

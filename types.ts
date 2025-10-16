@@ -247,6 +247,8 @@ export interface BaseMetadata {
   sampler?: string;
   loras?: string[];
   generator?: string; // Name of the AI generator/parser used
+  version?: string;
+  module?: string;
   // Additional normalized fields
   [key: string]: any;
 }

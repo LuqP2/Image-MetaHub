@@ -38,6 +38,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
             onChange={(e) => onChange(e.target.value)}
             placeholder={currentOption?.placeholder || 'Search...'}
             className="w-full bg-gray-700 text-gray-200 placeholder-gray-400 py-2 pl-10 pr-4 rounded-lg border-2 border-transparent focus:outline-none focus:border-blue-500 transition-colors"
+            data-testid="search-input"
           />
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
