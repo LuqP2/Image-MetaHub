@@ -84,9 +84,30 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
+
+  // --- Hotkeys Hook ---
+  const { commands } = useHotkeys({
+    isCommandPaletteOpen,
+    setIsCommandPaletteOpen,
+    isHotkeyHelpOpen,
+    setIsHotkeyHelpOpen,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+  });
+
+  const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
+    setSettingsTab(tab);
+    setIsSettingsModalOpen(true);
+  };
+
+  const handleOpenHotkeySettings = () => {
+    setIsHotkeyHelpOpen(false);
+    handleOpenSettings('hotkeys');
+  };
 
   // --- Indexing Control Functions ---
   const handlePauseIndexing = useCallback(() => {
@@ -263,17 +284,19 @@ export default function App() {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        commands={[]}
+        commands={commands}
       />
 
       <HotkeyHelp
         isOpen={isHotkeyHelpOpen}
         onClose={() => setIsHotkeyHelpOpen(false)}
+        onOpenSettings={handleOpenHotkeySettings}
       />
 
       <SettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+        initialTab={settingsTab}
       />
 
       {hasDirectories && (

@@ -4,9 +4,10 @@ import hotkeyManager from '../services/hotkeyManager';
 interface HotkeyHelpProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenSettings: () => void;
 }
 
-const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose }) => {
+const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings }) => {
   if (!isOpen) return null;
 
   const hotkeys = hotkeyManager.getRegisteredHotkeys();
@@ -15,6 +16,7 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose }) => {
     <div
       className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center"
       onClick={onClose}
+      data-testid="hotkey-help-modal"
     >
       <div
         className="bg-gray-800 border border-gray-700 rounded-lg shadow-2xl w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col"
@@ -28,19 +30,34 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose }) => {
         </div>
         <div className="p-4 overflow-y-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-            {hotkeys.map(({ key, description }) => (
-              <div key={key} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
-                <p className="text-gray-200">{description}</p>
-                <div className="flex space-x-1">
-                  {key.split(',')[0].split('+').map(part => (
-                    <kbd key={part} className="px-2 py-1 text-sm font-sans font-semibold text-gray-200 bg-gray-900 border border-gray-600 rounded-md">
-                      {part.replace('cmd', '⌘').replace('ctrl', 'Ctrl').replace('shift', 'Shift').replace('alt', 'Alt').toUpperCase()}
-                    </kbd>
-                  ))}
+            {hotkeys.map((hk) => {
+              const currentKey: string = hk.currentKey;
+              const description: string = hk.name;
+              return (
+                <div key={currentKey} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
+                  <p className="text-gray-200">{description}</p>
+                  <div className="flex space-x-1">
+                    {currentKey.split(',')[0].split('+').map(part => (
+                      <kbd key={part} className="px-2 py-1 text-sm font-sans font-semibold text-gray-200 bg-gray-900 border border-gray-600 rounded-md">
+                        {part.replace('cmd', '⌘').replace('ctrl', 'Ctrl').replace('shift', 'Shift').replace('alt', 'Alt').toUpperCase()}
+                      </kbd>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+        </div>
+        <div className="p-4 border-t border-gray-700 bg-gray-800/50 text-center flex-shrink-0">
+            <p className="text-sm text-gray-400">
+                Want to change these? You can customize all shortcuts in the settings.
+            </p>
+            <button
+                onClick={onOpenSettings}
+                className="mt-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500"
+            >
+                Customize Hotkeys
+            </button>
         </div>
       </div>
     </div>

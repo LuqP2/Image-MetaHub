@@ -24,6 +24,8 @@ const electronStorage: StateStorage = {
   },
 };
 
+import { Keymap } from '../types';
+
 // Define the state shape
 interface SettingsState {
   // App settings
@@ -35,6 +37,7 @@ interface SettingsState {
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
   theme: 'light' | 'dark' | 'system';
+  keymap: Keymap;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -45,11 +48,15 @@ interface SettingsState {
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  updateKeybinding: (scope: string, action: string, keybinding: string) => void;
+  resetKeymap: () => void;
   resetState: () => void;
 }
 
 // Check if running in Electron
 const isElectron = !!window.electronAPI;
+
+import { getDefaultKeymap } from '../services/hotkeyConfig';
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -63,6 +70,7 @@ export const useSettingsStore = create<SettingsState>()(
       autoUpdate: true, // Check for updates by default
       viewMode: 'grid',
       theme: 'system', // Default to system theme
+      keymap: getDefaultKeymap(),
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -73,6 +81,17 @@ export const useSettingsStore = create<SettingsState>()(
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setTheme: (theme) => set({ theme }),
+      updateKeybinding: (scope, action, keybinding) =>
+        set((state) => ({
+          keymap: {
+            ...state.keymap,
+            [scope]: {
+              ...(state.keymap[scope] as object),
+              [action]: keybinding,
+            },
+          },
+        })),
+      resetKeymap: () => set({ keymap: getDefaultKeymap() }),
       resetState: () => set({
         sortOrder: 'desc',
         itemsPerPage: 20,
@@ -82,6 +101,7 @@ export const useSettingsStore = create<SettingsState>()(
         autoUpdate: true,
         viewMode: 'grid',
         theme: 'system',
+        keymap: getDefaultKeymap(),
       }),
     }),
     {

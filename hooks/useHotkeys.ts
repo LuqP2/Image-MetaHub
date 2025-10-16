@@ -37,7 +37,7 @@ export const useHotkeys = ({
 
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
-  const { toggleViewMode, theme, setTheme } = useSettingsStore();
+  const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const element = document.querySelector<HTMLElement>(`[data-area='${area}']`);
@@ -47,63 +47,61 @@ export const useHotkeys = ({
   };
 
   useEffect(() => {
-    hotkeyManager.init();
-
-    // Global
-    hotkeyManager.on('ctrl+k, cmd+k', 'Open Command Palette', () => setIsCommandPaletteOpen(true));
-    hotkeyManager.on('ctrl+., cmd+.', 'Open Quick Settings', () => setIsSettingsModalOpen(true));
-    hotkeyManager.on('f1', 'Open Keyboard Shortcuts', () => setIsHotkeyHelpOpen(true));
-
-    // Navigation / Focus
-    hotkeyManager.on('ctrl+1, cmd+1', 'Focus Sidebar', () => focusArea('sidebar'));
-    hotkeyManager.on('ctrl+2, cmd+2', 'Focus Image Grid', () => focusArea('grid'));
-    hotkeyManager.on('ctrl+3, cmd+3', 'Focus Preview Pane', () => focusArea('preview'));
-
-    // Search
-    const focusSearch = () => {
+    // Register all actions with the hotkey manager
+    hotkeyManager.registerAction('openCommandPalette', () => setIsCommandPaletteOpen(true));
+    hotkeyManager.registerAction('openQuickSettings', () => setIsSettingsModalOpen(true));
+    hotkeyManager.registerAction('openKeyboardShortcuts', () => setIsHotkeyHelpOpen(true));
+    hotkeyManager.registerAction('focusSidebar', () => focusArea('sidebar'));
+    hotkeyManager.registerAction('focusImageGrid', () => focusArea('grid'));
+    hotkeyManager.registerAction('focusPreviewPane', () => focusArea('preview'));
+    hotkeyManager.registerAction('focusSearch', () => {
       const searchInput = document.querySelector<HTMLInputElement>('[data-testid="search-input"]');
       if (searchInput) {
         searchInput.focus();
         searchInput.select();
       }
-    };
-    hotkeyManager.on('ctrl+f, cmd+f', 'Focus Search', focusSearch);
-    hotkeyManager.on('/', 'Quick Search', focusSearch);
-    hotkeyManager.on('ctrl+shift+f, cmd+shift+f', 'Toggle Advanced Filters', () => {
+    });
+    hotkeyManager.registerAction('quickSearch', () => {
+        const searchInput = document.querySelector<HTMLInputElement>('[data-testid="search-input"]');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+    });
+    hotkeyManager.registerAction('toggleAdvancedFilters', () => {
       const advancedFilterButton = document.querySelector<HTMLButtonElement>('button:has(span:contains("Advanced Filters"))');
       if (advancedFilterButton) {
         advancedFilterButton.click();
       }
     });
-
-    // File / Folder
-    hotkeyManager.on('ctrl+o, cmd+o', 'Add Folder', () => { handleSelectFolder(); });
-    hotkeyManager.on('ctrl+shift+r, cmd+shift+r', 'Rescan Folders', () => { handleLoadFromStorage(); });
-
-    // Selection & Actions
-    hotkeyManager.on('ctrl+a, cmd+a', 'Select All', selectAllImages);
-    hotkeyManager.on('delete', 'Delete Selected', () => { handleDeleteSelectedImages(); });
-    hotkeyManager.on('space', 'Toggle Quick Preview', (e) => {
-        e.preventDefault();
-        if (selectedImage) {
-            setPreviewImage(previewImage?.id === selectedImage.id ? null : selectedImage);
-        }
+    hotkeyManager.registerAction('addFolder', () => {
+      handleSelectFolder();
     });
-    hotkeyManager.on('enter', 'Open Fullscreen', () => {
+    hotkeyManager.registerAction('rescanFolders', () => {
+      handleLoadFromStorage().catch((error) => {
+        console.error('Error rescanning folders:', error);
+      });
+    });
+    hotkeyManager.registerAction('selectAll', selectAllImages);
+    hotkeyManager.registerAction('deleteSelected', () => {
+      handleDeleteSelectedImages().catch((error) => {
+        console.error('Error deleting selected images:', error);
+      });
+    });
+    hotkeyManager.registerAction('toggleQuickPreview', () => {
+      if (selectedImage) {
+        setPreviewImage(previewImage?.id === selectedImage.id ? null : selectedImage);
+      }
+    });
+    hotkeyManager.registerAction('openFullscreen', () => {
       if (selectedImage) {
         setSelectedImage(selectedImage);
       }
     });
-
-    // View
-    hotkeyManager.on('ctrl+l, cmd+l', 'Toggle List/Grid View', toggleViewMode);
-
-    // Scoped Navigation in Preview
-    hotkeyManager.on('left', 'preview', handleNavigatePrevious);
-    hotkeyManager.on('right', 'preview', handleNavigateNext);
-
-    // General
-    hotkeyManager.on('esc', 'Close Modals / Clear Selection', () => {
+    hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
+    hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
+    hotkeyManager.registerAction('navigateNext', handleNavigateNext);
+    hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
       else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
@@ -111,6 +109,9 @@ export const useHotkeys = ({
       else if (selectedImage) setSelectedImage(null);
       else if (selectedImages.size > 0) clearImageSelection();
     });
+
+    // Bind all registered actions initially
+    hotkeyManager.bindAllActions();
 
     // Set scope based on focused element
     const handleFocusChange = () => {
@@ -120,16 +121,24 @@ export const useHotkeys = ({
         if (previewPane && previewPane.contains(activeElement)) {
           hotkeyManager.setScope('preview');
         } else {
-          hotkeyManager.setScope('all');
+          hotkeyManager.setScope('global');
         }
       }
     };
 
     document.addEventListener('focusin', handleFocusChange);
 
+    // Subscribe to keymap changes and re-bind hotkeys
+    const unsubscribe = useSettingsStore.subscribe((state) => {
+      if (state.keymap) {
+        hotkeyManager.bindAllActions();
+      }
+    });
+
     return () => {
-      hotkeyManager.unbindAll();
+      hotkeyManager.clearActions();
       document.removeEventListener('focusin', handleFocusChange);
+      unsubscribe();
     };
   }, [
     handleSelectFolder,
@@ -147,7 +156,10 @@ export const useHotkeys = ({
     isSettingsModalOpen,
     selectedImages,
     clearImageSelection,
-    toggleViewMode
+    toggleViewMode,
+    setIsCommandPaletteOpen,
+    setIsHotkeyHelpOpen,
+    setIsSettingsModalOpen,
   ]);
 
   const commands = useMemo(() => [

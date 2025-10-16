@@ -1,82 +1,99 @@
 import hotkeys, { KeyHandler } from 'hotkeys-js';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { hotkeyConfig, HotkeyDefinition } from './hotkeyConfig';
+
+interface RegisteredAction {
+  id: string;
+  scope: string;
+  callback: KeyHandler;
+}
+
+// A map to store the actions that the application supports.
+const registeredActions = new Map<string, RegisteredAction>();
 
 /**
- * A map to store registered hotkeys and their descriptions for the help overlay.
- */
-const registeredHotkeys = new Map<string, string>();
-
-/**
- * Initializes the hotkey manager.
- */
-const init = () => {
-  // Global configuration for hotkeys-js can be set here if needed.
-  console.log('Hotkey manager initialized.');
-};
-
-/**
- * Registers a hotkey with a callback function and an optional description.
- * This function handles the platform differences between Ctrl (Windows/Linux) and Cmd (macOS).
- * @param key - The key combination (e.g., 'ctrl+f'). Use 'ctrl' as the standard modifier.
- * @param description - A user-friendly description for the help overlay.
- * @param callback - The function to execute when the hotkey is pressed.
- */
-const on = (key: string, description: string, callback: KeyHandler) => {
-  const platformKey = key.replace('ctrl', 'cmd');
-  const keysToRegister = `${key}, ${platformKey}`;
-
-  hotkeys(keysToRegister, (event, handler) => {
-    event.preventDefault();
-    callback(event, handler);
-  });
-
-  registeredHotkeys.set(key, description);
-};
-
-/**
- * Unbinds a previously registered hotkey.
- * @param key - The key combination to unbind.
- */
-const off = (key: string) => {
-  const platformKey = key.replace('ctrl', 'cmd');
-  hotkeys.unbind(`${key}, ${platformKey}`);
-  registeredHotkeys.delete(key);
-};
-
-/**
- * Unbinds all registered hotkeys to prevent memory leaks on component unmount.
+ * Unbinds all currently bound hotkeys from the hotkeys-js instance.
+ * This is crucial before re-binding to prevent duplicate listeners.
  */
 const unbindAll = () => {
-  for (const key of registeredHotkeys.keys()) {
+  hotkeys.unbind();
+};
+
+/**
+ * Binds all registered actions to their corresponding keybindings from the settings store.
+ * It first unbinds all existing hotkeys to ensure a clean slate.
+ */
+const bindAllActions = () => {
+  unbindAll();
+  const { keymap } = useSettingsStore.getState();
+
+  registeredActions.forEach((action) => {
+    const scopeKeymap = keymap[action.scope] as Record<string, string> | undefined;
+    if (!scopeKeymap) return;
+
+    const key = scopeKeymap[action.id];
+    if (!key) return; // No keybinding for this action
+
+    // Handle platform differences (Ctrl/Cmd)
     const platformKey = key.replace('ctrl', 'cmd');
-    hotkeys.unbind(`${key}, ${platformKey}`);
+    const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
+
+    hotkeys(keysToRegister, { scope: action.scope }, (event, handler) => {
+      event.preventDefault();
+      action.callback(event, handler);
+    });
+  });
+};
+
+/**
+ * Registers a hotkey action with the manager. This does not bind the key immediately.
+ * The action is stored and will be bound when `bindAllActions` is called.
+ * @param id - The unique identifier for the action (from hotkeyConfig).
+ * @param callback - The function to execute when the hotkey is pressed.
+ */
+const registerAction = (id: string, callback: KeyHandler) => {
+  const config = hotkeyConfig.find(h => h.id === id);
+  if (!config) {
+    console.warn(`[HotkeyManager] Attempted to register an unknown hotkey action: ${id}`);
+    return;
   }
-  registeredHotkeys.clear();
+
+  registeredActions.set(id, { id, scope: config.scope, callback });
+};
+
+/**
+ * Clears all registered actions. Should be called on cleanup.
+ */
+const clearActions = () => {
+  registeredActions.clear();
+  unbindAll();
 };
 
 /**
  * Sets the active scope for hotkeys.
- * @param scope - The name of the scope (e.g., 'preview', 'input').
+ * @param scope - The name of the scope (e.g., 'preview', 'global').
  */
 const setScope = (scope: string) => {
   hotkeys.setScope(scope);
 };
 
 /**
- * Retrieves a list of all registered hotkeys and their descriptions.
- * @returns An array of objects, each containing a key and its description.
+ * Retrieves a list of all defined hotkeys and their current keybindings.
+ * @returns An array of objects, each containing the definition and current key.
  */
-const getRegisteredHotkeys = (): { key: string, description: string }[] => {
-  return Array.from(registeredHotkeys.entries()).map(([key, description]) => ({
-    key,
-    description,
-  }));
+const getRegisteredHotkeys = (): (HotkeyDefinition & { currentKey: string })[] => {
+  const { keymap } = useSettingsStore.getState();
+  return hotkeyConfig.map(config => {
+    const scopeKeymap = keymap[config.scope] as Record<string, string> | undefined;
+    const currentKey = scopeKeymap ? scopeKeymap[config.id] : config.defaultKey;
+    return { ...config, currentKey };
+  });
 };
 
 const hotkeyManager = {
-  init,
-  on,
-  off,
-  unbindAll,
+  registerAction,
+  bindAllActions,
+  clearActions,
   setScope,
   getRegisteredHotkeys,
 };
