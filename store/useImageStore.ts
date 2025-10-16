@@ -64,11 +64,34 @@ interface ImageState {
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
-    // --- Helper function for filtering and sorting ---
+    // --- Helper function for recalculating all derived state ---
+    const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        const models = new Set<string>();
+        const loras = new Set<string>();
+        const schedulers = new Set<string>();
+
+        for (const image of newImages) {
+            image.models?.forEach(model => { if(model) models.add(model) });
+            image.loras?.forEach(lora => { if(lora) loras.add(lora) });
+            if (image.scheduler) schedulers.add(image.scheduler);
+        }
+
+        const newState: Partial<ImageState> = {
+            images: newImages,
+            availableModels: Array.from(models).sort(),
+            availableLoras: Array.from(loras).sort(),
+            availableSchedulers: Array.from(schedulers).sort(),
+        };
+
+        const combinedState = { ...currentState, ...newState };
+
+        return { ...combinedState, ...filterAndSort(combinedState) };
+    };
+
+    // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
         const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories } = state;
 
-        // First, filter by directory visibility
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
         );
@@ -102,42 +125,29 @@ export const useImageStore = create<ImageState>((set, get) => {
             );
         }
 
-        // --- ADVANCED FILTERS ---
         if (advancedFilters) {
-            // Dimension Filter
             if (advancedFilters.dimension) {
                 results = results.filter(image => image.dimensions === advancedFilters.dimension);
             }
-
-            // Steps Filter
             if (advancedFilters.steps) {
                  results = results.filter(image => {
                     const steps = image.steps;
-                    // Only apply filter to images that have steps defined
                     if (steps !== null && steps !== undefined) {
                         return steps >= advancedFilters.steps.min && steps <= advancedFilters.steps.max;
                     }
-                    // If image has no steps defined, exclude it from filtered results
                     return false;
                 });
             }
-
-            // CFG Scale Filter
             if (advancedFilters.cfg) {
                  results = results.filter(image => {
                     const cfg = image.cfgScale;
-                    // Only apply filter to images that have cfg scale defined
                     if (cfg !== null && cfg !== undefined) {
                         return cfg >= advancedFilters.cfg.min && cfg <= advancedFilters.cfg.max;
                     }
-                    // If image has no cfg scale defined, exclude it from filtered results
                     return false;
                 });
             }
-            
-            // Date Filter
             if (advancedFilters.date && advancedFilters.date.from && advancedFilters.date.to) {
-                // Add 1 day to the 'to' date to make the range inclusive
                 const toDate = new Date(advancedFilters.date.to);
                 toDate.setDate(toDate.getDate() + 1);
                 const fromTime = new Date(advancedFilters.date.from).getTime();
@@ -161,213 +171,182 @@ export const useImageStore = create<ImageState>((set, get) => {
 
 
     return {
-  // Initial State
-  images: [],
-  filteredImages: [],
-  directories: [],
-  isLoading: false,
-  progress: { current: 0, total: 0 },
-  error: null,
-  success: null,
-  selectedImage: null,
-  previewImage: null,
-  selectedImages: new Set(),
-  searchQuery: '',
-  availableModels: [],
-  availableLoras: [],
-  availableSchedulers: [],
-  selectedModels: [],
-  selectedLoras: [],
-  selectedSchedulers: [],
-  sortOrder: 'date-desc',
-  advancedFilters: {},
-  scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') === 'true',
+        // Initial State
+        images: [],
+        filteredImages: [],
+        directories: [],
+        isLoading: false,
+        progress: { current: 0, total: 0 },
+        error: null,
+        success: null,
+        selectedImage: null,
+        previewImage: null,
+        selectedImages: new Set(),
+        searchQuery: '',
+        availableModels: [],
+        availableLoras: [],
+        availableSchedulers: [],
+        selectedModels: [],
+        selectedLoras: [],
+        selectedSchedulers: [],
+        sortOrder: 'date-desc',
+        advancedFilters: {},
+        scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') === 'true',
 
-  // --- ACTIONS ---
+        // --- ACTIONS ---
 
-  addDirectory: (directory) => set(state => {
-    if (state.directories.some(d => d.id === directory.id)) {
-      return state; // Prevent adding duplicates
+        addDirectory: (directory) => set(state => {
+            if (state.directories.some(d => d.id === directory.id)) {
+                return state; // Prevent adding duplicates
+            }
+            return {
+                directories: [...state.directories, { ...directory, visible: directory.visible ?? true }]
+            };
+        }),
+
+        toggleDirectoryVisibility: (directoryId) => set(state => {
+            const updatedDirectories = state.directories.map(dir =>
+                dir.id === directoryId ? { ...dir, visible: !(dir.visible ?? true) } : dir
+            );
+            const newState = { ...state, directories: updatedDirectories };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        removeDirectory: (directoryId) => {
+            const { directories, images } = get();
+            const newDirectories = directories.filter(d => d.id !== directoryId);
+            if (window.electronAPI) {
+                localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
+            }
+            const newImages = images.filter(img => img.directoryId !== directoryId);
+            set(state => _updateState({ ...state, directories: newDirectories }, newImages));
+        },
+
+        setLoading: (loading) => set({ isLoading: loading }),
+        setProgress: (progress) => set({ progress }),
+        setError: (error) => set({ error, success: null }),
+        setSuccess: (success) => set({ success, error: null }),
+
+        filterAndSortImages: () => set(state => filterAndSort(state)),
+
+        setImages: (images) => set(state => _updateState(state, images)),
+
+        addImages: (newImages) => {
+            set(state => {
+                const existingIds = new Set(state.images.map(img => img.id));
+                const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
+                if (uniqueNewImages.length === 0) {
+                    return state; // No changes
+                }
+                const allImages = [...state.images, ...uniqueNewImages];
+                return _updateState(state, allImages);
+            });
+        },
+
+        clearImages: (directoryId?: string) => set(state => {
+            if (directoryId) {
+                const newImages = state.images.filter(img => img.directoryId !== directoryId);
+                return _updateState(state, newImages);
+            } else {
+                return _updateState(state, []);
+            }
+        }),
+
+        removeImages: (imageIds) => {
+            const idsToRemove = new Set(imageIds);
+            set(state => {
+                const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
+                return _updateState(state, remainingImages);
+            });
+        },
+
+        removeImage: (imageId) => {
+            set(state => {
+                const remainingImages = state.images.filter(img => img.id !== imageId);
+                return _updateState(state, remainingImages);
+            });
+        },
+
+        updateImage: (imageId, newName) => {
+            set(state => {
+                const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
+                // No need to recalculate filters for a simple name change
+                return { ...state, ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
+            });
+        },
+
+        setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),
+
+        setFilterOptions: (options) => set({
+            availableModels: options.models,
+            availableLoras: options.loras,
+            availableSchedulers: options.schedulers,
+        }),
+
+        setSelectedFilters: (filters) => set(state => ({
+            ...filterAndSort({
+                ...state,
+                selectedModels: filters.models ?? state.selectedModels,
+                selectedLoras: filters.loras ?? state.selectedLoras,
+                selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+            }),
+            selectedModels: filters.models ?? state.selectedModels,
+            selectedLoras: filters.loras ?? state.selectedLoras,
+            selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+        })),
+
+        setAdvancedFilters: (filters) => set(state => ({
+            ...filterAndSort({ ...state, advancedFilters: filters }),
+            advancedFilters: filters,
+        })),
+
+        setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
+
+        setPreviewImage: (image) => set({ previewImage: image }),
+        setSelectedImage: (image) => set({ selectedImage: image }),
+
+        toggleImageSelection: (imageId) => {
+            set(state => {
+                const newSelection = new Set(state.selectedImages);
+                if (newSelection.has(imageId)) {
+                    newSelection.delete(imageId);
+                } else {
+                    newSelection.add(imageId);
+                }
+                return { selectedImages: newSelection };
+            });
+        },
+
+        clearImageSelection: () => set({ selectedImages: new Set() }),
+
+        deleteSelectedImages: async () => {
+            console.log("Deleting selected images...");
+            get().clearImageSelection();
+        },
+
+        setScanSubfolders: (scan) => {
+            localStorage.setItem('image-metahub-scan-subfolders', String(scan));
+            set({ scanSubfolders: scan });
+        },
+
+        resetState: () => set({
+            images: [],
+            filteredImages: [],
+            directories: [],
+            isLoading: false,
+            progress: { current: 0, total: 0 },
+            error: null,
+            success: null,
+            selectedImage: null,
+            selectedImages: new Set(),
+            searchQuery: '',
+            availableModels: [],
+            availableLoras: [],
+            availableSchedulers: [],
+            selectedModels: [],
+            selectedLoras: [],
+            selectedSchedulers: [],
+            advancedFilters: {},
+        })
     }
-    return {
-      directories: [...state.directories, { ...directory, visible: directory.visible ?? true }]
-    };
-  }),
-
-  toggleDirectoryVisibility: (directoryId) => set(state => {
-    const updatedDirectories = state.directories.map(dir =>
-      dir.id === directoryId ? { ...dir, visible: !(dir.visible ?? true) } : dir
-    );
-    return {
-      ...filterAndSort({ ...state, directories: updatedDirectories }),
-      directories: updatedDirectories,
-    };
-  }),
-
-  removeDirectory: (directoryId) => {
-    const { directories } = get();
-    const newDirectories = directories.filter(d => d.id !== directoryId);
-    if (window.electronAPI) { // Only persist in Electron environment
-      localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
-    }
-
-    set(state => {
-      const newImages = state.images.filter(img => img.directoryId !== directoryId);
-      return {
-        ...filterAndSort({ ...state, images: newImages }),
-        images: newImages,
-        directories: newDirectories,
-      };
-    });
-  },
-
-  setLoading: (loading) => set({ isLoading: loading }),
-  setProgress: (progress) => set({ progress }),
-  setError: (error) => set({ error, success: null }),
-  setSuccess: (success) => set({ success, error: null }),
-
-  filterAndSortImages: () => set(state => filterAndSort(state)),
-
-  setImages: (images) => set(state => ({ ...filterAndSort({ ...state, images }), images })),
-
-  addImages: (newImages) => {
-    set(state => {
-      const existingIds = new Set(state.images.map(img => img.id));
-      const uniqueNewImages = newImages.filter(img => !existingIds.has(img.id));
-      if (uniqueNewImages.length === 0) {
-        return state; // No changes, no need to re-render
-      }
-
-      const allImages = [...state.images, ...uniqueNewImages];
-
-      // Recalculate available filters
-      const models = new Set<string>();
-      const loras = new Set<string>();
-      const schedulers = new Set<string>();
-
-      for (const image of allImages) {
-        image.models?.forEach(model => models.add(model));
-        image.loras?.forEach(lora => loras.add(lora));
-        if (image.scheduler) schedulers.add(image.scheduler);
-      }
-
-      const newState = {
-        ...state,
-        images: allImages,
-        availableModels: Array.from(models).sort(),
-        availableLoras: Array.from(loras).sort(),
-        availableSchedulers: Array.from(schedulers).sort(),
-      };
-
-      return { ...filterAndSort(newState), ...newState };
-    });
-  },
-
-  clearImages: (directoryId?: string) => set(state => {
-    if (directoryId) {
-      const newImages = state.images.filter(img => img.directoryId !== directoryId);
-      return { ...filterAndSort({ ...state, images: newImages }), images: newImages };
-    } else {
-      return { images: [], filteredImages: [] };
-    }
-  }),
-
-  removeImages: (imageIds) => {
-    const idsToRemove = new Set(imageIds);
-    set(state => {
-        const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
-        return { ...filterAndSort({ ...state, images: remainingImages }), images: remainingImages };
-    });
-  },
-
-  removeImage: (imageId) => {
-    set(state => {
-        const remainingImages = state.images.filter(img => img.id !== imageId);
-        return { ...filterAndSort({ ...state, images: remainingImages }), images: remainingImages };
-    });
-  },
-
-  updateImage: (imageId, newName) => {
-      set(state => {
-          const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
-          return { ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
-      });
-  },
-
-  setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),
-
-  setFilterOptions: (options) => set({
-    availableModels: options.models,
-    availableLoras: options.loras,
-    availableSchedulers: options.schedulers,
-  }),
-
-  setSelectedFilters: (filters) => set(state => ({
-      ...filterAndSort({
-          ...state,
-          selectedModels: filters.models ?? state.selectedModels,
-          selectedLoras: filters.loras ?? state.selectedLoras,
-          selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
-      }),
-      selectedModels: filters.models ?? state.selectedModels,
-      selectedLoras: filters.loras ?? state.selectedLoras,
-      selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
-  })),
-
-  setAdvancedFilters: (filters) => set(state => ({
-    ...filterAndSort({ ...state, advancedFilters: filters }),
-    advancedFilters: filters,
-  })),
-
-  setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
-
-  setPreviewImage: (image) => set({ previewImage: image }),
-  setSelectedImage: (image) => set({ selectedImage: image }),
-
-  toggleImageSelection: (imageId) => {
-    set(state => {
-      const newSelection = new Set(state.selectedImages);
-      if (newSelection.has(imageId)) {
-        newSelection.delete(imageId);
-      } else {
-        newSelection.add(imageId);
-      }
-      return { selectedImages: newSelection };
-    });
-  },
-
-  clearImageSelection: () => set({ selectedImages: new Set() }),
-
-  // Placeholder for async action
-  deleteSelectedImages: async () => {
-    // This logic will be implemented later, likely in a dedicated hook
-    // that uses this store. For now, it just clears the selection.
-    console.log("Deleting selected images...");
-    get().clearImageSelection();
-  },
-
-  setScanSubfolders: (scan) => {
-    localStorage.setItem('image-metahub-scan-subfolders', String(scan));
-    set({ scanSubfolders: scan });
-  },
-
-  resetState: () => set({
-    images: [],
-    filteredImages: [],
-    directories: [],
-    isLoading: false,
-    progress: { current: 0, total: 0 },
-    error: null,
-    success: null,
-    selectedImage: null,
-    selectedImages: new Set(),
-    searchQuery: '',
-    availableModels: [],
-    availableLoras: [],
-    availableSchedulers: [],
-    selectedModels: [],
-    selectedLoras: [],
-    selectedSchedulers: [],
-    advancedFilters: {},
-  })
-}});
+});
