@@ -89,6 +89,16 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
 
+  // --- Hotkeys Hook ---
+  const { commands } = useHotkeys({
+    isCommandPaletteOpen,
+    setIsCommandPaletteOpen,
+    isHotkeyHelpOpen,
+    setIsHotkeyHelpOpen,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+  });
+
   const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
     setSettingsTab(tab);
     setIsSettingsModalOpen(true);
@@ -274,7 +284,7 @@ export default function App() {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        commands={[]}
+        commands={commands}
       />
 
       <HotkeyHelp

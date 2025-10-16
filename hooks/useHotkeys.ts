@@ -74,10 +74,20 @@ export const useHotkeys = ({
         advancedFilterButton.click();
       }
     });
-    hotkeyManager.registerAction('addFolder', () => handleSelectFolder());
-    hotkeyManager.registerAction('rescanFolders', () => handleLoadFromStorage());
+    hotkeyManager.registerAction('addFolder', () => {
+      handleSelectFolder();
+    });
+    hotkeyManager.registerAction('rescanFolders', () => {
+      handleLoadFromStorage().catch((error) => {
+        console.error('Error rescanning folders:', error);
+      });
+    });
     hotkeyManager.registerAction('selectAll', selectAllImages);
-    hotkeyManager.registerAction('deleteSelected', () => handleDeleteSelectedImages());
+    hotkeyManager.registerAction('deleteSelected', () => {
+      handleDeleteSelectedImages().catch((error) => {
+        console.error('Error deleting selected images:', error);
+      });
+    });
     hotkeyManager.registerAction('toggleQuickPreview', () => {
       if (selectedImage) {
         setPreviewImage(previewImage?.id === selectedImage.id ? null : selectedImage);
@@ -102,7 +112,6 @@ export const useHotkeys = ({
 
     // Bind all registered actions initially
     hotkeyManager.bindAllActions();
-    hotkeyManager.setScope('global'); // Set the initial scope to global
 
     // Set scope based on focused element
     const handleFocusChange = () => {
@@ -120,12 +129,11 @@ export const useHotkeys = ({
     document.addEventListener('focusin', handleFocusChange);
 
     // Subscribe to keymap changes and re-bind hotkeys
-    const unsubscribe = useSettingsStore.subscribe(
-      (state) => state.keymap,
-      () => {
+    const unsubscribe = useSettingsStore.subscribe((state) => {
+      if (state.keymap) {
         hotkeyManager.bindAllActions();
       }
-    );
+    });
 
     return () => {
       hotkeyManager.clearActions();

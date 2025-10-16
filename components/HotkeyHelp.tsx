@@ -30,18 +30,22 @@ const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings
         </div>
         <div className="p-4 overflow-y-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-            {hotkeys.map(({ key, description }) => (
-              <div key={key} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
-                <p className="text-gray-200">{description}</p>
-                <div className="flex space-x-1">
-                  {key.split(',')[0].split('+').map(part => (
-                    <kbd key={part} className="px-2 py-1 text-sm font-sans font-semibold text-gray-200 bg-gray-900 border border-gray-600 rounded-md">
-                      {part.replace('cmd', '⌘').replace('ctrl', 'Ctrl').replace('shift', 'Shift').replace('alt', 'Alt').toUpperCase()}
-                    </kbd>
-                  ))}
+            {hotkeys.map((hk) => {
+              const currentKey: string = hk.currentKey;
+              const description: string = hk.name;
+              return (
+                <div key={currentKey} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-700/50">
+                  <p className="text-gray-200">{description}</p>
+                  <div className="flex space-x-1">
+                    {currentKey.split(',')[0].split('+').map(part => (
+                      <kbd key={part} className="px-2 py-1 text-sm font-sans font-semibold text-gray-200 bg-gray-900 border border-gray-600 rounded-md">
+                        {part.replace('cmd', '⌘').replace('ctrl', 'Ctrl').replace('shift', 'Shift').replace('alt', 'Alt').toUpperCase()}
+                      </kbd>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div className="p-4 border-t border-gray-700 bg-gray-800/50 text-center flex-shrink-0">
