@@ -5,11 +5,12 @@ interface LoaderProps {
   progress: {
     current: number;
     total: number;
-  };
+
+  } | null;
 }
 
 const Loader: React.FC<LoaderProps> = ({ progress }) => {
-  const percentage = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
+  const percentage = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8">
@@ -18,7 +19,7 @@ const Loader: React.FC<LoaderProps> = ({ progress }) => {
       <p className="text-gray-400 mb-4">
         Please wait while we scan your folder. This might take a few moments for large collections.
       </p>
-      {progress.total > 0 && (
+      {progress && progress.total > 0 && (
         <div className="w-full max-w-md bg-gray-700 rounded-full h-4">
           <div
             className="bg-blue-500 h-4 rounded-full transition-all duration-300 ease-linear"
