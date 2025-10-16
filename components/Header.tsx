@@ -1,6 +1,6 @@
 import React from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { Settings, Plus, GalleryHorizontal } from 'lucide-react';
+import { Settings, Plus, GalleryHorizontal, Bug } from 'lucide-react';
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -51,6 +51,16 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing
             <Plus size={18} />
             Add Folder
           </button>
+          <a
+            href="https://github.com/LuqP2/Image-MetaHub/issues/new"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-2 py-2 rounded-lg transition-colors text-sm text-gray-400 hover:bg-gray-700 hover:text-white flex items-center gap-2"
+            title="Report a bug or provide feedback"
+          >
+            <Bug size={16} />
+            Feedback & Bugs
+          </a>
           <div className="border-l border-gray-600 h-8 mx-2"></div>
           <button
             onClick={onOpenSettings}
