@@ -66,6 +66,9 @@ interface ImageState {
 
   // Cleanup invalid images
   cleanupInvalidImages: () => void;
+
+  // Reset Actions
+  resetState: () => void;
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
