@@ -333,7 +333,6 @@ export default function App() {
                 filteredCount={filteredImages.length}
                 totalCount={images.length}
                 directoryCount={directories.length}
-                isIndexing={progress.total > 0 && progress.current < progress.total}
                 indexingState={indexingState}
                 progress={progress}
                 onPauseIndexing={handlePauseIndexing}

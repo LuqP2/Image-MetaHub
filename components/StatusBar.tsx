@@ -5,7 +5,6 @@ interface StatusBarProps {
   filteredCount: number;
   totalCount: number;
   directoryCount: number;
-  isIndexing?: boolean;
   indexingState?: 'idle' | 'indexing' | 'paused';
   progress?: { current: number; total: number };
   onPauseIndexing?: () => void;
@@ -17,7 +16,6 @@ const StatusBar: React.FC<StatusBarProps> = ({
   filteredCount, 
   totalCount, 
   directoryCount,
-  isIndexing = false,
   indexingState = 'idle',
   progress,
   onPauseIndexing,
@@ -29,7 +27,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
   return (
     <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700 text-gray-300 flex justify-between items-center">
       <span>
-        {isIndexing && progress ? (
+        {progress ? (
           <>
             {indexingState === 'paused' ? '⏸️' : '🔄'} <span className={`font-bold ${indexingState === 'paused' ? 'text-orange-400' : 'text-yellow-400'}`}>
               {indexingState === 'paused' ? 'Indexing Paused:' : 'Indexing:'}
@@ -43,9 +41,9 @@ const StatusBar: React.FC<StatusBarProps> = ({
       </span>
       
       <div className="flex items-center gap-2">
-        {isIndexing && (
+        {progress && (
           <>
-            {indexingState === 'indexing' && onPauseIndexing && (
+            {indexingState !== 'paused' && onPauseIndexing && (
               <button
                 onClick={onPauseIndexing}
                 className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white text-sm rounded flex items-center gap-1 transition-colors"

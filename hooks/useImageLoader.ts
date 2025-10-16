@@ -186,23 +186,35 @@ export function useImageLoader() {
     // AbortController for cancelling ongoing operations
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Helper function to check if indexing should be paused
-    const shouldPauseIndexing = useCallback(() => {
-        return indexingState === 'paused';
-    }, [indexingState]);
-
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback(() => {
         return abortControllerRef.current?.signal.aborted || indexingState === 'idle';
     }, [indexingState]);
 
-    // Function to wait while paused
+    // Function to wait while paused - monitors state changes in real-time
     const waitWhilePaused = useCallback(async () => {
-        while (shouldPauseIndexing()) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            if (shouldCancelIndexing()) break;
-        }
-    }, [shouldPauseIndexing, shouldCancelIndexing]);
+        return new Promise<void>((resolve) => {
+            const checkState = () => {
+                const currentState = useImageStore.getState().indexingState;
+                const isCancelled = abortControllerRef.current?.signal.aborted || currentState === 'idle';
+
+                if (isCancelled) {
+                    resolve();
+                    return;
+                }
+
+                if (currentState !== 'paused') {
+                    resolve();
+                    return;
+                }
+
+                // Continue checking every 100ms
+                setTimeout(checkState, 100);
+            };
+
+            checkState();
+        });
+    }, []);
 
     useEffect(() => {
         if (!getIsElectron()) return;
@@ -248,10 +260,13 @@ export function useImageLoader() {
         });
 
         const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
-            console.log(`[Renderer] Received indexing complete for ${directoryId} - CALLING FINALIZE FROM ELECTRON`);
-            const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
-            if (directory) {
-                finalizeDirectoryLoad(directory);
+            const currentState = useImageStore.getState().indexingState;
+            // Only finalize if not paused or cancelled
+            if (currentState === 'indexing') {
+                const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
+                if (directory) {
+                    finalizeDirectoryLoad(directory);
+                }
             }
         });
 
@@ -292,6 +307,7 @@ export function useImageLoader() {
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
+        setIndexingState('idle');
     }, [setSuccess, setLoading]);
 
 
@@ -409,6 +425,9 @@ export function useImageLoader() {
                 removeImages(diff.deletedFileIds);
             }
 
+            // Set progress even if no new files to process
+            setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
+
             if (diff.newAndModifiedFiles.length > 0) {
                 // Sort files by lastModified descending (newest first)
                 const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
@@ -456,7 +475,11 @@ export function useImageLoader() {
 
             } else {
                 // No new files to process, just finalize with what we have
-                 finalizeDirectoryLoad(directory);
+                // But wait a bit to allow UI to show indexing state
+                console.log(`[LOAD] No new files for ${directory.name}, finalizing after delay`);
+                setTimeout(() => {
+                    finalizeDirectoryLoad(directory);
+                }, 100);
             }
 
         } catch (err) {
@@ -465,6 +488,7 @@ export function useImageLoader() {
                 setError(`Failed to load directory ${directory.name}. Check console for details.`);
             }
              setLoading(false);
+             setIndexingState('idle');
         }
     }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
