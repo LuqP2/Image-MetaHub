@@ -8,6 +8,11 @@ import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
+
+// Extended FileSystemFileHandle interface for Electron compatibility
+interface ElectronFileHandle extends FileSystemFileHandle {
+  _filePath?: string;
+}
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 import { parseNijiMetadata } from './parsers/nijiParser';
@@ -68,7 +73,7 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
     } else {
       return null;
     }
-  } catch (error) {
+  } catch {
     // Silent error - most images won't have sidecar JSON
     return null;
   }
@@ -76,7 +81,6 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
 
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
-  console.log('🔍 Starting PNG metadata parsing...');
   const view = new DataView(buffer);
   let offset = 8;
   const decoder = new TextDecoder();
@@ -90,37 +94,14 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     const length = view.getUint32(offset);
     const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
     
-    // Log ALL chunk types found
-    console.log(`🔍 Found PNG chunk type: ${type} (length: ${length})`);
-
     if (type === 'tEXt') {
       const chunkData = buffer.slice(offset + 8, offset + 8 + length);
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
       
-      // Log ALL text chunks found, not just the expected ones
-      console.log(`📦 Found PNG text chunk: "${keyword}" (length: ${text?.length || 0})`);
-      if (text && text.length > 0) {
-        console.log(`   Content preview: ${text.substring(0, 150)}${text.length > 150 ? '...' : ''}`);
-      }
-      
       if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt'].includes(keyword) && text) {
         chunks[keyword.toLowerCase()] = text;
         foundChunks++;
-        console.log(`✅ Added to processing queue: ${keyword} -> ${keyword.toLowerCase()}`);
-        
-        // Special logging for Fooocus detection
-        if (keyword.toLowerCase() === 'parameters') {
-          console.log('🎯 Found parameters chunk - checking for Fooocus patterns:');
-          console.log(`   Contains 'Fooocus': ${text.includes('Fooocus')}`);
-          console.log(`   Contains 'Version: f2.': ${text.match(/Version:\s*f2\./i) ? 'YES' : 'NO'}`);
-          console.log(`   Contains 'flux': ${text.match(/Model:\s*flux/i) ? 'YES' : 'NO'}`);
-          console.log(`   Contains 'Module 1: ae': ${text.match(/Module\s*1:\s*ae/i) ? 'YES' : 'NO'}`);
-          
-          // Log full content for debugging
-          console.log('🎯 Full parameters content for analysis:');
-          console.log(text);
-        }
       }
     } else if (type === 'iTXt') {
       const chunkData = new Uint8Array(buffer.slice(offset + 8, offset + 8 + length));
@@ -161,41 +142,28 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     offset += 12 + length;
   }
 
-  // Configure debug logging
-  const DEBUG = true;
-  const log = (...args: any[]) => DEBUG && console.log(...args);
-
   // Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
   if (chunks.workflow) {
-    log('✅ Detected "workflow" chunk, treating as ComfyUI metadata.');
     const comfyMetadata: ComfyUIMetadata = {};
     if (chunks.workflow) comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata;
   } else if (chunks.parameters) {
-    log('✅ Detected "parameters" chunk, treating as A1111-style metadata.');
-    console.log('🔍 Parameters content preview:', chunks.parameters.substring(0, 100));
     return { parameters: chunks.parameters };
   } else if (chunks.invokeai_metadata) {
-    log('✅ Detected "invokeai_metadata" chunk, treating as InvokeAI metadata.');
     return JSON.parse(chunks.invokeai_metadata);
   } else if (chunks.prompt) {
-    log('✅ Detected "prompt" chunk, treating as ComfyUI (prompt only) metadata.');
     return { prompt: chunks.prompt };
   }
 
   // If no PNG chunks found, try to extract EXIF data from PNG (some tools like Fooocus save metadata in EXIF)
-  console.log('🔍 No PNG text chunks found, trying EXIF extraction from PNG...');
   try {
     const exifResult = await parseJPEGMetadata(buffer);
     if (exifResult) {
-      console.log('✅ Found EXIF metadata in PNG file!');
       return exifResult;
-    } else {
-      console.log('❌ No EXIF metadata found in PNG file');
     }
-  } catch (exifError) {
-    console.log('❌ EXIF extraction from PNG failed:', exifError);
+  } catch {
+    // Silent error - EXIF extraction may fail
   }
 
   return null;
@@ -215,7 +183,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     if (!exifData) return null;
     
     // Check all possible field names for UserComment (A1111 and SwarmUI store metadata here in JPEGs)
-    let metadataText: any = 
+    let metadataText: string | Uint8Array | undefined = 
       exifData.UserComment || 
       exifData.userComment ||
       exifData['User Comment'] ||
@@ -224,14 +192,6 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       null;
     
     if (!metadataText) return null;
-    
-    console.log('📋 Found EXIF metadata text from field:', 
-      exifData.UserComment ? 'UserComment' :
-      exifData.userComment ? 'userComment' :
-      exifData['User Comment'] ? 'User Comment' :
-      exifData.ImageDescription ? 'ImageDescription' :
-      exifData.Parameters ? 'Parameters' : 'unknown'
-    );
     
     // Convert Uint8Array to string if needed (exifr returns UserComment as Uint8Array)
     if (metadataText instanceof Uint8Array) {
@@ -259,32 +219,27 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     if (!metadataText) {
-      console.log('⚠️ No UserComment or similar field found in JPEG');
       return null;
     }
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
-      console.log(`✅ Detected A1111-style parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
     // Easy Diffusion uses similar format but without Model hash
     if (metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('Sampler:') && !metadataText.includes('Model hash:')) {
-      console.log(`✅ Detected Easy Diffusion parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
     // Midjourney uses parameter flags like --v, --ar, --q, --s
     if (metadataText.includes('--v') || metadataText.includes('--ar') || metadataText.includes('--q') || metadataText.includes('--s') || metadataText.includes('Midjourney')) {
-      console.log(`✅ Detected Midjourney parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
     // Forge uses A1111-style parameters but includes "Forge" or "Gradio" indicators
     if ((metadataText.includes('Forge') || metadataText.includes('Gradio')) && 
         metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
-      console.log(`✅ Detected Forge parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
@@ -293,7 +248,6 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
         metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('CFG scale:') &&
         !metadataText.includes('Model hash:') && !metadataText.includes('Forge') && !metadataText.includes('Gradio') &&
         !metadataText.includes('DreamStudio') && !metadataText.includes('Stability AI') && !metadataText.includes('--niji')) {
-      console.log(`✅ Detected Draw Things parameters in JPEG UserComment.`);
       return { parameters: metadataText };
     }
 
@@ -305,32 +259,27 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       if (parsedMetadata.c2pa_manifest || 
           (parsedMetadata.exif_data && (parsedMetadata.exif_data['openai:dalle'] || 
                                         parsedMetadata.exif_data.Software?.includes('DALL-E')))) {
-        console.log(`✅ Detected DALL-E C2PA/EXIF metadata in JPEG.`);
         return parsedMetadata;
       }
       
       // Check for SwarmUI format (sui_image_params)
       if (parsedMetadata.sui_image_params) {
-        console.log(`✅ Detected SwarmUI metadata in JPEG.`);
         return parsedMetadata;
       }
       
       if (isInvokeAIMetadata(parsedMetadata)) {
-        console.log(`✅ Successfully parsed InvokeAI JSON metadata from JPEG.`);
         return parsedMetadata;
       } else if (isComfyUIMetadata(parsedMetadata)) {
-        console.log(`✅ Successfully parsed ComfyUI JSON metadata from JPEG.`);
         return parsedMetadata;
       } else {
-        console.log(`✅ Successfully parsed generic JSON metadata from JPEG.`);
         return parsedMetadata;
       }
-    } catch (jsonError) {
-      console.warn(`⚠️ Could not parse JPEG metadata as JSON, might be plain text format.`);
+    } catch {
+      // Silent error - JSON parsing may fail
       return null;
     }
-  } catch (error) {
-    console.error('❌ Failed to parse JPEG EXIF metadata:', error);
+  } catch {
+    // Silent error - EXIF parsing may fail
     return null;
   }
 }
@@ -366,7 +315,6 @@ async function processSingleFileOptimized(
       // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
       const view = new DataView(fileData);
       if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
-        console.log(`🖼️ Processing PNG file: ${fileEntry.handle.name}`);
         rawMetadata = await parsePNGMetadata(fileData);
       } else if (view.getUint16(0) === 0xFFD8) {
         rawMetadata = await parseJPEGMetadata(fileData);
@@ -387,7 +335,6 @@ async function processSingleFileOptimized(
       const sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path);
       if (sidecarJson) {
         rawMetadata = sidecarJson;
-        console.log(`🎯 Using Easy Diffusion sidecar JSON metadata for: ${fileEntry.path}`);
       }
     }
 
@@ -401,7 +348,6 @@ async function processSingleFileOptimized(
            rawMetadata.parameters.match(/Model:\s*flux/i) ||
            rawMetadata.parameters.includes('Distilled CFG Scale') ||
            rawMetadata.parameters.match(/Module\s*1:\s*ae/i))) {
-        console.log('🎯 Detected Fooocus metadata, parsing...');
         normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
       } else if (isSwarmUIMetadata(rawMetadata)) {
         normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
@@ -418,7 +364,7 @@ async function processSingleFileOptimized(
             prompt = JSON.parse(sanitizeJson(prompt));
           }
         } catch (e) {
-          console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
+          // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
         }
         const resolvedParams = resolvePromptFromGraph(workflow, prompt);
         normalizedMetadata = {
@@ -444,20 +390,16 @@ async function processSingleFileOptimized(
       } else if (isMidjourneyMetadata(rawMetadata)) {
         normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
       } else if (isNijiMetadata(rawMetadata)) {
-        console.log(`✅ Successfully parsed Niji Journey metadata.`);
         normalizedMetadata = parseNijiMetadata(rawMetadata.parameters);
       } else if (isForgeMetadata(rawMetadata)) {
         normalizedMetadata = parseForgeMetadata(rawMetadata);
       } else if (isDalleMetadata(rawMetadata)) {
         normalizedMetadata = parseDalleMetadata(rawMetadata);
       } else if (isFireflyMetadata(rawMetadata)) {
-        console.log(`✅ Successfully parsed Adobe Firefly metadata.`);
         normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
       } else if (isDreamStudioMetadata(rawMetadata)) {
-        console.log(`✅ Successfully parsed DreamStudio metadata.`);
         normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);
       } else if (isDrawThingsMetadata(rawMetadata)) {
-        console.log(`✅ Successfully parsed Draw Things metadata.`);
         normalizedMetadata = parseDrawThingsMetadata(rawMetadata.parameters);
       } else if (isInvokeAIMetadata(rawMetadata)) {
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
@@ -483,7 +425,7 @@ async function processSingleFileOptimized(
           img.src = objectUrl;
         });
       } catch (e) {
-        console.warn('Failed to read image dimensions:', e);
+        // console.warn('Failed to read image dimensions:', e);
         // Keep width/height as 0 if failed
       }
     }
@@ -492,9 +434,9 @@ async function processSingleFileOptimized(
     let sortDate = file.lastModified;
 
     // For Electron files, try to get creation date
-    if (isElectron && (fileEntry.handle as any)._filePath) {
+    if (isElectron && (fileEntry.handle as ElectronFileHandle)._filePath) {
       try {
-        const filePath = (fileEntry.handle as any)._filePath;
+        const filePath = (fileEntry.handle as ElectronFileHandle)._filePath!;
         const stats = await (window as any).electronAPI.getFileStats(filePath);
         if (stats && stats.success && stats.stats && stats.stats.birthtimeMs) {
           // Use creation date for all files - this is more accurate for sorting
@@ -556,7 +498,7 @@ export async function processFiles(
   scanSubfolders: boolean,
   onDeletion: (deletedFileIds: string[]) => void
 ): Promise<void> {
-  const currentFiles = fileEntries.map(entry => ({
+  const currentFiles = fileEntries.map((entry) => ({
     name: entry.handle.name,
     lastModified: entry.lastModified,
   }));
@@ -583,26 +525,49 @@ export async function processFiles(
   const total = filesToProcess.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
-  const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
   const CONCURRENCY_LIMIT = isElectron ? 50 : 20; // Higher concurrency in Electron (less IPC overhead)
+  const FILE_READ_BATCH_SIZE = CONCURRENCY_LIMIT; // Number of files to read at once (Electron only)
   let batch: IndexedImage[] = [];
+
+  // Async pool implementation for controlled concurrency
+  async function asyncPool<T, R>(
+    concurrency: number,
+    iterable: T[],
+    iteratorFn: (item: T) => Promise<R>
+  ): Promise<R[]> {
+    const ret: Promise<R>[] = [];
+    const executing = new Set<Promise<R>>();
+
+    for (const item of iterable) {
+      const p = Promise.resolve().then(() => iteratorFn(item));
+      ret.push(p);
+      executing.add(p);
+
+      const clean = () => executing.delete(p);
+      p.then(clean).catch(clean);
+
+      if (executing.size >= concurrency) {
+        await Promise.race(executing);
+      }
+    }
+
+    return Promise.all(ret);
+  }
 
   // Check if we're in Electron and can use optimized batch reading
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
 
-  let newlyProcessedImages: IndexedImage[] = [];
+  const newlyProcessedImages: IndexedImage[] = [];
 
   // ===== OPTIMIZED PATH: Batch file reading (Electron only) =====
   if (useOptimizedPath) {
-    console.log(`🚀 Using optimized batch file reading for ${total} images`);
-    
     // Split files into read batches to reduce IPC overhead
     const fileReadBatches = chunkArray(imageFiles, FILE_READ_BATCH_SIZE);
     
     for (const readBatch of fileReadBatches) {
       // Extract ABSOLUTE file paths for batch reading (required for security check)
       const filePaths = readBatch.map(entry => {
-        const filePath = (entry.handle as any)._filePath;
+        const filePath = (entry.handle as ElectronFileHandle)._filePath!;
         if (!filePath) {
           console.error('Missing _filePath on file handle:', entry.handle.name);
         }
@@ -641,18 +606,18 @@ export async function processFiles(
         }
       }
       
-      // Process this read batch with concurrency (all in parallel since data is pre-loaded)
-      const results = await Promise.all(
-        readBatch.map(async (fileEntry) => {
-          const filePath = (fileEntry.handle as any)._filePath;
-          const fileData = fileDataMap.get(filePath);
-          
-          const indexedImage = await processSingleFileOptimized(fileEntry, directoryId, fileData);
-          processedCount++;
-          
-          return indexedImage;
-        })
-      );
+      // Process this read batch with controlled concurrency
+      const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string, lastModified: number }): Promise<IndexedImage | null> => {
+        const filePath = (fileEntry.handle as ElectronFileHandle)._filePath!;
+        const fileData = fileDataMap.get(filePath);
+        
+        const indexedImage = await processSingleFileOptimized(fileEntry, directoryId, fileData);
+        processedCount++;
+        
+        return indexedImage;
+      };
+
+      const results = await asyncPool(CONCURRENCY_LIMIT, readBatch, iteratorFn);
       
       // Update progress once per batch (more efficient)
       setProgress({ current: processedCount, total });
@@ -676,39 +641,11 @@ export async function processFiles(
       onBatchProcessed(batch);
       newlyProcessedImages.push(...batch);
     }
-    
-    console.log(`✅ Completed optimized batch processing of ${total} images`);
 
   } else {
     // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
-    console.log(`📂 Using standard file reading for ${total} images`);
     
-    // Async pool implementation for controlled concurrency
-    async function asyncPool<T, R>(
-      concurrency: number,
-      iterable: T[],
-      iteratorFn: (item: T) => Promise<R>
-    ): Promise<R[]> {
-      const ret: Promise<R>[] = [];
-      const executing = new Set<Promise<R>>();
-
-      for (const item of iterable) {
-        const p = Promise.resolve().then(() => iteratorFn(item));
-        ret.push(p);
-        executing.add(p);
-
-        const clean = () => executing.delete(p);
-        p.then(clean).catch(clean);
-
-        if (executing.size >= concurrency) {
-          await Promise.race(executing);
-        }
-      }
-
-      return Promise.all(ret);
-    }
-
-    const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string }): Promise<IndexedImage | null> => {
+    const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string, lastModified: number }): Promise<IndexedImage | null> => {
       const indexedImage = await processSingleFile(fileEntry, directoryId);
       processedCount++;
 

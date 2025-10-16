@@ -348,7 +348,7 @@ export function useImageLoader() {
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
             const regeneratedCachedImages = diff.cachedImages.length > 0
-                ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => img.name))
+                ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => ({ name: img.name, lastModified: img.lastModified })))
                 : [];
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));

@@ -24,8 +24,6 @@ interface ParserModule {
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
-    console.log('🔍 getMetadataParser called with metadata keys:', Object.keys(metadata));
-    
     // Check for DALL-E C2PA/EXIF metadata first (most specific)
     if ('c2pa_manifest' in metadata || 
         ('exif_data' in metadata && typeof metadata.exif_data === 'object') ||
