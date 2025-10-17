@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useFavoritesStore } from './store/useFavoritesStore';
+import { useAppStore } from './store/useAppStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
@@ -22,7 +24,9 @@ import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
+import { Toaster } from 'react-hot-toast';
 import HotkeyHelp from './components/HotkeyHelp';
+import FavoritesPage from './components/FavoritesPage';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
@@ -33,6 +37,7 @@ export default function App() {
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
+  const favorites = useFavoritesStore((state) => state.favorites);
   const {
     images,
     filteredImages,
@@ -46,9 +51,6 @@ export default function App() {
     selectedImage,
     selectedImages,
     searchQuery,
-    availableModels,
-    availableLoras,
-    availableSchedulers,
     selectedModels,
     selectedLoras,
     selectedSchedulers,
@@ -72,6 +74,35 @@ export default function App() {
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
 
+  // --- Derived State for Filters ---
+  const { availableModels, availableLoras, availableSchedulers } = React.useMemo(() => {
+    const sourceImages = view === 'favorites' ? favorites : images;
+
+    const models = new Set<string>();
+    const loras = new Set<string>();
+    const schedulers = new Set<string>();
+
+    sourceImages.forEach((image) => {
+      const meta = image.metadata?.normalizedMetadata;
+      if (meta) {
+        if (meta.model) models.add(meta.model);
+        if (meta.scheduler) schedulers.add(meta.scheduler);
+        if (meta.loras) {
+          meta.loras.forEach((lora: any) => {
+            const loraName = typeof lora === 'string' ? lora : lora.model_name;
+            if (loraName) loras.add(loraName);
+          });
+        }
+      }
+    });
+
+    return {
+      availableModels: Array.from(models).sort(),
+      availableLoras: Array.from(loras).sort(),
+      availableSchedulers: Array.from(schedulers).sort(),
+    };
+  }, [view, images, favorites]);
+
   // --- Settings Store State ---
   const {
     itemsPerPage,
@@ -80,6 +111,9 @@ export default function App() {
     toggleViewMode,
     theme,
   } = useSettingsStore();
+
+  // --- App Store State ---
+  const { view, setView } = useAppStore();
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');
@@ -108,6 +142,10 @@ export default function App() {
   const handleOpenHotkeySettings = () => {
     setIsHotkeyHelpOpen(false);
     handleOpenSettings('hotkeys');
+  };
+
+  const handleToggleFavoritesView = () => {
+    setView(view === 'favorites' ? 'gallery' : 'favorites');
   };
 
   // --- Indexing Control Functions ---
@@ -225,6 +263,11 @@ export default function App() {
     handleLoadFromStorage();
   }, [handleLoadFromStorage]);
 
+  // On mount, load favorites from storage
+  useEffect(() => {
+    useFavoritesStore.getState().loadFavorites();
+  }, []);
+
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
     const electronAPI = window.electronAPI as any;
@@ -280,6 +323,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
+      <Toaster position="bottom-right" toastOptions={{
+        style: {
+          background: '#2d3748',
+          color: '#e2e8f0',
+        },
+      }} />
       <BrowserCompatibilityWarning />
 
       <CommandPalette
@@ -340,6 +389,8 @@ export default function App() {
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onShowFavorites={handleToggleFavoritesView}
+          isFavoritesView={view === 'favorites'}
           isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           isIndexingPaused={indexingState === 'paused'}
         />
@@ -352,6 +403,9 @@ export default function App() {
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
           {hasDirectories && (
+            view === 'favorites' ? (
+              <FavoritesPage />
+            ) : (
             <>
               <StatusBar
                 filteredCount={filteredImages.length}
@@ -399,6 +453,7 @@ export default function App() {
                 totalItems={filteredImages.length}
               />
             </>
+            )
           )}
         </main>
 

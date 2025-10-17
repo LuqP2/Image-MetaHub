@@ -9,6 +9,7 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import { favoritesManager } from './electron/favoritesManager.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -413,6 +414,38 @@ function setupFileOperationHandlers() {
     };
   });
   // --- End Settings IPC ---
+
+  // --- Favorites IPC ---
+  ipcMain.handle('get-favorites', async () => {
+    try {
+      const favorites = await favoritesManager.readFavorites();
+      return { success: true, favorites };
+    } catch (error) {
+      console.error('Error getting favorites:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('add-favorite', async (event, image) => {
+    try {
+      const updatedFavorites = await favoritesManager.addFavorite(image);
+      return { success: true, favorites: updatedFavorites };
+    } catch (error) {
+      console.error('Error adding favorite:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('remove-favorite', async (event, imageId) => {
+    try {
+      const updatedFavorites = await favoritesManager.removeFavorite(imageId);
+      return { success: true, favorites: updatedFavorites };
+    } catch (error) {
+      console.error('Error removing favorite:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  // --- End Favorites IPC ---
 
   // Handle updating the set of allowed directories for file operations
   ipcMain.handle('update-allowed-paths', (event, paths) => {

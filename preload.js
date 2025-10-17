@@ -71,7 +71,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   // TEST ONLY: Simulate update dialog
-  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
+  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog'),
+
+  // --- Favorites API ---
+  getFavorites: () => ipcRenderer.invoke('get-favorites'),
+  addFavorite: (image) => ipcRenderer.invoke('add-favorite', image),
+  removeFavorite: (imageId) => ipcRenderer.invoke('remove-favorite', imageId)
 });
 
 // DEBUG: Log that preload script has loaded

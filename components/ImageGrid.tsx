@@ -4,23 +4,41 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
+import { useFavoritesStore } from '../store/useFavoritesStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Star } from 'lucide-react';
 
 // --- ImageCard Component (with slight modifications) ---
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
-  style: React.CSSProperties; // Added for react-virtualized
-  onImageLoad: () => void; // Added to notify parent of image load
+  style: React.CSSProperties;
+  onImageLoad: () => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   directoryPath?: string;
+  isFavorite: boolean;
+  onToggleFavorite: (image: IndexedImage) => void;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
+const ImageCard: React.FC<ImageCardProps> = ({
+  image,
+  onImageClick,
+  isSelected,
+  style,
+  onImageLoad,
+  onContextMenu,
+  directoryPath,
+  isFavorite,
+  onToggleFavorite,
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent image selection
+    onToggleFavorite(image);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -80,13 +98,25 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
-      {isSelected && (
-        <div className="absolute top-2 right-2 z-10">
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        {isSelected && (
           <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
             <Check className="w-4 h-4 text-white" />
           </div>
-        </div>
-      )}
+        )}
+        <button
+          onClick={handleFavoriteClick}
+          className={`p-1.5 bg-black/50 rounded-full transition-all duration-200 ${
+            isFavorite
+              ? 'text-yellow-400 opacity-100'
+              : 'text-white opacity-0 group-hover:opacity-100 hover:text-yellow-300'
+          }`}
+          title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+        >
+          <Star className="h-4 w-4" fill={isFavorite ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+
       <button
         onClick={handlePreviewClick}
         className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
@@ -126,6 +156,7 @@ const GUTTER_SIZE = 8; // Space between images
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
+  const { isFavorite, toggleFavorite } = useFavoritesStore();
   const {
     contextMenu,
     showContextMenu,
@@ -168,7 +199,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               rowHeight={imageSize + GUTTER_SIZE}
               height={height}
               width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories }}
+              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories, isFavorite, toggleFavorite }}
               overscanRowCount={4}
               overscanColumnCount={2}
             >
@@ -251,7 +282,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
 // Cell renderer for react-window grid
 const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu } = data;
+  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, isFavorite, toggleFavorite } = data;
   const index = rowIndex * columnCount + columnIndex;
   const image = images[index];
   if (!image) return null;
@@ -268,6 +299,8 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
         onImageLoad={() => {}}
         onContextMenu={handleContextMenu}
         directoryPath={directoryPath}
+        isFavorite={isFavorite(image.id)}
+        onToggleFavorite={toggleFavorite}
       />
     </div>
   );

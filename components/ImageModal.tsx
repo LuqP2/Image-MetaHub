@@ -1,8 +1,11 @@
 import React, { useEffect, useState, FC } from 'react';
+import toast from 'react-hot-toast';
 import { type IndexedImage, type BaseMetadata } from '../types';
+import { useFavoritesStore } from '../store/useFavoritesStore';
+import { useAppStore } from '../store/useAppStore';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Star } from 'lucide-react';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -64,6 +67,56 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+
+  const { isFavorite, toggleFavorite } = useFavoritesStore();
+  const setView = useAppStore((state) => state.setView);
+  const isImageFavorite = isFavorite(image.id);
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isAdding = !isImageFavorite;
+    await toggleFavorite(image);
+
+    toast.custom((t) => (
+      <div
+        className={`${
+          t.visible ? 'animate-enter' : 'animate-leave'
+        } max-w-md w-full bg-gray-700 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}
+      >
+        <div className="flex-1 w-0 p-4">
+          <div className="flex items-start">
+            <div className="ml-3 flex-1">
+              <p className="text-sm font-medium text-gray-100">
+                {isAdding ? 'Added to favorites' : 'Removed from favorites'}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex border-l border-gray-600">
+          {isAdding && (
+            <button
+              onClick={() => {
+                setView('favorites');
+                toast.dismiss(t.id);
+              }}
+              className="w-full border border-transparent rounded-none p-4 flex items-center justify-center text-sm font-medium text-blue-400 hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              View
+            </button>
+          )}
+          <button
+            onClick={() => {
+              toggleFavorite(image); // Undo the action
+              toast.dismiss(t.id);
+            }}
+            className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-gray-400 hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          >
+            Undo
+          </button>
+        </div>
+      </div>
+    ), { duration: 5000 });
+  };
 
   // Full screen browser API functions
   const enterFullscreen = async () => {
@@ -432,7 +485,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             ) : (
               <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2">
-                {image.name}
+                <span className="flex-grow">{image.name}</span>
+                <button
+                  onClick={handleToggleFavorite}
+                  className={`p-1 rounded-full transition-colors duration-200 ${
+                    isImageFavorite
+                      ? 'text-yellow-400 hover:text-yellow-500'
+                      : 'text-gray-400 hover:text-yellow-400'
+                  }`}
+                  title={isImageFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  <Star size={18} fill={isImageFavorite ? 'currentColor' : 'none'} />
+                </button>
                 <button 
                   onClick={() => setIsRenaming(true)} 
                   disabled={isIndexing}

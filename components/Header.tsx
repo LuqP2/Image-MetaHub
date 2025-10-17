@@ -1,15 +1,24 @@
 import React from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { Settings, Plus, GalleryHorizontal, Bug } from 'lucide-react';
+import { Settings, Plus, GalleryHorizontal, Bug, Star } from 'lucide-react';
 
 interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
+  onShowFavorites: () => void;
+  isFavoritesView: boolean;
   isIndexing?: boolean;
   isIndexingPaused?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false, isIndexingPaused = false }) => {
+const Header: React.FC<HeaderProps> = ({
+  onAddFolder,
+  onOpenSettings,
+  onShowFavorites,
+  isFavoritesView,
+  isIndexing = false,
+  isIndexingPaused = false,
+}) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
   const directories = useImageStore((state) => state.directories);
   const hasDirectories = directories.length > 0;
@@ -39,6 +48,18 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing
               <div className="border-l border-gray-600 h-8 mx-2"></div>
             </>
           )}
+          <button
+            onClick={onShowFavorites}
+            className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+              isFavoritesView
+                ? 'bg-yellow-500 text-white shadow-lg shadow-yellow-500/30'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+            }`}
+            title="Show Favorites"
+          >
+            <Star size={18} />
+            Favorites
+          </button>
           <button
             onClick={onAddFolder}
             disabled={isIndexing || isIndexingPaused}

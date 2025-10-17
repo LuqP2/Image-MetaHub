@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download } from 'lucide-react';
+import { useFavoritesStore } from '../store/useFavoritesStore';
+import { Copy, Folder, Download, Star } from 'lucide-react';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -12,6 +13,7 @@ interface ImageTableProps {
 
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
   const directories = useImageStore((state) => state.directories);
+  const { isFavorite, toggleFavorite } = useFavoritesStore();
   const {
     contextMenu,
     showContextMenu,
@@ -37,6 +39,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
       <table className="w-full text-sm">
         <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
           <tr>
+            <th className="px-4 py-2 text-center">Fav</th>
             <th className="px-4 py-2 text-left">Preview</th>
             <th className="px-4 py-2 text-left">Filename</th>
             <th className="px-4 py-2 text-left">Prompt</th>
@@ -52,6 +55,8 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
               onImageClick={onImageClick}
               isSelected={selectedImages.has(image.id)}
               onContextMenu={handleContextMenu}
+              isFavorite={isFavorite(image.id)}
+              onToggleFavorite={toggleFavorite}
             />
           ))}
         </tbody>
@@ -134,11 +139,25 @@ interface ImageTableRowProps {
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
+  isFavorite: boolean;
+  onToggleFavorite: (image: IndexedImage) => void;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = ({
+  image,
+  onImageClick,
+  isSelected,
+  onContextMenu,
+  isFavorite,
+  onToggleFavorite,
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row selection
+    onToggleFavorite(image);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -200,6 +219,18 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
+      <td className="px-4 py-2 text-center">
+        <button
+          onClick={handleFavoriteClick}
+          className={`p-1 rounded-full transition-colors duration-200 ${
+            isFavorite
+              ? 'text-yellow-400 hover:text-yellow-500'
+              : 'text-gray-400 hover:text-yellow-400'
+          }`}
+        >
+          <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
+        </button>
+      </td>
       <td className="px-4 py-2">
         <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (

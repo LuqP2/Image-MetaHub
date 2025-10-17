@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFavoritesStore } from '../store/useFavoritesStore';
 import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
+import { useAppStore } from '../store/useAppStore';
 
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
@@ -38,6 +41,7 @@ export const useHotkeys = ({
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
   const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
+  const { toggleFavorite } = useFavoritesStore();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const element = document.querySelector<HTMLElement>(`[data-area='${area}']`);
@@ -96,6 +100,52 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('openFullscreen', () => {
       if (selectedImage) {
         setSelectedImage(selectedImage);
+      }
+    });
+    hotkeyManager.registerAction('toggleFavorite', () => {
+      const { selectedImage } = useImageStore.getState();
+      if (selectedImage) {
+        const { isFavorite, toggleFavorite } = useFavoritesStore.getState();
+        const { setView } = useAppStore.getState();
+        const isAdding = !isFavorite(selectedImage.id);
+
+        toggleFavorite(selectedImage).then(() => {
+          toast.custom((t) => (
+            <div
+              className={`${
+                t.visible ? 'animate-enter' : 'animate-leave'
+              } max-w-md w-full bg-gray-700 shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5`}
+            >
+              <div className="flex-1 w-0 p-4">
+                <p className="text-sm font-medium text-gray-100">
+                  {isAdding ? 'Added to favorites' : 'Removed from favorites'}
+                </p>
+              </div>
+              <div className="flex border-l border-gray-600">
+                {isAdding && (
+                  <button
+                    onClick={() => {
+                      setView('favorites');
+                      toast.dismiss(t.id);
+                    }}
+                    className="w-full border-transparent rounded-none p-4 text-sm font-medium text-blue-400 hover:text-blue-300"
+                  >
+                    View
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    toggleFavorite(selectedImage);
+                    toast.dismiss(t.id);
+                  }}
+                  className="w-full border-transparent rounded-none rounded-r-lg p-4 text-sm font-medium text-gray-400 hover:text-gray-300"
+                >
+                  Undo
+                </button>
+              </div>
+            </div>
+          ), { duration: 5000 });
+        });
       }
     });
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
