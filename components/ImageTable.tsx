@@ -26,11 +26,11 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   } = useContextMenu();
 
   const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
-    // Only show context menu if only one image is selected
-    if (selectedImages.size === 1 && selectedImages.has(image.id)) {
-      const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
-      showContextMenu(e, image, directoryPath);
+    if (selectedImages.size > 1) {
+      return;
     }
+    const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
+    showContextMenu(e, image, directoryPath);
   };
   return (
     <div className="h-full overflow-auto">
@@ -59,9 +59,8 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
 
       {contextMenu.visible && (
         <div
-          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={copyImage}
@@ -76,7 +75,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           <button
             onClick={copyPrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.prompt}
+            disabled={!contextMenu.image?.prompt}
           >
             <Copy className="w-4 h-4" />
             Copy Prompt
@@ -84,7 +83,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           <button
             onClick={copyNegativePrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.negativePrompt}
+            disabled={!contextMenu.image?.negativePrompt}
           >
             <Copy className="w-4 h-4" />
             Copy Negative Prompt
@@ -92,7 +91,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           <button
             onClick={copySeed}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.seed}
+            disabled={!contextMenu.image?.seed}
           >
             <Copy className="w-4 h-4" />
             Copy Seed
@@ -100,7 +99,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           <button
             onClick={copyModel}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0] && !contextMenu.image?.metadata?.model}
+            disabled={!contextMenu.image?.models?.[0]}
           >
             <Copy className="w-4 h-4" />
             Copy Model
@@ -181,7 +180,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
           setIsLoading(false);
         });
       } else {
-        setIsLoading(false);
+        setIsLoading.setState(false);
       }
     });
 
@@ -221,7 +220,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
         {image.handle.name}
       </td>
       <td className="px-4 py-2 max-w-xs truncate">
-        {image.prompt || image.metadata?.prompt?.substring(0, 50) || 'No prompt'}...
+        {image.prompt || (image.metadata as any)?.prompt?.substring(0, 50) || 'No prompt'}...
       </td>
       <td className="px-4 py-2">
         {image.models?.[0] || 'Unknown'}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 
@@ -10,12 +10,45 @@ interface ContextMenuState {
   directoryPath?: string;
 }
 
+const showNotification = (message: string) => {
+  const notification = document.createElement('div');
+  notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  setTimeout(() => {
+    if (document.body.contains(notification)) {
+      document.body.removeChild(notification);
+    }
+  }, 2000);
+};
+
 export const useContextMenu = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
     visible: false
   });
+
+  const hideContextMenu = useCallback(() => {
+    setContextMenu((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenu.visible) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.context-menu-class')) {
+          hideContextMenu();
+        }
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [contextMenu.visible, hideContextMenu]);
+
 
   const showContextMenu = (e: React.MouseEvent, image: IndexedImage, directoryPath?: string) => {
     e.preventDefault();
@@ -28,24 +61,15 @@ export const useContextMenu = () => {
     });
   };
 
-  const hideContextMenu = () => {
-    setContextMenu({ x: 0, y: 0, visible: false });
-  };
-
   const copyToClipboardElectron = (text: string, label: string) => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).then(() => {
-        const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
-        notification.textContent = `${label} copied to clipboard!`;
-        document.body.appendChild(notification);
-        setTimeout(() => document.body.removeChild(notification), 2000);
+        showNotification(`${label} copied to clipboard!`);
       }).catch(err => {
         console.error('Failed to copy to clipboard:', err);
         alert(`Failed to copy ${label} to clipboard`);
       });
     } else {
-      // Fallback for older browsers or non-secure contexts
       const textArea = document.createElement('textarea');
       textArea.value = text;
       textArea.style.position = 'fixed';
@@ -56,11 +80,7 @@ export const useContextMenu = () => {
       textArea.select();
       try {
         document.execCommand('copy');
-        const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
-        notification.textContent = `${label} copied to clipboard!`;
-        document.body.appendChild(notification);
-        setTimeout(() => document.body.removeChild(notification), 2000);
+        showNotification(`${label} copied to clipboard!`);
       } catch (err) {
         console.error('Fallback copy failed:', err);
         alert(`Failed to copy ${label} to clipboard`);
@@ -71,18 +91,21 @@ export const useContextMenu = () => {
   };
 
   const copyPrompt = () => {
-    if (!contextMenu.image?.metadata?.prompt) return;
-    copyToClipboardElectron(contextMenu.image.metadata.prompt, 'Prompt');
+    const prompt = contextMenu.image?.prompt || (contextMenu.image?.metadata as any)?.prompt;
+    if (!prompt) return;
+    copyToClipboardElectron(prompt, 'Prompt');
   };
 
   const copyNegativePrompt = () => {
-    if (!contextMenu.image?.metadata?.negativePrompt) return;
-    copyToClipboardElectron(contextMenu.image.metadata.negativePrompt, 'Negative Prompt');
+    const negativePrompt = contextMenu.image?.negativePrompt || (contextMenu.image?.metadata as any)?.negativePrompt;
+    if (!negativePrompt) return;
+    copyToClipboardElectron(negativePrompt, 'Negative Prompt');
   };
 
   const copySeed = () => {
-    if (!contextMenu.image?.metadata?.seed) return;
-    copyToClipboardElectron(String(contextMenu.image.metadata.seed), 'Seed');
+    const seed = contextMenu.image?.seed || (contextMenu.image?.metadata as any)?.seed;
+    if (!seed) return;
+    copyToClipboardElectron(String(seed), 'Seed');
   };
 
   const copyImage = async () => {
@@ -90,18 +113,14 @@ export const useContextMenu = () => {
     hideContextMenu();
     const result = await copyImageToClipboard(contextMenu.image);
     if (result.success) {
-      const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
-      notification.textContent = 'Image copied to clipboard!';
-      document.body.appendChild(notification);
-      setTimeout(() => document.body.removeChild(notification), 2000);
+      showNotification('Image copied to clipboard!');
     } else {
       alert(`Failed to copy image to clipboard: ${result.error}`);
     }
   };
 
   const copyModel = () => {
-    const model = contextMenu.image?.models?.[0] || contextMenu.image?.metadata?.model;
+    const model = contextMenu.image?.models?.[0] || (contextMenu.image?.metadata as any)?.model;
     if (!model) return;
     copyToClipboardElectron(model, 'Model');
   };

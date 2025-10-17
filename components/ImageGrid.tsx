@@ -144,11 +144,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }
 
   const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
-    // Only show context menu if only one image is selected
-    if (selectedImages.size === 1 && selectedImages.has(image.id)) {
-      const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
-      showContextMenu(e, image, directoryPath);
+    if (selectedImages.size > 1) {
+      return;
     }
+    const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
+    showContextMenu(e, image, directoryPath);
   };
 
   return (
@@ -180,9 +180,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       {contextMenu.visible && (
         <div
-          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={copyImage}
@@ -197,7 +196,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyPrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.prompt}
+            disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
           >
             <Copy className="w-4 h-4" />
             Copy Prompt
@@ -205,7 +204,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyNegativePrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.negativePrompt}
+            disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
           >
             <Copy className="w-4 h-4" />
             Copy Negative Prompt
@@ -213,7 +212,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copySeed}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.metadata?.seed}
+            disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
           >
             <Copy className="w-4 h-4" />
             Copy Seed
@@ -221,7 +220,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyModel}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0] && !contextMenu.image?.metadata?.model}
+            disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
           >
             <Copy className="w-4 h-4" />
             Copy Model

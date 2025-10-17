@@ -65,6 +65,7 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
 
   result.models = result.model ? [result.model] : [];
   result.loras = extractLorasFromAutomatic1111({ parameters });
+  result.generator = 'A1111';
 
   return result as BaseMetadata;
 }

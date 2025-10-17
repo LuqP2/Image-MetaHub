@@ -169,5 +169,7 @@ export function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata 
       result.model = result.models[0];
   }
 
+  result.generator = 'InvokeAI';
+
   return result as BaseMetadata;
 }

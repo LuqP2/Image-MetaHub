@@ -34,6 +34,7 @@ export function parseSwarmUIMetadata(metadata: SwarmUIMetadata): BaseMetadata {
     scheduler: params.scheduler || '',
     sampler: params.sampler || '',
     loras: params.loras || [],
+    generator: 'SwarmUI',
   };
 
   return result;

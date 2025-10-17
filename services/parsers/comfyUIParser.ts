@@ -546,6 +546,8 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   if (telemetry.unknown_nodes_count > 0 || telemetry.warnings.length > 0) {
     console.log('[ComfyUI Parser] Telemetry:', telemetry);
   }
+
+  results.generator = 'ComfyUI';
   
   return { ...results, _telemetry: telemetry };
 }
