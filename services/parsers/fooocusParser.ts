@@ -100,9 +100,7 @@ function isFooocusMetadata(params: string): boolean {
   return (
     /Fooocus/i.test(params) ||
     /Version:\s*f2\./i.test(params) ||
-    /Model:\s*flux/i.test(params) ||
     /Distilled CFG Scale/i.test(params) ||
-    /Module\s*1:\s*ae/i.test(params) ||
-    (/Sampler:\s*[A-Za-z0-9+]/i.test(params) && /Steps:\s*\d+/i.test(params))
+    /Module\s*1:\s*ae/i.test(params)
   );
 }

@@ -65,7 +65,13 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
 
   result.models = result.model ? [result.model] : [];
   result.loras = extractLorasFromAutomatic1111({ parameters });
-  result.generator = 'A1111';
+  
+  // Check if this is actually ComfyUI metadata
+  if (parameters.includes('Version: ComfyUI')) {
+    result.generator = 'ComfyUI';
+  } else {
+    result.generator = 'A1111';
+  }
 
   return result as BaseMetadata;
 }

@@ -254,19 +254,19 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI, ComfyUI, or DALL-E
     try {
       const parsedMetadata = JSON.parse(metadataText);
-      
+
       // Check for DALL-E C2PA manifest
-      if (parsedMetadata.c2pa_manifest || 
-          (parsedMetadata.exif_data && (parsedMetadata.exif_data['openai:dalle'] || 
+      if (parsedMetadata.c2pa_manifest ||
+          (parsedMetadata.exif_data && (parsedMetadata.exif_data['openai:dalle'] ||
                                         parsedMetadata.exif_data.Software?.includes('DALL-E')))) {
         return parsedMetadata;
       }
-      
+
       // Check for SwarmUI format (sui_image_params)
       if (parsedMetadata.sui_image_params) {
         return parsedMetadata;
       }
-      
+
       if (isInvokeAIMetadata(parsedMetadata)) {
         return parsedMetadata;
       } else if (isComfyUIMetadata(parsedMetadata)) {
@@ -275,6 +275,51 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
         return parsedMetadata;
       }
     } catch {
+      // JSON parsing failed - check for ComfyUI patterns in raw text
+      // ComfyUI sometimes stores workflow/prompt as JSON strings in EXIF
+      if (metadataText.includes('"workflow"') || metadataText.includes('"prompt"') ||
+          metadataText.includes('last_node_id') || metadataText.includes('class_type') ||
+          metadataText.includes('Version: ComfyUI')) {
+        // Try to extract workflow and prompt from the text
+        try {
+          // Look for workflow JSON
+          const workflowMatch = metadataText.match(/"workflow"\s*:\s*(\{[^}]*\}|\[[^\]]*\]|"[^"]*")/);
+          const promptMatch = metadataText.match(/"prompt"\s*:\s*(\{[^}]*\}|\[[^\]]*\]|"[^"]*")/);
+
+          const comfyMetadata: Partial<ComfyUIMetadata> = {};
+
+          if (workflowMatch) {
+            try {
+              comfyMetadata.workflow = JSON.parse(workflowMatch[1]);
+            } catch {
+              comfyMetadata.workflow = workflowMatch[1];
+            }
+          }
+
+          if (promptMatch) {
+            try {
+              comfyMetadata.prompt = JSON.parse(promptMatch[1]);
+            } catch {
+              comfyMetadata.prompt = promptMatch[1];
+            }
+          }
+
+          // If we found either workflow or prompt, return as ComfyUI metadata
+          if (comfyMetadata.workflow || comfyMetadata.prompt) {
+            return comfyMetadata;
+          }
+
+          // Special case: If we detected "Version: ComfyUI" but couldn't extract workflow/prompt,
+          // this might be a ComfyUI image with parameters stored in A1111-style format
+          // Return it as parameters so it gets parsed by A1111 parser which can handle ComfyUI format
+          if (metadataText.includes('Version: ComfyUI')) {
+            return { parameters: metadataText };
+          }
+        } catch {
+          // Silent error - pattern matching failed
+        }
+      }
+
       // Silent error - JSON parsing may fail
       return null;
     }

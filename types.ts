@@ -276,7 +276,23 @@ export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeA
 }
 
 export function isSwarmUIMetadata(metadata: ImageMetadata): metadata is SwarmUIMetadata {
-  return 'sui_image_params' in metadata && typeof metadata.sui_image_params === 'object';
+  // Check for direct SwarmUI metadata at root level
+  if ('sui_image_params' in metadata && typeof metadata.sui_image_params === 'object') {
+    return true;
+  }
+
+  // Check for SwarmUI metadata wrapped in parameters string (some SwarmUI images are saved this way)
+  if ('parameters' in metadata && typeof metadata.parameters === 'string') {
+    try {
+      const parsedParams = JSON.parse(metadata.parameters);
+      return 'sui_image_params' in parsedParams && typeof parsedParams.sui_image_params === 'object';
+    } catch {
+      // Not valid JSON, not SwarmUI
+      return false;
+    }
+  }
+
+  return false;
 }
 
 export function isEasyDiffusionMetadata(metadata: ImageMetadata): metadata is EasyDiffusionMetadata {
@@ -416,7 +432,7 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
   if ('workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string')) {
     return true;
   }
-  
+
   // As a fallback, check for the API-style 'prompt' object. This format, where keys are
   // node IDs, is also unique to ComfyUI and distinct from other formats.
   if ('prompt' in metadata && typeof metadata.prompt === 'object' && metadata.prompt !== null && !Array.isArray(metadata.prompt)) {
@@ -428,9 +444,7 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
   }
 
   return false;
-}
-
-export interface IndexedImage {
+}export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
   name: string;
   handle: FileSystemFileHandle;
