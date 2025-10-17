@@ -422,7 +422,16 @@ export function isDreamStudioMetadata(metadata: ImageMetadata): metadata is Drea
 }
 
 export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
-  return 'parameters' in metadata && typeof metadata.parameters === 'string' && !('sui_image_params' in metadata);
+  if (!('parameters' in metadata) || typeof metadata.parameters !== 'string') {
+    return false;
+  }
+
+  // Exclude SwarmUI metadata (even when wrapped in parameters string)
+  if (metadata.parameters.includes('sui_image_params')) {
+    return false;
+  }
+
+  return true;
 }
 
 export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {

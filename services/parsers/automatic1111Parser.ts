@@ -29,6 +29,7 @@ export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): 
 // --- Main Parser Function ---
 
 export function parseA1111Metadata(parameters: string): BaseMetadata {
+
   const result: Partial<BaseMetadata> = {};
 
   const negativePromptIndex = parameters.indexOf('\nNegative prompt:');
@@ -60,8 +61,42 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.height = parseInt(sizeMatch[2], 10);
   }
 
-  const modelMatch = parameters.match(/Model: ([^,]+)/);
-  if (modelMatch) result.model = modelMatch[1].trim();
+  // Extract model - try Hashes JSON first (especially important for ComfyUI)
+  const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
+  if (hashesMatch) {
+    try {
+      const hashes = JSON.parse(hashesMatch[1]);
+      
+      // Priority order for model extraction from hashes
+      result.model = hashes['model'] || 
+                    hashes['Model'] || 
+                    hashes['checkpoint'] || 
+                    hashes['Checkpoint'] ||
+                    // Look for keys containing 'model' (case insensitive)
+                    Object.keys(hashes).find(key => key.toLowerCase().includes('model') && hashes[key]) ||
+                    // Fallback to first string value
+                    Object.values(hashes).find(val => typeof val === 'string' && val.trim());
+      
+    } catch {
+      // JSON parse error - continue with other extraction methods
+    }
+  }
+  
+  // If no model from hashes, try the regular Model: pattern
+  if (!result.model) {
+    const modelMatch = parameters.match(/Model: ([^,]+)/);
+    if (modelMatch) {
+      result.model = modelMatch[1].trim();
+    }
+  }
+  
+  // If still no model, try Model hash: pattern
+  if (!result.model) {
+    const hashMatch = parameters.match(/Model hash:\s*([a-f0-9]+)/i);
+    if (hashMatch && hashMatch[1]) {
+      result.model = `Model hash: ${hashMatch[1]}`;
+    }
+  }
 
   result.models = result.model ? [result.model] : [];
   result.loras = extractLorasFromAutomatic1111({ parameters });
@@ -73,5 +108,7 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.generator = 'A1111';
   }
 
-  return result as BaseMetadata;
+  const finalResult = result as BaseMetadata;
+  
+  return finalResult;
 }

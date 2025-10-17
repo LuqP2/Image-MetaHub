@@ -26,7 +26,7 @@ export interface ParserNode {
 export type ComfyNodeDataType =
   | 'MODEL' | 'CONDITIONING' | 'LATENT' | 'IMAGE' | 'VAE' | 'CLIP' | 'INT'
   | 'FLOAT' | 'STRING' | 'CONTROL_NET' | 'GUIDER' | 'SAMPLER' | 'SCHEDULER'
-  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY';
+  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY' | 'LORA_STACK';
 
 export type ComfyTraversableParam =
   | 'prompt' | 'negativePrompt' | 'seed' | 'steps' | 'cfg' | 'width' | 'height'
@@ -723,16 +723,6 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     widget_order: ['text1', 'text2', 'text3', 'delimiter']
   },
 
-  ImpactWildcardProcessor: {
-    category: 'UTILS', roles: ['SOURCE'],
-    inputs: {},
-    outputs: { STRING: { type: 'STRING' } },
-    param_mapping: {
-      prompt: { source: 'widget', key: 'wildcard_text' }
-    },
-    widget_order: ['wildcard_pattern', 'populated_text', 'mode', 'seed', 'seed_mode', 'select_wildcard']
-  },
-
   'Anything Everywhere': {
     category: 'UTILS', roles: ['PASS_THROUGH'],
     inputs: { anything: { type: 'ANY' } },
@@ -760,5 +750,262 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     param_mapping: {},
     widget_order: ['output_path', 'embed_workflow', 'metadata_json']
   },
-};
 
+  // Grouped Workflow Nodes - Support for composite nodes that contain multiple child nodes
+  'workflow>Generation Parameters': {
+    category: 'UTILS', roles: ['SOURCE'],
+    inputs: {},
+    outputs: {
+      INT: { type: 'INT' },        // steps
+      FLOAT: { type: 'FLOAT' },    // cfg
+      'Seed Generator INT': { type: 'INT' }, // seed
+      scheduler: { type: 'STRING' }, // scheduler
+      sampler: { type: 'STRING' },   // sampler
+      sampler_name: { type: 'STRING' }, // sampler_name
+      'Scheduler Selector (Image Saver) scheduler': { type: 'STRING' }, // scheduler for Image Saver
+      scheduler_name: { type: 'STRING' }  // scheduler_name
+    },
+    param_mapping: {
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      seed: { source: 'widget', key: 'seed' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      sampler_name: { source: 'widget', key: 'sampler_name' }
+    },
+    widget_order: ['steps', 'cfg', 'seed', 'scheduler', 'sampler_name', 'scheduler_name']
+  },
+
+  // --- UTILS NODES (Processamento de Texto e Wildcards) ---
+// Adicione após a definição do node 'ImpactWildcardProcessor' existente (ou substitua):
+
+ImpactWildcardProcessor: {
+  category: 'UTILS',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: { STRING: { type: 'STRING' } },
+  param_mapping: {
+    prompt: { 
+      source: 'custom_extractor',
+      extractor: (node: ParserNode) => {
+        // Prioriza 'populated_text' (resultado após wildcard)
+        const populated = node.inputs?.populated_text || node.widgets_values?.[1];
+        const wildcard = node.inputs?.wildcard_text || node.widgets_values?.[0];
+        
+        // Usa populated_text se disponível, senão wildcard_text
+        let text = (populated || wildcard || '').trim();
+        
+        // Remove wildcards não resolvidos (ex: __bo/random/anything__)
+        text = text.replace(/__[a-zA-Z0-9/_-]+__/g, '');
+        
+        // Limpa artefatos comuns
+        text = text
+          .replace(/,\s*,/g, ',')      // Remove vírgulas duplas
+          .replace(/\s+,/g, ',')       // Remove espaços antes de vírgula
+          .replace(/,\s+/g, ', ')      // Normaliza espaços após vírgula
+          .replace(/\s+/g, ' ')        // Normaliza espaços múltiplos
+          .trim();
+        
+        return text || null;
+      }
+    }
+  },
+  widget_order: ['wildcard_text', 'populated_text', 'mode', 'seed', 'seed_mode', 'select_wildcard']
+},
+ImpactWildcardEncode: {
+  category: 'UTILS',
+  roles: ['SOURCE', 'TRANSFORM'],
+  inputs: { 
+    model: { type: 'MODEL' }, 
+    clip: { type: 'CLIP' } 
+  },
+  outputs: { 
+    model: { type: 'MODEL' },
+    clip: { type: 'CLIP' },
+    conditioning: { type: 'CONDITIONING' },
+    populated_text: { type: 'STRING' }
+  },
+  param_mapping: {
+    lora: {
+      source: 'custom_extractor',
+      extractor: (node: ParserNode) => {
+        const text = node.inputs?.wildcard_text || node.widgets_values?.[0] || '';
+        
+        // Extrai todos os <lora:nome> do texto
+        const loraMatches = text.matchAll(/<lora:([^>]+)>/gi);
+        const loras: string[] = [];
+        
+        for (const match of loraMatches) {
+          let loraPath = match[1];
+          
+          // Remove prefixos comuns
+          loraPath = loraPath.replace(/^(?:Flux|flux|FLUX)[\\/]+/i, '');
+          
+          // Remove extensão .safetensors
+          loraPath = loraPath.replace(/\.safetensors$/i, '');
+          
+          if (loraPath) {
+            loras.push(loraPath);
+          }
+        }
+        
+        return loras;
+      }
+    },
+    prompt: {
+      source: 'custom_extractor',
+      extractor: (node: ParserNode) => {
+        const text = node.inputs?.wildcard_text || node.widgets_values?.[0] || '';
+        
+        // Remove todos os <lora:...> do texto (só deixa o prompt puro)
+        const cleanText = text.replace(/<lora:[^>]+>/gi, '').trim();
+        
+        return cleanText || null;
+      }
+    }
+  },
+  widget_order: ['wildcard_text', 'populated_text', 'mode', 'Select to add LoRA', 'Select to add Wildcard', 'seed', 'seed_mode', 'speak_and_recognation'],
+  pass_through_rules: [
+    { from_input: 'model', to_output: 'model' },
+    { from_input: 'clip', to_output: 'clip' }
+  ]
+},
+JWStringConcat: {
+  category: 'UTILS',
+  roles: ['TRANSFORM'],
+  inputs: { 
+    a: { type: 'STRING' }, 
+    b: { type: 'STRING' } 
+  },
+  outputs: { 
+    STRING: { type: 'STRING' } 
+  },
+  param_mapping: {
+    prompt: {
+      source: 'custom_extractor',
+      extractor: (node, state, graph, traverseFromLink) => {
+        const inputA = node.inputs?.a;
+        const inputB = node.inputs?.b;
+        
+        let textA = '';
+        let textB = '';
+        
+        // Resolve input A
+        if (Array.isArray(inputA) && inputA.length === 2) {
+          const result = traverseFromLink(inputA as any, state, graph, []);
+          if (result) textA = String(result);
+        } else if (inputA !== undefined && inputA !== null) {
+          textA = String(inputA);
+        }
+        
+        // Resolve input B
+        if (Array.isArray(inputB) && inputB.length === 2) {
+          const result = traverseFromLink(inputB as any, state, graph, []);
+          if (result) textB = String(result);
+        } else if (inputB !== undefined && inputB !== null) {
+          textB = String(inputB);
+        }
+        
+        // Concatena e limpa
+        const combined = [textA, textB]
+          .filter(t => t.trim())
+          .join(' ')
+          .replace(/,\s*,/g, ',')
+          .replace(/\s+,/g, ',')
+          .replace(/,\s+/g, ', ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        return combined || null;
+      }
+    }
+  },
+  widget_order: ['a', 'b']
+},
+String: {
+  category: 'UTILS',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: { STRING: { type: 'STRING' } },
+  param_mapping: {
+    prompt: { source: 'widget', key: 'String' },
+    negativePrompt: { source: 'widget', key: 'String' }
+  },
+  widget_order: ['String', 'speak_and_recognation']
+},
+  // --- LOADING NODES (LoRA Stack Management) ---
+  'CR Apply LoRA Stack': {
+  category: 'LOADING',
+  roles: ['TRANSFORM'],
+  inputs: {
+    model: { type: 'MODEL' },
+    clip: { type: 'CLIP' },
+    lora_stack: { type: 'LORA_STACK' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' },
+    CLIP: { type: 'CLIP' },
+    show_help: { type: 'STRING' }
+  },
+  param_mapping: {
+    lora: { source: 'trace', input: 'lora_stack' },
+    model: { source: 'trace', input: 'model' }
+  },
+  pass_through_rules: [
+    { from_input: 'model', to_output: 'MODEL' },
+    { from_input: 'clip', to_output: 'CLIP' }
+  ]
+},
+'CR LoRA Stack': {
+  category: 'LOADING',
+  roles: ['TRANSFORM'],
+  inputs: { 
+    lora_stack: { type: 'LORA_STACK' } 
+  },
+  outputs: { 
+    LORA_STACK: { type: 'LORA_STACK' },
+    show_help: { type: 'STRING' }
+  },
+  param_mapping: {
+    lora: {
+      source: 'custom_extractor',
+      extractor: (node: ParserNode) => {
+        const loras: string[] = [];
+        const inputs = node.inputs || {};
+        
+        // CR LoRA Stack usa triplas: switch_N, lora_name_N, model_weight_N, clip_weight_N
+        for (let i = 1; i <= 10; i++) {  // Suporta até 10 LoRAs
+          const switchKey = `switch_${i}`;
+          const loraKey = `lora_name_${i}`;
+          
+          const switchValue = inputs[switchKey];
+          const loraValue = inputs[loraKey];
+          
+          // Verifica se o switch está "On" e há um LoRA válido
+          if (switchValue === 'On' && loraValue && loraValue !== 'None') {
+            let loraPath = String(loraValue);
+            
+            // Remove prefixos comuns (flux\\, Flux\\, etc.)
+            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/]+/i, '');
+            
+            // Remove extensão
+            loraPath = loraPath.replace(/\.safetensors$/i, '');
+            
+            if (loraPath) {
+              loras.push(loraPath);
+            }
+          }
+        }
+        
+        return loras;
+      }
+    }
+  },
+  widget_order: [
+    'switch_1', 'lora_name_1', 'model_weight_1', 'clip_weight_1',
+    'switch_2', 'lora_name_2', 'model_weight_2', 'clip_weight_2',
+    'switch_3', 'lora_name_3', 'model_weight_3', 'clip_weight_3'
+  ],
+  pass_through_rules: []
+
+  
+}}

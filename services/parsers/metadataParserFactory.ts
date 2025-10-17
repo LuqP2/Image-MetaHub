@@ -52,7 +52,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         return { parse: (data: FireflyMetadata, fileBuffer?: ArrayBuffer) => parseFireflyMetadata(data, fileBuffer!), generator: 'Adobe Firefly' };
     }
     
-    if ('sui_image_params' in metadata) {
+    if ('sui_image_params' in metadata ||
+        ('parameters' in metadata && typeof metadata.parameters === 'string' && metadata.parameters.includes('sui_image_params'))) {
         return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data), generator: 'SwarmUI' };
     }
     if ('workflow' in metadata || ('prompt' in metadata && typeof metadata.prompt === 'object')) {

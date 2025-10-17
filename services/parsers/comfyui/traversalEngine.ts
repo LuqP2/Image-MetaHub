@@ -115,45 +115,62 @@ function extractValue(node: ParserNode, rule: ParamMappingRule, state: Traversal
     if (rule.source === 'widget') {
         const nodeDef = NodeRegistry[node.class_type];
         
-        // Try widget_order index first
+        // 1️⃣ Tenta via widget_order index
         const widgetIndex = nodeDef?.widget_order?.indexOf(rule.key) ?? -1;
         if (widgetIndex !== -1 && node.widgets_values?.[widgetIndex] !== undefined) {
             return node.widgets_values[widgetIndex];
         }
         
-        // FALLBACK: If no widgets_values, try reading directly from inputs (for workflows without UI data)
+        // 2️⃣ FALLBACK: Tenta ler diretamente de inputs (workflows sem UI)
         if (!node.widgets_values || node.widgets_values.length === 0) {
             const inputValue = node.inputs?.[rule.key];
             if (inputValue !== undefined) {
-                // If it's a direct value (not a link), return it
+                // Se é um valor direto (não link), retorna
                 if (!Array.isArray(inputValue)) {
                     return inputValue;
                 }
-                // If it's a link, follow it
+                // Se é um link, segue ele
                 if (Array.isArray(inputValue) && inputValue.length === 2) {
                     return traverseFromLink(inputValue as NodeLink, state, graph, accumulator);
                 }
             }
         }
         
+        // 3️⃣ FALLBACK FINAL: Procura em inputs por nome similar
+        const inputValue = node.inputs?.[rule.key];
+        if (inputValue !== undefined && !Array.isArray(inputValue)) {
+            return inputValue;
+        }
+        
         return undefined;
     }
+    
     if (rule.source === 'input') {
         const value = node.inputs?.[rule.key];
-        // For input source, return the value even if it's a link (extractValue caller handles links separately)
+        
+        // Se é um link, segue ele
+        if (Array.isArray(value) && value.length === 2) {
+            return traverseFromLink(value as NodeLink, state, graph, accumulator);
+        }
+        
+        // Se é valor direto, retorna
         return value;
     }
+    
     if (rule.source === 'custom_extractor') {
         return rule.extractor(node, state, graph, traverseFromLink);
     }
+    
     if (rule.source === 'trace') {
         const inputLink = node.inputs[rule.input];
         if (inputLink && Array.isArray(inputLink)) {
             return traverseFromLink(inputLink as NodeLink, state, graph, accumulator);
         }
     }
+    
     return null;
 }
+
 
 /**
  * Continua a travessia a partir de um link de entrada, evitando ciclos.
@@ -264,7 +281,61 @@ function selectBestPromptValue(values: any[], paramType: ComfyTraversableParam):
 export function resolve(args: { startNode: ParserNode, param: ComfyTraversableParam, graph: Graph }): any {
     const initialState = createInitialState(args.param);
     
-    // Use simple traverse for all parameters - it follows the correct path based on param_mapping
+    // Para LoRAs, precisamos coletar de TODOS os nós no caminho
+    if (args.param === 'lora') {
+        const allLoras: string[] = [];
+        const visited = new Set<string>();
+        
+        // Função recursiva para coletar LoRAs
+        function collectLoras(currentNode: ParserNode) {
+            if (visited.has(currentNode.id)) return;
+            visited.add(currentNode.id);
+            
+            // Ignora nós silenciados
+            if (currentNode.mode === 2 || currentNode.mode === 4) return;
+            
+            const nodeDef = NodeRegistry[currentNode.class_type];
+            if (!nodeDef) return;
+            
+            // Extrai LoRAs deste nó
+            const paramRule = nodeDef.param_mapping?.lora;
+            if (paramRule) {
+                const value = extractValue(currentNode, paramRule, initialState, args.graph, []);
+                if (Array.isArray(value)) {
+                    allLoras.push(...value.filter(l => l && l !== 'None'));
+                } else if (value && value !== 'None') {
+                    allLoras.push(value);
+                }
+            }
+            
+            // Continua explorando inputs
+            for (const inputName in currentNode.inputs) {
+                const inputLink = currentNode.inputs[inputName];
+                if (Array.isArray(inputLink) && inputLink.length === 2) {
+                    const [sourceNodeId] = inputLink;
+                    let nextNode = args.graph[sourceNodeId];
+                    
+                    // Suporte para grouped nodes
+                    if (!nextNode && sourceNodeId.includes(':')) {
+                        const parentId = sourceNodeId.split(':')[0];
+                        nextNode = args.graph[parentId];
+                    }
+                    
+                    if (nextNode) {
+                        collectLoras(nextNode);
+                    }
+                }
+            }
+        }
+        
+        collectLoras(args.startNode);
+        
+        // Remove duplicatas mantendo ordem
+        const uniqueLoras = [...new Set(allLoras)];
+        return uniqueLoras.length > 0 ? uniqueLoras : [];
+    }
+    
+    // Para outros parâmetros, usa traversal simples
     return traverse(args.startNode, initialState, args.graph, []);
 }
 

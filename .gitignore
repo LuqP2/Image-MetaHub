@@ -1,8 +1,10 @@
-# Development files
-development-changelog.md
-log-change.js
-decision-template.md
-*.dev.log
+# Development test files
+test-*.js
+test-*.cjs
+test-*.mjs
+test-*.ts
+debug-*.js
+simulate-*.js
 
 # Logs
 logs

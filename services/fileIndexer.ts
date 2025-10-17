@@ -219,16 +219,30 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     if (!metadataText) {
+      console.log('[JPEG Parser] No metadata text found in EXIF');
       return null;
     }
 
+    console.log('[JPEG Parser] Raw EXIF metadata text:', metadataText.substring(0, 500) + (metadataText.length > 500 ? '...' : ''));
+
+    // ========== CRITICAL FIX: Check for ComfyUI FIRST (before other patterns) ==========
+    // ComfyUI images stored as JPEG with A1111-style parameters in EXIF
+    if (metadataText.includes('Version: ComfyUI')) {
+      console.log('[JPEG Parser] ✅ DETECTED ComfyUI metadata in EXIF - returning parameters');
+      return { parameters: metadataText };
+    }
+
+    console.log('[JPEG Parser] No ComfyUI detected, checking other patterns...');
+
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
+      console.log('[JPEG Parser] Detected A1111-style metadata with Model hash');
       return { parameters: metadataText };
     }
 
     // Easy Diffusion uses similar format but without Model hash
     if (metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('Sampler:') && !metadataText.includes('Model hash:')) {
+      console.log('[JPEG Parser] Detected Easy Diffusion-style metadata');
       return { parameters: metadataText };
     }
 
@@ -385,18 +399,10 @@ async function processSingleFileOptimized(
 
     let normalizedMetadata: BaseMetadata | undefined;
     if (rawMetadata) {
-      // Check for Fooocus first (before other parsers)
-      if ('parameters' in rawMetadata && 
-          typeof rawMetadata.parameters === 'string' && 
-          (rawMetadata.parameters.includes('Fooocus') ||
-           rawMetadata.parameters.match(/Version:\s*f2\./i) ||
-           rawMetadata.parameters.match(/Model:\s*flux/i) ||
-           rawMetadata.parameters.includes('Distilled CFG Scale') ||
-           rawMetadata.parameters.match(/Module\s*1:\s*ae/i))) {
-        normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
-      } else if (isSwarmUIMetadata(rawMetadata)) {
-        normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
-      } else if (isComfyUIMetadata(rawMetadata)) {
+
+      // Check for ComfyUI first (before other parsers) - CRITICAL FIX
+      if (isComfyUIMetadata(rawMetadata)) {
+        console.log('[Metadata Processing] ✅ Using ComfyUI parser');
         const comfyMetadata = rawMetadata as ComfyUIMetadata;
         // Parse workflow and prompt if they are strings
         let workflow = comfyMetadata.workflow;
@@ -427,8 +433,22 @@ async function processSingleFileOptimized(
           loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
         };
       } else if (isAutomatic1111Metadata(rawMetadata)) {
+        console.log('[Metadata Processing] ✅ Using A1111 parser (may be ComfyUI)');
         normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
+      } else if ('parameters' in rawMetadata && 
+          typeof rawMetadata.parameters === 'string' && 
+          (rawMetadata.parameters.includes('Fooocus') ||
+           /Version:\s*f2\./i.test(rawMetadata.parameters) ||
+           (/Model:\s*flux/i.test(rawMetadata.parameters) && !/Version:\s*ComfyUI/i.test(rawMetadata.parameters)) ||
+           rawMetadata.parameters.includes('Distilled CFG Scale') ||
+           /Module\s*1:\s*ae/i.test(rawMetadata.parameters))) {
+        console.log('[Metadata Processing] Using Fooocus parser');
+        normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
+      } else if (isSwarmUIMetadata(rawMetadata)) {
+        console.log('[Metadata Processing] Using SwarmUI parser');
+        normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
       } else if (isEasyDiffusionMetadata(rawMetadata)) {
+        console.log('[Metadata Processing] Using Easy Diffusion parser');
         normalizedMetadata = parseEasyDiffusionMetadata(rawMetadata.parameters);
       } else if (isEasyDiffusionJson(rawMetadata)) {
         normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
@@ -450,6 +470,15 @@ async function processSingleFileOptimized(
         normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
       }
     }
+
+    console.log('[Metadata Processing] Final normalized metadata:', {
+      hasMetadata: !!normalizedMetadata,
+      generator: normalizedMetadata?.generator,
+      model: normalizedMetadata?.model,
+      prompt: normalizedMetadata?.prompt?.substring(0, 100) + (normalizedMetadata?.prompt && normalizedMetadata.prompt.length > 100 ? '...' : ''),
+      steps: normalizedMetadata?.steps,
+      cfg_scale: normalizedMetadata?.cfg_scale
+    });
 
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {

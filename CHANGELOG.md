@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Indexing State Management**: Improved pause/resume logic to properly halt and resume file processing operations
 - **UI State Cleanup**: Progress indicators now properly clear when indexing completes or is cancelled
 - **Progress Persistence**: Fixed issue where progress display and control buttons remained visible after indexing completion
-- **Null Reference Error**: Fixed runtime error when accessing progress properties when progress is null - added null checks in App.tsx for all progress property accesses and updated Loader component to handle null progress safely
+- **Null Reference Error**: Fixed runtime error when accessing progress properties when progress is null - added null checks in App.tsx for all progress property accesses
+- **ComfyUI JPEG Metadata Parsing**: Fixed parser selection bug where ComfyUI metadata in JPEG files was incorrectly detected as Fooocus format due to regex `.match()` returning array instead of boolean, preventing proper metadata extraction and display
 
 ## [0.9.2] - 2025-10-12
 
