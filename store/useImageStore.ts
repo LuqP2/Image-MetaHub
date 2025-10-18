@@ -140,26 +140,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                         const relativePath = idParts[1];
                         const pathParts = relativePath.split(/[/\\]/).filter(p => p);
                         
-                        // Debug - log first 3 images
-                        if (images.indexOf(img) < 3) {
-                            console.log(`📸 Image ${images.indexOf(img)}:`, img.name);
-                            console.log('   relativePath:', relativePath);
-                            console.log('   pathParts:', pathParts);
-                            console.log('   parentPath:', parentPath);
-                        }
-                        
                         // If there's more than just the filename (meaning it's in a subfolder)
                         if (pathParts.length > 1) {
                             const subfolderName = pathParts[0];
                             const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
-                            
-                            if (images.indexOf(img) < 3) {
-                                console.log('   → IN SUBFOLDER:', subfolderName);
-                                console.log('   → Constructed path:', subfolderPath);
-                                console.log('   → Visible subfolders:', Array.from(visibleSubfolders));
-                                console.log('   → Match found?', visibleSubfolders.has(subfolderPath));
-                                console.log('   → Result:', visibleSubfolders.has(subfolderPath) ? '✅ SHOW' : '❌ HIDE');
-                            }
                             
                             // Only show if this specific subfolder is marked as visible
                             return visibleSubfolders.has(subfolderPath);
@@ -168,31 +152,19 @@ export const useImageStore = create<ImageState>((set, get) => {
                         // Image is in root directory
                         const { visibleRoots } = state;
                         
-                        if (images.indexOf(img) < 3) {
-                            console.log('   → IN ROOT');
-                            console.log('   → parentPath:', parentPath);
-                            console.log('   → visibleRoots:', Array.from(visibleRoots));
-                            console.log('   → Root is marked?', visibleRoots.has(parentPath));
-                            console.log('   → visibleSubfolders.size:', visibleSubfolders.size);
-                            console.log('   → visibleRoots.size:', visibleRoots.size);
-                        }
-                        
                         // Show root if:
                         // 1. Root is explicitly marked as visible
                         // 2. OR no subfolders/roots are selected at all (default: show root)
                         const hasAnySelection = visibleSubfolders.size > 0 || visibleRoots.size > 0;
                         
                         if (visibleRoots.has(parentPath)) {
-                            if (images.indexOf(img) < 3) console.log('   → Result: ✅ SHOW (root marked)');
                             return true;
                         }
                         
                         if (!hasAnySelection) {
-                            if (images.indexOf(img) < 3) console.log('   → Result: ✅ SHOW (nothing selected)');
                             return true;
                         }
                         
-                        if (images.indexOf(img) < 3) console.log('   → Result: ❌ HIDE (root not marked)');
                         return false;
                     }
                 }
@@ -342,12 +314,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             const newVisibleSubfolders = new Set(state.visibleSubfolders);
             if (newVisibleSubfolders.has(subfolderPath)) {
                 newVisibleSubfolders.delete(subfolderPath);
-                console.log('🔴 Hiding subfolder:', subfolderPath);
             } else {
                 newVisibleSubfolders.add(subfolderPath);
-                console.log('🟢 Showing subfolder:', subfolderPath);
             }
-            console.log('📂 Visible subfolders:', Array.from(newVisibleSubfolders));
             const newState = { ...state, visibleSubfolders: newVisibleSubfolders };
             return { ...newState, ...filterAndSort(newState) };
         }),

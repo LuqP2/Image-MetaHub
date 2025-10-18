@@ -51,7 +51,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
           ) : null
         ) : (
           <>
-            Found <span className="font-bold text-blue-400">{filteredCount}</span> of <span className="font-bold text-green-400">{totalCount}</span> images across <span className="font-bold text-purple-400">{directoryCount}</span> {folderText}
+            Displaying <span className="font-semibold text-gray-100">{filteredCount}</span> of <span className="font-semibold text-gray-100">{totalCount}</span> images across <span className="font-semibold text-gray-100">{directoryCount}</span> {folderText}
           </>
         )}
       </span>
