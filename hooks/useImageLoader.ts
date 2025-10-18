@@ -180,7 +180,7 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, clearImages, indexingState, setIndexingState
+        setFilterOptions, removeImages, addImages, clearImages, setIndexingState
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -194,8 +194,10 @@ export function useImageLoader() {
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback(() => {
-        return abortControllerRef.current?.signal.aborted || indexingState === 'idle';
-    }, [indexingState]);
+        // Always get the latest state from the store to avoid stale closures
+        const currentState = useImageStore.getState().indexingState;
+        return abortControllerRef.current?.signal.aborted || currentState === 'idle';
+    }, []); // No dependencies - always reads latest state
 
     // Function to wait while paused - monitors state changes in real-time
     const waitWhilePaused = useCallback(async () => {
@@ -247,6 +249,25 @@ export function useImageLoader() {
 
         const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
             setProgress(progress);
+            
+            // If progress reaches 100%, manually trigger finalization after a short delay
+            // This is a workaround for when onIndexingComplete doesn't fire
+            if (progress.current === progress.total && progress.total > 0) {
+                console.log(`[onIndexingProgress] Progress complete, will finalize in 500ms`);
+                setTimeout(() => {
+                    const currentState = useImageStore.getState().indexingState;
+                    if (currentState === 'indexing') {
+                        console.log(`[onIndexingProgress timeout] State still 'indexing', manually finalizing`);
+                        const dirs = useImageStore.getState().directories;
+                        // Finalize all directories (in case multiple were being indexed)
+                        dirs.forEach(dir => {
+                            if (dir.id) {
+                                finalizeDirectoryLoad(dir);
+                            }
+                        });
+                    }
+                }, 500);
+            }
         });
 
         let isFirstBatch = true;
@@ -269,12 +290,18 @@ export function useImageLoader() {
 
         const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
             const currentState = useImageStore.getState().indexingState;
+            console.log(`[onIndexingComplete] Received for ${directoryId}, current state: ${currentState}`);
             // Only finalize if not paused or cancelled
             if (currentState === 'indexing') {
                 const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
                 if (directory) {
+                    console.log(`[onIndexingComplete] Calling finalizeDirectoryLoad for ${directory.name}`);
                     finalizeDirectoryLoad(directory);
+                } else {
+                    console.warn(`[onIndexingComplete] Directory not found!`);
                 }
+            } else {
+                console.log(`[onIndexingComplete] Skipping - state is ${currentState}, not 'indexing'`);
             }
         });
 
@@ -398,10 +425,12 @@ export function useImageLoader() {
     }, [addImages]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
+        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}`);
         setLoading(true);
         setError(null);
         setSuccess(null);
         setIndexingState('indexing');
+        console.log(`[loadDirectory] State set to 'indexing'`);
 
         // Start performance timer
         indexingStartTimeRef.current = performance.now();
@@ -463,8 +492,10 @@ export function useImageLoader() {
 
             // Set progress even if no new files to process
             setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
+            console.log(`[loadDirectory] Progress set to 0/${diff.newAndModifiedFiles.length}`);
 
             if (diff.newAndModifiedFiles.length > 0) {
+                console.log(`[loadDirectory] Processing ${diff.newAndModifiedFiles.length} new files`);
                 // Sort files by lastModified descending (newest first)
                 const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
                 const fileHandles = await getFileHandles(directory.handle, directory.path, sortedFiles);
@@ -510,11 +541,10 @@ export function useImageLoader() {
                 // In Electron, the 'onIndexingComplete' listener will call finalizeDirectoryLoad.
 
             } else {
-                // No new files to process, just finalize with what we have
-                // But wait a bit to allow UI to show indexing state
-                setTimeout(() => {
-                    finalizeDirectoryLoad(directory);
-                }, 100);
+                // No new files to process, just finalize immediately
+                // All cached images were already added above
+                console.log(`[loadDirectory] No new files to process, finalizing immediately`);
+                finalizeDirectoryLoad(directory);
             }
 
         } catch (err) {

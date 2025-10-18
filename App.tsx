@@ -330,7 +330,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
-            isIndexing={indexingState === 'indexing' && progress && progress.total > 0 && progress.current < progress.total}
+            isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
           />
         </Sidebar>
       )}
@@ -341,7 +341,7 @@ export default function App() {
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
-          isIndexing={indexingState === 'indexing' && progress && progress.total > 0 && progress.current < progress.total}
+          isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
           isIndexingPaused={indexingState === 'paused'}
         />
 
