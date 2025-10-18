@@ -2,21 +2,23 @@
 
 This file documents significant architectural decisions, design choices, and important conclusions made during development. Each entry represents a completed feature or major change with its rationale and alternatives considered.
 
-## 2025-01-27: [FIX] - Draw Things Parser Metadata Extraction Enhancement
+## 2025-01-27: [FIX] - Draw Things XMP Metadata Support
 
 **Decision:**
-- Modified PNG metadata parsing to prioritize EXIF/XMP extraction over PNG chunks for Draw Things compatibility
-- Updated Draw Things detection conditions to accept "Guidance Scale:" instead of requiring "CFG scale:"
-- Enhanced prompt extraction to handle implicit prompts ending before parameter markers like "Steps:"
+- Added XMP metadata detection for Draw Things images stored in JPEG format
+- Detect XMP format: `{"lang":"x-default","value":"{JSON}"}` and extract inner JSON
+- Route XMP-detected metadata through standard Draw Things parser pipeline
+- Maintain backward compatibility with existing parameter-based detection
 
 **Context:**
-Draw Things app stores metadata in XMP fields (Description and UserComment) rather than PNG chunks, causing images to appear unparsed. The parser was too restrictive in detection conditions and failed to extract prompts without explicit "Prompt:" labels.
+Draw Things images were appearing with "Unknown metadata format" because they store metadata in XMP EXIF fields with nested JSON structure. The JPEG parser only handled simple text patterns but not the XMP wrapper format. When detected, the entire JSON was being shown as prompt instead of being properly parsed.
 
 **Rationale:**
-- Prioritizing EXIF/XMP extraction ensures compatibility with modern AI apps like Draw Things that use XMP metadata
-- Relaxing detection conditions from "CFG scale:" to "Guidance Scale:" accommodates different parameter naming conventions
-- Flexible prompt boundary detection using regex patterns allows extraction of prompts that end before parameter markers
-- Changes maintain backward compatibility while extending support for additional metadata formats
+- **XMP Detection**: Check for `{"lang":"x-default","value":"..."}` pattern first in JPEG parser
+- **JSON Extraction**: Parse outer XMP structure and extract inner Draw Things JSON
+- **Parser Routing**: Add "Draw Things" prefix to parameters so it gets routed to Draw Things parser
+- **UserComment**: Pass inner JSON as userComment for detailed metadata parsing
+- **No Breaking Changes**: Existing parameter detection still works for PNG and other formats
 
 ## Guidelines
 

@@ -239,6 +239,25 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
     console.log('[JPEG Parser] No ComfyUI detected, checking other patterns...');
 
+    // ========== DRAW THINGS XMP FORMAT DETECTION ==========
+    // Draw Things stores metadata in XMP format: {"lang":"x-default","value":"{JSON}"}
+    if (metadataText.includes('"lang":"x-default"') && metadataText.includes('"value":')) {
+      try {
+        const xmpData = JSON.parse(metadataText);
+        if (xmpData.value && typeof xmpData.value === 'string') {
+          const innerJson = xmpData.value;
+          // Check if the inner JSON contains Draw Things characteristics
+          if (innerJson.includes('"c":') && (innerJson.includes('"model":') || innerJson.includes('"sampler":') || innerJson.includes('"scale":'))) {
+            console.log('[JPEG Parser] ✅ DETECTED Draw Things XMP metadata');
+            // Return in the expected format with Draw Things indicators so it gets routed to Draw Things parser
+            return { parameters: 'Draw Things ' + innerJson, userComment: innerJson };
+          }
+        }
+      } catch {
+        // Not valid JSON, continue with other checks
+      }
+    }
+
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
       console.log('[JPEG Parser] Detected A1111-style metadata with Model hash');
@@ -262,12 +281,8 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
-    // Draw Things (iOS/Mac AI app) uses SD-like format with mobile device indicators or XMP Creator Tool
-    if ((metadataText.includes('iPhone') || metadataText.includes('iPad') || metadataText.includes('iPod') || 
-         metadataText.includes('Draw Things') || exifData.CreatorTool === 'Draw Things') &&
-        (metadataText.includes('Prompt:') || metadataText.includes('Guidance Scale:')) && 
-        metadataText.includes('Steps:') && 
-        (metadataText.includes('CFG scale:') || metadataText.includes('Guidance Scale:')) &&
+    // Draw Things (iOS/Mac AI app) - SIMPLIFIED: If it has Guidance Scale + Steps + Sampler, it's Draw Things
+    if (metadataText.includes('Guidance Scale:') && metadataText.includes('Steps:') && metadataText.includes('Sampler:') &&
         !metadataText.includes('Model hash:') && !metadataText.includes('Forge') && !metadataText.includes('Gradio') &&
         !metadataText.includes('DreamStudio') && !metadataText.includes('Stability AI') && !metadataText.includes('--niji')) {
       // Extract UserComment JSON if available
@@ -278,6 +293,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           userComment = comment;
         }
       }
+      console.log('[Metadata Processing] ✅ Using Draw Things parser (simplified detection)');
       return { parameters: metadataText, userComment };
     }
 
