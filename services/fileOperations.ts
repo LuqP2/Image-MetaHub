@@ -2,7 +2,7 @@
 import { IndexedImage } from '../types';
 
 // Check if we're running in Electron
-const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
 export interface FileOperationsResult {
   success: boolean;

@@ -62,7 +62,7 @@ console.log('='.repeat(50));
 console.log('\n🔗 Opening GitHub releases page...');
 try {
   execSync('start https://github.com/LuqP2/image-metahub/releases/new', { stdio: 'inherit' });
-} catch (error) {
+} catch {
   console.log('💡 Manually open: https://github.com/LuqP2/image-metahub/releases/new');
 }
 

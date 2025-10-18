@@ -18,7 +18,7 @@ export function parseDrawThingsMetadata(parameters: string, userComment?: string
         jsonData = JSON.parse(jsonString);
         console.log('📱 Found JSON metadata in UserComment');
       }
-    } catch (e) {
+    } catch {
       console.log('📱 Failed to parse UserComment JSON, using parameters only');
     }
   }

@@ -16,7 +16,7 @@ export function extractModelsFromMidjourney(metadata: MidjourneyMetadata): strin
   return [];
 }
 
-export function extractLorasFromMidjourney(metadata: MidjourneyMetadata): string[] {
+export function extractLorasFromMidjourney(): string[] {
   // Midjourney doesn't use LoRAs in the traditional sense
   return [];
 }

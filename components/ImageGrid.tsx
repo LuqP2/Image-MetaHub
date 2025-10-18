@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FixedSizeGrid as Grid } from 'react-window';
+import React, { useState, useEffect } from 'react';
+import { FixedSizeGrid as Grid, GridChildComponentProps } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { type IndexedImage } from '../types';
+import { type IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -15,10 +15,16 @@ interface ImageCardProps {
   style: React.CSSProperties; // Added for react-virtualized
   onImageLoad: () => void; // Added to notify parent of image load
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
-  directoryPath?: string;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
+const ImageCard: React.FC<ImageCardProps> = ({
+  image,
+  onImageClick,
+  isSelected,
+  style,
+  onImageLoad,
+  onContextMenu,
+}) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
@@ -129,7 +135,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const {
     contextMenu,
     showContextMenu,
-    hideContextMenu,
     copyPrompt,
     copyNegativePrompt,
     copySeed,
@@ -196,7 +201,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyPrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
+            disabled={!contextMenu.image?.prompt && !contextMenu.image?.metadata?.prompt}
           >
             <Copy className="w-4 h-4" />
             Copy Prompt
@@ -204,7 +209,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyNegativePrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
+            disabled={
+              !contextMenu.image?.negativePrompt && !contextMenu.image?.metadata?.negativePrompt
+            }
           >
             <Copy className="w-4 h-4" />
             Copy Negative Prompt
@@ -212,7 +219,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copySeed}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
+            disabled={!contextMenu.image?.seed && !contextMenu.image?.metadata?.seed}
           >
             <Copy className="w-4 h-4" />
             Copy Seed
@@ -220,7 +227,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={copyModel}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
+            disabled={!contextMenu.image?.models?.[0] && !contextMenu.image?.metadata?.model}
           >
             <Copy className="w-4 h-4" />
             Copy Model
@@ -250,13 +257,26 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 };
 
 // Cell renderer for react-window grid
-const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu } = data;
+interface ItemData {
+  images: IndexedImage[];
+  onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  selectedImages: Set<string>;
+  imageSize: number;
+  columnCount: number;
+  handleContextMenu: (image: IndexedImage, e: React.MouseEvent) => void;
+  directories: Directory[];
+}
+
+const GridCell: React.FC<GridChildComponentProps<ItemData>> = ({
+  columnIndex,
+  rowIndex,
+  style,
+  data,
+}) => {
+  const { images, onImageClick, selectedImages, columnCount, handleContextMenu } = data;
   const index = rowIndex * columnCount + columnIndex;
   const image = images[index];
   if (!image) return null;
-
-  const directoryPath = data.directories?.find((d: any) => d.id === image.directoryId)?.path;
 
   return (
     <div style={{ ...style, padding: GUTTER_SIZE / 2 }}>
@@ -267,7 +287,6 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
         style={{ width: '100%' }}
         onImageLoad={() => {}}
         onContextMenu={handleContextMenu}
-        directoryPath={directoryPath}
       />
     </div>
   );

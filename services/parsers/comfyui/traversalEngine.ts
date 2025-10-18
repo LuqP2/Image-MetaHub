@@ -1,4 +1,4 @@
-import { NodeRegistry, ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType, NodeDefinition } from './nodeRegistry';
+import { NodeRegistry, ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType } from './nodeRegistry';
 
 type NodeLink = [string, number];
 type Graph = Record<string, ParserNode>;
@@ -37,8 +37,8 @@ function traverse(
   currentNode: ParserNode,
   state: TraversalState,
   graph: Graph,
-  accumulator: any[]
-): any {
+  accumulator: unknown[],
+): unknown {
   // 1. Consciência de Estado: Ignora nós silenciados ("muted")
   if (currentNode.mode === 2 || currentNode.mode === 4) {
     return state.targetParam === 'lora' ? accumulator : null;
@@ -64,8 +64,8 @@ function traverse(
   // 3. Roteamento Dinâmico (Problema do "Switch")
   if (nodeDef.roles.includes('ROUTING') && nodeDef.conditional_routing) {
     const controlInputName = nodeDef.conditional_routing.control_input;
-    let controlValue: any = null;
-    
+    let controlValue: unknown = null;
+
     // Tenta resolver o valor de controle, que pode ser um widget ou um link
     const controlLink = currentNode.inputs[controlInputName];
     if (controlLink && Array.isArray(controlLink)) {
@@ -111,7 +111,13 @@ function traverse(
 /**
  * Extrai um valor de um nó com base numa regra, podendo iniciar uma sub-travessia.
  */
-function extractValue(node: ParserNode, rule: ParamMappingRule, state: TraversalState, graph: Graph, accumulator: any[]): any {
+function extractValue(
+  node: ParserNode,
+  rule: ParamMappingRule,
+  state: TraversalState,
+  graph: Graph,
+  accumulator: unknown[],
+): unknown {
     if (rule.source === 'widget') {
         const nodeDef = NodeRegistry[node.class_type];
         
@@ -175,7 +181,12 @@ function extractValue(node: ParserNode, rule: ParamMappingRule, state: Traversal
 /**
  * Continua a travessia a partir de um link de entrada, evitando ciclos.
  */
-function traverseFromLink(link: NodeLink, state: TraversalState, graph: Graph, accumulator: any[]): any {
+function traverseFromLink(
+  link: NodeLink,
+  state: TraversalState,
+  graph: Graph,
+  accumulator: unknown[],
+): unknown {
     const [sourceNodeId, sourceOutputSlot] = link;
     const linkId = `${sourceNodeId}:${sourceOutputSlot}`;
 
@@ -194,91 +205,7 @@ function traverseFromLink(link: NodeLink, state: TraversalState, graph: Graph, a
 
 // --- Funções de Ponto de Entrada ---
 
-/**
- * Coleta todos os valores encontrados para um parâmetro, explorando todos os caminhos possíveis.
- */
-function collectAllValues(startNode: ParserNode, state: TraversalState, graph: Graph): any[] {
-    const values: any[] = [];
-    collectValuesRecursive(startNode, state, graph, values, new Set());
-    return values;
-}
-
-function collectValuesRecursive(
-    currentNode: ParserNode, 
-    state: TraversalState, 
-    graph: Graph, 
-    values: any[], 
-    visited: Set<string>
-): void {
-    // Evita ciclos
-    if (visited.has(currentNode.id)) return;
-    visited.add(currentNode.id);
-
-    // 1. Consciência de Estado: Ignora nós silenciados
-    if (currentNode.mode === 2 || currentNode.mode === 4) {
-        return;
-    }
-
-    const nodeDef = NodeRegistry[currentNode.class_type];
-    if (!nodeDef) return;
-
-    // 2. Extração de Parâmetro
-    const paramRule = state.targetParam !== 'generic' ? nodeDef.param_mapping?.[state.targetParam] : undefined;
-    if (paramRule) {
-        const value = extractValue(currentNode, paramRule, state, graph, []);
-        if (value !== null && value !== undefined) {
-            values.push(value);
-        }
-    }
-
-    // 3. Continua a exploração para todos os caminhos possíveis
-    for (const inputName in currentNode.inputs) {
-        const inputLink = currentNode.inputs[inputName];
-        if (inputLink && Array.isArray(inputLink)) {
-            const [sourceNodeId] = inputLink;
-            const nextNode = graph[sourceNodeId];
-            if (nextNode) {
-                collectValuesRecursive(nextNode, state, graph, values, visited);
-            }
-        }
-    }
-}
-
-/**
- * Seleciona o melhor valor de prompt entre múltiplas opções.
- */
-function selectBestPromptValue(values: any[], paramType: ComfyTraversableParam): any {
-    if (values.length === 0) return null;
-    if (values.length === 1) return values[0];
-
-    // Filtra valores válidos (não vazios, não nulos)
-    const validValues = values.filter(v => 
-        v !== null && 
-        v !== undefined && 
-        v !== '' && 
-        (!Array.isArray(v) || v.length > 0)
-    );
-
-    if (validValues.length === 0) return null;
-    if (validValues.length === 1) return validValues[0];
-
-    // Para prompts, prefere o mais longo e informativo
-    return validValues.reduce((best, current) => {
-        const bestStr = String(best || '').trim();
-        const currentStr = String(current || '').trim();
-        
-        // Prefere prompts não vazios
-        if (!bestStr && currentStr) return current;
-        if (!currentStr) return best;
-        
-        // Prefere o mais longo
-        if (currentStr.length > bestStr.length) return current;
-        
-        return best;
-    });
-}
-
-export function resolve(args: { startNode: ParserNode, param: ComfyTraversableParam, graph: Graph }): any {
+export function resolve(args: { startNode: ParserNode, param: ComfyTraversableParam, graph: Graph }): unknown {
     const initialState = createInitialState(args.param);
     
     // Para LoRAs, precisamos coletar de TODOS os nós no caminho
@@ -339,11 +266,13 @@ export function resolve(args: { startNode: ParserNode, param: ComfyTraversablePa
     return traverse(args.startNode, initialState, args.graph, []);
 }
 
-export function resolveAll(args: { startNode: ParserNode, params: ComfyTraversableParam[], graph: Graph }): Record<string, any> {
-    const results: Record<string, any> = {};
-    for (const param of args.params) {
-        results[param] = resolve({ ...args, param });
-    }
-    return results;
+export function resolveAll(
+  args: { startNode: ParserNode; params: ComfyTraversableParam[]; graph: Graph },
+): Record<string, unknown> {
+  const results: Record<string, unknown> = {};
+  for (const param of args.params) {
+    results[param] = resolve({ ...args, param });
+  }
+  return results;
 }
 

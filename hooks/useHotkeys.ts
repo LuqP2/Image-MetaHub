@@ -37,7 +37,7 @@ export const useHotkeys = ({
 
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
-  const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
+  const { toggleViewMode, theme, setTheme } = useSettingsStore();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const element = document.querySelector<HTMLElement>(`[data-area='${area}']`);

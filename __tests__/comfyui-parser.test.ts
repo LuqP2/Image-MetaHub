@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { resolvePromptFromGraph } from '../services/parsers/comfyUIParser';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ComfyUIPrompt, ComfyUIWorkflow } from '../types';
 
 /**
  * ComfyUI Parser Test Suite
- * 
+ *
  * Tests cover:
  * - Basic KSampler workflows
  * - LoRA workflows with multiple loaders
@@ -16,7 +17,18 @@ import * as path from 'path';
  * - ComfyUI version detection
  */
 
-function loadFixture(name: string): any {
+interface ComfyUIFixture {
+  workflow: ComfyUIWorkflow;
+  prompt: ComfyUIPrompt;
+}
+
+interface EditHistoryItem {
+  action: 'load' | 'save';
+  filename?: string;
+  timestamp?: number | string;
+}
+
+function loadFixture(name: string): ComfyUIFixture {
   const fixturePath = path.join(__dirname, 'fixtures', 'comfyui', name);
   const content = fs.readFileSync(fixturePath, 'utf-8');
   return JSON.parse(content);
@@ -125,12 +137,12 @@ describe('ComfyUI Parser - Edit History', () => {
     expect(result.editHistory.length).toBeGreaterThan(0);
     
     // Check for load action
-    const loadAction = result.editHistory.find((h: any) => h.action === 'load');
+    const loadAction = result.editHistory.find((h: EditHistoryItem) => h.action === 'load');
     expect(loadAction).toBeDefined();
     expect(loadAction?.filename).toBe('base_image.png');
     
     // Check for save action
-    const saveAction = result.editHistory.find((h: any) => h.action === 'save');
+    const saveAction = result.editHistory.find((h: EditHistoryItem) => h.action === 'save');
     expect(saveAction).toBeDefined();
     expect(saveAction?.timestamp).toBeDefined();
   });

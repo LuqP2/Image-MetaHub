@@ -15,7 +15,6 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const {
     contextMenu,
     showContextMenu,
-    hideContextMenu,
     copyPrompt,
     copyNegativePrompt,
     copySeed,
@@ -220,7 +219,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
         {image.handle.name}
       </td>
       <td className="px-4 py-2 max-w-xs truncate">
-        {image.prompt || (image.metadata as any)?.prompt?.substring(0, 50) || 'No prompt'}...
+        {image.prompt || image.metadata?.prompt?.substring(0, 50) || 'No prompt'}...
       </td>
       <td className="px-4 py-2">
         {image.models?.[0] || 'Unknown'}

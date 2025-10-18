@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 
 interface ContextMenuState {
   x: number;
@@ -91,19 +91,20 @@ export const useContextMenu = () => {
   };
 
   const copyPrompt = () => {
-    const prompt = contextMenu.image?.prompt || (contextMenu.image?.metadata as any)?.prompt;
+    const prompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.prompt;
     if (!prompt) return;
     copyToClipboardElectron(prompt, 'Prompt');
   };
 
   const copyNegativePrompt = () => {
-    const negativePrompt = contextMenu.image?.negativePrompt || (contextMenu.image?.metadata as any)?.negativePrompt;
+    const negativePrompt =
+      contextMenu.image?.negativePrompt || contextMenu.image?.metadata?.negativePrompt;
     if (!negativePrompt) return;
     copyToClipboardElectron(negativePrompt, 'Negative Prompt');
   };
 
   const copySeed = () => {
-    const seed = contextMenu.image?.seed || (contextMenu.image?.metadata as any)?.seed;
+    const seed = contextMenu.image?.seed || contextMenu.image?.metadata?.seed;
     if (!seed) return;
     copyToClipboardElectron(String(seed), 'Seed');
   };
@@ -120,7 +121,7 @@ export const useContextMenu = () => {
   };
 
   const copyModel = () => {
-    const model = contextMenu.image?.models?.[0] || (contextMenu.image?.metadata as any)?.model;
+    const model = contextMenu.image?.models?.[0] || contextMenu.image?.metadata?.model;
     if (!model) return;
     copyToClipboardElectron(model, 'Model');
   };

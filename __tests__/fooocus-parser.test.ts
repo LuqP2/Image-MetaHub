@@ -13,10 +13,10 @@ import * as path from 'path';
  * - Prompt extraction
  */
 
-function loadFixture(name: string): any {
+function loadFixture(name: string): string {
   const fixturePath = path.join(__dirname, 'fixtures', 'fooocus', name);
   const content = fs.readFileSync(fixturePath, 'utf-8');
-  return JSON.parse(content);
+  return JSON.parse(content).parameters;
 }
 
 describe('Fooocus Parser - Basic Workflows', () => {

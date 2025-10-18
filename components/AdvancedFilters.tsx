@@ -1,20 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, X, Calendar, Settings } from 'lucide-react';
+import { ChevronDown, X, Calendar, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+interface FilterValues {
+  dimension?: string;
+  steps?: { min: number; max: number };
+  cfg?: { min: number; max: number };
+  date?: { from: string; to: string };
+}
 interface AdvancedFiltersProps {
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: FilterValues;
+  onAdvancedFiltersChange: (filters: FilterValues) => void;
   onClearAdvancedFilters: () => void;
 }
 
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
-  onClearAdvancedFilters
+  onClearAdvancedFilters,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [localFilters, setLocalFilters] = useState(advancedFilters || {});
+  const [localFilters, setLocalFilters] = useState<FilterValues>(advancedFilters || {});
 
   // Available dimensions from common AI image sizes
   const availableDimensions = [
@@ -26,10 +32,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLocalFilters(advancedFilters || {});
   }, [advancedFilters]);
 
-  const updateFilter = (key: string, value: any) => {
-    const newFilters = { ...localFilters, [key]: value };
+  const updateFilter = (key: keyof FilterValues, value: FilterValues[keyof FilterValues]) => {
+    const newFilters: FilterValues = { ...localFilters, [key]: value };
     // Remove empty filters
-    Object.keys(newFilters).forEach(k => {
+    (Object.keys(newFilters) as Array<keyof FilterValues>).forEach((k) => {
       if (newFilters[k] === null || newFilters[k] === undefined ||
           (typeof newFilters[k] === 'object' && Object.keys(newFilters[k]).length === 0)) {
         delete newFilters[k];

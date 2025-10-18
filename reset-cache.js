@@ -147,7 +147,7 @@ function killElectronProcesses() {
         try {
           execSync('taskkill /f /im electron.exe', { stdio: 'ignore' });
           execSync('taskkill /f /im ImageMetaHub.exe', { stdio: 'ignore' });
-        } catch (e) {
+        } catch {
           // Ignore errors if processes aren't running
         }
         break;
@@ -155,7 +155,7 @@ function killElectronProcesses() {
         try {
           execSync('pkill -f electron', { stdio: 'ignore' });
           execSync('pkill -f "Image MetaHub"', { stdio: 'ignore' });
-        } catch (e) {
+        } catch {
           // Ignore errors if processes aren't running
         }
         break;
@@ -163,13 +163,13 @@ function killElectronProcesses() {
         try {
           execSync('pkill -f electron', { stdio: 'ignore' });
           execSync('pkill -f imagemetahub', { stdio: 'ignore' });
-        } catch (e) {
+        } catch {
           // Ignore errors if processes aren't running
         }
         break;
     }
     console.log('✅ Electron processes killed');
-  } catch (error) {
+  } catch {
     console.log('ℹ️ No running Electron processes found');
   }
 }

@@ -24,7 +24,7 @@ try {
   console.log('Building project...');
   execSync('npm run build', { stdio: 'inherit' });
   console.log('✅ Build successful');
-} catch (error) {
+} catch {
   console.error('❌ Build failed! Aborting release.');
   process.exit(1);
 }

@@ -1,14 +1,11 @@
 import React from 'react';
 
 interface StepsRangeSliderProps {
-  min: number;
-  max: number;
   value: [number, number];
   onChange: (value: [number, number]) => void;
 }
 
-
-const StepsRangeSlider: React.FC<StepsRangeSliderProps> = ({ min, max, value, onChange }) => {
+const StepsRangeSlider: React.FC<StepsRangeSliderProps> = ({ value, onChange }) => {
   // Always use 0-100 for min/max
   const sliderMin = 0;
   const sliderMax = 100;

@@ -133,6 +133,6 @@ try {
   } else {
     console.log('On non-Windows systems, manually open: https://github.com/LuqP2/image-metahub/releases/new');
   }
-} catch (error) {
+} catch {
   console.log('Manually open: https://github.com/LuqP2/image-metahub/releases/new');
 }

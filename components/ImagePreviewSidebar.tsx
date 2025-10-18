@@ -1,9 +1,14 @@
 import React, { useEffect, useState, FC } from 'react';
 import { useImageStore } from '../store/useImageStore';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type BaseMetadata } from '../types';
 
 // Helper component from ImageModal.tsx
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{
+  label: string;
+  value?: React.ReactNode;
+  isPrompt?: boolean;
+  onCopy?: (value: string) => void;
+}> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
   }
@@ -179,7 +184,14 @@ const ImagePreviewSidebar: React.FC = () => {
             {nMeta.loras && nMeta.loras.length > 0 && (
                <>
                   <h3 className="text-base font-semibold text-gray-300 pt-2 border-b border-gray-600 pb-2">LoRAs</h3>
-                  <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                  <MetadataItem
+                    label="LoRAs"
+                    value={nMeta.loras
+                      .map((lora: string | { model_name?: string }) =>
+                        typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA',
+                      )
+                      .join(', ')}
+                  />
                </>
             )}
           </>

@@ -6,16 +6,16 @@ import { IndexedImage, Directory } from '../types';
 
 // Configure logging level
 const DEBUG = false;
-const log = (...args: any[]) => DEBUG && console.log(...args);
-const warn = (...args: any[]) => DEBUG && console.warn(...args);
-const error = (...args: any[]) => console.error(...args); // Keep error logging for critical issues
+const log = (...args: unknown[]) => DEBUG && console.log(...args);
+const warn = (...args: unknown[]) => DEBUG && console.warn(...args);
+const error = (...args: unknown[]) => console.error(...args); // Keep error logging for critical issues
 
 // Throttle function for progress updates to avoid excessive re-renders
-function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+function throttle<T extends (...args: unknown[]) => void>(func: T, delay: number): T {
   let timeoutId: NodeJS.Timeout | null = null;
   let lastExecTime = 0;
 
-  return ((...args: any[]) => {
+  return ((...args: unknown[]) => {
     const currentTime = Date.now();
 
     if (currentTime - lastExecTime > delay) {
@@ -33,61 +33,75 @@ function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T 
 
 // Dynamic Electron detection - check at runtime, not module load time
 const getIsElectron = () => {
-  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-  return isElectron;
+  return typeof window !== 'undefined' && window.electronAPI;
 };
 
-// Global cache for file data to avoid Zustand serialization issues
-const fileDataCache = new Map<string, Uint8Array>();
-
-// Function to clear file data cache
-function clearFileDataCache() {
-  fileDataCache.clear();
-}
-
 // Helper for getting files recursively in the browser
-async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number }[]> {
-    const files = [];
-    for await (const entry of (directoryHandle as any).values()) {
-        const entryPath = path ? `${path}/${entry.name}` : entry.name;
-        if (entry.kind === 'file') {
-            if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
-                const file = await entry.getFile();
-                files.push({ name: entryPath, lastModified: file.lastModified });
-            }
-        } else if (entry.kind === 'directory') {
-            try {
-                const subFiles = await getFilesRecursivelyWeb(entry, entryPath);
-                files.push(...subFiles);
-            } catch (e) {
-                warn(`Could not read directory: ${entryPath}`);
-            }
-        }
+async function getFilesRecursivelyWeb(
+  directoryHandle: FileSystemDirectoryHandle & {
+    values: () => AsyncIterable<FileSystemHandle>;
+  },
+  path = '',
+): Promise<{ name: string; lastModified: number }[]> {
+  const files = [];
+  for await (const entry of directoryHandle.values()) {
+    const entryPath = path ? `${path}/${entry.name}` : entry.name;
+    if (entry.kind === 'file') {
+      if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
+        const file = await (entry as FileSystemFileHandle).getFile();
+        files.push({ name: entryPath, lastModified: file.lastModified });
+      }
+    } else if (entry.kind === 'directory') {
+      try {
+        const subFiles = await getFilesRecursivelyWeb(
+          entry as FileSystemDirectoryHandle & {
+            values: () => AsyncIterable<FileSystemHandle>;
+          },
+          entryPath,
+        );
+        files.push(...subFiles);
+      } catch {
+        warn(`Could not read directory: ${entryPath}`);
+      }
     }
+  }
     return files;
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number }[]> {
-    if (getIsElectron()) {
-        const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
-        if (result.success && result.files) {
-            return result.files;
-        }
-        return [];
-    } else {
-        if (recursive) {
-            return await getFilesRecursivelyWeb(directoryHandle);
-        } else {
-            const files = [];
-            for await (const entry of (directoryHandle as any).values()) {
-                if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
-                    const file = await entry.getFile();
-                    files.push({ name: file.name, lastModified: file.lastModified });
-                }
-            }
-            return files;
-        }
+async function getDirectoryFiles(
+  directoryHandle: FileSystemDirectoryHandle,
+  directoryPath: string,
+  recursive: boolean,
+): Promise<{ name: string; lastModified: number }[]> {
+  if (getIsElectron()) {
+    const result = await window.electronAPI.listDirectoryFiles({
+      dirPath: directoryPath,
+      recursive,
+    });
+    if (result.success && result.files) {
+      return result.files;
     }
+    return [];
+  } else {
+    const handleWithValues = directoryHandle as FileSystemDirectoryHandle & {
+      values: () => AsyncIterable<FileSystemHandle>;
+    };
+    if (recursive) {
+      return await getFilesRecursivelyWeb(handleWithValues);
+    } else {
+      const files = [];
+      for await (const entry of handleWithValues.values()) {
+        if (
+          entry.kind === 'file' &&
+          (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))
+        ) {
+          const file = await (entry as FileSystemFileHandle).getFile();
+          files.push({ name: file.name, lastModified: file.lastModified });
+        }
+      }
+      return files;
+    }
+  }
 }
 
 // Helper to get a file handle from a relative path in the browser
@@ -126,8 +140,8 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
         // Process paths in smaller chunks to avoid overwhelming IPC
         const CHUNK_SIZE = 1000;
         const fileNames = files.map(f => f.name);
-        const joinResults: any[] = [];
-        
+        const joinResults: { success: boolean; path?: string; error?: string }[] = [];
+
         for (let i = 0; i < fileNames.length; i += CHUNK_SIZE) {
             const chunk = fileNames.slice(i, i + CHUNK_SIZE);
             const chunkResults = await Promise.all(
@@ -145,10 +159,10 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
                 console.error("Failed to join paths, falling back to manual concatenation:", joinResult.error);
             }
 
-            const mockHandle = {
+            const mockHandle: FileSystemFileHandle = {
                 name: file.name,
                 kind: 'file' as const,
-                _filePath: filePath,
+                isSameEntry: async (other: FileSystemHandle) => other.name === file.name,
                 getFile: async () => {
                     // Read file directly when needed (during processFiles)
                     if (getIsElectron()) {
@@ -157,13 +171,16 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
                             const freshData = new Uint8Array(fileResult.data);
                             const lowerName = file.name.toLowerCase();
                             const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                            return new File([freshData as any], file.name, { type });
+                            return new File([freshData], file.name, { type });
                         }
                     }
                     throw new Error(`Failed to read file: ${filePath}`);
+                },
+                createWritable: async () => {
+                  throw new Error('createWritable is not implemented in mockHandle');
                 }
             };
-            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified });
+            handles.push({ handle: mockHandle, path: file.name, lastModified: file.lastModified });
         }
     } else {
         // Browser implementation needs to handle sub-paths
@@ -238,32 +255,39 @@ export function useImageLoader() {
             });
         };
 
-        const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
-            setProgress(progress);
-        });
+        const removeProgressListener = window.electronAPI.onIndexingProgress(
+      (progress: { current: number; total: number }) => {
+        setProgress(progress);
+      },
+    );
 
         let isFirstBatch = true;
-        const removeBatchListener = (window as any).electronAPI.onIndexingBatchResult(({ batch }: { batch: IndexedImage[] }) => {
-            addImages(batch);
-            // Remove loading overlay after first batch
-            if (isFirstBatch) {
-                setLoading(false);
-                isFirstBatch = false;
-            }
-            // Update filters incrementally as new images are processed
-            updateGlobalFilters();
-        });
+        const removeBatchListener = window.electronAPI.onIndexingBatchResult(
+      ({ batch }: { batch: IndexedImage[] }) => {
+        addImages(batch);
+        // Remove loading overlay after first batch
+        if (isFirstBatch) {
+          setLoading(false);
+          isFirstBatch = false;
+        }
+        // Update filters incrementally as new images are processed
+        updateGlobalFilters();
+      },
+    );
 
-        const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
-            setError(`Indexing error in ${directoryId}: ${error}`);
-            setLoading(false); // Stop loading on error
-            setProgress(null);
-        });
+        const removeErrorListener = window.electronAPI.onIndexingError(
+      ({ error, directoryId }: { error: string; directoryId: string }) => {
+        setError(`Indexing error in ${directoryId}: ${error}`);
+        setLoading(false); // Stop loading on error
+        setProgress(null);
+      },
+    );
 
-        const removeCompleteListener = (window as any).electronAPI.onIndexingComplete(({ directoryId }: { directoryId: string }) => {
-            const currentState = useImageStore.getState().indexingState;
-            // Only finalize if not paused or cancelled
-            if (currentState === 'indexing') {
+        const removeCompleteListener = window.electronAPI.onIndexingComplete(
+      ({ directoryId }: { directoryId: string }) => {
+        const currentState = useImageStore.getState().indexingState;
+        // Only finalize if not paused or cancelled
+        if (currentState === 'indexing') {
                 const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
                 if (directory) {
                     finalizeDirectoryLoad(directory);
@@ -284,11 +308,11 @@ export function useImageLoader() {
         
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
-        if ((window as any)[finalizationKey]) {
+        if ((window as { [key: string]: boolean })[finalizationKey]) {
             console.log(`⚠️ Directory ${directory.name} already finalized, skipping`);
             return;
         }
-        (window as any)[finalizationKey] = true;
+        (window as { [key: string]: boolean })[finalizationKey] = true;
         
         // Wait a bit to ensure all images are added to the store
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -329,10 +353,10 @@ export function useImageLoader() {
                     const joinResult = filePaths[i];
                     const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
 
-                    const mockHandle = {
+                    const mockHandle: FileSystemFileHandle = {
                         name: meta.name,
                         kind: 'file' as const,
-                        _filePath: filePath,
+                        isSameEntry: async (other: FileSystemHandle) => other.name === meta.name,
                         getFile: async () => {
                             if (isElectron && filePath) {
                                 const fileResult = await window.electronAPI.readFile(filePath);
@@ -340,16 +364,19 @@ export function useImageLoader() {
                                     const freshData = new Uint8Array(fileResult.data);
                                     const lowerName = meta.name.toLowerCase();
                                     const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                    return new File([freshData as any], meta.name, { type });
+                                    return new File([freshData], meta.name, { type });
                                 }
                             }
                             throw new Error(`Failed to read file: ${meta.name}`);
+                        },
+                        createWritable: async () => {
+                          throw new Error('createWritable is not implemented in mockHandle');
                         }
                     };
 
                     return {
                         ...meta,
-                        handle: mockHandle as any,
+                        handle: mockHandle,
                         directoryId: directory.id,
                     };
                 });
@@ -507,7 +534,7 @@ export function useImageLoader() {
                 if (result.canceled || !result.path) return;
                 path = result.path;
                 name = result.name || 'Selected Folder';
-                handle = { name, kind: 'directory' } as any;
+                handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
             } else {
                 handle = await window.showDirectoryPicker();
                 path = handle.name; // Path is just the name in the browser version for simplicity
@@ -568,7 +595,7 @@ export function useImageLoader() {
                     // First, add all directories to the store without loading.
                     for (const path of paths) {
                         const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
-                        const handle = { name, kind: 'directory' } as any;
+                        const handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
                         const directoryId = path;
                         const newDirectory: Directory = { id: directoryId, path, name, handle };
                         addDirectory(newDirectory);

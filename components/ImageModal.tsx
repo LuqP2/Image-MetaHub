@@ -1,7 +1,7 @@
 import React, { useEffect, useState, FC } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 
 interface ImageModalProps {
@@ -18,7 +18,12 @@ interface ImageModalProps {
 }
 
 // Helper component for consistently rendering metadata items
-const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
+const MetadataItem: FC<{
+  label: string;
+  value?: React.ReactNode;
+  isPrompt?: boolean;
+  onCopy?: (value: string) => void;
+}> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
   }
@@ -478,7 +483,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
-                      <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                      <MetadataItem
+                        label="LoRAs"
+                        value={nMeta.loras
+                          .map((lora: string | { model_name?: string }) =>
+                            typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA',
+                          )
+                          .join(', ')}
+                      />
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />

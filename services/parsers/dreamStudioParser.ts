@@ -1,4 +1,4 @@
-import { DreamStudioMetadata, isDreamStudioMetadata, BaseMetadata } from '../../types';
+import { isDreamStudioMetadata, BaseMetadata, DreamStudioMetadata } from '../../types';
 
 /**
  * DreamStudio Parser - Handles DreamStudio (Stability AI) metadata
@@ -6,7 +6,7 @@ import { DreamStudioMetadata, isDreamStudioMetadata, BaseMetadata } from '../../
  * Reuses A1111 parsing logic since DreamStudio maintains compatibility
  */
 
-export function parseDreamStudioMetadata(metadata: any): BaseMetadata | null {
+export function parseDreamStudioMetadata(metadata: DreamStudioMetadata): BaseMetadata | null {
   if (!isDreamStudioMetadata(metadata)) {
     return null;
   }
@@ -28,7 +28,7 @@ export function parseDreamStudioMetadata(metadata: any): BaseMetadata | null {
 
   // Extract LoRAs and embeddings
   const loras = extractLoRAs(parameters);
-  const embeddings = extractEmbeddings(parameters);
+  extractEmbeddings(parameters);
 
   // Extract DreamStudio-specific parameters
   const guidanceScale = extractGuidanceScale(parameters);

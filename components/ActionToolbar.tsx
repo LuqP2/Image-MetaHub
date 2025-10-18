@@ -1,11 +1,10 @@
 import React from 'react';
-import { resetAllCaches } from '../utils/cacheReset';
 import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List } from 'lucide-react';
 
 interface ActionToolbarProps {
   sortOrder: string;
-  onSortOrderChange: (value: any) => void;
+  onSortOrderChange: (value: string) => void;
   selectedCount: number;
   onClearSelection: () => void;
   onDeleteSelected: () => void;

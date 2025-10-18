@@ -35,7 +35,7 @@ export const copyImageToClipboard = async (image: IndexedImage): Promise<Operati
 export const showInExplorer = async (imageOrPath: IndexedImage | string): Promise<OperationResult> => {
   try {
     // Check if running in Electron
-    if (typeof window !== 'undefined' && (window as any).electronAPI && (window as any).electronAPI.showItemInFolder) {
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.showItemInFolder) {
       // Electron: use shell.showItemInFolder()
       let fullPath: string;
       
@@ -54,7 +54,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         fullPath = directoryPath ? `${directoryPath}\\${imageOrPath.name}` : imageOrPath.name;
       }
       
-      const result = await (window as any).electronAPI.showItemInFolder(fullPath);
+      const result = await window.electronAPI.showItemInFolder(fullPath);
 
       if (result.success) {
         // File opened successfully
@@ -76,7 +76,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         // Also copy the path to clipboard for convenience
         try {
           await navigator.clipboard.writeText(imageOrPath);
-        } catch (clipboardError) {
+        } catch {
           // Ignore clipboard errors
         }
 
@@ -95,7 +95,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
         // Also copy the path to clipboard for convenience
         try {
           await navigator.clipboard.writeText(imageOrPath.id);
-        } catch (clipboardError) {
+        } catch {
           // Ignore clipboard errors
         }
 
@@ -125,7 +125,7 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
     }
 
     // Determine the path to copy based on environment
-    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
     let pathToCopy: string;
 
     if (isElectron) {

@@ -157,8 +157,8 @@ export async function completeFreshStart(): Promise<void> {
 // Auto-run if this script is executed directly (for console usage)
 if (typeof window !== 'undefined' && window.location) {
   // Make functions available globally for console usage
-  (window as any).resetAllCaches = resetAllCaches;
-  (window as any).completeFreshStart = completeFreshStart;
+  (window as unknown as { resetAllCaches: () => void }).resetAllCaches = resetAllCaches;
+  (window as unknown as { completeFreshStart: () => void }).completeFreshStart = completeFreshStart;
 
   console.log('💡 Cache reset utilities loaded!');
   console.log('   • Run resetAllCaches() to clear app caches');

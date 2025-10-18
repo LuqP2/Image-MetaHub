@@ -12,7 +12,10 @@ const C2PA_UUID = new Uint8Array([0x00, 0x11, 0x00, 0x10, 0x80, 0x00, 0x00, 0xaa
 const CBOR_BOX_TYPE = 'cbor';
 const JUMBF_SUPERBOX_TYPE = 'jumbf';
 
-export function parseFireflyMetadata(metadata: any, fileBuffer: ArrayBuffer): BaseMetadata | null { // Add fileBuffer param pra binary parsing
+export function parseFireflyMetadata(
+  metadata: FireflyMetadata,
+  fileBuffer: ArrayBuffer,
+): BaseMetadata | null {
   if (!isFireflyMetadata(metadata)) {
     return null;
   }
@@ -160,7 +163,7 @@ function parseJUMBF(data: Uint8Array): { type: string; label: string; data: Uint
   while (offset < data.length) {
     const boxLength = new DataView(data.buffer).getUint32(offset);
     const boxType = new TextDecoder().decode(data.slice(offset + 4, offset + 8));
-    const boxUUID = data.slice(offset + 8, offset + 20);
+    new DataView(data.buffer).getUint32(offset + 8);
     const boxLabelLength = new DataView(data.buffer).getUint16(offset + 20);
     const boxLabel = new TextDecoder().decode(data.slice(offset + 22, offset + 22 + boxLabelLength));
     const boxData = data.slice(offset + 22 + boxLabelLength, offset + boxLength);
@@ -171,7 +174,7 @@ function parseJUMBF(data: Uint8Array): { type: string; label: string; data: Uint
 }
 
 // Extract data from EXIF metadata
-function extractFromEXIF(exifData: any): Partial<FireflyMetadata> {
+function extractFromEXIF(exifData: FireflyMetadata['exif_data']): Partial<FireflyMetadata> {
   if (!exifData) return {};
 
   const result: Partial<FireflyMetadata> = {};
@@ -302,14 +305,27 @@ function extractAiTags(data: Partial<FireflyMetadata>): string[] {
 }
 
 // Extract edit history for BI Pro creative assets analysis
-function extractEditHistory(data: Partial<FireflyMetadata>): any[] | undefined {
+function extractEditHistory(
+  data: Partial<FireflyMetadata>,
+): { action: string; timestamp: string; software: string; parameters: unknown }[] | undefined {
   if (data.edit_history && Array.isArray(data.edit_history)) {
-    return data.edit_history.map((action: any) => ({
-      action: action.action || action.type,
-      timestamp: action.when || action.timestamp,
-      software: action.softwareAgent || action.software,
-      parameters: action.parameters || action.params,
-    }));
+    return data.edit_history.map(
+      (action: {
+        action?: string;
+        type?: string;
+        when?: string;
+        timestamp?: string;
+        softwareAgent?: string;
+        software?: string;
+        parameters?: unknown;
+        params?: unknown;
+      }) => ({
+        action: action.action || action.type,
+        timestamp: action.when || action.timestamp,
+        software: action.softwareAgent || action.software,
+        parameters: action.parameters || action.params,
+      }),
+    );
   }
 
   return undefined;

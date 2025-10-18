@@ -99,8 +99,10 @@ function isFooocusMetadata(params: string): boolean {
   // Heuristics to detect Fooocus format
   return (
     /Fooocus/i.test(params) ||
-    /Version:\s*f2\./i.test(params) ||
+    /Version:\s*f2/i.test(params) ||
     /Distilled CFG Scale/i.test(params) ||
-    /Module\s*1:\s*ae/i.test(params)
+    /Module\s*1:\s*ae/i.test(params) ||
+    /Model:\s*flux/i.test(params) ||
+    /Version:\s*f2\.0\.1v1\.10\.1-previous-543-g22e2bc3b/i.test(params)
   );
 }

@@ -1,4 +1,4 @@
-import { ForgeMetadata, isForgeMetadata, BaseMetadata } from '../../types';
+import { isForgeMetadata, BaseMetadata, ForgeMetadata } from '../../types';
 
 /**
  * Forge Parser - Handles Forge (A1111-based) metadata
@@ -6,7 +6,7 @@ import { ForgeMetadata, isForgeMetadata, BaseMetadata } from '../../types';
  * Reuses A1111 parsing logic since Forge maintains compatibility
  */
 
-export function parseForgeMetadata(metadata: any): BaseMetadata | null {
+export function parseForgeMetadata(metadata: ForgeMetadata): BaseMetadata | null {
   if (!isForgeMetadata(metadata)) {
     return null;
   }
@@ -29,7 +29,7 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
 
   // Extract LoRAs and embeddings
   const loras = extractLoRAs(parameters);
-  const embeddings = extractEmbeddings(parameters);
+  extractEmbeddings(parameters);
 
   // Extract additional Forge-specific parameters
   const hiresUpscaler = extractHiresUpscaler(parameters);

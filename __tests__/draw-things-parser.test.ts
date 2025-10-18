@@ -13,7 +13,12 @@ import * as path from 'path';
  * - Flux model support
  */
 
-function loadFixture(name: string): any {
+interface DrawThingsFixture {
+  parameters: string;
+  userComment?: string;
+}
+
+function loadFixture(name: string): DrawThingsFixture {
   const fixturePath = path.join(__dirname, 'fixtures', 'draw-things', name);
   const content = fs.readFileSync(fixturePath, 'utf-8');
   return JSON.parse(content);

@@ -2,7 +2,23 @@
 /// <reference lib="dom.iterable" />
 import { cacheManager } from './cacheManager';
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import {
+  type IndexedImage,
+  type ImageMetadata,
+  type BaseMetadata,
+  isInvokeAIMetadata,
+  isComfyUIMetadata,
+  isSwarmUIMetadata,
+  isEasyDiffusionMetadata,
+  isEasyDiffusionJson,
+  isDalleMetadata,
+  isFireflyMetadata,
+  ComfyUIMetadata,
+  InvokeAIMetadata,
+  SwarmUIMetadata,
+  EasyDiffusionJson,
+  FooocusMetadata,
+} from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
@@ -30,7 +46,7 @@ function sanitizeJson(jsonString: string): string {
 }
 
 // Electron detection for optimized batch reading
-const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
 // Helper function to chunk array into smaller arrays
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -59,7 +75,7 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
     }
 
     // Try to read the JSON file (silent - no logging)
-    const result = await (window as any).electronAPI.readFile(jsonPath);
+    const result = await window.electronAPI.readFile(jsonPath);
     if (!result.success || !result.data) {
       return null;
     }
@@ -452,7 +468,7 @@ if (rawMetadata) {
       if (typeof prompt === 'string') {
         prompt = JSON.parse(sanitizeJson(prompt));
       }
-    } catch (e) {
+    } catch {
       // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
     }
     const resolvedParams = resolvePromptFromGraph(workflow, prompt);
@@ -608,7 +624,7 @@ console.log('[Metadata Processing] Final normalized metadata:', {
           };
           img.src = objectUrl;
         });
-      } catch (e) {
+      } catch {
         // console.warn('Failed to read image dimensions:', e);
         // Keep width/height as 0 if failed
       }
@@ -621,7 +637,7 @@ console.log('[Metadata Processing] Final normalized metadata:', {
     if (isElectron && (fileEntry.handle as ElectronFileHandle)._filePath) {
       try {
         const filePath = (fileEntry.handle as ElectronFileHandle)._filePath!;
-        const stats = await (window as any).electronAPI.getFileStats(filePath);
+        const stats = await window.electronAPI.getFileStats(filePath);
         if (stats && stats.success && stats.stats && stats.stats.birthtimeMs) {
           // Use creation date for all files - this is more accurate for sorting
           // AI-generated images should be sorted by when they were created, not modified
@@ -746,7 +762,7 @@ export async function processFiles(
   }
 
   // Check if we're in Electron and can use optimized batch reading
-  const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
+  const useOptimizedPath = isElectron && window.electronAPI?.readFilesBatch;
 
   const newlyProcessedImages: IndexedImage[] = [];
 
@@ -779,7 +795,7 @@ export async function processFiles(
       }).filter(Boolean);
       
       // Read all files in this batch at once via IPC
-      const batchReadResult = await (window as any).electronAPI.readFilesBatch(filePaths);
+      const batchReadResult = await window.electronAPI.readFilesBatch(filePaths);
       
       if (!batchReadResult.success) {
         console.error('Batch file read failed, falling back to individual reads');

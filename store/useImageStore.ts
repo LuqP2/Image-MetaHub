@@ -27,7 +27,7 @@ interface ImageState {
   selectedLoras: string[];
   selectedSchedulers: string[];
   sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc';
-  advancedFilters: any;
+  advancedFilters: Record<string, unknown>;
 
   // Actions
   addDirectory: (directory: Directory) => void;
@@ -50,7 +50,7 @@ interface ImageState {
   setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[] }) => void;
   setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc') => void;
-  setAdvancedFilters: (filters: any) => void;
+  setAdvancedFilters: (filters: Record<string, unknown>) => void;
   filterAndSortImages: () => void;
 
   // Selection Actions

@@ -26,7 +26,7 @@ async function readSettings() {
   try {
     const data = await fs.readFile(settingsPath, 'utf-8');
     return JSON.parse(data);
-  } catch (error) {
+  } catch {
     // If file doesn't exist or is invalid, return empty object
     return {};
   }
@@ -157,7 +157,7 @@ if (autoUpdater) {
     }
   });
 
-  autoUpdater.on('update-not-available', (info) => {
+  autoUpdater.on('update-not-available', () => {
     // console.log('Update not available');
   });
 
@@ -784,7 +784,6 @@ function setupFileOperationHandlers() {
       // We'll allow writing to any directory the user has selected via the directory dialog
       // This is more permissive than read operations but still controlled
       const normalizedFilePath = path.normalize(filePath);
-      const fileDir = path.dirname(normalizedFilePath);
 
       // Check if the target directory is within the current directory or a user-selected export directory
       // For now, we'll allow writing to any directory (since users explicitly choose export locations)

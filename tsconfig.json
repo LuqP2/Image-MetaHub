@@ -28,5 +28,10 @@
   },
   "exclude": [
     "__tests__/**/*"
+  ],
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "global.d.ts"
   ]
 }

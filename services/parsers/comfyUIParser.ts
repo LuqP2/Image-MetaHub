@@ -1,11 +1,13 @@
 import { resolveAll } from './comfyui/traversalEngine';
 import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
+import { resolveAll } from './comfyui/traversalEngine';
+import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
 import { cleanPrompt, cleanLoraName } from '../../utils/promptCleaner';
 
 // Lazy-loaded zlib for Node.js environment
-let zlibPromise: Promise<any> | null = null;
+let zlibPromise: Promise<typeof import('zlib') | null> | null = null;
 
-async function getZlib(): Promise<any> {
+async function getZlib(): Promise<typeof import('zlib') | null> {
   if (typeof window !== 'undefined') {
     return null; // Browser environment
   }
@@ -23,7 +25,7 @@ async function getZlib(): Promise<any> {
 type Graph = Record<string, ParserNode>;
 
 interface ParseResult {
-  data: any;
+  data: unknown;
   detectionMethod: 'json' | 'base64' | 'compressed' | 'regex' | 'unknown';
   warnings: string[];
 }
@@ -33,24 +35,24 @@ interface ParseResult {
  */
 async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   const warnings: string[] = [];
-  
+
   // 1. Try direct JSON
   try {
     const parsed = JSON.parse(raw);
     return { data: parsed, detectionMethod: 'json', warnings };
-  } catch (e) {
+  } catch {
     warnings.push('Direct JSON parse failed');
   }
-  
+
   // 2. Base64 decode
   try {
     const decoded = Buffer.from(raw, 'base64').toString('utf8');
     const parsed = JSON.parse(decoded);
     return { data: parsed, detectionMethod: 'base64', warnings };
-  } catch (e) {
+  } catch {
     warnings.push('Base64 decode failed');
   }
-  
+
   // 3. zlib/gzip decompression (Node.js only)
   const zlib = await getZlib();
   if (zlib && typeof Buffer !== 'undefined') {
@@ -62,11 +64,11 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
         const parsed = JSON.parse(inflated.toString('utf8'));
         return { data: parsed, detectionMethod: 'compressed', warnings };
       }
-    } catch (e) {
+    } catch {
       warnings.push('zlib decompression failed');
     }
   }
-  
+
   // 4. Regex fallback - find large JSON blocks
   try {
     const match = raw.match(/\{[\s\S]{200,}\}/);
@@ -75,42 +77,19 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
       warnings.push('Used regex fallback to find JSON block');
       return { data: parsed, detectionMethod: 'regex', warnings };
     }
-  } catch (e) {
+  } catch {
     warnings.push('Regex JSON fallback failed');
   }
-  
-  return null;
-}
 
-/**
- * Detecção agressiva de payload ComfyUI em chunks PNG
- */
-function detectComfyPayload(chunks: string[]): { payload: string; method: string } | null {
-  const combinedText = chunks.join('\n').toLowerCase();
-  
-  // Procura por strings indicativas do ComfyUI
-  const comfyIndicators = ['comfyui', 'workflow', 'nodes', 'comfy', 'class_type'];
-  const hasComfyIndicator = comfyIndicators.some(indicator => combinedText.includes(indicator));
-  
-  if (hasComfyIndicator) {
-    return { payload: chunks.join('\n'), method: 'keyword' };
-  }
-  
-  // Regex para detectar blocos JSON grandes (>200 caracteres)
-  const largeJsonMatch = chunks.join('\n').match(/\{[\s\S]{200,}\}/);
-  if (largeJsonMatch) {
-    return { payload: largeJsonMatch[0], method: 'regex_large_json' };
-  }
-  
   return null;
 }
 
 /**
  * Fallback regex inteligente para extrair parâmetros de strings de texto
  */
-function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
-  const params: any = { raw_parsed_with_regex: true };
-  
+function extractParamsWithRegex(text: string): Record<string, string | number | boolean> {
+  const params: Record<string, string | number | boolean> = { raw_parsed_with_regex: true };
+
   // Prompt block
   const promptMatch = text.match(/Prompt[:\n]\s*(.+?)(?:\n(?:Negative prompt|Steps|Sampler|Seed)|$)/is);
   if (promptMatch) params.prompt = promptMatch[1].trim();
@@ -148,7 +127,7 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
  * - Hex: "seed": "0xabc123"
  * - Derived: "derived_seed": {...} → approximateSeed flag
  */
-function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
+function extractAdvancedSeed(node: ParserNode): { seed: number | null; approximateSeed?: boolean } {
   // Try numeric seed first (standard path)
   if (typeof node.inputs?.seed === 'number') {
     return { seed: node.inputs.seed };
@@ -238,10 +217,10 @@ function extractAdvancedModifiers(graph: Graph): {
   loras: Array<{ name: string; weight?: number }>;
   vaes: Array<{ name: string }>;
 } {
-  const controlnets: any[] = [];
-  const loras: any[] = [];
-  const vaes: any[] = [];
-  
+  const controlnets: { name: string; weight?: number; module?: string; applied_to?: string }[] = [];
+  const loras: { name: string; weight?: number }[] = [];
+  const vaes: { name: string }[] = [];
+
   for (const nodeId in graph) {
     const node = graph[nodeId];
     const classType = node.class_type.toLowerCase();
@@ -295,9 +274,11 @@ function extractAdvancedModifiers(graph: Graph): {
 /**
  * Extract edit history from SaveImage and LoadImage nodes
  */
-function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: number; index?: number }> {
-  const history: any[] = [];
-  
+function extractEditHistory(
+  graph: Graph,
+): Array<{ action: string; timestamp?: number; index?: number; filename?: string }> {
+  const history: { action: string; timestamp?: number; index?: number; filename?: string }[] = [];
+
   for (const nodeId in graph) {
     const node = graph[nodeId];
     
@@ -319,7 +300,10 @@ function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: n
 /**
  * Detect ComfyUI version from metadata
  */
-function extractComfyVersion(workflow: any, prompt: any): string | null {
+function extractComfyVersion(
+  workflow: { version?: string | number; meta?: { comfyui_version?: string | number } },
+  prompt: unknown,
+): string | null {
   // Check workflow metadata
   if (workflow?.version) {
     return String(workflow.version);
@@ -342,16 +326,16 @@ function extractComfyVersion(workflow: any, prompt: any): string | null {
 /**
  * Constrói um mapa de nós simplificado a partir dos dados do workflow e do prompt.
  */
-function createNodeMap(workflow: any, prompt: any): Graph {
+function createNodeMap(workflow: Record<string, unknown>, prompt: Record<string, unknown>): Graph {
     const graph: Graph = {};
 
     // Add/overlay from prompt (execution data: class_type, inputs)
     for (const [id, pNode] of Object.entries(prompt || {})) {
         graph[id] = {
             id,
-            class_type: (pNode as any).class_type,
-            inputs: (pNode as any).inputs || {},
-            widgets_values: (pNode as any).widgets_values,  // Keep undefined if not present
+            class_type: (pNode as { class_type: string }).class_type,
+            inputs: (pNode as { inputs?: Record<string, unknown> }).inputs || {},
+            widgets_values: (pNode as { widgets_values?: unknown[] }).widgets_values,
             mode: 0,
         };
     }
@@ -383,8 +367,8 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 
     // If workflow has links, populate inputs for nodes without them (fallback for incomplete prompts)
     if (workflow?.links) {
-        for (const link of workflow.links) {
-            const [, sourceId, sourceSlot, targetId, targetSlot, , inputName] = link; // Adjust based on link format
+        for (const link of workflow.links as [number, number, number, number, number, string][]) {
+            const [, sourceId, sourceSlot, targetId, , inputName] = link;
             const targetNode = graph[targetId.toString()];
             if (targetNode && inputName) {
                 targetNode.inputs[inputName] = [sourceId.toString(), sourceSlot];
@@ -423,7 +407,10 @@ function findTerminalNode(graph: Graph): ParserNode | null {
 }/**
  * Ponto de entrada principal. Resolve todos os parâmetros de metadados de um grafo.
  */
-export function resolvePromptFromGraph(workflow: any, prompt: any): Record<string, any> {
+export function resolvePromptFromGraph(
+  workflow: unknown,
+  prompt: Record<string, unknown>,
+): Record<string, unknown> {
   const telemetry = {
     detection_method: 'standard',
     unknown_nodes_count: 0,
@@ -542,7 +529,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   }
 
   // Phase 2: Advanced extraction using terminal node
-  const advancedSeed = extractAdvancedSeed(terminalNode, graph);
+  const advancedSeed = extractAdvancedSeed(terminalNode);
   if (advancedSeed.seed !== null) {
     results.seed = advancedSeed.seed;
     if (advancedSeed.approximateSeed) {
@@ -597,7 +584,9 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
  * Enhanced parsing with aggressive payload detection and decompression
  * This is the new entry point that should be used for robust ComfyUI parsing
  */
-export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record<string, any>> {
+export async function parseComfyUIMetadataEnhanced(
+  rawData: unknown,
+): Promise<Record<string, unknown>> {
   const telemetry = {
     detection_method: 'unknown',
     warnings: [] as string[],

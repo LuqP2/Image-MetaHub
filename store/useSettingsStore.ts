@@ -4,20 +4,20 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 // --- Electron IPC-based storage for Zustand ---
 // This storage adapter will be used if the app is running in Electron.
 const electronStorage: StateStorage = {
-  getItem: async (name: string): Promise<string | null> => {
+  getItem: async (): Promise<string | null> => {
     if (window.electronAPI) {
       const settings = await window.electronAPI.getSettings();
       return JSON.stringify({ state: settings });
     }
     return null;
   },
-  setItem: async (name: string, value: string): Promise<void> => {
+  setItem: async (_name: string, value: string): Promise<void> => {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
       await window.electronAPI.saveSettings(state);
     }
   },
-  removeItem: async (name: string): Promise<void> => {
+  removeItem: async (): Promise<void> => {
     // This would clear all settings, which is probably not what we want.
     // For now, it's a no-op.
     console.warn('Clearing all settings is not implemented.');

@@ -67,6 +67,14 @@ function detectGenerator(parameters: string): string {
 // --- Main Parser Function ---
 
 export function parseA1111Metadata(parameters: string): BaseMetadata {
+  if (!parameters || parameters.trim() === '') {
+    return {
+      prompt: '',
+      models: [],
+      loras: [],
+      generator: 'A1111',
+    } as BaseMetadata;
+  }
 
   const result: Partial<BaseMetadata> = {};
 

@@ -8,10 +8,10 @@ export interface ElectronAPI {
   listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
-  getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
-  writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
-  getSettings: () => Promise<any>;
-  saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: Record<string, unknown>; error?: string }>;
+  writeFile: (filePath: string, data: Buffer) => Promise<{ success: boolean; error?: string }>;
+  getSettings: () => Promise<Record<string, unknown>>;
+  saveSettings: (settings: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
@@ -47,7 +47,7 @@ export interface InvokeAIMetadata {
   // UI and organization fields
   board_id?: string;
   board_name?: string;
-  ref_images?: any[];
+  ref_images?: unknown[];
 
   // App metadata
   app_version?: string;
@@ -57,14 +57,14 @@ export interface InvokeAIMetadata {
 
   // Additional fields
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface Automatic1111Metadata {
   parameters: string; // Formatted string containing all generation parameters
   // Additional fields that might be present
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ComfyUINode {
@@ -73,13 +73,13 @@ export interface ComfyUINode {
   title?: string;
   pos: [number, number];
   size?: { 0: number; 1: number };
-  flags?: any;
+  flags?: Record<string, unknown>;
   order?: number;
   mode?: number;
-  inputs?: Record<string, any>;
-  outputs?: any[];
-  properties?: Record<string, any>;
-  widgets_values?: any[];
+  inputs?: Record<string, unknown>;
+  outputs?: unknown[];
+  properties?: Record<string, unknown>;
+  widgets_values?: unknown[];
   color?: string;
   bgcolor?: string;
 }
@@ -88,16 +88,16 @@ export interface ComfyUIWorkflow {
   last_node_id: number;
   last_link_id: number;
   nodes: ComfyUINode[];
-  links?: any[];
-  groups?: any[];
-  config?: any;
-  extra?: any;
+  links?: unknown[];
+  groups?: unknown[];
+  config?: Record<string, unknown>;
+  extra?: Record<string, unknown>;
   version?: number;
 }
 
 export interface ComfyUIPrompt {
   [nodeId: string]: {
-    inputs: Record<string, any>;
+    inputs: Record<string, unknown>;
     class_type: string;
     _meta?: {
       title?: string;
@@ -111,7 +111,7 @@ export interface ComfyUIMetadata {
   prompt?: ComfyUIPrompt | string; // Can be object or JSON string
   // Additional fields that might be present
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SwarmUIMetadata {
@@ -135,18 +135,18 @@ export interface SwarmUIMetadata {
     swarm_version?: string;
     date?: string;
     generation_time?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
-  sui_extra_data?: any;
+  sui_extra_data?: Record<string, unknown>;
   // Additional fields that might be present
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface EasyDiffusionMetadata {
   parameters: string; // Easy Diffusion uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface EasyDiffusionJson {
@@ -160,59 +160,59 @@ export interface EasyDiffusionJson {
   width?: number;
   height?: number;
   // Additional fields that might be present in Easy Diffusion JSON
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface MidjourneyMetadata {
   parameters: string; // Midjourney uses format like: "prompt --v 5 --ar 16:9" or "Prompt: prompt text --v 5"
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface NijiMetadata {
   parameters: string; // Niji Journey uses format like: "prompt --niji --v 5 --ar 16:9" or "Prompt: prompt text --niji 5"
   niji_version?: number; // Niji version (5, 6, etc.)
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ForgeMetadata {
   parameters: string; // Forge uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DalleMetadata {
   // C2PA/EXIF embedded metadata for DALL-E 3 images
-  c2pa_manifest?: any; // C2PA manifest data
-  exif_data?: any; // EXIF metadata
+  c2pa_manifest?: Record<string, unknown>; // C2PA manifest data
+  exif_data?: Record<string, unknown>; // EXIF metadata
   prompt?: string; // Original user prompt
   revised_prompt?: string; // DALL-E's revised/enhanced prompt
   model_version?: string; // DALL-E model version (e.g., "dall-e-3")
   generation_date?: string; // ISO date string of generation
   ai_tags?: string[]; // AI-generated content tags
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DreamStudioMetadata {
   parameters: string; // DreamStudio uses A1111-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface FireflyMetadata {
   // C2PA/EXIF embedded metadata for Adobe Firefly images
-  c2pa_manifest?: any; // C2PA manifest data with actions and content credentials
-  exif_data?: any; // EXIF metadata
+  c2pa_manifest?: Record<string, unknown>; // C2PA manifest data with actions and content credentials
+  exif_data?: Record<string, unknown>; // EXIF metadata
   prompt?: string; // Original user prompt
-  edit_history?: any[]; // Array of edit actions from C2PA
+  edit_history?: unknown[]; // Array of edit actions from C2PA
   firefly_version?: string; // Adobe Firefly model version
-  generation_params?: any; // Generation parameters (style, size, etc.)
+  generation_params?: Record<string, unknown>; // Generation parameters (style, size, etc.)
   ai_generated?: boolean; // AI generated content flag
-  content_credentials?: any; // Content Credentials data
+  content_credentials?: Record<string, unknown>; // Content Credentials data
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface DrawThingsMetadata {
@@ -220,19 +220,19 @@ export interface DrawThingsMetadata {
   userComment?: string; // JSON metadata from EXIF UserComment field
   // Additional fields that might be present
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface FooocusMetadata {
   parameters: string; // Fooocus uses SD-like format with Flux backend support
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SDNextMetadata {
   parameters: string; // SD.Next uses A1111-like format with additional SD.Next specific fields
   // Additional fields that might be present
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Union type for all supported metadata formats
@@ -256,7 +256,7 @@ export interface BaseMetadata {
   version?: string;
   module?: string;
   // Additional normalized fields
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Type guard functions
@@ -347,7 +347,7 @@ export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetad
 
   // Check for OpenAI/DALL-E specific EXIF data
   if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-    const exif = metadata.exif_data as any;
+    const exif = metadata.exif_data as Record<string, string>;
     // Look for OpenAI/DALL-E indicators in EXIF
     if (exif['openai:dalle'] || exif['Software']?.includes('DALL-E') || exif['Software']?.includes('OpenAI')) {
       return true;
@@ -366,7 +366,7 @@ export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetad
 export function isFireflyMetadata(metadata: ImageMetadata): metadata is FireflyMetadata {
   // Check for C2PA manifest with Firefly indicators
   if ('c2pa_manifest' in metadata) {
-    const manifest = metadata.c2pa_manifest as any;
+    const manifest = metadata.c2pa_manifest as Record<string, unknown>;
     // Check for Adobe Firefly specific indicators
     if (manifest?.['adobe:firefly'] || 
         (typeof manifest === 'string' && manifest.includes('adobe:firefly'))) {
@@ -383,7 +383,7 @@ export function isFireflyMetadata(metadata: ImageMetadata): metadata is FireflyM
 
   // Check for Adobe Firefly specific EXIF data
   if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-    const exif = metadata.exif_data as any;
+    const exif = metadata.exif_data as Record<string, string>;
     if (exif['adobe:firefly'] || exif['Software']?.includes('Firefly') || exif['Software']?.includes('Adobe Firefly')) {
       return true;
     }
@@ -454,7 +454,8 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
     // A minimal structural check to ensure it's not just a random object.
     // It should contain values that look like ComfyUI nodes.
     return Object.values(metadata.prompt).some(
-      (node: any) => node && typeof node === 'object' && 'class_type' in node && 'inputs' in node
+      (node: { class_type: string; inputs: Record<string, unknown> }) =>
+        node && typeof node === 'object' && 'class_type' in node && 'inputs' in node,
     );
   }
 

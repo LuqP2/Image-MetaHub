@@ -19,8 +19,8 @@ function sanitizeJson(jsonString: string): string {
 }
 
 interface ParserModule {
-    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata;
-    generator: string;
+  parse: (metadata: ImageMetadata, fileBuffer?: ArrayBuffer) => BaseMetadata | null;
+  generator: string;
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
@@ -35,7 +35,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
 
     // Check for Adobe Firefly C2PA/EXIF metadata (after DALL-E, similar structure)
     if ('c2pa_manifest' in metadata) {
-        const manifest = metadata.c2pa_manifest as any;
+        const manifest = metadata.c2pa_manifest as Record<string, unknown>;
         if (manifest?.['adobe:firefly'] || 
             (typeof manifest === 'string' && manifest.includes('adobe:firefly')) ||
             (manifest?.['c2pa.actions'] && JSON.stringify(manifest['c2pa.actions']).includes('firefly'))) {
@@ -43,7 +43,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         }
     }
     if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-        const exif = metadata.exif_data as any;
+        const exif = metadata.exif_data as Record<string, string>;
         if (exif?.['adobe:firefly'] || exif?.Software?.includes('Firefly')) {
             return { parse: (data: FireflyMetadata, fileBuffer?: ArrayBuffer) => parseFireflyMetadata(data, fileBuffer!), generator: 'Adobe Firefly' };
         }

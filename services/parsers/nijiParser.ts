@@ -15,7 +15,7 @@ export function extractModelsFromNiji(metadata: NijiMetadata): string[] {
   return [];
 }
 
-export function extractLorasFromNiji(metadata: NijiMetadata): string[] {
+export function extractLorasFromNiji(): string[] {
   // Niji Journey doesn't use LoRAs in the traditional sense
   return [];
 }

@@ -2,7 +2,19 @@ import { InvokeAIMetadata, BaseMetadata } from '../../types';
 
 // --- Helper Functions ---
 
-function extractModelName(modelData: any): string | null {
+function extractModelName(
+  modelData:
+    | string
+    | {
+        model?: { name?: string };
+        name?: string;
+        model_name?: string;
+        base_model?: string;
+        mechanism?: string;
+        type?: string;
+        key?: string;
+      },
+): string | null {
   if (typeof modelData === 'string') {
     return modelData.trim();
   }
@@ -45,7 +57,9 @@ function getFriendlyBoardName(boardId: string): string {
   return friendlyName;
 }
 
-function extractBoardFromWorkflow(workflow: any): string | null {
+function extractBoardFromWorkflow(
+  workflow: { nodes: { data?: { type: string; inputs?: { board?: { value?: { board_id: string } } } } }[] },
+): string | null {
     if (!workflow || !workflow.nodes) return null;
     for (const node of workflow.nodes) {
         if (node.data?.type && (node.data.type === 'l2i' || node.data.type === 'canvas_output')) {
@@ -106,7 +120,7 @@ export function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
   });
 
   if (Array.isArray(metadata.loras)) {
-    metadata.loras.forEach((lora: any) => {
+    metadata.loras.forEach(lora => {
       const loraName = extractModelName(lora);
       if (loraName && loraName !== '[object Object]') {
         loras.add(loraName);
@@ -124,7 +138,7 @@ export function extractBoardFromInvokeAI(metadata: InvokeAIMetadata): string {
         }
     }
     if (metadata.board && typeof metadata.board === 'object') {
-        const boardObj = metadata.board as any;
+        const boardObj = metadata.board as { name?: string; board_name?: string; id?: string };
         return boardObj.name || boardObj.board_name || boardObj.id || 'Uncategorized';
     }
     if (metadata.canvas_v2_metadata?.board_id) {

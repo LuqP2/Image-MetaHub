@@ -1,8 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import SearchBar, { SearchField } from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface FilterValues {
+  dimension?: string;
+  steps?: { min: number; max: number };
+  cfg?: { min: number; max: number };
+  date?: { from: string; to: string };
+}
 
 interface SidebarProps {
   searchQuery: string;
@@ -19,8 +26,8 @@ interface SidebarProps {
   onLoraChange: (loras: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: FilterValues;
+  onAdvancedFiltersChange: (filters: FilterValues) => void;
   onClearAdvancedFilters: () => void;
   children?: React.ReactNode;
   isCollapsed: boolean;

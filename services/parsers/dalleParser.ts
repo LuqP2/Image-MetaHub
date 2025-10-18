@@ -6,7 +6,7 @@ import { DalleMetadata, isDalleMetadata, BaseMetadata } from '../../types';
  * Uses exifr library for offline parsing with regex fallback
  */
 
-export function parseDalleMetadata(metadata: any): BaseMetadata | null {
+export function parseDalleMetadata(metadata: DalleMetadata): BaseMetadata | null {
   if (!isDalleMetadata(metadata)) {
     return null;
   }
@@ -77,7 +77,9 @@ export function parseDalleMetadata(metadata: any): BaseMetadata | null {
 }
 
 // Extract data from C2PA manifest
-function extractFromC2PA(c2paManifest: any): Partial<DalleMetadata> {
+function extractFromC2PA(
+  c2paManifest: DalleMetadata['c2pa_manifest'],
+): Partial<DalleMetadata> {
   if (!c2paManifest) return {};
 
   const result: Partial<DalleMetadata> = {};
@@ -117,7 +119,7 @@ function extractFromC2PA(c2paManifest: any): Partial<DalleMetadata> {
 }
 
 // Extract data from EXIF metadata
-function extractFromEXIF(exifData: any): Partial<DalleMetadata> {
+function extractFromEXIF(exifData: DalleMetadata['exif_data']): Partial<DalleMetadata> {
   if (!exifData) return {};
 
   const result: Partial<DalleMetadata> = {};
@@ -213,7 +215,7 @@ function extractGenerationDate(data: Partial<DalleMetadata>): string | undefined
 }
 
 // Extract dimensions
-function extractDimensions(data: Partial<DalleMetadata>): { width: number; height: number } {
+function extractDimensions(): { width: number; height: number } {
   // DALL-E typically generates square images, default to 1024x1024
   // Could be enhanced to parse from metadata if available
   return { width: 1024, height: 1024 };

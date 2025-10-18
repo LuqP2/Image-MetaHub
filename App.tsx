@@ -58,7 +58,6 @@ export default function App() {
     setAdvancedFilters,
     setSelectedImage,
     removeImage,
-    removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
     resetState,
@@ -227,9 +226,8 @@ export default function App() {
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
-    const electronAPI = window.electronAPI as any;
-    if (electronAPI && typeof electronAPI.onLoadDirectoryFromCLI === 'function') {
-      const unsubscribe = electronAPI.onLoadDirectoryFromCLI((path: string) => {
+    if (window.electronAPI && typeof window.electronAPI.onLoadDirectoryFromCLI === 'function') {
+      const unsubscribe = window.electronAPI.onLoadDirectoryFromCLI((path: string) => {
         console.log('Received directory to load from main process:', path);
         if (path) {
           handleLoadFromPath(path);

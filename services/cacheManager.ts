@@ -2,6 +2,8 @@
 
 import { type IndexedImage } from '../types';
 
+import { type IndexedImage, ImageMetadata } from '../types';
+
 interface CacheEntry {
   id: string;
   directoryPath: string;
@@ -12,7 +14,7 @@ interface CacheEntry {
     id: string;
     name: string;
     metadataString: string;
-    metadata: any; // Store complete metadata including normalizedMetadata
+    metadata: ImageMetadata; // Store complete metadata including normalizedMetadata
     lastModified: number;
     models: string[];
     loras: string[];
@@ -73,12 +75,13 @@ class CacheManager {
         const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
         cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
 
-        const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
+        db.createObjectStore('thumbnails', { keyPath: 'id' });
       };
     });
   }
 
-  private async handleIndexedDBError(error: any): Promise<void> {
+  private async handleIndexedDBError(error: DOMException | null): Promise<void> {
+    console.error('Handling IndexedDB Error:', error);
     try {
       const deleteRequest = indexedDB.deleteDatabase(this.dbName);
       await new Promise<void>((resolve, reject) => {
@@ -89,8 +92,8 @@ class CacheManager {
         };
       });
       return this.init();
-    } catch (deleteError) {
-      console.error('❌ Failed to reset IndexedDB:', deleteError);
+    } catch {
+      console.error('❌ Failed to reset IndexedDB after multiple errors.');
       return Promise.resolve();
     }
   }
@@ -226,7 +229,7 @@ class CacheManager {
             try {
               const parsed = JSON.parse(meta.metadataString);
               return !parsed.normalizedMetadata;
-            } catch (error) {
+            } catch {
               console.warn(`❌ Invalid metadata JSON for ${meta.name}, removing from cache`);
               return true;
             }
@@ -326,7 +329,7 @@ class CacheManager {
         cachedImages.push({
           ...cachedFile,
           metadata: cachedFile.metadata,
-          handle: { name: cachedFile.name, kind: 'file' } as any,
+          handle: { name: cachedFile.name, kind: 'file' } as FileSystemFileHandle,
         });
       }
     }

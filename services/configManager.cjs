@@ -16,7 +16,7 @@ class ConfigManager {
       const data = await fs.readFile(this.configPath, 'utf8');
       this.config = { ...this.config, ...JSON.parse(data) };
       console.log('Config loaded:', this.config);
-    } catch (error) {
+    } catch {
       console.log('No config file found, using defaults');
       // File doesn't exist, use defaults
     }

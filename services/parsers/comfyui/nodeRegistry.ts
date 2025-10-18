@@ -18,8 +18,8 @@
 export interface ParserNode {
   id: string;
   class_type: string;
-  inputs: Record<string, any[] | any>;
-  widgets_values?: any[];
+  inputs: Record<string, unknown[] | unknown>;
+  widgets_values?: unknown[];
   mode?: number; // Para detectar nós silenciados (0: ativo, 2/4: mudo/bypass)
 }
 
@@ -34,9 +34,19 @@ export type ComfyTraversableParam =
 
 interface WidgetRule { source: 'widget'; key: string; }
 interface TraceRule { source: 'trace'; input: string; }
-interface CustomExtractorRule { 
-  source: 'custom_extractor'; 
-  extractor: (node: ParserNode, state: any, graph: any, traverse: any) => any; 
+interface CustomExtractorRule {
+  source: 'custom_extractor';
+  extractor: (
+    node: ParserNode,
+    state: unknown,
+    graph: Record<string, ParserNode>,
+    traverse: (
+      link: [string, number],
+      state: unknown,
+      graph: Record<string, ParserNode>,
+      visited: string[],
+    ) => unknown,
+  ) => unknown;
 }
 interface InputRule { source: 'input'; key: string; }
 export type ParamMappingRule = WidgetRule | TraceRule | CustomExtractorRule | InputRule;
@@ -689,7 +699,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           // text1: direct value or link
           if (text1Input) {
             if (Array.isArray(text1Input)) {
-              const result = traverseFromLink(text1Input as any, state, graph, []);
+              const result = traverseFromLink(text1Input as [string, number], state, graph, []);
               if (result) texts.push(String(result));
             } else if (text1Input) {
               texts.push(String(text1Input));
@@ -699,7 +709,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           // text2: direct value or link
           if (text2Input) {
             if (Array.isArray(text2Input)) {
-              const result = traverseFromLink(text2Input as any, state, graph, []);
+              const result = traverseFromLink(text2Input as [string, number], state, graph, []);
               if (result) texts.push(String(result));
             } else if (text2Input) {
               texts.push(String(text2Input));
@@ -709,7 +719,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
           // text3: direct value or link
           if (text3Input) {
             if (Array.isArray(text3Input)) {
-              const result = traverseFromLink(text3Input as any, state, graph, []);
+              const result = traverseFromLink(text3Input as [string, number], state, graph, []);
               if (result) texts.push(String(result));
             } else if (text3Input) {
               texts.push(String(text3Input));
@@ -891,7 +901,7 @@ JWStringConcat: {
         
         // Resolve input A
         if (Array.isArray(inputA) && inputA.length === 2) {
-          const result = traverseFromLink(inputA as any, state, graph, []);
+          const result = traverseFromLink(inputA as [string, number], state, graph, []);
           if (result) textA = String(result);
         } else if (inputA !== undefined && inputA !== null) {
           textA = String(inputA);
@@ -899,7 +909,7 @@ JWStringConcat: {
         
         // Resolve input B
         if (Array.isArray(inputB) && inputB.length === 2) {
-          const result = traverseFromLink(inputB as any, state, graph, []);
+          const result = traverseFromLink(inputB as [string, number], state, graph, []);
           if (result) textB = String(result);
         } else if (inputB !== undefined && inputB !== null) {
           textB = String(inputB);

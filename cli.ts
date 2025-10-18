@@ -7,42 +7,48 @@ import { PNG } from 'pngjs';
 import { resolvePromptFromGraph } from './services/parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './services/parsers/invokeAIParser';
 import { parseA1111Metadata } from './services/parsers/automatic1111Parser';
+import { BaseMetadata } from './types';
 
 const program = new Command();
+
+interface PNGWithText extends PNG {
+  text?: Record<string, string>;
+}
 
 /**
  * Simple metadata parser for CLI (browser-independent)
  */
-async function parseMetadata(chunks: string[]): Promise<{ format: string; metadata: any } | null> {
+async function parseMetadata(
+  chunks: string[],
+): Promise<{ format: string; metadata: BaseMetadata } | null> {
   for (const chunk of chunks) {
     try {
       // Try ComfyUI format
       const sanitized = chunk.replace(/:\s*NaN/g, ': null');
       const parsed = JSON.parse(sanitized);
-      
+
       if (parsed.workflow || parsed.prompt) {
         const metadata = resolvePromptFromGraph(parsed.workflow, parsed.prompt);
         return { format: 'comfyui', metadata };
       }
-      
+
       // Try InvokeAI format
       if (parsed.app_version || parsed.sd?.model) {
         const metadata = parseInvokeAIMetadata(parsed);
         return { format: 'invokeai', metadata };
       }
-      
+
       // Try A1111 format (parameters field)
       if (typeof parsed === 'string' && parsed.includes('Steps:')) {
         const metadata = parseA1111Metadata(parsed);
         return { format: 'automatic1111', metadata };
       }
-      
-    } catch (e) {
+    } catch {
       // Try next chunk
       continue;
     }
   }
-  
+
   return null;
 }
 
@@ -78,16 +84,16 @@ program
       
       // Read PNG chunks
       const buffer = fs.readFileSync(filePath);
-      const png = PNG.sync.read(buffer);
-      
+      const png = PNG.sync.read(buffer) as PNGWithText;
+
       // Extract text chunks
       const chunks: string[] = [];
-      if ((png as any).text) {
-        for (const key in (png as any).text) {
-          chunks.push((png as any).text[key]);
+      if (png.text) {
+        for (const key in png.text) {
+          chunks.push(png.text[key]);
         }
       }
-      
+
       // Parse metadata
       const result = await parseMetadata(chunks);
       
@@ -161,16 +167,16 @@ program
               try {
                 // Read PNG chunks
                 const buffer = fs.readFileSync(fullPath);
-                const png = PNG.sync.read(buffer);
-                
+                const png = PNG.sync.read(buffer) as PNGWithText;
+
                 // Extract text chunks
                 const chunks: string[] = [];
-                if ((png as any).text) {
-                  for (const key in (png as any).text) {
-                    chunks.push((png as any).text[key]);
+                if (png.text) {
+                  for (const key in png.text) {
+                    chunks.push(png.text[key]);
                   }
                 }
-                
+
                 // Parse metadata
                 const result = await parseMetadata(chunks);
                 
