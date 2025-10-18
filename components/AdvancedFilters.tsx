@@ -26,11 +26,23 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     const newFilters = { ...localFilters, [key]: value };
     // Remove empty filters
     Object.keys(newFilters).forEach(k => {
-      if (newFilters[k] === null || newFilters[k] === undefined ||
-          (typeof newFilters[k] === 'object' && Object.keys(newFilters[k]).length === 0)) {
+      if (newFilters[k] === null || newFilters[k] === undefined) {
+        delete newFilters[k];
+      }
+      // For date objects, check if both from and to are empty
+      if (k === 'date' && typeof newFilters[k] === 'object') {
+        const dateObj = newFilters[k];
+        if ((!dateObj.from || dateObj.from === '') && (!dateObj.to || dateObj.to === '')) {
+          delete newFilters[k];
+        }
+      }
+      // For other objects, remove if empty
+      else if (typeof newFilters[k] === 'object' && Object.keys(newFilters[k]).length === 0) {
         delete newFilters[k];
       }
     });
+    
+    console.log('[AdvancedFilters] updateFilter called:', { key, value, newFilters });
     setLocalFilters(newFilters);
     onAdvancedFiltersChange(newFilters);
   };
@@ -194,9 +206,18 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       type="date"
                       value={localFilters.date?.from || ''}
                       onChange={(e) => {
-                        const from = e.target.value;
-                        const to = localFilters.date?.to || '';
-                        updateFilter('date', from || to ? { from, to } : null);
+                        const newFrom = e.target.value;
+                        const currentTo = localFilters.date?.to || '';
+                        
+                        // Only create date object if at least one field has a value
+                        if (!newFrom && !currentTo) {
+                          updateFilter('date', null);
+                        } else {
+                          updateFilter('date', { 
+                            from: newFrom || '', 
+                            to: currentTo || '' 
+                          });
+                        }
                       }}
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     />
@@ -207,9 +228,18 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       type="date"
                       value={localFilters.date?.to || ''}
                       onChange={(e) => {
-                        const to = e.target.value;
-                        const from = localFilters.date?.from || '';
-                        updateFilter('date', from || to ? { from, to } : null);
+                        const newTo = e.target.value;
+                        const currentFrom = localFilters.date?.from || '';
+                        
+                        // Only create date object if at least one field has a value
+                        if (!currentFrom && !newTo) {
+                          updateFilter('date', null);
+                        } else {
+                          updateFilter('date', { 
+                            from: currentFrom || '', 
+                            to: newTo || '' 
+                          });
+                        }
                       }}
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     />

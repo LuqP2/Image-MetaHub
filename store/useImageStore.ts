@@ -173,6 +173,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
             if (advancedFilters.date && (advancedFilters.date.from || advancedFilters.date.to)) {
+                console.log('[ImageStore] Applying date filter:', advancedFilters.date);
+                const beforeCount = results.length;
+                
                 results = results.filter(image => {
                     const imageTime = image.lastModified;
                     
@@ -192,6 +195,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                     
                     return true;
                 });
+                
+                console.log('[ImageStore] Date filter applied: before=' + beforeCount + ', after=' + results.length);
             }
         }
 
