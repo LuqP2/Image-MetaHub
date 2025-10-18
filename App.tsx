@@ -55,6 +55,7 @@ export default function App() {
     selectedLoras,
     selectedSchedulers,
     advancedFilters,
+    visibleSubfolders,
     setSearchQuery,
     setSelectedFilters,
     setAdvancedFilters,
@@ -63,6 +64,7 @@ export default function App() {
     removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
+    toggleSubfolderVisibility,
     resetState,
     setIndexingState,
     setLoading,
@@ -330,6 +332,8 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
+            onToggleSubfolderVisibility={toggleSubfolderVisibility}
+            visibleSubfolders={visibleSubfolders}
             isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
           />
         </Sidebar>

@@ -533,6 +533,45 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('list-subfolders', async (event, folderPath) => {
+    try {
+      if (!isPathAllowed(folderPath)) {
+        console.error('SECURITY VIOLATION: Attempted to list subfolders outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot list subfolders outside of the allowed directories.' };
+      }
+
+      const normalizedPath = path.normalize(folderPath);
+      console.log('📂 Listing subfolders for:', normalizedPath);
+
+      // Verify the folder exists
+      try {
+        const stats = await fs.stat(normalizedPath);
+        if (!stats.isDirectory()) {
+          console.error('❌ Path is not a directory:', normalizedPath);
+          return { success: false, error: 'Path is not a directory' };
+        }
+      } catch (accessError) {
+        console.error('❌ Folder does not exist:', normalizedPath, accessError);
+        return { success: false, error: `Folder does not exist: ${normalizedPath}` };
+      }
+
+      // Read directory and filter to only directories
+      const entries = await fs.readdir(normalizedPath, { withFileTypes: true });
+      const subfolders = entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => ({
+          name: entry.name,
+          path: path.join(normalizedPath, entry.name)
+        }));
+
+      console.log(`✅ Found ${subfolders.length} subfolders in ${normalizedPath}`);
+      return { success: true, subfolders };
+    } catch (error) {
+      console.error('❌ Error listing subfolders:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle manual update check
   ipcMain.handle('check-for-updates', async () => {
     if (!autoUpdater) {

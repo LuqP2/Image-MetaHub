@@ -6,6 +6,7 @@ interface ImageState {
   images: IndexedImage[];
   filteredImages: IndexedImage[];
   directories: Directory[];
+  visibleSubfolders: Set<string>; // Track which subfolder paths are visible
 
   // UI State
   isLoading: boolean;
@@ -34,6 +35,7 @@ interface ImageState {
   addDirectory: (directory: Directory) => void;
   removeDirectory: (directoryId: string) => void;
   toggleDirectoryVisibility: (directoryId: string) => void;
+  toggleSubfolderVisibility: (subfolderPath: string) => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
@@ -109,12 +111,49 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, visibleSubfolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
         );
-        let results = images.filter(img => visibleDirectoryIds.has(img.directoryId || ''));
+        
+        // Filter by directory visibility and subfolder visibility
+        let results = images.filter(img => {
+            // First check if the directory is visible
+            if (!visibleDirectoryIds.has(img.directoryId || '')) {
+                return false;
+            }
+            
+            // If we have subfolder visibility controls, check them
+            // Only filter out if the image is in a subfolder that's been explicitly hidden
+            if (visibleSubfolders.size > 0 && img.id) {
+                // Extract the directory path from the image's directory
+                const parentDir = directories.find(d => d.id === img.directoryId);
+                if (parentDir) {
+                    const parentPath = parentDir.path;
+                    const imagePath = img.id; // id is the file path
+                    
+                    // Check if image is in a subfolder
+                    if (imagePath.startsWith(parentPath)) {
+                        const relativePath = imagePath.substring(parentPath.length);
+                        const pathParts = relativePath.split(/[/\\]/).filter(p => p);
+                        
+                        // If there's more than just the filename (meaning it's in a subfolder)
+                        if (pathParts.length > 1) {
+                            const subfolderName = pathParts[0];
+                            const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
+                            
+                            // Check if this specific subfolder exists in visibility set
+                            // If it exists and is not in the set, filter it out
+                            // We only filter if the subfolder has been registered (clicked)
+                            return visibleSubfolders.has(subfolderPath);
+                        }
+                    }
+                }
+            }
+            
+            return true;
+        });
 
         if (searchQuery) {
             const searchTerms = searchQuery.toLowerCase().split(' ').filter(term => term.trim() !== '');
@@ -212,6 +251,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         images: [],
         filteredImages: [],
         directories: [],
+        visibleSubfolders: new Set(),
         isLoading: false,
         progress: null,
         indexingState: 'idle',
@@ -248,6 +288,17 @@ export const useImageStore = create<ImageState>((set, get) => {
                 dir.id === directoryId ? { ...dir, visible: !(dir.visible ?? true) } : dir
             );
             const newState = { ...state, directories: updatedDirectories };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        toggleSubfolderVisibility: (subfolderPath) => set(state => {
+            const newVisibleSubfolders = new Set(state.visibleSubfolders);
+            if (newVisibleSubfolders.has(subfolderPath)) {
+                newVisibleSubfolders.delete(subfolderPath);
+            } else {
+                newVisibleSubfolders.add(subfolderPath);
+            }
+            const newState = { ...state, visibleSubfolders: newVisibleSubfolders };
             return { ...newState, ...filterAndSort(newState) };
         }),
 

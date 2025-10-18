@@ -1,6 +1,6 @@
 import React from 'react';
 import { Directory } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder } from 'lucide-react';
 import { useState } from 'react';
 
 interface DirectoryListProps {
@@ -8,20 +8,72 @@ interface DirectoryListProps {
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
+  onToggleSubfolderVisibility?: (subfolderPath: string) => void;
+  visibleSubfolders?: Set<string>;
   isIndexing?: boolean;
 }
 
-export default function DirectoryList({ directories, onRemoveDirectory, onUpdateDirectory, onToggleVisibility, isIndexing = false }: DirectoryListProps) {
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+interface Subfolder {
+  name: string;
+  path: string;
+}
 
-  const toggleExpanded = (dirId: string) => {
+export default function DirectoryList({ 
+  directories, 
+  onRemoveDirectory, 
+  onUpdateDirectory, 
+  onToggleVisibility, 
+  onToggleSubfolderVisibility,
+  visibleSubfolders = new Set(),
+  isIndexing = false 
+}: DirectoryListProps) {
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [subfolders, setSubfolders] = useState<Map<string, Subfolder[]>>(new Map());
+  const [loadingSubfolders, setLoadingSubfolders] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = async (dirId: string) => {
     const newExpanded = new Set(expandedDirs);
+    const isExpanding = !newExpanded.has(dirId);
+    
     if (newExpanded.has(dirId)) {
       newExpanded.delete(dirId);
     } else {
       newExpanded.add(dirId);
     }
     setExpandedDirs(newExpanded);
+
+    // Load subfolders when expanding for the first time
+    if (isExpanding && !subfolders.has(dirId)) {
+      const dir = directories.find(d => d.id === dirId);
+      if (dir) {
+        await loadSubfolders(dirId, dir.path);
+      }
+    }
+  };
+
+  const loadSubfolders = async (dirId: string, dirPath: string) => {
+    try {
+      setLoadingSubfolders(prev => new Set(prev).add(dirId));
+      
+      const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+      if (isElectron && (window as any).electronAPI.listSubfolders) {
+        const result = await (window as any).electronAPI.listSubfolders(dirPath);
+        
+        if (result.success) {
+          setSubfolders(prev => new Map(prev).set(dirId, result.subfolders || []));
+        } else {
+          console.error('Failed to load subfolders:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading subfolders:', error);
+    } finally {
+      setLoadingSubfolders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(dirId);
+        return newSet;
+      });
+    }
   };
 
   const handleOpenInExplorer = async (path: string) => {
@@ -94,9 +146,37 @@ export default function DirectoryList({ directories, onRemoveDirectory, onUpdate
             {/* Subfolders list */}
             {expandedDirs.has(dir.id) && (
               <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-700 pl-2">
-                <li className="text-xs text-gray-500 italic py-1">
-                  Subfolder detection coming soon...
-                </li>
+                {loadingSubfolders.has(dir.id) ? (
+                  <li className="text-xs text-gray-500 italic py-1">
+                    Loading subfolders...
+                  </li>
+                ) : subfolders.get(dir.id)?.length ? (
+                  subfolders.get(dir.id)!.map((subfolder) => (
+                    <li key={subfolder.path} className="py-1">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={visibleSubfolders.has(subfolder.path)}
+                          onChange={() => onToggleSubfolderVisibility?.(subfolder.path)}
+                          className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                          title="Show/hide images from this subfolder"
+                        />
+                        <button
+                          onClick={() => handleOpenInExplorer(subfolder.path)}
+                          className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
+                          title={`Click to open: ${subfolder.path}`}
+                        >
+                          <Folder className="w-3 h-3 mr-1" />
+                          {subfolder.name}
+                        </button>
+                      </div>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-xs text-gray-500 italic py-1">
+                    No subfolders found
+                  </li>
+                )}
               </ul>
             )}
           </li>
