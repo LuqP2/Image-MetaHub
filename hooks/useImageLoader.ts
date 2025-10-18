@@ -531,14 +531,13 @@ export function useImageLoader() {
                     return;
                 }
 
-                // In browser, we wait here. In Electron, this resolves immediately.
-                if (!getIsElectron()) {
-                    await processPromise;
-                    if (!shouldCancelIndexing()) {
-                        finalizeDirectoryLoad(directory);
-                    }
+                // Wait for processing to complete (both browser and Electron)
+                await processPromise;
+                
+                // Check if cancelled after processing
+                if (!shouldCancelIndexing()) {
+                    finalizeDirectoryLoad(directory);
                 }
-                // In Electron, the 'onIndexingComplete' listener will call finalizeDirectoryLoad.
 
             } else {
                 // No new files to process, just finalize immediately
