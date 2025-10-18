@@ -56,7 +56,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     models: true,
     loras: true,
     schedulers: true,
-    advanced: false,
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -354,36 +353,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Advanced Filters */}
-        <div className="border-b border-gray-700">
-          <button
-            onClick={() => toggleSection('advanced')}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-          >
-            <div className="flex items-center space-x-2">
-              <span className="text-gray-300 font-medium">Advanced Filters</span>
-            </div>
-            <ChevronDown
-              className={`w-4 h-4 transform transition-transform ${expandedSections.advanced ? 'rotate-180' : ''}`}
-            />
-          </button>
-          <AnimatePresence>
-            {expandedSections.advanced && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                <AdvancedFilters
-                  advancedFilters={advancedFilters}
-                  onAdvancedFiltersChange={onAdvancedFiltersChange}
-                  onClearAdvancedFilters={onClearAdvancedFilters}
-                  availableDimensions={availableDimensions}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <AdvancedFilters
+          advancedFilters={advancedFilters}
+          onAdvancedFiltersChange={onAdvancedFiltersChange}
+          onClearAdvancedFilters={onClearAdvancedFilters}
+          availableDimensions={availableDimensions}
+        />
       </div>
 
       {/* Clear All Filters */}

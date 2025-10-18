@@ -172,13 +172,25 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return false;
                 });
             }
-            if (advancedFilters.date && advancedFilters.date.from && advancedFilters.date.to) {
-                const toDate = new Date(advancedFilters.date.to);
-                toDate.setDate(toDate.getDate() + 1);
-                const fromTime = new Date(advancedFilters.date.from).getTime();
-                const toTime = toDate.getTime();
+            if (advancedFilters.date && (advancedFilters.date.from || advancedFilters.date.to)) {
                 results = results.filter(image => {
-                    return image.lastModified >= fromTime && image.lastModified < toTime;
+                    const imageTime = image.lastModified;
+                    
+                    // Check "from" date if provided
+                    if (advancedFilters.date!.from) {
+                        const fromTime = new Date(advancedFilters.date!.from).getTime();
+                        if (imageTime < fromTime) return false;
+                    }
+                    
+                    // Check "to" date if provided
+                    if (advancedFilters.date!.to) {
+                        const toDate = new Date(advancedFilters.date!.to);
+                        toDate.setDate(toDate.getDate() + 1); // Include full end date
+                        const toTime = toDate.getTime();
+                        if (imageTime >= toTime) return false;
+                    }
+                    
+                    return true;
                 });
             }
         }

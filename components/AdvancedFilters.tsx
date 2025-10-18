@@ -172,31 +172,48 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               {/* Date Range */}
               <div>
-                <label className="flex items-center text-sm font-medium text-gray-300 mb-2">
-                  <Calendar className="w-4 h-4 mr-1" />
-                  Date Range
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center text-sm font-medium text-gray-300">
+                    <Calendar className="w-4 h-4 mr-1" />
+                    Date Range
+                  </label>
+                  {(localFilters.date?.from || localFilters.date?.to) && (
+                    <button
+                      onClick={() => updateFilter('date', null)}
+                      className="text-xs text-gray-400 hover:text-red-400"
+                      title="Clear date range"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
-                  <input
-                    type="date"
-                    value={localFilters.date?.from || ''}
-                    onChange={(e) => {
-                      const from = e.target.value;
-                      const to = localFilters.date?.to || '';
-                      updateFilter('date', { from, to });
-                    }}
-                    className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                  />
-                  <input
-                    type="date"
-                    value={localFilters.date?.to || ''}
-                    onChange={(e) => {
-                      const to = e.target.value;
-                      const from = localFilters.date?.from || '';
-                      updateFilter('date', { from, to });
-                    }}
-                    className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                  />
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">From</label>
+                    <input
+                      type="date"
+                      value={localFilters.date?.from || ''}
+                      onChange={(e) => {
+                        const from = e.target.value;
+                        const to = localFilters.date?.to || '';
+                        updateFilter('date', from || to ? { from, to } : null);
+                      }}
+                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">To</label>
+                    <input
+                      type="date"
+                      value={localFilters.date?.to || ''}
+                      onChange={(e) => {
+                        const to = e.target.value;
+                        const from = localFilters.date?.from || '';
+                        updateFilter('date', from || to ? { from, to } : null);
+                      }}
+                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                    />
+                  </div>
                 </div>
               </div>
 
