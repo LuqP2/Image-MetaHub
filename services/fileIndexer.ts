@@ -88,7 +88,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   
   // OPTIMIZATION: Stop early if we found all needed chunks
   let foundChunks = 0;
-  const maxChunks = 4; // invokeai_metadata, parameters, workflow, prompt
+  const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     const length = view.getUint32(offset);
@@ -99,7 +99,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
       
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt'].includes(keyword) && text) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
         chunks[keyword.toLowerCase()] = text;
         foundChunks++;
       }
@@ -112,7 +112,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt'].includes(keyword)) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         if (compressionFlag === 0) {
           // 0 -> uncompressed, which is what we expect from A1111
@@ -148,8 +148,8 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     if (chunks.workflow) comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata;
-  } else if (chunks.parameters) {
-    return { parameters: chunks.parameters };
+  } else if (chunks.parameters || chunks.description) {
+    return { parameters: chunks.parameters || chunks.description };
   } else if (chunks.invokeai_metadata) {
     return JSON.parse(chunks.invokeai_metadata);
   } else if (chunks.prompt) {
@@ -397,89 +397,160 @@ async function processSingleFileOptimized(
       }
     }
 
-    let normalizedMetadata: BaseMetadata | undefined;
-    if (rawMetadata) {
+// ==============================================================================
+// SUBSTITUA o bloco inteiro de parsing (linhas ~304-360) por este código:
+// Comece a substituir em: let normalizedMetadata: BaseMetadata | undefined;
+// Termine antes de: // Read actual image dimensions
+// ==============================================================================
 
-      // Check for ComfyUI first (before other parsers) - CRITICAL FIX
-      if (isComfyUIMetadata(rawMetadata)) {
-        console.log('[Metadata Processing] ✅ Using ComfyUI parser');
-        const comfyMetadata = rawMetadata as ComfyUIMetadata;
-        // Parse workflow and prompt if they are strings
-        let workflow = comfyMetadata.workflow;
-        let prompt = comfyMetadata.prompt;
-        try {
-          if (typeof workflow === 'string') {
-            workflow = JSON.parse(sanitizeJson(workflow));
-          }
-          if (typeof prompt === 'string') {
-            prompt = JSON.parse(sanitizeJson(prompt));
-          }
-        } catch (e) {
-          // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
-        }
-        const resolvedParams = resolvePromptFromGraph(workflow, prompt);
-        normalizedMetadata = {
-          prompt: resolvedParams.prompt || '',
-          negativePrompt: resolvedParams.negativePrompt || '',
-          model: resolvedParams.model || '',
-          models: resolvedParams.model ? [resolvedParams.model] : [],
-          width: 0,  // Will be filled from actual image dimensions below
-          height: 0, // Will be filled from actual image dimensions below
-          seed: resolvedParams.seed,
-          steps: resolvedParams.steps || 0,
-          cfg_scale: resolvedParams.cfg,
-          scheduler: resolvedParams.scheduler || '',
-          sampler: resolvedParams.sampler_name || '',
-          loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
-        };
-      } else if (isAutomatic1111Metadata(rawMetadata)) {
-        console.log('[Metadata Processing] ✅ Using A1111 parser (may be ComfyUI)');
-        normalizedMetadata = parseA1111Metadata(rawMetadata.parameters);
-      } else if ('parameters' in rawMetadata && 
-          typeof rawMetadata.parameters === 'string' && 
-          (rawMetadata.parameters.includes('Fooocus') ||
-           /Version:\s*f2\./i.test(rawMetadata.parameters) ||
-           (/Model:\s*flux/i.test(rawMetadata.parameters) && !/Version:\s*ComfyUI/i.test(rawMetadata.parameters)) ||
-           rawMetadata.parameters.includes('Distilled CFG Scale') ||
-           /Module\s*1:\s*ae/i.test(rawMetadata.parameters))) {
-        console.log('[Metadata Processing] Using Fooocus parser');
-        normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
-      } else if (isSwarmUIMetadata(rawMetadata)) {
-        console.log('[Metadata Processing] Using SwarmUI parser');
-        normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
-      } else if (isEasyDiffusionMetadata(rawMetadata)) {
-        console.log('[Metadata Processing] Using Easy Diffusion parser');
-        normalizedMetadata = parseEasyDiffusionMetadata(rawMetadata.parameters);
-      } else if (isEasyDiffusionJson(rawMetadata)) {
-        normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
-      } else if (isMidjourneyMetadata(rawMetadata)) {
-        normalizedMetadata = parseMidjourneyMetadata(rawMetadata.parameters);
-      } else if (isNijiMetadata(rawMetadata)) {
-        normalizedMetadata = parseNijiMetadata(rawMetadata.parameters);
-      } else if (isForgeMetadata(rawMetadata)) {
-        normalizedMetadata = parseForgeMetadata(rawMetadata);
-      } else if (isDalleMetadata(rawMetadata)) {
-        normalizedMetadata = parseDalleMetadata(rawMetadata);
-      } else if (isFireflyMetadata(rawMetadata)) {
-        normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
-      } else if (isDreamStudioMetadata(rawMetadata)) {
-        normalizedMetadata = parseDreamStudioMetadata(rawMetadata.parameters);
-      } else if (isDrawThingsMetadata(rawMetadata)) {
-        normalizedMetadata = parseDrawThingsMetadata(rawMetadata.parameters);
-      } else if (isInvokeAIMetadata(rawMetadata)) {
-        normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
+let normalizedMetadata: BaseMetadata | undefined;
+if (rawMetadata) {
+  console.log('[Metadata Processing] Raw metadata keys:', Object.keys(rawMetadata));
+  
+  // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
+  if (isComfyUIMetadata(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using ComfyUI parser');
+    const comfyMetadata = rawMetadata as ComfyUIMetadata;
+    let workflow = comfyMetadata.workflow;
+    let prompt = comfyMetadata.prompt;
+    try {
+      if (typeof workflow === 'string') {
+        workflow = JSON.parse(sanitizeJson(workflow));
       }
+      if (typeof prompt === 'string') {
+        prompt = JSON.parse(sanitizeJson(prompt));
+      }
+    } catch (e) {
+      // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
     }
+    const resolvedParams = resolvePromptFromGraph(workflow, prompt);
+    normalizedMetadata = {
+      prompt: resolvedParams.prompt || '',
+      negativePrompt: resolvedParams.negativePrompt || '',
+      model: resolvedParams.model || '',
+      models: resolvedParams.model ? [resolvedParams.model] : [],
+      width: 0,
+      height: 0,
+      seed: resolvedParams.seed,
+      steps: resolvedParams.steps || 0,
+      cfg_scale: resolvedParams.cfg,
+      scheduler: resolvedParams.scheduler || '',
+      sampler: resolvedParams.sampler_name || '',
+      loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+    };
+  }
+  
+  // Priority 2: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
+  else if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+    const params = rawMetadata.parameters;
+    console.log('[Metadata Processing] Parameters string detected, analyzing...');
+    console.log('[Metadata Processing] First 200 chars:', params.substring(0, 200));
+    
+    // Sub-priority 2.1: Forge (most specific - has Model hash + Forge/Gradio)
+    if ((params.includes('Forge') || params.includes('Gradio')) && 
+        params.includes('Steps:') && params.includes('Sampler:') && params.includes('Model hash:')) {
+      console.log('[Metadata Processing] ✅ Using Forge parser');
+      normalizedMetadata = parseForgeMetadata(rawMetadata);
+    }
+    
+    // Sub-priority 2.2: Fooocus (specific indicators but NO Model hash)
+    // CRITICAL: Must check for absence of Model hash to avoid capturing Forge/A1111
+    else if (params.includes('Fooocus') || 
+             (params.includes('Sharpness:') && !params.includes('Model hash:'))) {
+      console.log('[Metadata Processing] ✅ Using Fooocus parser');
+      normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
+    }
+    
+    // Sub-priority 2.3: A1111/ComfyUI hybrid (has Model hash or Version indicators)
+    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants
+    else if (params.includes('Model hash:') || 
+             params.includes('Version: ComfyUI') ||
+             /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
+             params.includes('Distilled CFG Scale') ||
+             /Module\s*\d+:/i.test(params)) {
+      console.log('[Metadata Processing] ✅ Using A1111 parser (includes Forge/ComfyUI variants)');
+      normalizedMetadata = parseA1111Metadata(params);
+    }
+    
+    // Sub-priority 2.4: Other parameter-based formats
+    else if (params.includes('DreamStudio') || params.includes('Stability AI')) {
+      console.log('[Metadata Processing] ✅ Using DreamStudio parser');
+      normalizedMetadata = parseDreamStudioMetadata(params);
+    }
+    else if ((params.includes('iPhone') || params.includes('iPad') || params.includes('Draw Things')) &&
+             !params.includes('Model hash:')) {
+      console.log('[Metadata Processing] ✅ Using Draw Things parser');
+      normalizedMetadata = parseDrawThingsMetadata(params);
+    }
+    else if (params.includes('--niji')) {
+      console.log('[Metadata Processing] ✅ Using Niji parser');
+      normalizedMetadata = parseNijiMetadata(params);
+    }
+    else if (params.includes('--v') || params.includes('--ar') || params.includes('Midjourney')) {
+      console.log('[Metadata Processing] ✅ Using Midjourney parser');
+      normalizedMetadata = parseMidjourneyMetadata(params);
+    }
+    else if (params.includes('Prompt:') && params.includes('Steps:')) {
+      // Generic SD-like format - try Easy Diffusion
+      console.log('[Metadata Processing] ✅ Using Easy Diffusion parser');
+      normalizedMetadata = parseEasyDiffusionMetadata(params);
+    }
+    else {
+      // Fallback: Try A1111 parser for any other parameter string
+      console.log('[Metadata Processing] ⚠️ Fallback to A1111 parser');
+      normalizedMetadata = parseA1111Metadata(params);
+    }
+  }
+  
+  // Priority 3: SwarmUI (has unique 'sui_image_params' structure)
+  else if (isSwarmUIMetadata(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using SwarmUI parser');
+    normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
+  }
+  
+  // Priority 4: Easy Diffusion JSON (simple JSON with 'prompt' field)
+  else if (isEasyDiffusionJson(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using Easy Diffusion JSON parser');
+    normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
+  }
+  
+  // Priority 5: DALL-E (has C2PA manifest)
+  else if (isDalleMetadata(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using DALL-E parser');
+    normalizedMetadata = parseDalleMetadata(rawMetadata);
+  }
+  
+  // Priority 6: Firefly (has C2PA with Adobe signatures)
+  else if (isFireflyMetadata(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using Firefly parser');
+    normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
+  }
+  
+  // Priority 7: InvokeAI (fallback for remaining metadata)
+  else if (isInvokeAIMetadata(rawMetadata)) {
+    console.log('[Metadata Processing] ✅ Using InvokeAI parser');
+    normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
+  }
+  
+  // Priority 8: Unknown format
+  else {
+    console.log('[Metadata Processing] ⚠️ Unknown metadata format, no parser applied');
+  }
+}
 
-    console.log('[Metadata Processing] Final normalized metadata:', {
-      hasMetadata: !!normalizedMetadata,
-      generator: normalizedMetadata?.generator,
-      model: normalizedMetadata?.model,
-      prompt: normalizedMetadata?.prompt?.substring(0, 100) + (normalizedMetadata?.prompt && normalizedMetadata.prompt.length > 100 ? '...' : ''),
-      steps: normalizedMetadata?.steps,
-      cfg_scale: normalizedMetadata?.cfg_scale
-    });
+console.log('[Metadata Processing] Final normalized metadata:', {
+  hasMetadata: !!normalizedMetadata,
+  generator: normalizedMetadata?.generator,
+  model: normalizedMetadata?.model,
+  prompt: normalizedMetadata?.prompt?.substring(0, 100) + (normalizedMetadata?.prompt && normalizedMetadata.prompt.length > 100 ? '...' : ''),
+  steps: normalizedMetadata?.steps,
+  cfg_scale: normalizedMetadata?.cfg_scale
+});
 
+// ==============================================================================
+// FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
+// deve permanecer como está
+// ==============================================================================
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {
       try {
