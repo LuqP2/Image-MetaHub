@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useFavoritesStore } from '../store/useFavoritesStore';
-import { IndexedImage } from '../types';
+import { IndexedImage, FavoriteImage, indexedImageToFavorite } from '../types';
 
 // Mock the electronAPI
-const mockFavorites = [] as IndexedImage[];
+const mockFavorites = [] as FavoriteImage[];
 global.window = {
   electronAPI: {
     getFavorites: vi.fn().mockResolvedValue({ success: true, favorites: mockFavorites }),
@@ -23,14 +23,20 @@ global.window = {
   },
 } as any;
 
-const mockImage: IndexedImage = {
+const mockIndexedImage: IndexedImage = {
   id: 'test-image-1',
   name: 'test.png',
   directoryId: 'dir-1',
   lastModified: Date.now(),
   handle: {} as any,
   metadata: {},
+  metadataString: '',
+  models: [],
+  loras: [],
+  scheduler: '',
 };
+
+const mockImage: FavoriteImage = indexedImageToFavorite(mockIndexedImage);
 
 
 describe('useFavoritesStore', () => {
@@ -55,7 +61,7 @@ describe('useFavoritesStore', () => {
   });
 
   it('should add a favorite', async () => {
-    await useFavoritesStore.getState().addFavorite(mockImage);
+    await useFavoritesStore.getState().addFavorite(mockIndexedImage);
     expect(window.electronAPI.addFavorite).toHaveBeenCalledWith(mockImage);
     expect(useFavoritesStore.getState().favorites).toHaveLength(1);
     expect(useFavoritesStore.getState().isFavorite('test-image-1')).toBe(true);
@@ -63,7 +69,7 @@ describe('useFavoritesStore', () => {
 
   it('should remove a favorite', async () => {
     // Add first
-    await useFavoritesStore.getState().addFavorite(mockImage);
+    await useFavoritesStore.getState().addFavorite(mockIndexedImage);
     expect(useFavoritesStore.getState().favorites).toHaveLength(1);
 
     // Then remove
@@ -75,13 +81,13 @@ describe('useFavoritesStore', () => {
 
   it('should toggle a favorite', async () => {
     // Add
-    let isFav = await useFavoritesStore.getState().toggleFavorite(mockImage);
+    let isFav = await useFavoritesStore.getState().toggleFavorite(mockIndexedImage);
     expect(isFav).toBe(true);
     expect(useFavoritesStore.getState().isFavorite('test-image-1')).toBe(true);
     expect(useFavoritesStore.getState().favorites).toHaveLength(1);
 
     // Remove
-    isFav = await useFavoritesStore.getState().toggleFavorite(mockImage);
+    isFav = await useFavoritesStore.getState().toggleFavorite(mockIndexedImage);
     expect(isFav).toBe(false);
     expect(useFavoritesStore.getState().isFavorite('test-image-1')).toBe(false);
     expect(useFavoritesStore.getState().favorites).toHaveLength(0);

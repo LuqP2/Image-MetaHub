@@ -5,7 +5,7 @@ import { useFavoritesStore } from './store/useFavoritesStore';
 import { useAppStore } from './store/useAppStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
-import { useHotkeys } from './hooks/useHotkeys';
+import { useHotkeys } from './hooks/useHotkeys.tsx';
 import { Directory } from './types';
 
 import FolderSelector from './components/FolderSelector';
@@ -74,6 +74,9 @@ export default function App() {
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
 
+  // --- App Store State ---
+  const { view, setView } = useAppStore();
+
   // --- Derived State for Filters ---
   const { availableModels, availableLoras, availableSchedulers } = React.useMemo(() => {
     const sourceImages = view === 'favorites' ? favorites : images;
@@ -111,9 +114,6 @@ export default function App() {
     toggleViewMode,
     theme,
   } = useSettingsStore();
-
-  // --- App Store State ---
-  const { view, setView } = useAppStore();
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');

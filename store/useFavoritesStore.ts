@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { IndexedImage } from '../types';
+import { IndexedImage, FavoriteImage, indexedImageToFavorite } from '../types';
 
 interface FavoritesState {
-  favorites: IndexedImage[];
+  favorites: FavoriteImage[];
   favoriteIds: Set<string>;
   isLoaded: boolean;
   loadFavorites: () => Promise<void>;
@@ -45,7 +45,8 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
    */
   addFavorite: async (image) => {
     try {
-      const result = await window.electronAPI.addFavorite(image);
+      const favoriteImage = indexedImageToFavorite(image);
+      const result = await window.electronAPI.addFavorite(favoriteImage);
       if (result.success) {
         const favorites = result.favorites || [];
         const favoriteIds = new Set(favorites.map((fav) => fav.id));

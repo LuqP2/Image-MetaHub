@@ -18,6 +18,9 @@ export interface ElectronAPI {
   testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
+  getFavorites: () => Promise<{ success: boolean; favorites?: FavoriteImage[]; error?: string }>;
+  addFavorite: (image: FavoriteImage) => Promise<{ success: boolean; favorites?: FavoriteImage[]; error?: string }>;
+  removeFavorite: (imageId: string) => Promise<{ success: boolean; favorites?: FavoriteImage[]; error?: string }>;
 }
 
 declare global {
@@ -476,6 +479,26 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
   directoryId?: string; // Unique ID for the parent directory
 }
 
+export interface FavoriteImage {
+  id: string; // Unique ID, e.g., file path
+  name: string;
+  metadata: ImageMetadata;
+  metadataString: string; // For faster searching
+  lastModified: number; // File's last modified date
+  models: string[]; // Extracted models from metadata
+  loras: string[]; // Extracted LoRAs from metadata
+  scheduler: string; // Extracted scheduler from metadata
+  board?: string; // Extracted board name from metadata
+  prompt?: string; // Extracted prompt from metadata
+  negativePrompt?: string; // Extracted negative prompt from metadata
+  cfgScale?: number; // Extracted CFG scale from metadata
+  steps?: number; // Extracted steps from metadata
+  seed?: number; // Extracted seed from metadata
+  dimensions?: string; // Extracted dimensions (width x height) from metadata
+  directoryName?: string; // Name of the selected directory for context
+  directoryId?: string; // Unique ID for the parent directory
+}
+
 export interface Directory {
   id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)
   name: string;
@@ -498,6 +521,13 @@ export interface Keymap {
   [scope: string]: {
     [action: string]: string;
   } | string;
+}
+
+// Utility function to convert IndexedImage to FavoriteImage (removes non-serializable handles)
+export function indexedImageToFavorite(image: IndexedImage): FavoriteImage {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { handle, thumbnailHandle, thumbnailUrl, ...serializableImage } = image;
+  return serializableImage;
 }
 
 // File System Access API - extended Window interface

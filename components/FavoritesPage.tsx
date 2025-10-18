@@ -10,20 +10,23 @@ const FavoritesPage: React.FC = () => {
   const favorites = useFavoritesStore((state) => state.favorites);
   const { viewMode, toggleViewMode } = useSettingsStore();
   const { selectedImages, handleImageSelection, clearSelection, handleDeleteSelectedImages } = useImageSelection();
-  const [sortOrder, setSortOrder] = useState({ key: 'lastModified', direction: 'desc' });
+  const [sortOrder, setSortOrder] = useState('lastModified');
+
+  // Filter selected images to only show those that are favorites
+  const favoriteSelectedImages = useMemo(() => {
+    const favoriteIds = new Set(favorites.map(fav => fav.id));
+    return new Set(Array.from(selectedImages).filter(id => favoriteIds.has(id)));
+  }, [selectedImages, favorites]);
 
   const sortedFavorites = useMemo(() => {
     const sorted = [...favorites].sort((a, b) => {
-      if (sortOrder.key === 'name') {
+      if (sortOrder === 'name') {
         return a.name.localeCompare(b.name);
       }
       // Default to date
       return b.lastModified - a.lastModified;
     });
 
-    if (sortOrder.direction === 'asc') {
-      return sorted.reverse();
-    }
     return sorted;
   }, [favorites, sortOrder]);
 
@@ -36,12 +39,22 @@ const FavoritesPage: React.FC = () => {
     );
   }
 
+  // Convert FavoriteImage[] to IndexedImage[] for compatibility with existing components
+  const indexedFavorites = useMemo(() => {
+    return sortedFavorites.map(fav => ({
+      ...fav,
+      handle: undefined as unknown as FileSystemFileHandle, // FavoriteImage doesn't have handles
+      thumbnailHandle: undefined,
+      thumbnailUrl: undefined,
+    }));
+  }, [sortedFavorites]);
+
   return (
     <>
       <ActionToolbar
         sortOrder={sortOrder}
         onSortOrderChange={setSortOrder}
-        selectedCount={selectedImages.size}
+        selectedCount={favoriteSelectedImages.size}
         onClearSelection={clearSelection}
         onDeleteSelected={handleDeleteSelectedImages}
         viewMode={viewMode}
@@ -50,15 +63,15 @@ const FavoritesPage: React.FC = () => {
       <div className="flex-1 min-h-0">
         {viewMode === 'grid' ? (
           <ImageGrid
-            images={sortedFavorites}
+            images={indexedFavorites}
             onImageClick={handleImageSelection}
-            selectedImages={selectedImages}
+            selectedImages={favoriteSelectedImages}
           />
         ) : (
           <ImageTable
-            images={sortedFavorites}
+            images={indexedFavorites}
             onImageClick={handleImageSelection}
-            selectedImages={selectedImages}
+            selectedImages={favoriteSelectedImages}
           />
         )}
       </div>

@@ -64,5 +64,5 @@ export function useImageSelection() {
         clearImageSelection();
     }, [selectedImages, images, removeImage, setError, clearImageSelection]);
 
-    return { handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
+    return { selectedImages, handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
 }

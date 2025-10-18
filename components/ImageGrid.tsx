@@ -47,8 +47,13 @@ const ImageCard: React.FC<ImageCardProps> = ({
 
     // Check if we can actually load this image
     const isElectron = typeof window !== 'undefined' && window.electronAPI;
-    if (!isElectron && (!fileHandle || typeof fileHandle.getFile !== 'function')) {
-      // In browser mode with invalid handles, don't try to load
+    if (!fileHandle || typeof fileHandle?.getFile !== 'function') {
+      // Handle is invalid or missing, don't try to load
+      return;
+    }
+
+    if (!isElectron) {
+      // In browser mode, don't try to load even with valid handles for now
       return;
     }
 

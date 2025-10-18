@@ -37,7 +37,7 @@ async function readFavorites() {
 
 /**
  * Writes the given favorites to the JSON file.
- * @param {IndexedImage[]} favorites
+ * @param {FavoriteImage[]} favorites
  */
 async function writeFavorites(favorites) {
   const filePath = getFavoritesPath();
@@ -51,8 +51,8 @@ async function writeFavorites(favorites) {
 
 /**
  * Adds a new image to the favorites.
- * @param {IndexedImage} image
- * @returns {Promise<IndexedImage[]>} The updated list of favorites.
+ * @param {FavoriteImage} image
+ * @returns {Promise<FavoriteImage[]>} The updated list of favorites.
  */
 async function addFavorite(image) {
   const favorites = await readFavorites();
@@ -67,7 +67,7 @@ async function addFavorite(image) {
 /**
  * Removes an image from the favorites.
  * @param {string} imageId
- * @returns {Promise<IndexedImage[]>} The updated list of favorites.
+ * @returns {Promise<FavoriteImage[]>} The updated list of favorites.
  */
 async function removeFavorite(imageId) {
   let favorites = await readFavorites();
