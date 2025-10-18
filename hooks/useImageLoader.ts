@@ -188,6 +188,9 @@ export function useImageLoader() {
     
     // Timeout for clearing completed state
     const completedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // Timer for indexing performance tracking
+    const indexingStartTimeRef = useRef<number | null>(null);
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback(() => {
@@ -307,6 +310,13 @@ export function useImageLoader() {
         const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
         await cacheManager.cacheData(directory.path, directory.name, finalDirectoryImages, shouldScanSubfolders);
 
+        // Calculate and log indexing time
+        if (indexingStartTimeRef.current !== null) {
+            const elapsedSeconds = ((performance.now() - indexingStartTimeRef.current) / 1000).toFixed(2);
+            console.log(`⏱️ Indexed in ${elapsedSeconds} seconds`);
+            indexingStartTimeRef.current = null;
+        }
+
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
         setIndexingState('completed');
@@ -392,6 +402,9 @@ export function useImageLoader() {
         setError(null);
         setSuccess(null);
         setIndexingState('indexing');
+
+        // Start performance timer
+        indexingStartTimeRef.current = performance.now();
 
         // Initialize AbortController for this indexing operation
         abortControllerRef.current = new AbortController();
