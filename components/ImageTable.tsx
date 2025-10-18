@@ -35,13 +35,15 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   return (
     <div className="h-full overflow-auto">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
-          <tr>
-            <th className="px-4 py-2 text-left">Preview</th>
-            <th className="px-4 py-2 text-left">Filename</th>
-            <th className="px-4 py-2 text-left">Prompt</th>
-            <th className="px-4 py-2 text-left">Model</th>
-            <th className="px-4 py-2 text-left">Size</th>
+        <thead className="bg-gray-800 sticky top-0 z-10">
+          <tr className="border-b border-gray-700">
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Preview</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Filename</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Model</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Steps</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">CFG</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Size</th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Seed</th>
           </tr>
         </thead>
         <tbody>
@@ -194,16 +196,16 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
 
   return (
     <tr
-      className={`border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer ${
-        isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+      className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors ${
+        isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
-      <td className="px-4 py-2">
-        <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded overflow-hidden flex items-center justify-center">
+      <td className="px-3 py-2">
+        <div className="w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (
-            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
           ) : imageUrl ? (
             <img
               src={imageUrl}
@@ -216,17 +218,53 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
           )}
         </div>
       </td>
-      <td className="px-4 py-2 font-medium">
+      <td className="px-3 py-2 text-gray-300 font-medium max-w-[200px] truncate" title={image.handle.name}>
         {image.handle.name}
       </td>
-      <td className="px-4 py-2 max-w-xs truncate">
-        {image.prompt || (image.metadata as any)?.prompt?.substring(0, 50) || 'No prompt'}...
+      <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate" title={image.models?.[0] || 'Unknown'}>
+        {image.models?.[0] || <span className="text-gray-600">Unknown</span>}
       </td>
-      <td className="px-4 py-2">
-        {image.models?.[0] || 'Unknown'}
+      <td className="px-3 py-2 text-center">
+        {(() => {
+          const steps = image.steps || (image.metadata as any)?.steps || (image.metadata as any)?.normalizedMetadata?.steps;
+          return steps ? (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+              steps < 20 ? 'bg-green-900/40 text-green-300' :
+              steps < 35 ? 'bg-blue-900/40 text-blue-300' :
+              'bg-orange-900/40 text-orange-300'
+            }`}>
+              {steps}
+            </span>
+          ) : (
+            <span className="text-gray-600 text-xs">—</span>
+          );
+        })()}
       </td>
-      <td className="px-4 py-2">
-        {image.dimensions || 'Unknown'}
+      <td className="px-3 py-2 text-center text-gray-400">
+        {(() => {
+          const cfg = image.cfgScale || (image.metadata as any)?.cfg_scale || (image.metadata as any)?.cfgScale || (image.metadata as any)?.normalizedMetadata?.cfg_scale;
+          return cfg ? (
+            <span className="font-mono text-sm">{typeof cfg === 'number' ? cfg.toFixed(1) : cfg}</span>
+          ) : (
+            <span className="text-gray-600 text-xs">—</span>
+          );
+        })()}
+      </td>
+      <td className="px-3 py-2 text-gray-400 font-mono text-xs">
+        {(() => {
+          const dims = image.dimensions || 
+                      (image.metadata as any)?.dimensions ||
+                      ((image.metadata as any)?.width && (image.metadata as any)?.height 
+                        ? `${(image.metadata as any).width}×${(image.metadata as any).height}` 
+                        : null);
+          return dims || <span className="text-gray-600">—</span>;
+        })()}
+      </td>
+      <td className="px-3 py-2 text-gray-500 font-mono text-xs max-w-[100px] truncate" title={(image.seed || (image.metadata as any)?.seed || (image.metadata as any)?.normalizedMetadata?.seed)?.toString()}>
+        {(() => {
+          const seed = image.seed || (image.metadata as any)?.seed || (image.metadata as any)?.normalizedMetadata?.seed;
+          return seed || <span className="text-gray-600">—</span>;
+        })()}
       </td>
     </tr>
   );
