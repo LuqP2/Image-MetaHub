@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Midjourney PNG Support**: Added support for Midjourney images stored in PNG format with metadata in 'Description' chunk
+- **Draw Things Parser**: Added complete support for Draw Things (iOS/Mac AI app) generated images with XMP metadata parsing, including Description field and UserComment JSON extraction for Flux models and LoRA configurations
 
 ## [0.9.2] - 2025-10-12
 

@@ -157,7 +157,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return { prompt: chunks.prompt };
   }
 
-  // If no PNG chunks found, try to extract EXIF data from PNG (some tools like Fooocus save metadata in EXIF)
+  // Always try to extract EXIF/XMP data from PNG (many modern apps like Draw Things use XMP)
   try {
     const exifResult = await parseJPEGMetadata(buffer);
     if (exifResult) {
@@ -167,15 +167,17 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     // Silent error - EXIF extraction may fail
   }
 
-  return null;
+  // If no EXIF found, try PNG chunks as fallback
+  // ...existing code...
 }
 
 // Main parsing function for JPEG files
 async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   try {
-    // Extract EXIF data with UserComment support
+    // Extract EXIF data with UserComment and XMP support
     const exifData = await parse(buffer, {
       userComment: true,
+      xmp: true,
       mergeOutput: true,
       sanitize: false,
       reviveValues: true
@@ -184,12 +186,14 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     if (!exifData) return null;
     
     // Check all possible field names for UserComment (A1111 and SwarmUI store metadata here in JPEGs)
+    // Also check XMP Description for Draw Things and other XMP-based metadata
     let metadataText: string | Uint8Array | undefined = 
       exifData.UserComment || 
       exifData.userComment ||
       exifData['User Comment'] ||
       exifData.ImageDescription || 
       exifData.Parameters ||
+      exifData.Description || // XMP Description
       null;
     
     if (!metadataText) return null;
@@ -258,12 +262,23 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return { parameters: metadataText };
     }
 
-    // Draw Things (iOS/Mac AI app) uses SD-like format with mobile device indicators
-    if ((metadataText.includes('iPhone') || metadataText.includes('iPad') || metadataText.includes('iPod') || metadataText.includes('Draw Things')) &&
-        metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('CFG scale:') &&
+    // Draw Things (iOS/Mac AI app) uses SD-like format with mobile device indicators or XMP Creator Tool
+    if ((metadataText.includes('iPhone') || metadataText.includes('iPad') || metadataText.includes('iPod') || 
+         metadataText.includes('Draw Things') || exifData.CreatorTool === 'Draw Things') &&
+        (metadataText.includes('Prompt:') || metadataText.includes('Guidance Scale:')) && 
+        metadataText.includes('Steps:') && 
+        (metadataText.includes('CFG scale:') || metadataText.includes('Guidance Scale:')) &&
         !metadataText.includes('Model hash:') && !metadataText.includes('Forge') && !metadataText.includes('Gradio') &&
         !metadataText.includes('DreamStudio') && !metadataText.includes('Stability AI') && !metadataText.includes('--niji')) {
-      return { parameters: metadataText };
+      // Extract UserComment JSON if available
+      let userComment: string | undefined;
+      if (exifData.UserComment || exifData.userComment || exifData['User Comment']) {
+        const comment = exifData.UserComment || exifData.userComment || exifData['User Comment'];
+        if (typeof comment === 'string' && comment.includes('{')) {
+          userComment = comment;
+        }
+      }
+      return { parameters: metadataText, userComment };
     }
 
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI, ComfyUI, or DALL-E
@@ -487,7 +502,8 @@ if (rawMetadata) {
     else if ((params.includes('iPhone') || params.includes('iPad') || params.includes('Draw Things')) &&
              !params.includes('Model hash:')) {
       console.log('[Metadata Processing] ✅ Using Draw Things parser');
-      normalizedMetadata = parseDrawThingsMetadata(params);
+      const userComment = 'userComment' in rawMetadata ? String(rawMetadata.userComment) : undefined;
+      normalizedMetadata = parseDrawThingsMetadata(params, userComment);
     }
     else if (params.includes('--niji')) {
       console.log('[Metadata Processing] ✅ Using Niji parser');

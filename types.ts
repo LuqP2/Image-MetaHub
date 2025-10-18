@@ -217,9 +217,9 @@ export interface FireflyMetadata {
 
 export interface DrawThingsMetadata {
   parameters: string; // Draw Things uses SD-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
-  device_model?: string; // Mobile device model (e.g., "iPhone 15 Pro", "iPad Pro")
-  app_version?: string; // Draw Things app version
+  userComment?: string; // JSON metadata from EXIF UserComment field
   // Additional fields that might be present
+  normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
 
