@@ -10,77 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 **User Interface:**
-- **Advanced Filters**: Range filters for Steps, CFG Scale, Dimensions, and Date with collapsible sidebar UI
-- **List View Mode**: Table view with sortable columns for detailed image browsing alongside grid view
-- **Keyboard Shortcuts**: Comprehensive shortcuts including Shift+Click range selection, view mode switching (G/L keys), and quick actions
-- **Context Menu**: Right-click support in grid and table with Copy Prompt/Seed/Model, Show in Folder, and Export Image
-- **Progressive Loading**: Images appear immediately in batches while indexing continues in background
-- **Indexing Controls**: Real-time progress display with pause/resume/cancel buttons and file count status ("🔄 Indexing: 200 / 21,727 files processed")
-- **Feedback Button**: Quick access to GitHub issues for bug reports and feature requests
 
 **AI Platform Support:**
-- **Draw Things**: iOS/Mac AI app with XMP metadata, Flux models, and LoRA configurations
-- **Adobe Firefly**: C2PA/EXIF metadata with edit history and content credentials
-- **Niji Journey**: Anime-focused Midjourney variant with parameter extraction (--niji, --v, --ar)
-- **DreamStudio**: Stability AI platform with style presets and model variants
-- **Midjourney PNG**: PNG format support with parameter flags (--v, --ar, --q, --s, --seed)
-- **Forge**: A1111-based interface with hires upscaling and Gradio integration
-- **SwarmUI**: Enhanced detection and LoRA extraction
-- **SD.Next**: Backend, pipeline, and hires parameters support
-- **DALL-E 3**: C2PA manifest and EXIF tag extraction
 
 **Testing & Development:**
-- **Vitest Framework**: Unit testing with jsdom environment
-- **ESLint Configuration**: TypeScript/React rules with practical warnings
-- **Parser Test Suite**: Comprehensive tests for metadata extraction
-- **CLI Tooling**: `imagemetahub-cli` command for batch processing and debugging
 
 ### Fixed
-- **Indexing State**: Progress display and control buttons now properly clear on completion
-- **Context Menu**: Auto-close when clicking outside menu area
-- **ComfyUI JPEG**: Fixed parser detection preventing metadata extraction from JPEG files
-- **Dimension Calculations**: Corrected Midjourney and Niji Journey aspect ratio parsing
-- **Null Reference**: Added null checks for progress property access preventing crashes
-- **Filter Persistence**: Sidebar filters no longer disappear during refresh operations
 
 ### Changed
-- **Grid Performance**: Migrated from react-virtualized Masonry to react-window FixedSizeGrid for 20k+ image collections
-- **Dynamic Layout**: Responsive column calculation adapts to zoom level and window size
-- **File Processing**: Newest files first (sorted by modification date descending)
-- **UI Safety**: Disabled destructive operations (Add/Reload/Delete/Rename) during indexing
-- **Filter Sync**: Incremental filter updates as images are processed for better UX
 
 ### Technical Improvements
-- **ComfyUI Parser**: Multi-layer decompression (JSON/Base64/zlib), regex fallback, advanced seed extraction (numeric/hex/derived), model hash mapping
-- **Sidecar JSON**: Automatic detection and parsing of .json metadata files alongside images
-- **IPC Listeners**: Real-time indexing feedback via Electron IPC (onIndexingProgress, onIndexingBatchResult, onIndexingComplete)
-- **Modular Architecture**: Extended parser factory with intelligent format detection for 12+ AI platforms
 
----
 
 ## [0.9.1] - 2025-10-08
-
-### Added
-- **Right Sidebar**: Collapsible image preview and metadata on thumbnail hover
-- **Cache Management**: "Clear All Cache" button in Settings with confirmation dialog
-- **Enhanced ComfyUI**: Grouped workflow parsing with widget extraction and custom node support
-
-### Fixed
-- **ComfyUI NaN**: JSON parsing errors for workflows with invalid numeric values
-- **Cache Clearing**: Proper state reset and page reload functionality
-- **Grouped Workflows**: Fixed parsing of grouped nodes (e.g., "workflow>Load Model - Flux")
-- **Stack Overflow**: Prevented infinite recursion in ImageModal
-- **CLI Loading**: Fixed command-line directory initialization
+## [0.9.2] - 2025-10-18
 
 ### Changed
+- Atualização de versão para 0.9.2
+### Added
+- **Right Sidebar**: Collapsible image preview and metadata on thumbnail hover
+### Fixed
+- **ComfyUI NaN**: JSON parsing errors for workflows with invalid numeric values
+### Changed
 - **Version Numbering**: Reset to 0.9.x series for pre-1.0 beta status
-
 ### Technical
 - Enhanced ComfyUI traversal engine with link following and custom extractors (ttN concat, CFGGuider)
-- Better error handling and state cleanup for orphaned image references
-
 ---
-
 ## [1.9.0] - 2025-10-03
 
 ### Added

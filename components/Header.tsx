@@ -19,7 +19,7 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <GalleryHorizontal className="h-8 w-8 text-accent" />
-          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub</h1>
+          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.2</h1>
         </div>
         <div className="flex items-center gap-4">
           {hasDirectories && (

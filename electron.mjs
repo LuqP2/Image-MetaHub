@@ -249,6 +249,15 @@ function createWindow(startupDirectory = null) {
     show: false // Don't show until ready
   });
 
+  // Set window title to include version (keeps it accurate across builds)
+  try {
+    const appVersion = app.getVersion();
+    mainWindow.setTitle(`Image MetaHub v${appVersion}`);
+  } catch (e) {
+    // Fallback if app.getVersion is not available
+    mainWindow.setTitle('Image MetaHub v0.9.2');
+  }
+
   // Load the app
   let startUrl;
   if (isDev) {
@@ -547,7 +556,7 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-      version: '2.0.0',
+  version: '0.9.2',
       releaseNotes: `## [2.0.0] - Test Release
 
 ### Added

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -10,8 +10,15 @@ interface ImageTableProps {
   selectedImages: Set<string>;
 }
 
+type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
+type SortDirection = 'asc' | 'desc' | null;
+
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
   const directories = useImageStore((state) => state.directories);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
+
   const {
     contextMenu,
     showContextMenu,
@@ -32,22 +39,160 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
   };
+
+  // Function to apply sorting based on current field and direction
+  const applySorting = (imagesToSort: IndexedImage[], field: SortField | null, direction: SortDirection) => {
+    if (!field || !direction) {
+      return imagesToSort;
+    }
+
+    return [...imagesToSort].sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+      
+      switch (field) {
+        case 'filename':
+          aValue = a.handle.name.toLowerCase();
+          bValue = b.handle.name.toLowerCase();
+          break;
+        case 'model':
+          aValue = (a.models?.[0] || '').toLowerCase();
+          bValue = (b.models?.[0] || '').toLowerCase();
+          break;
+        case 'steps': {
+          const aSteps = a.steps || (a.metadata as any)?.steps || (a.metadata as any)?.normalizedMetadata?.steps || 0;
+          const bSteps = b.steps || (b.metadata as any)?.steps || (b.metadata as any)?.normalizedMetadata?.steps || 0;
+          aValue = aSteps;
+          bValue = bSteps;
+          break;
+        }
+        case 'cfg': {
+          const aCfg = a.cfgScale || (a.metadata as any)?.cfg_scale || (a.metadata as any)?.cfgScale || (a.metadata as any)?.normalizedMetadata?.cfg_scale || 0;
+          const bCfg = b.cfgScale || (b.metadata as any)?.cfg_scale || (b.metadata as any)?.cfgScale || (b.metadata as any)?.normalizedMetadata?.cfg_scale || 0;
+          aValue = aCfg;
+          bValue = bCfg;
+          break;
+        }
+        case 'size': {
+          const aDims = a.dimensions || (a.metadata as any)?.dimensions || '0x0';
+          const bDims = b.dimensions || (b.metadata as any)?.dimensions || '0x0';
+          const [aW, aH] = aDims.split('×').map(Number);
+          const [bW, bH] = bDims.split('×').map(Number);
+          aValue = aW * aH;
+          bValue = bW * bH;
+          break;
+        }
+        case 'seed': {
+          const aSeed = a.seed || (a.metadata as any)?.seed || (a.metadata as any)?.normalizedMetadata?.seed || 0;
+          const bSeed = b.seed || (b.metadata as any)?.seed || (b.metadata as any)?.normalizedMetadata?.seed || 0;
+          aValue = aSeed;
+          bValue = bSeed;
+          break;
+        }
+        default:
+          return 0;
+      }
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      } else {
+        return direction === 'asc' ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number);
+      }
+    });
+  };
+
+  const handleSort = (field: SortField) => {
+    let newDirection: SortDirection = 'asc';
+    
+    if (sortField === field) {
+      if (sortDirection === 'asc') {
+        newDirection = 'desc';
+      } else if (sortDirection === 'desc') {
+        newDirection = null;
+        setSortField(null);
+        setSortDirection(null);
+        return;
+      }
+    }
+    
+    setSortField(field);
+    setSortDirection(newDirection);
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 opacity-40" />;
+    }
+    if (sortDirection === 'asc') {
+      return <ArrowUp className="w-3 h-3" />;
+    }
+    return <ArrowDown className="w-3 h-3" />;
+  };
+
+  // Update sorted images when images prop changes OR when sort settings change
+  useEffect(() => {
+    const sorted = applySorting(images, sortField, sortDirection);
+    setSortedImages(sorted);
+  }, [images, sortField, sortDirection]);
+
   return (
     <div className="h-full overflow-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-800 sticky top-0 z-10">
           <tr className="border-b border-gray-700">
             <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Preview</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Filename</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Model</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Steps</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">CFG</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Size</th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Seed</th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('filename')}
+            >
+              <div className="flex items-center gap-1">
+                Filename {getSortIcon('filename')}
+              </div>
+            </th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('model')}
+            >
+              <div className="flex items-center gap-1">
+                Model {getSortIcon('model')}
+              </div>
+            </th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('steps')}
+            >
+              <div className="flex items-center gap-1">
+                Steps {getSortIcon('steps')}
+              </div>
+            </th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('cfg')}
+            >
+              <div className="flex items-center gap-1">
+                CFG {getSortIcon('cfg')}
+              </div>
+            </th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('size')}
+            >
+              <div className="flex items-center gap-1">
+                Size {getSortIcon('size')}
+              </div>
+            </th>
+            <th 
+              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+              onClick={() => handleSort('seed')}
+            >
+              <div className="flex items-center gap-1">
+                Seed {getSortIcon('seed')}
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {images.map((image) => (
+          {sortedImages.map((image) => (
             <ImageTableRow
               key={image.id}
               image={image}
@@ -141,6 +286,7 @@ interface ImageTableRowProps {
 const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
   useEffect(() => {
     let isMounted = true;
@@ -194,25 +340,39 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
     };
   }, [image.thumbnailHandle, image.handle]);
 
+  const handlePreviewClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPreviewImage(image);
+  };
+
   return (
     <tr
-      className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors ${
+      className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group ${
         isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
       <td className="px-3 py-2">
-        <div className="w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
+        <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
           ) : imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={image.handle.name}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
+            <>
+              <img
+                src={imageUrl}
+                alt={image.handle.name}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
           ) : (
             <span className="text-xs text-gray-500">ERR</span>
           )}
