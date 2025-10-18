@@ -2,6 +2,12 @@
 
 import { type IndexedImage } from '../types';
 
+/**
+ * @interface CacheEntry
+ * @description Defines the structure of a cache entry in IndexedDB.
+ * @property {string} id - The unique identifier for the cache entry.
+ * @property {string} directoryPath - The path to the directory.
+ */
 interface CacheEntry {
   id: string;
   directoryPath: string;
@@ -20,6 +26,14 @@ interface CacheEntry {
   }[];
 }
 
+/**
+ * @interface CacheDiff
+ * @description Defines the structure of the difference between the cache and the current file system state.
+ * @property {{ name: string; lastModified: number }[]} newAndModifiedFiles - A list of new or modified files.
+ * @property {string[]} deletedFileIds - A list of IDs of deleted files.
+ * @property {IndexedImage[]} cachedImages - A list of images that are still valid in the cache.
+ * @property {boolean} needsFullRefresh - Whether a full refresh is needed.
+ */
 export interface CacheDiff {
   newAndModifiedFiles: { name: string; lastModified: number }[];
   deletedFileIds: string[];
@@ -27,12 +41,22 @@ export interface CacheDiff {
   needsFullRefresh: boolean;
 }
 
+/**
+ * @class CacheManager
+ * @description Manages the IndexedDB cache for the application.
+ */
 class CacheManager {
   private dbName = 'invokeai-browser-cache'; // Default name
   private dbVersion = 3;
   private db: IDBDatabase | null = null;
   private isInitialized = false;
 
+  /**
+   * @function init
+   * @description Initializes the IndexedDB database.
+   * @param {string} [basePath] - An optional base path to create a unique database name.
+   * @returns {Promise<void>} - A promise that resolves when the database is initialized.
+   */
   async init(basePath?: string): Promise<void> {
     if (this.isInitialized) {
       console.log(`ℹ️ Cache already initialized with DB: ${this.dbName}`);
@@ -78,6 +102,13 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function handleIndexedDBError
+   * @description Handles IndexedDB errors by deleting and re-initializing the database.
+   * @param {any} error - The error to handle.
+   * @returns {Promise<void>} - A promise that resolves when the error is handled.
+   * @private
+   */
   private async handleIndexedDBError(error: any): Promise<void> {
     try {
       const deleteRequest = indexedDB.deleteDatabase(this.dbName);
@@ -95,6 +126,13 @@ class CacheManager {
     }
   }
 
+  /**
+   * @function getCachedData
+   * @description Retrieves cached data for a directory.
+   * @param {string} directoryPath - The path to the directory.
+   * @param {boolean} scanSubfolders - Whether to scan subfolders.
+   * @returns {Promise<CacheEntry | null>} - A promise that resolves with the cached data or null if not found.
+   */
   async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<CacheEntry | null> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -119,6 +157,15 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function cacheData
+   * @description Caches data for a directory.
+   * @param {string} directoryPath - The path to the directory.
+   * @param {string} directoryName - The name of the directory.
+   * @param {IndexedImage[]} images - The images to cache.
+   * @param {boolean} scanSubfolders - Whether subfolders were scanned.
+   * @returns {Promise<void>} - A promise that resolves when the data is cached.
+   */
   async cacheData(
     directoryPath: string,
     directoryName: string,
@@ -173,6 +220,13 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function cacheThumbnail
+   * @description Caches a thumbnail for an image.
+   * @param {string} imageId - The ID of the image.
+   * @param {Blob} blob - The thumbnail blob to cache.
+   * @returns {Promise<void>} - A promise that resolves when the thumbnail is cached.
+   */
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -187,6 +241,12 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function getCachedThumbnail
+   * @description Retrieves a cached thumbnail for an image.
+   * @param {string} imageId - The ID of the image.
+   * @returns {Promise<Blob | null>} - A promise that resolves with the thumbnail blob or null if not found.
+   */
   async getCachedThumbnail(imageId: string): Promise<Blob | null> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -204,6 +264,11 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function validateAndCleanCache
+   * @description Validates and cleans the cache by removing entries with invalid metadata.
+   * @returns {Promise<number>} - A promise that resolves with the number of cleaned entries.
+   */
   async validateAndCleanCache(): Promise<number> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -244,6 +309,11 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function clearCache
+   * @description Clears the entire cache.
+   * @returns {Promise<void>} - A promise that resolves when the cache is cleared.
+   */
   async clearCache(): Promise<void> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -267,6 +337,13 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function clearDirectoryCache
+   * @description Clears the cache for a specific directory.
+   * @param {string} directoryPath - The path to the directory.
+   * @param {boolean} scanSubfolders - Whether subfolders were scanned.
+   * @returns {Promise<void>} - A promise that resolves when the directory cache is cleared.
+   */
   async clearDirectoryCache(directoryPath: string, scanSubfolders: boolean): Promise<void> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
@@ -288,6 +365,15 @@ class CacheManager {
     });
   }
 
+  /**
+   * @function validateCacheAndGetDiff
+   * @description Validates the cache against the current file system state and returns the difference.
+   * @param {string} directoryPath - The path to the directory.
+   * @param {string} directoryName - The name of the directory.
+   * @param {{ name: string; lastModified: number }[]} currentFiles - The current files in the directory.
+   * @param {boolean} scanSubfolders - Whether subfolders were scanned.
+   * @returns {Promise<CacheDiff>} - A promise that resolves with the cache difference.
+   */
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,

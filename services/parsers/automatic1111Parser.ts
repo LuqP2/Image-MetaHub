@@ -2,6 +2,12 @@ import { Automatic1111Metadata, BaseMetadata } from '../../types';
 
 // --- Extraction Functions ---
 
+/**
+ * @function extractModelsFromAutomatic1111
+ * @description Extracts model names from Automatic1111 metadata.
+ * @param {Automatic1111Metadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromAutomatic1111(metadata: Automatic1111Metadata): string[] {
   const params = metadata.parameters;
   const modelMatch = params.match(/Model:\s*([^,]+)/i);
@@ -15,6 +21,12 @@ export function extractModelsFromAutomatic1111(metadata: Automatic1111Metadata):
   return [];
 }
 
+/**
+ * @function extractLorasFromAutomatic1111
+ * @description Extracts LoRA names from Automatic1111 metadata.
+ * @param {Automatic1111Metadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): string[] {
   const loras: Set<string> = new Set();
   const params = metadata.parameters;
@@ -28,6 +40,12 @@ export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): 
 
 // --- Main Parser Function ---
 
+/**
+ * @function parseA1111Metadata
+ * @description Parses a string of Automatic1111 metadata into a BaseMetadata object.
+ * @param {string} parameters - The string of parameters to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseA1111Metadata(parameters: string): BaseMetadata {
 
   const result: Partial<BaseMetadata> = {};
@@ -102,10 +120,12 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   result.loras = extractLorasFromAutomatic1111({ parameters });
   
   // Check if this is actually ComfyUI metadata
-  if (parameters.includes('Version: ComfyUI')) {
-    result.generator = 'ComfyUI';
-  } else {
-    result.generator = 'A1111';
+  if (parameters.trim()) {
+    if (parameters.includes('Version: ComfyUI')) {
+      result.generator = 'ComfyUI';
+    } else {
+      result.generator = 'A1111';
+    }
   }
 
   const finalResult = result as BaseMetadata;

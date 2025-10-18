@@ -23,6 +23,12 @@ import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
 
+/**
+ * @function sanitizeJson
+ * @description Sanitizes a JSON string by replacing NaN with null.
+ * @param {string} jsonString - The JSON string to sanitize.
+ * @returns {string} - The sanitized JSON string.
+ */
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
     return jsonString.replace(/:\s*NaN/g, ': null');
@@ -31,7 +37,14 @@ function sanitizeJson(jsonString: string): string {
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
-// Helper function to chunk array into smaller arrays
+/**
+ * @function chunkArray
+ * @description Chunks an array into smaller arrays of a specified size.
+ * @param {T[]} array - The array to chunk.
+ * @param {number} size - The size of each chunk.
+ * @returns {T[][]} - The chunked array.
+ * @template T
+ */
 function chunkArray<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
@@ -41,9 +54,10 @@ function chunkArray<T>(array: T[], size: number): T[][] {
 }
 
 /**
- * Attempts to read a sidecar JSON file for Easy Diffusion metadata
- * @param imagePath Path to the image file (e.g., /path/to/image.png)
- * @returns Parsed JSON metadata or null if not found/valid
+ * @function tryReadEasyDiffusionSidecarJson
+ * @description Attempts to read a sidecar JSON file for Easy Diffusion metadata.
+ * @param {string} imagePath - Path to the image file (e.g., /path/to/image.png).
+ * @returns {Promise<EasyDiffusionJson | null>} - Parsed JSON metadata or null if not found/valid.
  */
 async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyDiffusionJson | null> {
   try {
@@ -79,7 +93,12 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
   }
 }
 
-// Main parsing function for PNG files
+/**
+ * @function parsePNGMetadata
+ * @description Parses metadata from a PNG file.
+ * @param {ArrayBuffer} buffer - The buffer containing the PNG file data.
+ * @returns {Promise<ImageMetadata | null>} - A promise that resolves with the parsed metadata or null if not found.
+ */
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   const view = new DataView(buffer);
   let offset = 8;
@@ -169,7 +188,12 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   return null;
 }
 
-// Main parsing function for JPEG files
+/**
+ * @function parseJPEGMetadata
+ * @description Parses metadata from a JPEG file.
+ * @param {ArrayBuffer} buffer - The buffer containing the JPEG file data.
+ * @returns {Promise<ImageMetadata | null>} - A promise that resolves with the parsed metadata or null if not found.
+ */
 async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   try {
     // Extract EXIF data with UserComment support
@@ -343,7 +367,12 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
-// Main image metadata parser
+/**
+ * @function parseImageMetadata
+ * @description Parses metadata from an image file.
+ * @param {File} file - The image file to parse.
+ * @returns {Promise<ImageMetadata | null>} - A promise that resolves with the parsed metadata or null if not found.
+ */
 async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
@@ -357,8 +386,12 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
 }
 
 /**
- * Processes a single file entry to extract metadata and create an IndexedImage object.
- * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
+ * @function processSingleFileOptimized
+ * @description Processes a single file entry to extract metadata and create an IndexedImage object. Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
+ * @param {{ handle: FileSystemFileHandle; path: string }} fileEntry - The file entry to process.
+ * @param {string} directoryId - The ID of the directory containing the file.
+ * @param {ArrayBuffer} [fileData] - Optional pre-loaded file data.
+ * @returns {Promise<IndexedImage | null>} - A promise that resolves with the processed image data or null if an error occurs.
  */
 async function processSingleFileOptimized(
   fileEntry: { handle: FileSystemFileHandle, path: string },
@@ -549,7 +582,11 @@ async function processSingleFileOptimized(
 }
 
 /**
- * Processes a single file entry (wrapper for backward compatibility).
+ * @function processSingleFile
+ * @description Processes a single file entry (wrapper for backward compatibility).
+ * @param {{ handle: FileSystemFileHandle; path: string }} fileEntry - The file entry to process.
+ * @param {string} directoryId - The ID of the directory containing the file.
+ * @returns {Promise<IndexedImage | null>} - A promise that resolves with the processed image data or null if an error occurs.
  */
 async function processSingleFile(
   fileEntry: { handle: FileSystemFileHandle, path: string },
@@ -559,9 +596,18 @@ async function processSingleFile(
 }
 
 /**
- * Processes an array of file entries in batches to avoid blocking the main thread.
- * Invokes a callback with each batch of processed images.
- * OPTIMIZED: Uses batch file reading in Electron to reduce IPC overhead.
+ * @function processFiles
+ * @description Processes an array of file entries in batches to avoid blocking the main thread. Invokes a callback with each batch of processed images. Optimized to use batch file reading in Electron to reduce IPC overhead.
+ * @param {{ handle: FileSystemFileHandle; path: string; lastModified: number }[]} fileEntries - The file entries to process.
+ * @param {(progress: { current: number; total: number }) => void} setProgress - A function to update the progress.
+ * @param {(batch: IndexedImage[]) => void} onBatchProcessed - A callback function to handle a batch of processed images.
+ * @param {string} directoryId - The ID of the directory being processed.
+ * @param {string} directoryName - The name of the directory being processed.
+ * @param {boolean} scanSubfolders - Whether to scan subfolders.
+ * @param {(deletedFileIds: string[]) => void} onDeletion - A callback function to handle deleted files.
+ * @param {AbortSignal} [abortSignal] - An optional abort signal to cancel the process.
+ * @param {() => Promise<void>} [waitWhilePaused] - An optional function to wait while the process is paused.
+ * @returns {Promise<void>} - A promise that resolves when all files have been processed.
  */
 export async function processFiles(
   fileEntries: { handle: FileSystemFileHandle, path: string, lastModified: number }[],

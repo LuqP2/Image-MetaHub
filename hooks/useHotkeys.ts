@@ -5,6 +5,16 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageSelection } from './useImageSelection';
 import { useImageLoader } from './useImageLoader';
 
+/**
+ * @interface HotkeyProps
+ * @description Defines the props for the useHotkeys hook.
+ * @property {boolean} isCommandPaletteOpen - Whether the command palette is open.
+ * @property {(isOpen: boolean) => void} setIsCommandPaletteOpen - Callback to set the command palette's open state.
+ * @property {boolean} isHotkeyHelpOpen - Whether the hotkey help modal is open.
+ * @property {(isOpen: boolean) => void} setIsHotkeyHelpOpen - Callback to set the hotkey help modal's open state.
+ * @property {boolean} isSettingsModalOpen - Whether the settings modal is open.
+ * @property {(isOpen: boolean) => void} setIsSettingsModalOpen - Callback to set the settings modal's open state.
+ */
 interface HotkeyProps {
   isCommandPaletteOpen: boolean;
   setIsCommandPaletteOpen: (isOpen: boolean) => void;
@@ -14,6 +24,15 @@ interface HotkeyProps {
   setIsSettingsModalOpen: (isOpen: boolean) => void;
 }
 
+/**
+ * @function useHotkeys
+ * @description A custom hook for managing and registering hotkeys for the application.
+ * @param {HotkeyProps} props - The props for the hook.
+ * @returns {{
+ *   commands: {id: string; name: string; description: string; action: () => void; hotkey?: string}[];
+ *   registeredHotkeys: {id: string; name: string; scope: string; defaultKey: string; currentKey: string; action: () => void}[];
+ * }} - The commands and registered hotkeys.
+ */
 export const useHotkeys = ({
   isCommandPaletteOpen,
   setIsCommandPaletteOpen,

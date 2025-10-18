@@ -3,6 +3,11 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig } from '../services/hotkeyConfig';
 import { Keymap } from '../types';
 
+/**
+ * @function HotkeySettings
+ * @description A component that allows users to view, customize, and reset hotkey bindings.
+ * @returns {JSX.Element} - The rendered component.
+ */
 export const HotkeySettings = () => {
   const { keymap, updateKeybinding, resetKeymap } = useSettingsStore();
   const [recording, setRecording] = useState<{ scope: string; action: string } | null>(null);

@@ -1,6 +1,18 @@
 import React from 'react';
 import { Pause, Play, X } from 'lucide-react';
 
+/**
+ * @interface StatusBarProps
+ * @description Defines the props for the StatusBar component.
+ * @property {number} filteredCount - The number of filtered images.
+ * @property {number} totalCount - The total number of images.
+ * @property {number} directoryCount - The number of directories.
+ * @property {'idle' | 'indexing' | 'paused'} [indexingState] - The current indexing state.
+ * @property {{current: number; total: number} | null} [progress] - The indexing progress.
+ * @property {() => void} [onPauseIndexing] - Callback function to pause indexing.
+ * @property {() => void} [onResumeIndexing] - Callback function to resume indexing.
+ * @property {() => void} [onCancelIndexing] - Callback function to cancel indexing.
+ */
 interface StatusBarProps {
   filteredCount: number;
   totalCount: number;
@@ -12,6 +24,12 @@ interface StatusBarProps {
   onCancelIndexing?: () => void;
 }
 
+/**
+ * @function StatusBar
+ * @description A status bar component that displays information about the number of images, directories, and indexing progress.
+ * @param {StatusBarProps} props - The props for the component.
+ * @returns {React.FC<StatusBarProps>} - The rendered component.
+ */
 const StatusBar: React.FC<StatusBarProps> = ({ 
   filteredCount, 
   totalCount, 

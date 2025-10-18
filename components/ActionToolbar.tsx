@@ -3,6 +3,18 @@ import { resetAllCaches } from '../utils/cacheReset';
 import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List } from 'lucide-react';
 
+/**
+ * @interface ActionToolbarProps
+ * @description Defines the props for the ActionToolbar component.
+ * @property {string} sortOrder - The current sort order for the image grid.
+ * @property {(value: any) => void} onSortOrderChange - Callback function to handle sort order changes.
+ * @property {number} selectedCount - The number of currently selected images.
+ * @property {() => void} onClearSelection - Callback function to clear the current selection.
+ * @property {() => void} onDeleteSelected - Callback function to delete the selected images.
+ * @property {'grid' | 'list'} viewMode - The current view mode for the image grid.
+ * @property {(mode: 'grid' | 'list') => void} onViewModeChange - Callback function to handle view mode changes.
+ * @property {() => void} [onTestBatchReading] - Optional temporary test function.
+ */
 interface ActionToolbarProps {
   sortOrder: string;
   onSortOrderChange: (value: any) => void;
@@ -14,6 +26,12 @@ interface ActionToolbarProps {
   onTestBatchReading?: () => void; // Temporary test function
 }
 
+/**
+ * @function ActionToolbar
+ * @description A toolbar component that provides actions for sorting, clearing selection, deleting selected items, and changing the view mode.
+ * @param {ActionToolbarProps} props - The props for the component.
+ * @returns {React.FC<ActionToolbarProps>} - The rendered component.
+ */
 const ActionToolbar: React.FC<ActionToolbarProps> = ({
   sortOrder,
   onSortOrderChange,

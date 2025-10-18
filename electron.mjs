@@ -19,9 +19,16 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 let mainWindow;
 let skippedVersions = new Set();
 
-// --- Settings Management ---
+/**
+ * @constant {string} settingsPath - The path to the settings.json file.
+ */
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
+/**
+ * @function readSettings
+ * @description Reads the settings from the settings.json file.
+ * @returns {Promise<object>} - A promise that resolves with the settings object.
+ */
 async function readSettings() {
   try {
     const data = await fs.readFile(settingsPath, 'utf-8');
@@ -32,6 +39,12 @@ async function readSettings() {
   }
 }
 
+/**
+ * @function saveSettings
+ * @description Saves the settings to the settings.json file.
+ * @param {object} settings - The settings object to save.
+ * @returns {Promise<void>} - A promise that resolves when the settings are saved.
+ */
 async function saveSettings(settings) {
   try {
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
@@ -231,6 +244,11 @@ if (autoUpdater) {
   console.log('⚠️ Auto-updater not available, skipping event handlers');
 }
 
+/**
+ * @function createWindow
+ * @description Creates the main browser window.
+ * @param {string | null} [startupDirectory=null] - An optional directory to load on startup.
+ */
 function createWindow(startupDirectory = null) {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -349,7 +367,13 @@ app.whenReady().then(async () => {
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
 
-// Helper function for recursive file search
+/**
+ * @function getFilesRecursively
+ * @description Recursively gets all files in a directory.
+ * @param {string} directory - The directory to search.
+ * @param {string} baseDirectory - The base directory to calculate relative paths from.
+ * @returns {Promise<object[]>} - A promise that resolves with an array of file objects.
+ */
 async function getFilesRecursively(directory, baseDirectory) {
     const files = [];
     try {
@@ -377,6 +401,10 @@ async function getFilesRecursively(directory, baseDirectory) {
     return files;
 }
 
+/**
+ * @function setupFileOperationHandlers
+ * @description Sets up IPC handlers for file operations.
+ */
 function setupFileOperationHandlers() {
   // Security helper to check if a file path is within one of the allowed directories
   const isPathAllowed = (filePath) => {

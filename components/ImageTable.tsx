@@ -4,12 +4,25 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download } from 'lucide-react';
 
+/**
+ * @interface ImageTableProps
+ * @description Defines the props for the ImageTable component.
+ * @property {IndexedImage[]} images - The array of images to display.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} onImageClick - Callback function for when an image is clicked.
+ * @property {Set<string>} selectedImages - A set of IDs of the selected images.
+ */
 interface ImageTableProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
 }
 
+/**
+ * @function ImageTable
+ * @description A component that displays images in a table view with details and a context menu.
+ * @param {ImageTableProps} props - The props for the component.
+ * @returns {React.FC<ImageTableProps>} - The rendered component.
+ */
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
   const directories = useImageStore((state) => state.directories);
   const {
@@ -128,7 +141,14 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   );
 };
 
-// Componente separado para cada linha da tabela com preview
+/**
+ * @interface ImageTableRowProps
+ * @description Defines the props for the ImageTableRow component.
+ * @property {IndexedImage} image - The image to display in the row.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} onImageClick - Callback function for when the row is clicked.
+ * @property {boolean} isSelected - Whether the row is currently selected.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} [onContextMenu] - Optional callback for context menu events.
+ */
 interface ImageTableRowProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -136,6 +156,12 @@ interface ImageTableRowProps {
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
 }
 
+/**
+ * @function ImageTableRow
+ * @description A component that renders a single row in the image table, including a preview.
+ * @param {ImageTableRowProps} props - The props for the component.
+ * @returns {React.FC<ImageTableRowProps>} - The rendered component.
+ */
 const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);

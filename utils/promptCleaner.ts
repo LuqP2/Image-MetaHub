@@ -1,6 +1,12 @@
 /**
  * Limpa artefatos comuns de prompts processados por wildcards
  */
+/**
+ * @function cleanPrompt
+ * @description Cleans common artifacts from prompts processed by wildcards.
+ * @param {string | null | undefined} text - The text to clean.
+ * @returns {string} - The cleaned text.
+ */
 export function cleanPrompt(text: string | null | undefined): string {
   if (!text) return '';
   
@@ -33,7 +39,10 @@ export function cleanPrompt(text: string | null | undefined): string {
 }
 
 /**
- * Limpa nome de LoRA
+ * @function cleanLoraName
+ * @description Cleans a LoRA name by removing common prefixes and suffixes.
+ * @param {string} lora - The LoRA name to clean.
+ * @returns {string} - The cleaned LoRA name.
  */
 export function cleanLoraName(lora: string): string {
   return lora

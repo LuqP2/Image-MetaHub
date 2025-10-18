@@ -1,5 +1,13 @@
 import { Keymap } from '../types';
 
+/**
+ * @interface HotkeyDefinition
+ * @description Defines the structure for a hotkey definition.
+ * @property {string} id - The unique identifier for the hotkey.
+ * @property {string} name - The name of the hotkey.
+ * @property {'global' | 'preview'} scope - The scope in which the hotkey is active.
+ * @property {string} defaultKey - The default key combination for the hotkey.
+ */
 export interface HotkeyDefinition {
   id: string;
   name: string;
@@ -7,6 +15,11 @@ export interface HotkeyDefinition {
   defaultKey: string;
 }
 
+/**
+ * @constant hotkeyConfig
+ * @description An array of hotkey definitions for the application.
+ * @type {HotkeyDefinition[]}
+ */
 export const hotkeyConfig: HotkeyDefinition[] = [
   // Global Scope
   { id: 'openCommandPalette', name: 'Open Command Palette', scope: 'global', defaultKey: 'ctrl+k, cmd+k' },
@@ -32,6 +45,11 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'navigateNext', name: 'Next Image', scope: 'preview', defaultKey: 'right' },
 ];
 
+/**
+ * @function getDefaultKeymap
+ * @description Creates a default keymap from the hotkey configuration.
+ * @returns {Keymap} - The default keymap.
+ */
 export const getDefaultKeymap = (): Keymap => {
   const keymap: Keymap = { version: '1.0' };
   hotkeyConfig.forEach(hotkey => {

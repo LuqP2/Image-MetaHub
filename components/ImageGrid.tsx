@@ -7,7 +7,17 @@ import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download } from 'lucide-react';
 
-// --- ImageCard Component (with slight modifications) ---
+/**
+ * @interface ImageCardProps
+ * @description Defines the props for the ImageCard component.
+ * @property {IndexedImage} image - The image to display.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} onImageClick - Callback function for when the image is clicked.
+ * @property {boolean} isSelected - Whether the image is currently selected.
+ * @property {React.CSSProperties} style - CSS properties for the component.
+ * @property {() => void} onImageLoad - Callback function for when the image has loaded.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} [onContextMenu] - Optional callback for context menu events.
+ * @property {string} [directoryPath] - Optional path to the directory containing the image.
+ */
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -18,6 +28,12 @@ interface ImageCardProps {
   directoryPath?: string;
 }
 
+/**
+ * @function ImageCard
+ * @description A component that displays an image card with selection and preview functionality.
+ * @param {ImageCardProps} props - The props for the component.
+ * @returns {React.FC<ImageCardProps>} - The rendered component.
+ */
 const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -114,7 +130,13 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
 };
 
 
-// --- ImageGrid Component ---
+/**
+ * @interface ImageGridProps
+ * @description Defines the props for the ImageGrid component.
+ * @property {IndexedImage[]} images - The array of images to display.
+ * @property {(image: IndexedImage, event: React.MouseEvent) => void} onImageClick - Callback function for when an image is clicked.
+ * @property {Set<string>} selectedImages - A set of IDs of the selected images.
+ */
 interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -123,6 +145,12 @@ interface ImageGridProps {
 
 const GUTTER_SIZE = 8; // Space between images
 
+/**
+ * @function ImageGrid
+ * @description A virtualized grid component for displaying a large number of images efficiently.
+ * @param {ImageGridProps} props - The props for the component.
+ * @returns {React.FC<ImageGridProps>} - The rendered component.
+ */
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
@@ -249,7 +277,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   );
 };
 
-// Cell renderer for react-window grid
+/**
+ * @function GridCell
+ * @description A renderer for a single cell in the react-window grid.
+ * @param {object} props - The props for the component.
+ * @param {number} props.columnIndex - The column index of the cell.
+ * @param {number} props.rowIndex - The row index of the cell.
+ * @param {React.CSSProperties} props.style - The style of the cell.
+ * @param {any} props.data - The data for the cell.
+ * @returns {JSX.Element | null} - The rendered component or null if the image does not exist.
+ */
 const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
   const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu } = data;
   const index = rowIndex * columnCount + columnIndex;

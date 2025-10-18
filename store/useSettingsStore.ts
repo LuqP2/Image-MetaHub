@@ -1,8 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 
-// --- Electron IPC-based storage for Zustand ---
-// This storage adapter will be used if the app is running in Electron.
+/**
+ * @const electronStorage
+ * @description A Zustand storage adapter that uses Electron's IPC to persist settings.
+ * @type {StateStorage}
+ */
 const electronStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     if (window.electronAPI) {
@@ -26,7 +29,11 @@ const electronStorage: StateStorage = {
 
 import { Keymap } from '../types';
 
-// Define the state shape
+/**
+ * @interface SettingsState
+ * @description Defines the state for the settings store.
+ * @property {'asc' | 'desc'} sortOrder - The sort order for the image grid.
+ */
 interface SettingsState {
   // App settings
   sortOrder: 'asc' | 'desc';
@@ -58,6 +65,11 @@ const isElectron = !!window.electronAPI;
 
 import { getDefaultKeymap } from '../services/hotkeyConfig';
 
+/**
+ * @function useSettingsStore
+ * @description A Zustand store for managing application settings.
+ * @returns {SettingsState} - The settings store state and actions.
+ */
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({

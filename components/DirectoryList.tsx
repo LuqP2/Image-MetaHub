@@ -6,6 +6,15 @@ const FolderIcon = () => <span>📁</span>;
 const RefreshIcon = () => <span>🔄</span>;
 const TrashIcon = () => <span>🗑️</span>;
 
+/**
+ * @interface DirectoryListProps
+ * @description Defines the props for the DirectoryList component.
+ * @property {Directory[]} directories - An array of directories to display.
+ * @property {(directoryId: string) => void} onRemoveDirectory - Callback function to remove a directory.
+ * @property {(directoryId: string) => void} onUpdateDirectory - Callback function to update a directory.
+ * @property {(directoryId: string) => void} onToggleVisibility - Callback function to toggle the visibility of a directory.
+ * @property {boolean} [isIndexing] - Optional flag to indicate if indexing is in progress.
+ */
 interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
@@ -14,6 +23,12 @@ interface DirectoryListProps {
   isIndexing?: boolean;
 }
 
+/**
+ * @function DirectoryList
+ * @description A component that displays a list of directories and provides actions for each.
+ * @param {DirectoryListProps} props - The props for the component.
+ * @returns {JSX.Element} - The rendered component.
+ */
 export default function DirectoryList({ directories, onRemoveDirectory, onUpdateDirectory, onToggleVisibility, isIndexing = false }: DirectoryListProps) {
   return (
     <div className="p-4 border-t border-gray-700">

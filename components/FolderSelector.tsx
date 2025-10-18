@@ -2,10 +2,21 @@
 import React from 'react';
 import { useImageStore } from '../store/useImageStore';
 
+/**
+ * @interface FolderSelectorProps
+ * @description Defines the props for the FolderSelector component.
+ * @property {() => void} onSelectFolder - Callback function to handle the folder selection.
+ */
 interface FolderSelectorProps {
   onSelectFolder: () => void;
 }
 
+/**
+ * @function FolderSelector
+ * @description A component that prompts the user to select a folder and provides an option to scan subfolders.
+ * @param {FolderSelectorProps} props - The props for the component.
+ * @returns {React.FC<FolderSelectorProps>} - The rendered component.
+ */
 const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
 

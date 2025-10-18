@@ -2,25 +2,11 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lucaspierri)
 
-This project was renamed from `local-image-browser-for-invokeai` to `Image MetaHub`. All links and references have been updated.
-
 A desktop application for browsing, searching, and organizing AI-generated images locally. Designed for performance with large collections, focusing on powerful metadata filtering and complete privacy.
 
 All processing is performed locally on your machine. No data is sent to external services, and no internet connection is required after installation.
 
 *For detailed changes and updates, see the [Releases page](https://github.com/LuqP2/image-metahub/releases).*
-
-
-## Releases & Updates
-
-This project uses automated release management to ensure consistent, informative release notes:
-
-- **Cross-platform builds** for Windows, macOS, and Linux
-- **Rich release notes** generated from CHANGELOG.md
-- **Auto-updates** available in the desktop application
-- **Release guide** available in [RELEASE-GUIDE.md](RELEASE-GUIDE.md)
-
-For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated release workflow.
 
 ## Key Features
 
@@ -51,12 +37,12 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 
 ## Installation
 
-**Desktop Application (Recommended)**
+### Desktop Application (Recommended)
 1. Go to [**Releases**](https://github.com/LuqP2/image-metahub/releases)
 2. Download the installer for your system (`.exe` for Windows, `.dmg` for macOS, `.AppImage` for Linux)
 3. Run the installer and launch the application
 
-**Run from Source**
+### Run from Source
 ```bash
 git clone https://github.com/LuqP2/image-metahub.git
 cd image-metahub
@@ -72,7 +58,7 @@ npm run dev:app -- --dir "/path/to/images"
 
 ## Command-Line Usage
 
-**Desktop Application (Production)**
+### Desktop Application (Production)
 ```bash
 # Windows
 ImageMetaHub.exe --dir "C:\path\to\images"
@@ -81,7 +67,7 @@ ImageMetaHub.exe --dir "C:\path\to\images"
 ./ImageMetaHub --dir "/path/to/images"
 ```
 
-**Development Mode**
+### Development Mode
 ```bash
 # Start Vite dev server only (browser access)
 npm run dev
@@ -104,6 +90,37 @@ The dev server automatically binds to `0.0.0.0`, making it accessible from other
 6. Click any image to view detailed metadata in fullscreen modal with management options
 7. Use "Update" button to quickly index new images without re-processing the entire collection
 
+## Project Structure
+
+```
+src/
+├── App.tsx                 # Main application orchestrator
+├── index.tsx              # Application entry point
+├── types.ts               # TypeScript type definitions
+├── components/            # Reusable UI components
+├── hooks/                 # Custom React hooks
+├── services/              # Business logic services
+│   ├── cacheManager.ts    # IndexedDB cache management
+│   ├── fileIndexer.ts     # File processing and metadata extraction
+│   └── parsers/           # Modular metadata parsers
+├── store/                 # State management (Zustand)
+├── utils/                 # Utility functions
+├── electron.cjs           # Electron main process
+├── preload.js             # Secure IPC bridge
+└── dist-electron/         # Built desktop application
+```
+
+## Available Scripts
+
+In the project directory, you can run:
+
+- `npm run dev`: Runs the app in the development mode (browser only).
+- `npm run dev:app`: Runs the Electron app in development mode.
+- `npm run build`: Builds the app for production.
+- `npm run lint`: Lints the code using ESLint.
+- `npm run electron-pack`: Packs the Electron app for the current platform.
+- `npm run release`: Builds and releases the Electron app.
+
 ## Technical Details
 
 - **Frontend:** React 18 with TypeScript
@@ -125,6 +142,11 @@ This application operates entirely offline:
 ## Contributing
 
 Contributions are welcome! Please open an issue for major changes to discuss the approach first.
+
+### Development Guidelines
+
+- **Code Style:** TypeScript strict mode, functional components with hooks, async/await for file operations.
+- **Performance:** Minimize re-renders, use `useCallback` for expensive operations, and implement proper cleanup in `useEffect`.
 
 ## Roadmap
 

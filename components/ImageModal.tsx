@@ -4,6 +4,20 @@ import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 
+/**
+ * @interface ImageModalProps
+ * @description Defines the props for the ImageModal component.
+ * @property {IndexedImage} image - The image to display.
+ * @property {() => void} onClose - Callback function to close the modal.
+ * @property {(imageId: string) => void} [onImageDeleted] - Optional callback for when an image is deleted.
+ * @property {(imageId: string, newName: string) => void} [onImageRenamed] - Optional callback for when an image is renamed.
+ * @property {number} [currentIndex] - The current index of the image in the list.
+ * @property {number} [totalImages] - The total number of images in the list.
+ * @property {() => void} [onNavigateNext] - Optional callback to navigate to the next image.
+ * @property {() => void} [onNavigatePrevious] - Optional callback to navigate to the previous image.
+ * @property {string} [directoryPath] - Optional path to the directory containing the image.
+ * @property {boolean} [isIndexing] - Optional flag to indicate if indexing is in progress.
+ */
 interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
@@ -17,7 +31,16 @@ interface ImageModalProps {
   isIndexing?: boolean;
 }
 
-// Helper component for consistently rendering metadata items
+/**
+ * @function MetadataItem
+ * @description A helper component for consistently rendering metadata items.
+ * @param {object} props - The props for the component.
+ * @param {string} props.label - The label for the metadata item.
+ * @param {string | number | any[]} [props.value] - The value of the metadata item.
+ * @param {boolean} [props.isPrompt] - Optional flag to indicate if the value is a prompt.
+ * @param {(value: string) => void} [props.onCopy] - Optional callback for when the value is copied.
+ * @returns {FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> | null} - The rendered component or null if the value is empty.
+ */
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -45,6 +68,12 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
 };
 
 
+/**
+ * @function ImageModal
+ * @description A modal component for displaying an image with its metadata and providing various actions.
+ * @param {ImageModalProps} props - The props for the component.
+ * @returns {React.FC<ImageModalProps>} - The rendered component.
+ */
 const ImageModal: React.FC<ImageModalProps> = ({
   image,
   onClose,

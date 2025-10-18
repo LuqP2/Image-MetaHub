@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
+/**
+ * @interface Command
+ * @description Defines the structure of a command for the CommandPalette.
+ * @property {string} id - A unique identifier for the command.
+ * @property {string} name - The name of the command.
+ * @property {string} description - A brief description of the command.
+ * @property {string} [hotkey] - The hotkey associated with the command.
+ * @property {() => void} action - The function to execute when the command is triggered.
+ */
 interface Command {
   id: string;
   name: string;
@@ -8,12 +17,25 @@ interface Command {
   action: () => void;
 }
 
+/**
+ * @interface CommandPaletteProps
+ * @description Defines the props for the CommandPalette component.
+ * @property {boolean} isOpen - Whether the command palette is open.
+ * @property {() => void} onClose - Callback function to close the command palette.
+ * @property {Command[]} commands - An array of commands to display in the palette.
+ */
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   commands: Command[];
 }
 
+/**
+ * @function CommandPalette
+ * @description A command palette component that allows users to search for and execute commands.
+ * @param {CommandPaletteProps} props - The props for the component.
+ * @returns {React.FC<CommandPaletteProps> | null} - The rendered component or null if it's not open.
+ */
 const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, commands }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);

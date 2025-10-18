@@ -2,6 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 
+/**
+ * @interface ContextMenuState
+ * @description Defines the state of the context menu.
+ * @property {number} x - The x-coordinate of the menu.
+ * @property {number} y - The y-coordinate of the menu.
+ * @property {boolean} visible - Whether the menu is visible.
+ * @property {IndexedImage} [image] - The image associated with the menu.
+ * @property {string} [directoryPath] - The path to the directory containing the image.
+ */
 interface ContextMenuState {
   x: number;
   y: number;
@@ -10,6 +19,11 @@ interface ContextMenuState {
   directoryPath?: string;
 }
 
+/**
+ * @function showNotification
+ * @description Displays a notification message on the screen.
+ * @param {string} message - The message to display.
+ */
 const showNotification = (message: string) => {
   const notification = document.createElement('div');
   notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
@@ -22,6 +36,22 @@ const showNotification = (message: string) => {
   }, 2000);
 };
 
+/**
+ * @function useContextMenu
+ * @description A custom hook for managing a context menu for images.
+ * @returns {{
+ *   contextMenu: ContextMenuState;
+ *   showContextMenu: (e: React.MouseEvent, image: IndexedImage, directoryPath?: string) => void;
+ *   hideContextMenu: () => void;
+ *   copyPrompt: () => void;
+ *   copyNegativePrompt: () => void;
+ *   copySeed: () => void;
+ *   copyImage: () => Promise<void>;
+ *   copyModel: () => void;
+ *   showInFolder: () => void;
+ *   exportImage: () => Promise<void>;
+ * }} - The context menu state and functions.
+ */
 export const useContextMenu = () => {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,

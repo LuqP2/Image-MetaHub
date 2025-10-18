@@ -5,6 +5,11 @@ import { cleanPrompt, cleanLoraName } from '../../utils/promptCleaner';
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
 
+/**
+ * @function getZlib
+ * @description Lazily loads the zlib module in a Node.js environment.
+ * @returns {Promise<any>} - A promise that resolves with the zlib module or null if not available.
+ */
 async function getZlib(): Promise<any> {
   if (typeof window !== 'undefined') {
     return null; // Browser environment
@@ -29,7 +34,10 @@ interface ParseResult {
 }
 
 /**
- * Tenta parsear payload do ComfyUI com múltiplas estratégias de descompressão e fallback
+ * @function tryParseComfyPayload
+ * @description Attempts to parse a ComfyUI payload with multiple decompression and fallback strategies.
+ * @param {string} raw - The raw payload to parse.
+ * @returns {Promise<ParseResult | null>} - A promise that resolves with the parsed data or null if parsing fails.
  */
 async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   const warnings: string[] = [];
@@ -83,7 +91,10 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
 }
 
 /**
- * Detecção agressiva de payload ComfyUI em chunks PNG
+ * @function detectComfyPayload
+ * @description Aggressively detects a ComfyUI payload in PNG chunks.
+ * @param {string[]} chunks - The PNG chunks to search.
+ * @returns {{ payload: string; method: string } | null} - The detected payload and method or null if not found.
  */
 function detectComfyPayload(chunks: string[]): { payload: string; method: string } | null {
   const combinedText = chunks.join('\n').toLowerCase();
@@ -106,7 +117,10 @@ function detectComfyPayload(chunks: string[]): { payload: string; method: string
 }
 
 /**
- * Fallback regex inteligente para extrair parâmetros de strings de texto
+ * @function extractParamsWithRegex
+ * @description An intelligent regex fallback to extract parameters from text strings.
+ * @param {string} text - The text to extract parameters from.
+ * @returns {Partial<Record<string, any>>} - A partial record of the extracted parameters.
  */
 function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
   const params: any = { raw_parsed_with_regex: true };
@@ -143,10 +157,11 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
 }
 
 /**
- * Advanced Seed Extraction with multiple formats:
- * - Numeric: "seed": 12345
- * - Hex: "seed": "0xabc123"
- * - Derived: "derived_seed": {...} → approximateSeed flag
+ * @function extractAdvancedSeed
+ * @description Advanced Seed Extraction with multiple formats.
+ * @param {ParserNode} node - The node to extract the seed from.
+ * @param {Graph} graph - The graph containing the node.
+ * @returns {{ seed: number | null; approximateSeed?: boolean }} - The extracted seed and whether it is an approximation.
  */
 function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
   // Try numeric seed first (standard path)
@@ -189,9 +204,11 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
 }
 
 /**
- * Advanced Model Detection with hash mapping:
- * - Extracts model name from CheckpointLoader, LoraLoader nodes
- * - Maps model hashes to "unknown (hash: xxxx)" format
+ * @function extractAdvancedModel
+ * @description Advanced Model Detection with hash mapping.
+ * @param {ParserNode} node - The node to extract the model from.
+ * @param {Graph} graph - The graph containing the node.
+ * @returns {string | null} - The extracted model name or null if not found.
  */
 function extractAdvancedModel(node: ParserNode, graph: Graph): string | null {
   // Try model_name from inputs
@@ -231,7 +248,10 @@ function extractAdvancedModel(node: ParserNode, graph: Graph): string | null {
 }
 
 /**
- * Extract ControlNet, LoRA, and VAE with weights and parameters
+ * @function extractAdvancedModifiers
+ * @description Extracts ControlNet, LoRA, and VAE with weights and parameters.
+ * @param {Graph} graph - The graph to extract modifiers from.
+ * @returns {{controlnets: Array<{ name: string; weight?: number; module?: string; applied_to?: string }>, loras: Array<{ name: string; weight?: number }>, vaes: Array<{ name: string }>}} - The extracted modifiers.
  */
 function extractAdvancedModifiers(graph: Graph): {
   controlnets: Array<{ name: string; weight?: number; module?: string; applied_to?: string }>;
@@ -293,7 +313,10 @@ function extractAdvancedModifiers(graph: Graph): {
 }
 
 /**
- * Extract edit history from SaveImage and LoadImage nodes
+ * @function extractEditHistory
+ * @description Extracts edit history from SaveImage and LoadImage nodes.
+ * @param {Graph} graph - The graph to extract the edit history from.
+ * @returns {Array<{ action: string; timestamp?: number; index?: number }>} - The extracted edit history.
  */
 function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: number; index?: number }> {
   const history: any[] = [];
@@ -317,7 +340,11 @@ function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: n
 }
 
 /**
- * Detect ComfyUI version from metadata
+ * @function extractComfyVersion
+ * @description Detects the ComfyUI version from metadata.
+ * @param {any} workflow - The workflow data.
+ * @param {any} prompt - The prompt data.
+ * @returns {string | null} - The detected version or null if not found.
  */
 function extractComfyVersion(workflow: any, prompt: any): string | null {
   // Check workflow metadata
@@ -340,7 +367,11 @@ function extractComfyVersion(workflow: any, prompt: any): string | null {
 }
 
 /**
- * Constrói um mapa de nós simplificado a partir dos dados do workflow e do prompt.
+ * @function createNodeMap
+ * @description Builds a simplified node map from workflow and prompt data.
+ * @param {any} workflow - The workflow data.
+ * @param {any} prompt - The prompt data.
+ * @returns {Graph} - The created node map.
  */
 function createNodeMap(workflow: any, prompt: any): Graph {
     const graph: Graph = {};
@@ -396,8 +427,10 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 }
 
 /**
- * Encontra o nó terminal do grafo, que serve como ponto de partida para a travessia.
- * Prioriza nós de geração (KSampler) sobre pós-processamento (UltimateSDUpscale).
+ * @function findTerminalNode
+ * @description Finds the terminal node of the graph, which serves as the starting point for traversal. Prioritizes generation nodes (KSampler) over post-processing nodes (UltimateSDUpscale).
+ * @param {Graph} graph - The graph to search.
+ * @returns {ParserNode | null} - The terminal node or null if not found.
  */
 function findTerminalNode(graph: Graph): ParserNode | null {
     let terminalNode: ParserNode | null = null;
@@ -420,8 +453,14 @@ function findTerminalNode(graph: Graph): ParserNode | null {
     // Return KSampler if found, otherwise return any SINK node
     const result = kSamplerNode || terminalNode;
     return result;
-}/**
- * Ponto de entrada principal. Resolve todos os parâmetros de metadados de um grafo.
+}
+
+/**
+ * @function resolvePromptFromGraph
+ * @description The main entry point for resolving all metadata parameters from a graph.
+ * @param {any} workflow - The workflow data.
+ * @param {any} prompt - The prompt data.
+ * @returns {Record<string, any>} - A record of the resolved metadata.
  */
 export function resolvePromptFromGraph(workflow: any, prompt: any): Record<string, any> {
   const telemetry = {
@@ -594,8 +633,10 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
 }
 
 /**
- * Enhanced parsing with aggressive payload detection and decompression
- * This is the new entry point that should be used for robust ComfyUI parsing
+ * @function parseComfyUIMetadataEnhanced
+ * @description Enhanced parsing with aggressive payload detection and decompression. This is the new entry point that should be used for robust ComfyUI parsing.
+ * @param {any} rawData - The raw data to parse.
+ * @returns {Promise<Record<string, any>>} - A promise that resolves with the parsed metadata.
  */
 export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record<string, any>> {
   const telemetry = {

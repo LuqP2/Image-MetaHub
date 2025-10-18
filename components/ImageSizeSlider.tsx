@@ -2,9 +2,19 @@ import React from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 
+/**
+ * @function ImageSizeSlider
+ * @description A slider component for adjusting the size of the images in the grid.
+ * @returns {React.FC} - The rendered component.
+ */
 const ImageSizeSlider: React.FC = () => {
   const { imageSize, setImageSize } = useSettingsStore();
 
+  /**
+   * @function handleSizeChange
+   * @description Handles the change event of the slider and updates the image size.
+   * @param {React.ChangeEvent<HTMLInputElement>} event - The change event.
+   */
   const handleSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setImageSize(Number(event.target.value));
   };

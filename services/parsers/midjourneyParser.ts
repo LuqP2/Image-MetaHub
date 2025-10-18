@@ -2,6 +2,12 @@ import { MidjourneyMetadata, BaseMetadata } from '../../types';
 
 // --- Extraction Functions ---
 
+/**
+ * @function extractModelsFromMidjourney
+ * @description Extracts model names from Midjourney metadata.
+ * @param {MidjourneyMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromMidjourney(metadata: MidjourneyMetadata): string[] {
   // Midjourney doesn't typically specify model names in metadata
   // But we can extract version info
@@ -16,6 +22,12 @@ export function extractModelsFromMidjourney(metadata: MidjourneyMetadata): strin
   return [];
 }
 
+/**
+ * @function extractLorasFromMidjourney
+ * @description Extracts LoRA names from Midjourney metadata.
+ * @param {MidjourneyMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromMidjourney(metadata: MidjourneyMetadata): string[] {
   // Midjourney doesn't use LoRAs in the traditional sense
   return [];
@@ -23,6 +35,12 @@ export function extractLorasFromMidjourney(metadata: MidjourneyMetadata): string
 
 // --- Main Parser Function ---
 
+/**
+ * @function parseMidjourneyMetadata
+ * @description Parses a string of Midjourney metadata into a BaseMetadata object.
+ * @param {string} parameters - The string of parameters to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseMidjourneyMetadata(parameters: string): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 

@@ -6,6 +6,12 @@ import { ForgeMetadata, isForgeMetadata, BaseMetadata } from '../../types';
  * Reuses A1111 parsing logic since Forge maintains compatibility
  */
 
+/**
+ * @function parseForgeMetadata
+ * @description Parses Forge (A1111-based) metadata.
+ * @param {any} metadata - The metadata to parse.
+ * @returns {BaseMetadata | null} - The parsed metadata or null if not a Forge image.
+ */
 export function parseForgeMetadata(metadata: any): BaseMetadata | null {
   if (!isForgeMetadata(metadata)) {
     return null;
@@ -72,53 +78,111 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
   };
 }
 
-// Helper functions for parameter extraction (similar to A1111 but with Forge-specific patterns)
-
+/**
+ * @function extractSteps
+ * @description Extracts the number of steps from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted steps or undefined if not found.
+ */
 function extractSteps(parameters: string): number | undefined {
   const match = parameters.match(/Steps:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractSampler
+ * @description Extracts the sampler name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted sampler name or undefined if not found.
+ */
 function extractSampler(parameters: string): string | undefined {
   const match = parameters.match(/Sampler:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractCFGScale
+ * @description Extracts the CFG scale from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted CFG scale or undefined if not found.
+ */
 function extractCFGScale(parameters: string): number | undefined {
   const match = parameters.match(/CFG scale:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/**
+ * @function extractSeed
+ * @description Extracts the seed from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted seed or undefined if not found.
+ */
 function extractSeed(parameters: string): number | undefined {
   const match = parameters.match(/Seed:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractSize
+ * @description Extracts the image size from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted size or undefined if not found.
+ */
 function extractSize(parameters: string): string | undefined {
   const match = parameters.match(/Size:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractModelHash
+ * @description Extracts the model hash from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted model hash or undefined if not found.
+ */
 function extractModelHash(parameters: string): string | undefined {
   const match = parameters.match(/Model hash:\s*([a-f0-9]+)/i);
   return match ? match[1] : undefined;
 }
 
+/**
+ * @function extractModel
+ * @description Extracts the model name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted model name or undefined if not found.
+ */
 function extractModel(parameters: string): string | undefined {
   const match = parameters.match(/Model:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractDenoising
+ * @description Extracts the denoising strength from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted denoising strength or undefined if not found.
+ */
 function extractDenoising(parameters: string): number | undefined {
   const match = parameters.match(/Denoising strength:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/**
+ * @function extractClipSkip
+ * @description Extracts the clip skip value from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted clip skip value or undefined if not found.
+ */
 function extractClipSkip(parameters: string): number | undefined {
   const match = parameters.match(/Clip skip:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractPrompts
+ * @description Extracts the positive and negative prompts from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {{ positivePrompt: string; negativePrompt: string }} - The extracted prompts.
+ */
 function extractPrompts(parameters: string): { positivePrompt: string; negativePrompt: string } {
     // Split by common separators used in A1111/Forge
   const parts = parameters.split(/\n\n|\nNegative prompt:/i);
@@ -141,11 +205,23 @@ function extractPrompts(parameters: string): { positivePrompt: string; negativeP
   }  return { positivePrompt, negativePrompt };
 }
 
+/**
+ * @function extractLoRAs
+ * @description Extracts LoRAs from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted LoRAs.
+ */
 function extractLoRAs(parameters: string): string[] {
   const loraMatches = parameters.matchAll(/<lora:([^:>]+):[^>]*>/gi);
   return Array.from(loraMatches, match => match[1]);
 }
 
+/**
+ * @function extractEmbeddings
+ * @description Extracts embeddings from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted embeddings.
+ */
 function extractEmbeddings(parameters: string): string[] {
   const embeddingMatches = parameters.matchAll(/\b([A-Z][a-zA-Z0-9_]*)\b/g);
   // Filter for likely embeddings (capitalized words that aren't common parameters)
@@ -154,21 +230,45 @@ function extractEmbeddings(parameters: string): string[] {
     .filter(word => !commonWords.has(word) && word.length > 2);
 }
 
+/**
+ * @function extractHiresUpscaler
+ * @description Extracts the hires upscaler from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted hires upscaler or undefined if not found.
+ */
 function extractHiresUpscaler(parameters: string): string | undefined {
   const match = parameters.match(/Hires upscaler:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractHiresUpscale
+ * @description Extracts the hires upscale value from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted hires upscale value or undefined if not found.
+ */
 function extractHiresUpscale(parameters: string): number | undefined {
   const match = parameters.match(/Hires upscale:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/**
+ * @function extractHiresSteps
+ * @description Extracts the hires steps from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted hires steps or undefined if not found.
+ */
 function extractHiresSteps(parameters: string): number | undefined {
   const match = parameters.match(/Hires steps:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractHiresDenoising
+ * @description Extracts the hires denoising strength from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted hires denoising strength or undefined if not found.
+ */
 function extractHiresDenoising(parameters: string): number | undefined {
   const match = parameters.match(/Hires denoising:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;

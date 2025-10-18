@@ -3,6 +3,15 @@ import { useImageStore } from '../store/useImageStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
 
+/**
+ * @function useImageSelection
+ * @description A custom hook for managing image selection, including single, multiple, and range selection.
+ * @returns {{
+ *   handleImageSelection: (image: IndexedImage, event: React.MouseEvent) => void;
+ *   handleDeleteSelectedImages: () => Promise<void>;
+ *   clearSelection: () => void;
+ * }} - An object with functions for managing image selection.
+ */
 export function useImageSelection() {
     const {
         images,

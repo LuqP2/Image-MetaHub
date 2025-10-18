@@ -8,6 +8,11 @@
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
+/**
+ * @function resetAllCaches
+ * @description Resets all caches and data for the application, including IndexedDB, localStorage, and Zustand stores.
+ * @returns {Promise<void>} - A promise that resolves when all caches have been cleared.
+ */
 export async function resetAllCaches(): Promise<void> {
   console.log('🧹 Starting complete cache reset...');
 
@@ -114,8 +119,9 @@ export async function resetAllCaches(): Promise<void> {
 }
 
 /**
- * Nuclear option: Complete fresh start
- * This clears everything and forces a page reload
+ * @function completeFreshStart
+ * @description Performs a "nuclear option" reset, clearing all caches and browser storage, then forcing a page reload.
+ * @returns {Promise<void>} - A promise that resolves when the reset is complete.
  */
 export async function completeFreshStart(): Promise<void> {
   console.log('💥 COMPLETE FRESH START - Nuclear Option');

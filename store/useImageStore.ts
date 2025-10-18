@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { IndexedImage, Directory } from '../types';
 
+/**
+ * @interface ImageState
+ * @description Defines the state for the image store.
+ * @property {IndexedImage[]} images - The array of all images.
+ * @property {IndexedImage[]} filteredImages - The array of filtered and sorted images.
+ */
 interface ImageState {
   // Core Data
   images: IndexedImage[];
@@ -73,6 +79,13 @@ interface ImageState {
   resetState: () => void;
 }
 
+/**
+ * @function useImageStore
+ * @description A Zustand store for managing the state of images and related UI.
+ * @param {Function} set - The Zustand set function.
+ * @param {Function} get - The Zustand get function.
+ * @returns {ImageState} - The image store state and actions.
+ */
 export const useImageStore = create<ImageState>((set, get) => {
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {

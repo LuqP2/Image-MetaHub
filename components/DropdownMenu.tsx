@@ -1,17 +1,37 @@
 import React, { useState, useRef, useEffect } from 'react';
 
+/**
+ * @interface DropdownOption
+ * @description Defines the structure for a dropdown menu option.
+ * @property {string} label - The text to display for the option.
+ * @property {string} [icon] - An optional icon to display next to the label.
+ * @property {() => void} onClick - The function to call when the option is clicked.
+ */
 interface DropdownOption {
   label: string;
   icon?: string;
   onClick: () => void;
 }
 
+/**
+ * @interface DropdownMenuProps
+ * @description Defines the props for the DropdownMenu component.
+ * @property {React.ReactNode} trigger - The element that triggers the dropdown.
+ * @property {DropdownOption[]} options - The options to display in the dropdown.
+ * @property {string} [className] - Optional CSS class for the component.
+ */
 interface DropdownMenuProps {
   trigger: React.ReactNode;
   options: DropdownOption[];
   className?: string;
 }
 
+/**
+ * @function DropdownMenu
+ * @description A reusable dropdown menu component.
+ * @param {DropdownMenuProps} props - The props for the component.
+ * @returns {React.FC<DropdownMenuProps>} - The rendered component.
+ */
 const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, options, className = '' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

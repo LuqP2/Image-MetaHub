@@ -1,12 +1,25 @@
 import React from 'react';
 import hotkeyManager from '../services/hotkeyManager';
 
+/**
+ * @interface HotkeyHelpProps
+ * @description Defines the props for the HotkeyHelp component.
+ * @property {boolean} isOpen - Whether the hotkey help modal is open.
+ * @property {() => void} onClose - Callback function to close the modal.
+ * @property {() => void} onOpenSettings - Callback function to open the settings modal.
+ */
 interface HotkeyHelpProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenSettings: () => void;
 }
 
+/**
+ * @function HotkeyHelp
+ * @description A modal component that displays a list of available hotkeys and provides a link to customize them.
+ * @param {HotkeyHelpProps} props - The props for the component.
+ * @returns {React.FC<HotkeyHelpProps> | null} - The rendered component or null if it's not open.
+ */
 const HotkeyHelp: React.FC<HotkeyHelpProps> = ({ isOpen, onClose, onOpenSettings }) => {
   if (!isOpen) return null;
 

@@ -2,6 +2,12 @@ import { EasyDiffusionMetadata, EasyDiffusionJson, BaseMetadata } from '../../ty
 
 // --- Extraction Functions ---
 
+/**
+ * @function extractModelsFromEasyDiffusion
+ * @description Extracts model names from Easy Diffusion metadata.
+ * @param {EasyDiffusionMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromEasyDiffusion(metadata: EasyDiffusionMetadata): string[] {
   const params = metadata.parameters;
   const modelMatch = params.match(/Model:\s*([^,\n]+)/i);
@@ -11,6 +17,12 @@ export function extractModelsFromEasyDiffusion(metadata: EasyDiffusionMetadata):
   return [];
 }
 
+/**
+ * @function extractLorasFromEasyDiffusion
+ * @description Extracts LoRA names from Easy Diffusion metadata.
+ * @param {EasyDiffusionMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromEasyDiffusion(metadata: EasyDiffusionMetadata): string[] {
   const loras: Set<string> = new Set();
   const params = metadata.parameters;
@@ -25,6 +37,12 @@ export function extractLorasFromEasyDiffusion(metadata: EasyDiffusionMetadata): 
 
 // --- Main Parser Function ---
 
+/**
+ * @function parseEasyDiffusionMetadata
+ * @description Parses a string of Easy Diffusion metadata into a BaseMetadata object.
+ * @param {string} parameters - The string of parameters to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseEasyDiffusionMetadata(parameters: string): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 
@@ -72,6 +90,12 @@ export function parseEasyDiffusionMetadata(parameters: string): BaseMetadata {
   return result as BaseMetadata;
 }
 
+/**
+ * @function parseEasyDiffusionJson
+ * @description Parses a JSON object of Easy Diffusion metadata into a BaseMetadata object.
+ * @param {EasyDiffusionJson} metadata - The JSON object to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseEasyDiffusionJson(metadata: EasyDiffusionJson): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 

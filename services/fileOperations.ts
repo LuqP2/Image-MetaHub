@@ -4,15 +4,29 @@ import { IndexedImage } from '../types';
 // Check if we're running in Electron
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 
+/**
+ * @interface FileOperationsResult
+ * @description Defines the result of a file operation.
+ * @property {boolean} success - Whether the operation was successful.
+ * @property {string} [error] - An optional error message.
+ */
 export interface FileOperationsResult {
   success: boolean;
   error?: string;
 }
 
+/**
+ * @class FileOperations
+ * @description Provides methods for performing file operations in the Electron environment.
+ */
 export class FileOperations {
   
   /**
-   * Delete file to trash/recycle bin
+   * @function deleteFile
+   * @description Deletes a file to the trash/recycle bin.
+   * @param {IndexedImage} image - The image to delete.
+   * @returns {Promise<FileOperationsResult>} - A promise that resolves with the result of the operation.
+   * @static
    */
   static async deleteFile(image: IndexedImage): Promise<FileOperationsResult> {
     try {
@@ -45,7 +59,12 @@ export class FileOperations {
   }
 
   /**
-   * Rename file
+   * @function renameFile
+   * @description Renames a file.
+   * @param {IndexedImage} image - The image to rename.
+   * @param {string} newName - The new name for the file.
+   * @returns {Promise<FileOperationsResult>} - A promise that resolves with the result of the operation.
+   * @static
    */
   static async renameFile(image: IndexedImage, newName: string): Promise<FileOperationsResult> {
     try {
@@ -96,7 +115,11 @@ export class FileOperations {
   }
 
   /**
-   * Set current directory for file operations
+   * @function setCurrentDirectory
+   * @description Sets the current directory for file operations.
+   * @param {FileSystemDirectoryHandle} [directoryHandle] - The handle of the directory to set as current.
+   * @returns {Promise<void>} - A promise that resolves when the directory is set.
+   * @static
    */
   static async setCurrentDirectory(directoryHandle?: FileSystemDirectoryHandle): Promise<void> {
     if (isElectron && window.electronAPI && directoryHandle) {
@@ -113,7 +136,11 @@ export class FileOperations {
   }
 
   /**
-   * Validate filename
+   * @function validateFilename
+   * @description Validates a filename.
+   * @param {string} filename - The filename to validate.
+   * @returns {{ valid: boolean; error?: string }} - An object indicating whether the filename is valid and an optional error message.
+   * @static
    */
   static validateFilename(filename: string): { valid: boolean; error?: string } {
     // Remove .png extension for validation

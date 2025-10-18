@@ -3,6 +3,14 @@ import React from 'react';
 
 export type SearchField = 'any' | 'prompt' | 'model' | 'lora' | 'seed' | 'settings';
 
+/**
+ * @interface SearchBarProps
+ * @description Defines the props for the SearchBar component.
+ * @property {string} value - The current value of the search input.
+ * @property {(query: string) => void} onChange - Callback function to handle changes to the search input.
+ * @property {SearchField} searchField - The currently selected search field.
+ * @property {(field: SearchField) => void} onSearchFieldChange - Callback function to handle changes to the search field.
+ */
 interface SearchBarProps {
   value: string;
   onChange: (query: string) => void;
@@ -10,6 +18,12 @@ interface SearchBarProps {
   onSearchFieldChange: (field: SearchField) => void;
 }
 
+/**
+ * @function SearchBar
+ * @description A component that provides a search input and a dropdown to select the search field.
+ * @param {SearchBarProps} props - The props for the component.
+ * @returns {React.FC<SearchBarProps>} - The rendered component.
+ */
 const SearchBar: React.FC<SearchBarProps> = ({
   value,
   onChange,

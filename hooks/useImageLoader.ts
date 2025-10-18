@@ -10,7 +10,14 @@ const log = (...args: any[]) => DEBUG && console.log(...args);
 const warn = (...args: any[]) => DEBUG && console.warn(...args);
 const error = (...args: any[]) => console.error(...args); // Keep error logging for critical issues
 
-// Throttle function for progress updates to avoid excessive re-renders
+/**
+ * @function throttle
+ * @description Throttles a function to limit the number of times it can be called over a period of time.
+ * @param {T} func - The function to throttle.
+ * @param {number} delay - The delay in milliseconds.
+ * @returns {T} - The throttled function.
+ * @template T
+ */
 function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
   let timeoutId: NodeJS.Timeout | null = null;
   let lastExecTime = 0;
@@ -177,6 +184,19 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
     return handles;
 }
 
+/**
+ * @function useImageLoader
+ * @description A custom hook for loading and managing images from the file system.
+ * @returns {{
+ *   handleSelectFolder: () => Promise<void>;
+ *   handleUpdateFolder: (directoryId: string) => Promise<void>;
+ *   handleLoadFromStorage: () => Promise<void>;
+ *   handleRemoveDirectory: (directoryId: string) => Promise<void>;
+ *   loadDirectory: (directory: Directory, isUpdate: boolean) => Promise<void>;
+ *   loadDirectoryFromCache: (directory: Directory) => Promise<void>;
+ *   cancelIndexing: () => void;
+ * }} - An object with functions for loading and managing images.
+ */
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,

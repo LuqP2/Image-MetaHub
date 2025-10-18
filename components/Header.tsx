@@ -2,6 +2,14 @@ import React from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { Settings, Plus, GalleryHorizontal, Bug } from 'lucide-react';
 
+/**
+ * @interface HeaderProps
+ * @description Defines the props for the Header component.
+ * @property {() => void} onAddFolder - Callback function to handle adding a new folder.
+ * @property {() => void} onOpenSettings - Callback function to open the settings modal.
+ * @property {boolean} [isIndexing] - Optional flag to indicate if indexing is in progress.
+ * @property {boolean} [isIndexingPaused] - Optional flag to indicate if indexing is paused.
+ */
 interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
@@ -9,6 +17,12 @@ interface HeaderProps {
   isIndexingPaused?: boolean;
 }
 
+/**
+ * @function Header
+ * @description The main header component for the application.
+ * @param {HeaderProps} props - The props for the component.
+ * @returns {React.FC<HeaderProps>} - The rendered component.
+ */
 const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false, isIndexingPaused = false }) => {
   const { scanSubfolders, setScanSubfolders } = useImageStore();
   const directories = useImageStore((state) => state.directories);

@@ -2,12 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, X, Calendar, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+/**
+ * @interface AdvancedFiltersProps
+ * @description Defines the props for the AdvancedFilters component.
+ * @property {any} advancedFilters - The current advanced filters.
+ * @property {(filters: any) => void} onAdvancedFiltersChange - Callback function to handle changes to the advanced filters.
+ * @property {() => void} onClearAdvancedFilters - Callback function to clear the advanced filters.
+ */
 interface AdvancedFiltersProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
 }
 
+/**
+ * @function AdvancedFilters
+ * @description A component that provides advanced filtering options for the image grid.
+ * @param {AdvancedFiltersProps} props - The props for the component.
+ * @returns {React.FC<AdvancedFiltersProps>} - The rendered component.
+ */
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,

@@ -8,7 +8,10 @@ import { SwarmUIMetadata, BaseMetadata } from '../../types';
 type SuiImageParams = SwarmUIMetadata['sui_image_params'];
 
 /**
- * Extract sui_image_params from metadata, handling both direct and wrapped formats
+ * @function extractSuiImageParams
+ * @description Extracts sui_image_params from metadata, handling both direct and wrapped formats.
+ * @param {SwarmUIMetadata} metadata - The metadata to parse.
+ * @returns {SuiImageParams} - The extracted parameters.
  */
 function extractSuiImageParams(metadata: SwarmUIMetadata): SuiImageParams {
   // Direct access
@@ -29,6 +32,12 @@ function extractSuiImageParams(metadata: SwarmUIMetadata): SuiImageParams {
   return undefined;
 }
 
+/**
+ * @function parseSwarmUIMetadata
+ * @description Parses SwarmUI metadata into a BaseMetadata object.
+ * @param {SwarmUIMetadata} metadata - The metadata to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseSwarmUIMetadata(metadata: SwarmUIMetadata): BaseMetadata {
   const params = extractSuiImageParams(metadata);
 
@@ -62,12 +71,24 @@ export function parseSwarmUIMetadata(metadata: SwarmUIMetadata): BaseMetadata {
   return result;
 }
 
+/**
+ * @function extractModelsFromSwarmUI
+ * @description Extracts model names from SwarmUI metadata.
+ * @param {SwarmUIMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromSwarmUI(metadata: SwarmUIMetadata): string[] {
   const params = extractSuiImageParams(metadata);
   const model = params?.model;
   return model ? [model] : [];
 }
 
+/**
+ * @function extractLorasFromSwarmUI
+ * @description Extracts LoRA names from SwarmUI metadata.
+ * @param {SwarmUIMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromSwarmUI(metadata: SwarmUIMetadata): string[] {
   const params = extractSuiImageParams(metadata);
   return params?.loras || [];

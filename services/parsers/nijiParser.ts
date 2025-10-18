@@ -2,6 +2,12 @@ import { NijiMetadata, BaseMetadata } from '../../types';
 
 // --- Extraction Functions ---
 
+/**
+ * @function extractModelsFromNiji
+ * @description Extracts model names from Niji Journey metadata.
+ * @param {NijiMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromNiji(metadata: NijiMetadata): string[] {
   // Niji Journey version extraction
   const params = metadata.parameters;
@@ -15,6 +21,12 @@ export function extractModelsFromNiji(metadata: NijiMetadata): string[] {
   return [];
 }
 
+/**
+ * @function extractLorasFromNiji
+ * @description Extracts LoRA names from Niji Journey metadata.
+ * @param {NijiMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromNiji(metadata: NijiMetadata): string[] {
   // Niji Journey doesn't use LoRAs in the traditional sense
   return [];
@@ -22,6 +34,12 @@ export function extractLorasFromNiji(metadata: NijiMetadata): string[] {
 
 // --- Main Parser Function ---
 
+/**
+ * @function parseNijiMetadata
+ * @description Parses a string of Niji Journey metadata into a BaseMetadata object.
+ * @param {string} parameters - The string of parameters to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseNijiMetadata(parameters: string): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 

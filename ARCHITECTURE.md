@@ -68,50 +68,94 @@ React 18.2.0
 ### 2. **Project Structure**
 ```
 src/
-├── App.tsx                 # Main application orchestrator (lean, uses hooks)
+├── App.tsx                 # Main application orchestrator
 ├── index.tsx              # Application entry point
 ├── types.ts               # TypeScript type definitions
 ├── components/            # Reusable UI components
-│   ├── ActionToolbar.tsx  # Action buttons (delete, copy, etc.)
-│   ├── BrowserCompatibilityWarning.tsx # Browser support checks
-│   ├── DropdownMenu.tsx   # Dropdown component for UI
-│   ├── FolderSelector.tsx # Directory selection interface
-│   ├── Header.tsx         # Application header
-│   ├── ImageGrid.tsx      # Grid display with multi-selection
-│   ├── ImageModal.tsx     # Image details and metadata
-│   ├── Loader.tsx         # Loading states and progress
-│   ├── SearchBar.tsx      # Search and filtering interface
-│   ├── Sidebar.tsx        # Filter sidebar
-│   ├── StatusBar.tsx      # Status information display
-│   └── StepsRangeSlider.tsx # Range slider for steps filter
 ├── hooks/                 # Custom React hooks
-│   ├── useImageFilters.ts # Filtering logic and state
-│   ├── useImageLoader.ts  # Directory loading and processing
-│   └── useImageSelection.ts # Multi-selection management
 ├── services/              # Business logic services
 │   ├── cacheManager.ts    # IndexedDB cache management
 │   ├── fileIndexer.ts     # File processing and metadata extraction
-│   ├── fileOperations.ts  # File management (rename/delete)
 │   └── parsers/           # Modular metadata parsers
-│       ├── index.ts       # Parser factory and exports
-│       ├── parseA1111.ts  # Automatic1111 metadata parser
-│       ├── parseComfyUI.ts # ComfyUI metadata parser
-│       ├── parseInvokeAI.ts # InvokeAI metadata parser
-│       ├── swarmUIParser.ts # SwarmUI metadata parser
-│       ├── easyDiffusionParser.ts # Easy Diffusion metadata parser (PNG + JSON sidecar)
-│       └── midjourneyParser.ts # Midjourney metadata parser
-├── store/                 # State management
-│   └── useImageStore.ts   # Zustand store for global state
+├── store/                 # State management (Zustand)
 ├── utils/                 # Utility functions
-│   ├── imageUtils.ts      # Image-related utilities
-│   └── README.md          # Utils documentation
-├── electron.cjs           # Electron main process
+├── electron.mjs           # Electron main process
 ├── preload.js             # Secure IPC bridge
 └── dist-electron/         # Built desktop application
 ```
 
 ### 3. **State Management & Logic Separation**
-- **Global State**: Zustand store (`useImageStore.ts`) for centralized application state
+- **Global State**: Zustand stores (`useImageStore.ts`, `useSettingsStore.ts`) for centralized application state.
+- **Custom Hooks**: Business logic is extracted into reusable hooks (`useImageLoader.ts`, `useImageSelection.ts`, etc.).
+- **Component Architecture**: Components are focused on UI rendering, with logic handled by hooks and services.
+- **Separation of Concerns**: State, logic, and UI are cleanly separated to improve maintainability.
+
+#### Zustand Store Structure
+```typescript
+interface ImageState {
+  // Data
+  images: IndexedImage[];
+  filteredImages: IndexedImage[];
+  selectedImages: Set<string>;
+
+  // UI State
+  loading: boolean;
+  error: string | null;
+  directoryHandle: FileSystemDirectoryHandle | null;
+
+  // Actions
+  setImages: (images: IndexedImage[]) => void;
+  setSelectedImages: (ids: Set<string>) => void;
+  // ... more actions
+}
+```
+
+## Core Systems
+
+### 1. **File System Integration**
+- **Browser Environment**: Utilizes the File System Access API for direct local directory access.
+- **Electron Environment**: Leverages native Node.js file system APIs via IPC communication for enhanced performance and capabilities.
+- **Cross-Platform Compatibility**: Automatically detects the environment and switches between browser and Electron APIs.
+
+#### Electron IPC Bridge
+The `preload.js` script securely exposes Node.js functionality to the React application through a context bridge. This allows the renderer process to invoke main process modules for file operations, dialogs, and other native features.
+
+### 2. **Metadata Extraction System**
+- **Modular Parser Architecture**: Each metadata format (e.g., InvokeAI, ComfyUI, Automatic1111) is handled by a dedicated parser in the `services/parsers/` directory.
+- **Parser Factory**: A factory pattern is used to intelligently detect the metadata format and select the appropriate parser.
+- **Multi-Format Support**: The system can parse metadata from various AI image generation tools, including PNG tEXt chunks and JPEG EXIF data.
+- **Normalized Metadata**: All extracted metadata is normalized into a consistent `BaseMetadata` structure, ensuring a uniform data model throughout the application.
+
+### 3. **Smart Caching System**
+- **IndexedDB Storage**: A persistent client-side cache is implemented using IndexedDB to store image metadata and thumbnails.
+- **Incremental Updates**: The cache manager performs differential updates, only processing new or modified files to reduce load times.
+- **Cache Invalidation**: The cache is invalidated based on file modification times, ensuring that the application always displays the latest data.
+
+## Electron Architecture
+
+### 1. **Process Architecture**
+- **Main Process (`electron.mjs`):** Manages the application lifecycle, window creation, and native functionalities like file system access and auto-updates.
+- **Renderer Process (React App):** Renders the user interface and communicates with the main process via the IPC bridge.
+- **Preload Script (`preload.js`):** Acts as a secure bridge between the renderer and main processes, exposing specific APIs.
+
+### 2. **IPC Communication**
+IPC handlers are defined in `electron.mjs` to respond to requests from the renderer process. These handlers perform privileged operations like reading files, showing dialogs, and trashing files.
+
+### 3. **Auto-Updater Integration**
+The application integrates `electron-updater` to automatically check for and install updates from GitHub Releases, providing a seamless update experience for users.
+
+## Development Guidelines
+
+### Code Style
+- **TypeScript:** Strict mode is enabled to ensure type safety.
+- **React:** Functional components with hooks are preferred over class components.
+- **Asynchronous Operations:** Use `async/await` for handling promises and file operations.
+
+### Performance Best Practices
+- **Minimize Re-renders:** Use `React.memo`, `useCallback`, and `useMemo` to prevent unnecessary re-renders.
+- **Virtualization:** `react-window` and `react-virtualized-auto-sizer` are used to efficiently render large lists of images.
+- **Batch Processing:** State updates are batched to prevent UI freezing during large file indexing operations.
+- **Global State**: Zustand stores (`useImageStore.ts`) for centralized application state
 - **Custom Hooks**: Business logic extracted into reusable hooks
   - `useImageLoader.ts`: Directory loading and file processing
   - `useImageFilters.ts`: Search and filtering logic

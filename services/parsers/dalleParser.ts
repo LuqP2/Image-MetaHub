@@ -6,6 +6,12 @@ import { DalleMetadata, isDalleMetadata, BaseMetadata } from '../../types';
  * Uses exifr library for offline parsing with regex fallback
  */
 
+/**
+ * @function parseDalleMetadata
+ * @description Parses DALL-E metadata from C2PA/EXIF embedded data.
+ * @param {any} metadata - The metadata to parse.
+ * @returns {BaseMetadata | null} - The parsed metadata or null if not a DALL-E image.
+ */
 export function parseDalleMetadata(metadata: any): BaseMetadata | null {
   if (!isDalleMetadata(metadata)) {
     return null;
@@ -76,7 +82,12 @@ export function parseDalleMetadata(metadata: any): BaseMetadata | null {
   }
 }
 
-// Extract data from C2PA manifest
+/**
+ * @function extractFromC2PA
+ * @description Extracts DALL-E metadata from a C2PA manifest.
+ * @param {any} c2paManifest - The C2PA manifest to parse.
+ * @returns {Partial<DalleMetadata>} - The extracted metadata.
+ */
 function extractFromC2PA(c2paManifest: any): Partial<DalleMetadata> {
   if (!c2paManifest) return {};
 
@@ -116,7 +127,12 @@ function extractFromC2PA(c2paManifest: any): Partial<DalleMetadata> {
   return result;
 }
 
-// Extract data from EXIF metadata
+/**
+ * @function extractFromEXIF
+ * @description Extracts DALL-E metadata from EXIF data.
+ * @param {any} exifData - The EXIF data to parse.
+ * @returns {Partial<DalleMetadata>} - The extracted metadata.
+ */
 function extractFromEXIF(exifData: any): Partial<DalleMetadata> {
   if (!exifData) return {};
 
@@ -160,7 +176,12 @@ function extractFromEXIF(exifData: any): Partial<DalleMetadata> {
   return result;
 }
 
-// Extract prompts from merged data
+/**
+ * @function extractPrompts
+ * @description Extracts the prompt and revised prompt from the merged metadata.
+ * @param {Partial<DalleMetadata>} data - The merged metadata.
+ * @returns {{ prompt: string; revisedPrompt?: string }} - The extracted prompts.
+ */
 function extractPrompts(data: Partial<DalleMetadata>): { prompt: string; revisedPrompt?: string } {
   let prompt = data.prompt || '';
   const revisedPrompt = data.revised_prompt;
@@ -182,7 +203,12 @@ function extractPrompts(data: Partial<DalleMetadata>): { prompt: string; revised
   return { prompt, revisedPrompt };
 }
 
-// Extract model information
+/**
+ * @function extractModel
+ * @description Extracts the model information from the merged metadata.
+ * @param {Partial<DalleMetadata>} data - The merged metadata.
+ * @returns {string} - The extracted model name.
+ */
 function extractModel(data: Partial<DalleMetadata>): string {
   if (data.model_version) {
     return data.model_version;
@@ -197,7 +223,12 @@ function extractModel(data: Partial<DalleMetadata>): string {
   return 'DALL-E';
 }
 
-// Extract generation date
+/**
+ * @function extractGenerationDate
+ * @description Extracts the generation date from the merged metadata.
+ * @param {Partial<DalleMetadata>} data - The merged metadata.
+ * @returns {string | undefined} - The extracted generation date as an ISO string, or undefined if not found.
+ */
 function extractGenerationDate(data: Partial<DalleMetadata>): string | undefined {
   if (data.generation_date) {
     // Ensure it's an ISO string
@@ -212,14 +243,24 @@ function extractGenerationDate(data: Partial<DalleMetadata>): string | undefined
   return undefined;
 }
 
-// Extract dimensions
+/**
+ * @function extractDimensions
+ * @description Extracts the image dimensions from the merged metadata.
+ * @param {Partial<DalleMetadata>} data - The merged metadata.
+ * @returns {{ width: number; height: number }} - The extracted dimensions.
+ */
 function extractDimensions(data: Partial<DalleMetadata>): { width: number; height: number } {
   // DALL-E typically generates square images, default to 1024x1024
   // Could be enhanced to parse from metadata if available
   return { width: 1024, height: 1024 };
 }
 
-// Extract AI tags for filtering
+/**
+ * @function extractAiTags
+ * @description Extracts AI-related tags for filtering.
+ * @param {Partial<DalleMetadata>} data - The merged metadata.
+ * @returns {string[]} - An array of AI tags.
+ */
 function extractAiTags(data: Partial<DalleMetadata>): string[] {
   const tags: string[] = ['AI Generated', 'DALL-E'];
 

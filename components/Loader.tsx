@@ -1,6 +1,11 @@
 
 import React from 'react';
 
+/**
+ * @interface LoaderProps
+ * @description Defines the props for the Loader component.
+ * @property {{current: number; total: number} | null} progress - The progress of the loading operation.
+ */
 interface LoaderProps {
   progress: {
     current: number;
@@ -9,6 +14,12 @@ interface LoaderProps {
   } | null;
 }
 
+/**
+ * @function Loader
+ * @description A loader component that displays a spinner and a progress bar.
+ * @param {LoaderProps} props - The props for the component.
+ * @returns {React.FC<LoaderProps>} - The rendered component.
+ */
 const Loader: React.FC<LoaderProps> = ({ progress }) => {
   const percentage = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 

@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
+/**
+ * @interface PaginationProps
+ * @description Defines the props for the Pagination component.
+ * @property {number} currentPage - The current page number.
+ * @property {number} totalPages - The total number of pages.
+ * @property {(page: number) => void} onPageChange - Callback function to handle page changes.
+ * @property {number | 'all'} itemsPerPage - The number of items per page.
+ * @property {(items: number | 'all') => void} onItemsPerPageChange - Callback function to handle changes in items per page.
+ * @property {number} totalItems - The total number of items.
+ */
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
@@ -9,6 +19,12 @@ interface PaginationProps {
   totalItems: number;
 }
 
+/**
+ * @function Pagination
+ * @description A component for navigating through pages of items and changing the number of items per page.
+ * @param {PaginationProps} props - The props for the component.
+ * @returns {React.FC<PaginationProps>} - The rendered component.
+ */
 const Pagination: React.FC<PaginationProps> = ({
   currentPage,
   totalPages,

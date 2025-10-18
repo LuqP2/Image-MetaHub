@@ -6,6 +6,12 @@ import { DreamStudioMetadata, isDreamStudioMetadata, BaseMetadata } from '../../
  * Reuses A1111 parsing logic since DreamStudio maintains compatibility
  */
 
+/**
+ * @function parseDreamStudioMetadata
+ * @description Parses DreamStudio (Stability AI) metadata.
+ * @param {any} metadata - The metadata to parse.
+ * @returns {BaseMetadata | null} - The parsed metadata or null if not a DreamStudio image.
+ */
 export function parseDreamStudioMetadata(metadata: any): BaseMetadata | null {
   if (!isDreamStudioMetadata(metadata)) {
     return null;
@@ -73,48 +79,100 @@ export function parseDreamStudioMetadata(metadata: any): BaseMetadata | null {
   };
 }
 
-// Helper functions for parameter extraction (similar to A1111)
-
+/**
+ * @function extractSteps
+ * @description Extracts the number of steps from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted steps or undefined if not found.
+ */
 function extractSteps(parameters: string): number | undefined {
   const match = parameters.match(/Steps:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractSampler
+ * @description Extracts the sampler name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted sampler name or undefined if not found.
+ */
 function extractSampler(parameters: string): string | undefined {
   const match = parameters.match(/Sampler:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractCFGScale
+ * @description Extracts the CFG scale from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted CFG scale or undefined if not found.
+ */
 function extractCFGScale(parameters: string): number | undefined {
   const match = parameters.match(/CFG scale:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/**
+ * @function extractGuidanceScale
+ * @description Extracts the guidance scale from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted guidance scale or undefined if not found.
+ */
 function extractGuidanceScale(parameters: string): number | undefined {
   const match = parameters.match(/Guidance scale:\s*([\d.]+)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/**
+ * @function extractSeed
+ * @description Extracts the seed from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {number | undefined} - The extracted seed or undefined if not found.
+ */
 function extractSeed(parameters: string): number | undefined {
   const match = parameters.match(/Seed:\s*(\d+)/i);
   return match ? parseInt(match[1]) : undefined;
 }
 
+/**
+ * @function extractSize
+ * @description Extracts the image size from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted size or undefined if not found.
+ */
 function extractSize(parameters: string): string | undefined {
   const match = parameters.match(/Size:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractModel
+ * @description Extracts the model name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted model name or undefined if not found.
+ */
 function extractModel(parameters: string): string | undefined {
   const match = parameters.match(/Model:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractStylePreset
+ * @description Extracts the style preset from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | undefined} - The extracted style preset or undefined if not found.
+ */
 function extractStylePreset(parameters: string): string | undefined {
   const match = parameters.match(/Style preset:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
+/**
+ * @function extractPrompts
+ * @description Extracts the positive and negative prompts from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {{ positivePrompt: string; negativePrompt: string }} - The extracted prompts.
+ */
 function extractPrompts(parameters: string): { positivePrompt: string; negativePrompt: string } {
   // Split by common separators used in DreamStudio (similar to A1111)
   const parts = parameters.split(/\n\n|\nNegative prompt:/i);
@@ -139,11 +197,23 @@ function extractPrompts(parameters: string): { positivePrompt: string; negativeP
   return { positivePrompt, negativePrompt };
 }
 
+/**
+ * @function extractLoRAs
+ * @description Extracts LoRAs from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted LoRAs.
+ */
 function extractLoRAs(parameters: string): string[] {
   const loraMatches = parameters.matchAll(/<lora:([^:>]+):[^>]*>/gi);
   return Array.from(loraMatches, match => match[1]);
 }
 
+/**
+ * @function extractEmbeddings
+ * @description Extracts embeddings from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted embeddings.
+ */
 function extractEmbeddings(parameters: string): string[] {
   const embeddingMatches = parameters.matchAll(/\b([A-Z][a-zA-Z0-9_]*)\b/g);
   // Filter for likely embeddings (capitalized words that aren't common parameters)

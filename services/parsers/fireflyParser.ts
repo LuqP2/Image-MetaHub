@@ -12,6 +12,13 @@ const C2PA_UUID = new Uint8Array([0x00, 0x11, 0x00, 0x10, 0x80, 0x00, 0x00, 0xaa
 const CBOR_BOX_TYPE = 'cbor';
 const JUMBF_SUPERBOX_TYPE = 'jumbf';
 
+/**
+ * @function parseFireflyMetadata
+ * @description Parses Adobe Firefly metadata from C2PA/EXIF embedded data.
+ * @param {any} metadata - The metadata to parse.
+ * @param {ArrayBuffer} fileBuffer - The buffer containing the file data.
+ * @returns {BaseMetadata | null} - The parsed metadata or null if not a Firefly image.
+ */
 export function parseFireflyMetadata(metadata: any, fileBuffer: ArrayBuffer): BaseMetadata | null { // Add fileBuffer param pra binary parsing
   if (!isFireflyMetadata(metadata)) {
     return null;
@@ -89,7 +96,12 @@ export function parseFireflyMetadata(metadata: any, fileBuffer: ArrayBuffer): Ba
   }
 }
 
-// Enhanced C2PA extraction with JUMBF/CBOR parsing from file buffer
+/**
+ * @function extractFromC2PA
+ * @description Enhanced C2PA extraction with JUMBF/CBOR parsing from file buffer.
+ * @param {ArrayBuffer} fileBuffer - The buffer containing the file data.
+ * @returns {Partial<FireflyMetadata>} - The extracted metadata.
+ */
 function extractFromC2PA(fileBuffer: ArrayBuffer): Partial<FireflyMetadata> {
   const result: Partial<FireflyMetadata> = {};
 
@@ -148,12 +160,22 @@ function extractFromC2PA(fileBuffer: ArrayBuffer): Partial<FireflyMetadata> {
   return result;
 }
 
-// Helper to check if segment is JUMBF
+/**
+ * @function isJUMBF
+ * @description Checks if a data segment is a JUMBF box.
+ * @param {Uint8Array} data - The data segment to check.
+ * @returns {boolean} - True if the segment is a JUMBF box, false otherwise.
+ */
 function isJUMBF(data: Uint8Array): boolean {
   return data.slice(0, 4).every((b, i) => b === JUMBF_SUPERBOX_TYPE.charCodeAt(i)) && data.slice(8, 20).every((b, i) => b === C2PA_UUID[i]);
 }
 
-// Helper to parse JUMBF boxes (recursive for sub-boxes)
+/**
+ * @function parseJUMBF
+ * @description Parses JUMBF boxes from a data segment.
+ * @param {Uint8Array} data - The data segment to parse.
+ * @returns {{ type: string; label: string; data: Uint8Array }[]} - An array of parsed JUMBF boxes.
+ */
 function parseJUMBF(data: Uint8Array): { type: string; label: string; data: Uint8Array }[] {
   const boxes: { type: string; label: string; data: Uint8Array }[] = [];
   let offset = 0;
@@ -170,7 +192,12 @@ function parseJUMBF(data: Uint8Array): { type: string; label: string; data: Uint
   return boxes;
 }
 
-// Extract data from EXIF metadata
+/**
+ * @function extractFromEXIF
+ * @description Extracts Firefly metadata from EXIF data.
+ * @param {any} exifData - The EXIF data to parse.
+ * @returns {Partial<FireflyMetadata>} - The extracted metadata.
+ */
 function extractFromEXIF(exifData: any): Partial<FireflyMetadata> {
   if (!exifData) return {};
 
@@ -223,7 +250,12 @@ function extractFromEXIF(exifData: any): Partial<FireflyMetadata> {
   return result;
 }
 
-// Extract prompts from merged data
+/**
+ * @function extractPrompts
+ * @description Extracts the prompt from the merged metadata.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {{ prompt: string }} - The extracted prompt.
+ */
 function extractPrompts(data: Partial<FireflyMetadata>): { prompt: string } {
   let prompt = data.prompt || '';
 
@@ -237,7 +269,12 @@ function extractPrompts(data: Partial<FireflyMetadata>): { prompt: string } {
   return { prompt };
 }
 
-// Extract model information
+/**
+ * @function extractModel
+ * @description Extracts the model information from the merged metadata.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {string} - The extracted model name.
+ */
 function extractModel(data: Partial<FireflyMetadata>): string {
   if (data.firefly_version) {
     return `Adobe Firefly ${data.firefly_version}`;
@@ -246,12 +283,22 @@ function extractModel(data: Partial<FireflyMetadata>): string {
   return 'Adobe Firefly';
 }
 
-// Extract generation date
+/**
+ * @function extractGenerationDate
+ * @description Extracts the generation date from the merged metadata.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {string | undefined} - The extracted generation date or undefined if not found.
+ */
 function extractGenerationDate(data: Partial<FireflyMetadata>): string | undefined {
   return data.generation_date;
 }
 
-// Extract dimensions
+/**
+ * @function extractDimensions
+ * @description Extracts the image dimensions from the merged metadata.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {{ width: number; height: number }} - The extracted dimensions.
+ */
 function extractDimensions(data: Partial<FireflyMetadata>): { width: number; height: number } {
   let width = 0;
   let height = 0;
@@ -265,7 +312,12 @@ function extractDimensions(data: Partial<FireflyMetadata>): { width: number; hei
   return { width, height };
 }
 
-// Extract AI tags for filtering
+/**
+ * @function extractAiTags
+ * @description Extracts AI-related tags for filtering.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {string[]} - An array of AI tags.
+ */
 function extractAiTags(data: Partial<FireflyMetadata>): string[] {
   const tags: string[] = ['AI Generated', 'Firefly'];
 
@@ -301,7 +353,12 @@ function extractAiTags(data: Partial<FireflyMetadata>): string[] {
   return tags;
 }
 
-// Extract edit history for BI Pro creative assets analysis
+/**
+ * @function extractEditHistory
+ * @description Extracts the edit history for BI Pro creative assets analysis.
+ * @param {Partial<FireflyMetadata>} data - The merged metadata.
+ * @returns {any[] | undefined} - An array of edit history actions or undefined if not found.
+ */
 function extractEditHistory(data: Partial<FireflyMetadata>): any[] | undefined {
   if (data.edit_history && Array.isArray(data.edit_history)) {
     return data.edit_history.map((action: any) => ({

@@ -4,6 +4,30 @@ import AdvancedFilters from './AdvancedFilters';
 import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+/**
+ * @interface SidebarProps
+ * @description Defines the props for the Sidebar component.
+ * @property {string} searchQuery - The current search query.
+ * @property {(query: string) => void} onSearchChange - Callback function for when the search query changes.
+ * @property {SearchField} searchField - The current search field.
+ * @property {(field: SearchField) => void} onSearchFieldChange - Callback function for when the search field changes.
+ * @property {string[]} availableModels - A list of available models.
+ * @property {string[]} availableLoras - A list of available LoRAs.
+ * @property {string[]} availableSchedulers - A list of available schedulers.
+ * @property {string[]} selectedModels - A list of selected models.
+ * @property {string[]} selectedLoras - A list of selected LoRAs.
+ * @property {string[]} selectedSchedulers - A list of selected schedulers.
+ * @property {(models: string[]) => void} onModelChange - Callback function for when the selected models change.
+ * @property {(loras: string[]) => void} onLoraChange - Callback function for when the selected LoRAs change.
+ * @property {(schedulers: string[]) => void} onSchedulerChange - Callback function for when the selected schedulers change.
+ * @property {() => void} onClearAllFilters - Callback function for clearing all filters.
+ * @property {any} advancedFilters - The current advanced filters.
+ * @property {(filters: any) => void} onAdvancedFiltersChange - Callback function for when the advanced filters change.
+ * @property {() => void} onClearAdvancedFilters - Callback function for clearing the advanced filters.
+ * @property {React.ReactNode} [children] - Optional children to render in the sidebar.
+ * @property {boolean} isCollapsed - Whether the sidebar is collapsed.
+ * @property {() => void} onToggleCollapse - Callback function for toggling the sidebar collapse state.
+ */
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -27,6 +51,12 @@ interface SidebarProps {
   onToggleCollapse: () => void;
 }
 
+/**
+ * @function Sidebar
+ * @description A sidebar component for filtering and searching images.
+ * @param {SidebarProps} props - The props for the component.
+ * @returns {React.FC<SidebarProps>} - The rendered component.
+ */
 const Sidebar: React.FC<SidebarProps> = ({
   searchQuery,
   onSearchChange,

@@ -1,9 +1,20 @@
 import React from 'react';
 
+/**
+ * @interface BrowserCompatibilityWarningProps
+ * @description Defines the props for the BrowserCompatibilityWarning component.
+ * @property {string} [className] - Optional CSS class name for the component.
+ */
 interface BrowserCompatibilityWarningProps {
   className?: string;
 }
 
+/**
+ * @function BrowserCompatibilityWarning
+ * @description A component that displays a warning if the browser does not support the File System Access API.
+ * @param {BrowserCompatibilityWarningProps} props - The props for the component.
+ * @returns {React.FC<BrowserCompatibilityWarningProps> | null} - The rendered component or null if the browser is compatible.
+ */
 const BrowserCompatibilityWarning: React.FC<BrowserCompatibilityWarningProps> = ({ className = '' }) => {
   // Detect File System Access API availability
   const hasFileSystemAccessAPI = 'showDirectoryPicker' in window;

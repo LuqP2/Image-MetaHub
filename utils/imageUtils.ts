@@ -2,15 +2,22 @@ import { type IndexedImage } from '../types';
 
 // Utility functions for image operations
 
+/**
+ * @interface OperationResult
+ * @description Defines the result of an operation.
+ * @property {boolean} success - Whether the operation was successful.
+ * @property {string} [error] - An optional error message.
+ */
 export interface OperationResult {
   success: boolean;
   error?: string;
 }
 
 /**
- * Copies an image to the clipboard using the Clipboard API
- * @param image - The IndexedImage object containing the file handle
- * @returns Promise with operation result
+ * @function copyImageToClipboard
+ * @description Copies an image to the clipboard using the Clipboard API.
+ * @param {IndexedImage} image - The IndexedImage object containing the file handle.
+ * @returns {Promise<OperationResult>} - A promise that resolves with the operation result.
  */
 export const copyImageToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
   try {
@@ -28,9 +35,10 @@ export const copyImageToClipboard = async (image: IndexedImage): Promise<Operati
 };
 
 /**
- * Shows the image file in the system's file explorer
- * @param imageOrPath - The IndexedImage object or full file path string
- * @returns Promise with operation result
+ * @function showInExplorer
+ * @description Shows the image file in the system's file explorer.
+ * @param {IndexedImage | string} imageOrPath - The IndexedImage object or full file path string.
+ * @returns {Promise<OperationResult>} - A promise that resolves with the operation result.
  */
 export const showInExplorer = async (imageOrPath: IndexedImage | string): Promise<OperationResult> => {
   try {
@@ -112,9 +120,10 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
 };
 
 /**
- * Copies the file path to clipboard
- * @param image - The IndexedImage object containing the file path
- * @returns Promise with operation result
+ * @function copyFilePathToClipboard
+ * @description Copies the file path to the clipboard.
+ * @param {IndexedImage} image - The IndexedImage object containing the file path.
+ * @returns {Promise<OperationResult>} - A promise that resolves with the operation result.
  */
 export const copyFilePathToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
   try {

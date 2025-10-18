@@ -12,16 +12,16 @@ interface RegisteredAction {
 const registeredActions = new Map<string, RegisteredAction>();
 
 /**
- * Unbinds all currently bound hotkeys from the hotkeys-js instance.
- * This is crucial before re-binding to prevent duplicate listeners.
+ * @function unbindAll
+ * @description Unbinds all currently bound hotkeys from the hotkeys-js instance. This is crucial before re-binding to prevent duplicate listeners.
  */
 const unbindAll = () => {
   hotkeys.unbind();
 };
 
 /**
- * Binds all registered actions to their corresponding keybindings from the settings store.
- * It first unbinds all existing hotkeys to ensure a clean slate.
+ * @function bindAllActions
+ * @description Binds all registered actions to their corresponding keybindings from the settings store. It first unbinds all existing hotkeys to ensure a clean slate.
  */
 const bindAllActions = () => {
   unbindAll();
@@ -46,10 +46,10 @@ const bindAllActions = () => {
 };
 
 /**
- * Registers a hotkey action with the manager. This does not bind the key immediately.
- * The action is stored and will be bound when `bindAllActions` is called.
- * @param id - The unique identifier for the action (from hotkeyConfig).
- * @param callback - The function to execute when the hotkey is pressed.
+ * @function registerAction
+ * @description Registers a hotkey action with the manager. This does not bind the key immediately. The action is stored and will be bound when `bindAllActions` is called.
+ * @param {string} id - The unique identifier for the action (from hotkeyConfig).
+ * @param {KeyHandler} callback - The function to execute when the hotkey is pressed.
  */
 const registerAction = (id: string, callback: KeyHandler) => {
   const config = hotkeyConfig.find(h => h.id === id);
@@ -62,7 +62,8 @@ const registerAction = (id: string, callback: KeyHandler) => {
 };
 
 /**
- * Clears all registered actions. Should be called on cleanup.
+ * @function clearActions
+ * @description Clears all registered actions. Should be called on cleanup.
  */
 const clearActions = () => {
   registeredActions.clear();
@@ -70,16 +71,18 @@ const clearActions = () => {
 };
 
 /**
- * Sets the active scope for hotkeys.
- * @param scope - The name of the scope (e.g., 'preview', 'global').
+ * @function setScope
+ * @description Sets the active scope for hotkeys.
+ * @param {string} scope - The name of the scope (e.g., 'preview', 'global').
  */
 const setScope = (scope: string) => {
   hotkeys.setScope(scope);
 };
 
 /**
- * Retrieves a list of all defined hotkeys and their current keybindings.
- * @returns An array of objects, each containing the definition and current key.
+ * @function getRegisteredHotkeys
+ * @description Retrieves a list of all defined hotkeys and their current keybindings.
+ * @returns {(HotkeyDefinition & { currentKey: string })[]} - An array of objects, each containing the definition and current key.
  */
 const getRegisteredHotkeys = (): (HotkeyDefinition & { currentKey: string })[] => {
   const { keymap } = useSettingsStore.getState();

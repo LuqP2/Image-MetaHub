@@ -1,7 +1,11 @@
 import { InvokeAIMetadata, BaseMetadata } from '../../types';
 
-// --- Helper Functions ---
-
+/**
+ * @function extractModelName
+ * @description Extracts the model name from various data structures.
+ * @param {any} modelData - The data to extract the model name from.
+ * @returns {string | null} - The extracted model name or null if not found.
+ */
 function extractModelName(modelData: any): string | null {
   if (typeof modelData === 'string') {
     return modelData.trim();
@@ -36,6 +40,12 @@ function extractModelName(modelData: any): string | null {
 const boardIdCache = new Map<string, string>();
 let boardCounter = 1;
 
+/**
+ * @function getFriendlyBoardName
+ * @description Gets a friendly board name from a board ID, caching the result.
+ * @param {string} boardId - The board ID to get a friendly name for.
+ * @returns {string} - The friendly board name.
+ */
 function getFriendlyBoardName(boardId: string): string {
   if (boardIdCache.has(boardId)) {
     return boardIdCache.get(boardId)!;
@@ -45,6 +55,12 @@ function getFriendlyBoardName(boardId: string): string {
   return friendlyName;
 }
 
+/**
+ * @function extractBoardFromWorkflow
+ * @description Extracts the board name from a workflow object.
+ * @param {any} workflow - The workflow object to parse.
+ * @returns {string | null} - The extracted board name or null if not found.
+ */
 function extractBoardFromWorkflow(workflow: any): string | null {
     if (!workflow || !workflow.nodes) return null;
     for (const node of workflow.nodes) {
@@ -60,6 +76,12 @@ function extractBoardFromWorkflow(workflow: any): string | null {
 
 // --- Extraction Functions ---
 
+/**
+ * @function extractModelsFromInvokeAI
+ * @description Extracts model names from InvokeAI metadata.
+ * @param {InvokeAIMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of model names.
+ */
 export function extractModelsFromInvokeAI(metadata: InvokeAIMetadata): string[] {
   const models: Set<string> = new Set();
 
@@ -89,6 +111,12 @@ export function extractModelsFromInvokeAI(metadata: InvokeAIMetadata): string[] 
   return Array.from(models);
 }
 
+/**
+ * @function extractLorasFromInvokeAI
+ * @description Extracts LoRA names from InvokeAI metadata.
+ * @param {InvokeAIMetadata} metadata - The metadata to parse.
+ * @returns {string[]} - An array of LoRA names.
+ */
 export function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
   const loras: Set<string> = new Set();
   const promptText = typeof metadata.prompt === 'string'
@@ -116,6 +144,12 @@ export function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
   return Array.from(loras);
 }
 
+/**
+ * @function extractBoardFromInvokeAI
+ * @description Extracts the board name from InvokeAI metadata.
+ * @param {InvokeAIMetadata} metadata - The metadata to parse.
+ * @returns {string} - The extracted board name.
+ */
 export function extractBoardFromInvokeAI(metadata: InvokeAIMetadata): string {
     const boardFields = ['board_name', 'board_id', 'boardName', 'boardId', 'Board Name'];
     for(const field of boardFields) {
@@ -139,6 +173,12 @@ export function extractBoardFromInvokeAI(metadata: InvokeAIMetadata): string {
 
 // --- Main Parser Function ---
 
+/**
+ * @function parseInvokeAIMetadata
+ * @description Parses InvokeAI metadata into a BaseMetadata object.
+ * @param {InvokeAIMetadata} metadata - The metadata to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 

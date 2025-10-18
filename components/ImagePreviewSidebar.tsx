@@ -2,7 +2,16 @@ import React, { useEffect, useState, FC } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 
-// Helper component from ImageModal.tsx
+/**
+ * @function MetadataItem
+ * @description A helper component for consistently rendering metadata items.
+ * @param {object} props - The props for the component.
+ * @param {string} props.label - The label for the metadata item.
+ * @param {string | number | any[]} [props.value] - The value of the metadata item.
+ * @param {boolean} [props.isPrompt] - Optional flag to indicate if the value is a prompt.
+ * @param {(value: string) => void} [props.onCopy] - Optional callback for when the value is copied.
+ * @returns {FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> | null} - The rendered component or null if the value is empty.
+ */
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -29,6 +38,11 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   );
 };
 
+/**
+ * @function ImagePreviewSidebar
+ * @description A sidebar component that displays a preview of a selected image and its metadata.
+ * @returns {React.FC | null} - The rendered component or null if no image is selected for preview.
+ */
 const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,

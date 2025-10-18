@@ -26,6 +26,11 @@ import HotkeyHelp from './components/HotkeyHelp';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
+/**
+ * @function App
+ * @description The main application component.
+ * @returns {JSX.Element} - The rendered application.
+ */
 export default function App() {
   console.log('App.tsx loaded');
   // --- Hooks ---

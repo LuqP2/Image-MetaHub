@@ -5,6 +5,12 @@ import { FooocusMetadata, BaseMetadata } from '../../types';
  * Fooocus uses SD-like parameter format with some unique fields
  */
 
+/**
+ * @function parseFooocusMetadata
+ * @description Parses Fooocus metadata from a metadata object.
+ * @param {FooocusMetadata} metadata - The metadata to parse.
+ * @returns {BaseMetadata | null} - The parsed metadata or null if not a Fooocus image.
+ */
 export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | null {
   if (!metadata.parameters) {
     return null;
@@ -93,6 +99,12 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
   }
 }
 
+/**
+ * @function isFooocusMetadata
+ * @description Checks if a string of parameters is Fooocus metadata.
+ * @param {string} params - The string of parameters to check.
+ * @returns {boolean} - True if the string is Fooocus metadata, false otherwise.
+ */
 function isFooocusMetadata(params: string): boolean {
   if (!params) return false;
 

@@ -6,6 +6,12 @@ import { DrawThingsMetadata, BaseMetadata } from '../../types';
  * Supports PNG embedded parameters with mobile-specific fields
  */
 
+/**
+ * @function parseDrawThingsMetadata
+ * @description Parses Draw Things metadata from a string of parameters.
+ * @param {string} parameters - The string of parameters to parse.
+ * @returns {BaseMetadata} - The parsed metadata.
+ */
 export function parseDrawThingsMetadata(parameters: string): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
 
@@ -68,7 +74,12 @@ export function parseDrawThingsMetadata(parameters: string): BaseMetadata {
   return normalizedResult;
 }
 
-// Extract prompts from Draw Things format (similar to A1111)
+/**
+ * @function extractPrompts
+ * @description Extracts positive and negative prompts from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {{ positivePrompt: string; negativePrompt: string }} - The extracted prompts.
+ */
 function extractPrompts(parameters: string): { positivePrompt: string; negativePrompt: string } {
   let positivePrompt = '';
   let negativePrompt = '';
@@ -92,43 +103,78 @@ function extractPrompts(parameters: string): { positivePrompt: string; negativeP
   return { positivePrompt, negativePrompt };
 }
 
-// Extract steps
+/**
+ * @function extractSteps
+ * @description Extracts the number of steps from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted steps or null if not found.
+ */
 function extractSteps(parameters: string): string | null {
   const match = parameters.match(/Steps:\s*(\d+)/i);
   return match ? match[1] : null;
 }
 
-// Extract sampler
+/**
+ * @function extractSampler
+ * @description Extracts the sampler name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted sampler name or null if not found.
+ */
 function extractSampler(parameters: string): string | null {
   const match = parameters.match(/Sampler:\s*([^,\n]+)/i);
   return match ? match[1].trim() : null;
 }
 
-// Extract CFG scale
+/**
+ * @function extractCFGScale
+ * @description Extracts the CFG scale from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted CFG scale or null if not found.
+ */
 function extractCFGScale(parameters: string): string | null {
   const match = parameters.match(/CFG scale:\s*([\d.]+)/i);
   return match ? match[1] : null;
 }
 
-// Extract seed
+/**
+ * @function extractSeed
+ * @description Extracts the seed from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted seed or null if not found.
+ */
 function extractSeed(parameters: string): string | null {
   const match = parameters.match(/Seed:\s*(\d+)/i);
   return match ? match[1] : null;
 }
 
-// Extract size
+/**
+ * @function extractSize
+ * @description Extracts the image size from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted size or null if not found.
+ */
 function extractSize(parameters: string): string | null {
   const match = parameters.match(/Size:\s*([^,\n]+)/i);
   return match ? match[1].trim() : null;
 }
 
-// Extract model
+/**
+ * @function extractModel
+ * @description Extracts the model name from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted model name or null if not found.
+ */
 function extractModel(parameters: string): string | null {
   const match = parameters.match(/Model:\s*([^,\n]+)/i);
   return match ? match[1].trim() : null;
 }
 
-// Extract device model (mobile-specific)
+/**
+ * @function extractDeviceModel
+ * @description Extracts the device model from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted device model or null if not found.
+ */
 function extractDeviceModel(parameters: string): string | null {
   // Look for iPhone/iPad patterns
   const deviceMatch = parameters.match(/(iPhone|iPad|iPod)\s+[^,\n]*/i);
@@ -141,20 +187,35 @@ function extractDeviceModel(parameters: string): string | null {
   return modelMatch ? modelMatch[1].trim() : null;
 }
 
-// Extract app version
+/**
+ * @function extractAppVersion
+ * @description Extracts the application version from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string | null} - The extracted application version or null if not found.
+ */
 function extractAppVersion(parameters: string): string | null {
   const match = parameters.match(/Version:\s*([^,\n]+)/i);
   return match ? match[1].trim() : null;
 }
 
-// Extract LoRAs (if present)
+/**
+ * @function extractLoRAs
+ * @description Extracts LoRAs from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted LoRAs.
+ */
 function extractLoRAs(parameters: string): string[] {
   const loras: string[] = [];
   // Draw Things may support LoRAs in the future, but currently not common
   return loras;
 }
 
-// Extract embeddings (if present)
+/**
+ * @function extractEmbeddings
+ * @description Extracts embeddings from the parameters string.
+ * @param {string} parameters - The parameters string to parse.
+ * @returns {string[]} - An array of extracted embeddings.
+ */
 function extractEmbeddings(parameters: string): string[] {
   const embeddings: string[] = [];
   // Look for embedding patterns (e.g., <embedding:name>)
@@ -165,7 +226,13 @@ function extractEmbeddings(parameters: string): string[] {
   return embeddings;
 }
 
-// Generate tags for BI Pro mobile workflow analysis
+/**
+ * @function generateTags
+ * @description Generates tags for BI Pro mobile workflow analysis.
+ * @param {string} parameters - The parameters string to parse.
+ * @param {string | null} [deviceModel] - The device model.
+ * @returns {string[]} - An array of generated tags.
+ */
 function generateTags(parameters: string, deviceModel?: string | null): string[] {
   const tags: string[] = ['AI Generated', 'Draw Things', 'Mobile AI'];
 

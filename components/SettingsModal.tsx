@@ -4,6 +4,13 @@ import { X, Wrench, Keyboard } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
 import { HotkeySettings } from './HotkeySettings';
 
+/**
+ * @interface SettingsModalProps
+ * @description Defines the props for the SettingsModal component.
+ * @property {boolean} isOpen - Whether the modal is open.
+ * @property {() => void} onClose - Callback function to close the modal.
+ * @property {'general' | 'hotkeys'} [initialTab] - The initial tab to display.
+ */
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,6 +19,12 @@ interface SettingsModalProps {
 
 type Tab = 'general' | 'hotkeys';
 
+/**
+ * @function SettingsModal
+ * @description A modal component for managing application settings, including cache location and hotkeys.
+ * @param {SettingsModalProps} props - The props for the component.
+ * @returns {React.FC<SettingsModalProps> | null} - The rendered component or null if it's not open.
+ */
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general' }) => {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const cachePath = useSettingsStore((state) => state.cachePath);

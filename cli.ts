@@ -11,7 +11,10 @@ import { parseA1111Metadata } from './services/parsers/automatic1111Parser';
 const program = new Command();
 
 /**
- * Simple metadata parser for CLI (browser-independent)
+ * @function parseMetadata
+ * @description A simple metadata parser for the CLI (browser-independent).
+ * @param {string[]} chunks - An array of PNG text chunks.
+ * @returns {Promise<{ format: string; metadata: any } | null>} - A promise that resolves with the parsed metadata or null if not found.
  */
 async function parseMetadata(chunks: string[]): Promise<{ format: string; metadata: any } | null> {
   for (const chunk of chunks) {
@@ -52,7 +55,8 @@ program
   .version('0.9.2');
 
 /**
- * Parse a single PNG file and output JSON metadata
+ * @command parse
+ * @description Parse a single PNG file and output JSON metadata.
  */
 program
   .command('parse')
@@ -118,7 +122,8 @@ program
   });
 
 /**
- * Parse a directory of images and output JSONL index
+ * @command index
+ * @description Parse a directory of images and output a JSONL index.
  */
 program
   .command('index')

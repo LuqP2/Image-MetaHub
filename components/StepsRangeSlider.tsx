@@ -1,5 +1,13 @@
 import React from 'react';
 
+/**
+ * @interface StepsRangeSliderProps
+ * @description Defines the props for the StepsRangeSlider component.
+ * @property {number} min - The minimum value of the range.
+ * @property {number} max - The maximum value of the range.
+ * @property {[number, number]} value - The current value of the range.
+ * @property {(value: [number, number]) => void} onChange - Callback function to handle changes to the range.
+ */
 interface StepsRangeSliderProps {
   min: number;
   max: number;
@@ -8,6 +16,12 @@ interface StepsRangeSliderProps {
 }
 
 
+/**
+ * @function StepsRangeSlider
+ * @description A range slider component for selecting a range of steps.
+ * @param {StepsRangeSliderProps} props - The props for the component.
+ * @returns {React.FC<StepsRangeSliderProps>} - The rendered component.
+ */
 const StepsRangeSlider: React.FC<StepsRangeSliderProps> = ({ min, max, value, onChange }) => {
   // Always use 0-100 for min/max
   const sliderMin = 0;
