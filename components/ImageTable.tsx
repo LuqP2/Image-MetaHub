@@ -180,7 +180,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
           setIsLoading(false);
         });
       } else {
-        setIsLoading.setState(false);
+        setIsLoading(false);
       }
     });
 

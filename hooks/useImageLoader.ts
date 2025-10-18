@@ -308,7 +308,7 @@ export function useImageLoader() {
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
-        setIndexingState('done');
+        setIndexingState('idle');
         setProgress(null);
     }, [setSuccess, setLoading, setIndexingState, setProgress]);
 

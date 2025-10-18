@@ -26,12 +26,51 @@ export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): 
   return Array.from(loras);
 }
 
+// --- Detector de variantes ---
+
+function detectGenerator(parameters: string): string {
+  // Detecta ComfyUI explícito
+  if (parameters.includes('Version: ComfyUI')) {
+    return 'ComfyUI';
+  }
+  
+  // Detecta Forge/Reforge
+  if (parameters.includes('Version: f') || 
+      parameters.includes('Version: forge') ||
+      parameters.includes('Version: reforge')) {
+    return 'Forge';
+  }
+  
+  // Detecta Fooocus
+  if (parameters.includes('Version: Fooocus') ||
+      parameters.includes('Sharpness:')) {
+    return 'Fooocus';
+  }
+  
+  // Detecta módulos (indica ComfyUI/Forge com backend modular)
+  if (parameters.includes('Module 1:') || 
+      parameters.includes('Module 2:') ||
+      parameters.includes('Module 3:')) {
+    return 'ComfyUI/Forge';
+  }
+  
+  // Detecta parâmetros específicos do Flux via ComfyUI
+  if (parameters.includes('Distilled CFG Scale:') ||
+      parameters.includes('Diffusion in Low Bits:')) {
+    return 'ComfyUI (Flux)';
+  }
+  
+  // Fallback para A1111
+  return 'A1111';
+}
+
 // --- Main Parser Function ---
 
 export function parseA1111Metadata(parameters: string): BaseMetadata {
 
   const result: Partial<BaseMetadata> = {};
 
+  // Extrai prompt e negative prompt
   const negativePromptIndex = parameters.indexOf('\nNegative prompt:');
   if (negativePromptIndex !== -1) {
     result.prompt = parameters.substring(0, negativePromptIndex).trim();
@@ -43,14 +82,27 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.prompt = firstParamIndex !== -1 ? parameters.substring(0, firstParamIndex).trim() : parameters;
   }
 
+  // Extrai parâmetros numéricos
   const stepsMatch = parameters.match(/Steps: (\d+)/);
   if (stepsMatch) result.steps = parseInt(stepsMatch[1], 10);
 
   const samplerMatch = parameters.match(/Sampler: ([^,]+)/);
   if (samplerMatch) result.scheduler = samplerMatch[1].trim();
 
+  // Suporte para "Schedule type:" (usado em builds modernas)
+  const scheduleTypeMatch = parameters.match(/Schedule type: ([^,]+)/);
+  if (scheduleTypeMatch && !result.scheduler) {
+    result.scheduler = scheduleTypeMatch[1].trim();
+  }
+
   const cfgScaleMatch = parameters.match(/CFG scale: ([\d.]+)/);
   if (cfgScaleMatch) result.cfg_scale = parseFloat(cfgScaleMatch[1]);
+  
+  // Suporte para "Distilled CFG Scale" (Flux)
+  const distilledCfgMatch = parameters.match(/Distilled CFG Scale: ([\d.]+)/);
+  if (distilledCfgMatch) {
+    result.cfg_scale = parseFloat(distilledCfgMatch[1]);
+  }
 
   const seedMatch = parameters.match(/Seed: (\d+)/);
   if (seedMatch) result.seed = parseInt(seedMatch[1], 10);
@@ -101,11 +153,19 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   result.models = result.model ? [result.model] : [];
   result.loras = extractLorasFromAutomatic1111({ parameters });
   
-  // Check if this is actually ComfyUI metadata
-  if (parameters.includes('Version: ComfyUI')) {
-    result.generator = 'ComfyUI';
-  } else {
-    result.generator = 'A1111';
+  // Detecta o gerador usando a função melhorada
+  result.generator = detectGenerator(parameters);
+  
+  // Extrai informação de versão se disponível
+  const versionMatch = parameters.match(/Version: ([^,]+)/);
+  if (versionMatch) {
+    result.version = versionMatch[1].trim();
+  }
+  
+  // Extrai informações de módulos (para builds modulares)
+  const moduleMatches = parameters.match(/Module \d+: ([^,\n]+)/g);
+  if (moduleMatches && moduleMatches.length > 0) {
+    result.module = moduleMatches.join(', ');
   }
 
   const finalResult = result as BaseMetadata;
