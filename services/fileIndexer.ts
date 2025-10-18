@@ -437,8 +437,6 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
-  console.log('[Metadata Processing] Raw metadata keys:', Object.keys(rawMetadata));
-  
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
   if (isComfyUIMetadata(rawMetadata)) {
     console.log('[Metadata Processing] ✅ Using ComfyUI parser');
@@ -567,24 +565,14 @@ if (rawMetadata) {
   
   // Priority 7: InvokeAI (fallback for remaining metadata)
   else if (isInvokeAIMetadata(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using InvokeAI parser');
     normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
   }
   
   // Priority 8: Unknown format
   else {
-    console.log('[Metadata Processing] ⚠️ Unknown metadata format, no parser applied');
+    // Unknown metadata format, no parser applied
   }
 }
-
-console.log('[Metadata Processing] Final normalized metadata:', {
-  hasMetadata: !!normalizedMetadata,
-  generator: normalizedMetadata?.generator,
-  model: normalizedMetadata?.model,
-  prompt: normalizedMetadata?.prompt?.substring(0, 100) + (normalizedMetadata?.prompt && normalizedMetadata.prompt.length > 100 ? '...' : ''),
-  steps: normalizedMetadata?.steps,
-  cfg_scale: normalizedMetadata?.cfg_scale
-});
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 

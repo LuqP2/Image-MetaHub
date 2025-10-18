@@ -12,6 +12,7 @@ interface SidebarProps {
   availableModels: string[];
   availableLoras: string[];
   availableSchedulers: string[];
+  availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
   selectedSchedulers: string[];
@@ -35,6 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   availableModels,
   availableLoras,
   availableSchedulers,
+  availableDimensions,
   selectedModels,
   selectedLoras,
   selectedSchedulers,
@@ -376,6 +378,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   advancedFilters={advancedFilters}
                   onAdvancedFiltersChange={onAdvancedFiltersChange}
                   onClearAdvancedFilters={onClearAdvancedFilters}
+                  availableDimensions={availableDimensions}
                 />
               </motion.div>
             )}

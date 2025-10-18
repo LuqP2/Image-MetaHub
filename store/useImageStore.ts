@@ -23,6 +23,7 @@ interface ImageState {
   availableModels: string[];
   availableLoras: string[];
   availableSchedulers: string[];
+  availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
   selectedSchedulers: string[];
@@ -47,7 +48,7 @@ interface ImageState {
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
-  setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[] }) => void;
+  setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[]; dimensions: string[] }) => void;
   setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc') => void;
   setAdvancedFilters: (filters: any) => void;
@@ -79,11 +80,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         const models = new Set<string>();
         const loras = new Set<string>();
         const schedulers = new Set<string>();
+        const dimensions = new Set<string>();
 
         for (const image of newImages) {
             image.models?.forEach(model => { if(model) models.add(model) });
             image.loras?.forEach(lora => { if(lora) loras.add(lora) });
             if (image.scheduler) schedulers.add(image.scheduler);
+            if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
 
         const newState: Partial<ImageState> = {
@@ -91,6 +94,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableModels: Array.from(models).sort(),
             availableLoras: Array.from(loras).sort(),
             availableSchedulers: Array.from(schedulers).sort(),
+            availableDimensions: Array.from(dimensions).sort((a, b) => {
+                // Sort dimensions by total pixels (width * height)
+                const [aWidth, aHeight] = a.split('x').map(Number);
+                const [bWidth, bHeight] = b.split('x').map(Number);
+                return (aWidth * aHeight) - (bWidth * bHeight);
+            }),
         };
 
         const combinedState = { ...currentState, ...newState };
@@ -137,7 +146,13 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         if (advancedFilters) {
             if (advancedFilters.dimension) {
-                results = results.filter(image => image.dimensions === advancedFilters.dimension);
+                results = results.filter(image => {
+                    if (!image.dimensions) return false;
+                    // Normalize dimensions format (handle both "512x512" and "512 x 512")
+                    const imageDim = image.dimensions.replace(/\s+/g, '');
+                    const filterDim = advancedFilters.dimension.replace(/\s+/g, '');
+                    return imageDim === filterDim;
+                });
             }
             if (advancedFilters.steps) {
                  results = results.filter(image => {
@@ -197,6 +212,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableModels: [],
         availableLoras: [],
         availableSchedulers: [],
+        availableDimensions: [],
         selectedModels: [],
         selectedLoras: [],
         selectedSchedulers: [],
@@ -293,6 +309,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableModels: options.models,
             availableLoras: options.loras,
             availableSchedulers: options.schedulers,
+            availableDimensions: options.dimensions,
         }),
 
         setSelectedFilters: (filters) => set(state => ({
@@ -380,6 +397,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableModels: [],
             availableLoras: [],
             availableSchedulers: [],
+            availableDimensions: [],
             selectedModels: [],
             selectedLoras: [],
             selectedSchedulers: [],

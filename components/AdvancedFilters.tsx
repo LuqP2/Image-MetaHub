@@ -6,21 +6,17 @@ interface AdvancedFiltersProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
+  availableDimensions: string[];
 }
 
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
-  onClearAdvancedFilters
+  onClearAdvancedFilters,
+  availableDimensions
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localFilters, setLocalFilters] = useState(advancedFilters || {});
-
-  // Available dimensions from common AI image sizes
-  const availableDimensions = [
-    '512x512', '512x768', '768x512', '768x768', '768x1024', '1024x768', '1024x1024',
-    '640x480', '800x600', '1024x576', '1280x720', '1920x1080'
-  ];
 
   useEffect(() => {
     setLocalFilters(advancedFilters || {});
@@ -43,37 +39,37 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
   return (
     <div className="border-b border-gray-700">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-      >
-        <div className="flex items-center space-x-2">
-          <Settings className="w-4 h-4 text-gray-400" />
-          <span className="text-gray-300 font-medium">Advanced Filters</span>
-          {hasActiveFilters && (
-            <span className="text-xs bg-purple-600 text-purple-100 px-2 py-1 rounded-lg">
-              {Object.keys(advancedFilters).length} active
-            </span>
-          )}
-        </div>
-        <div className="flex items-center space-x-2">
-          {hasActiveFilters && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClearAdvancedFilters();
-              }}
-              className="text-xs text-gray-400 hover:text-red-400"
-              title="Clear advanced filters"
-            >
-              <X size={16} />
-            </button>
-          )}
+      <div className="w-full flex items-center justify-between p-4">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex-1 flex items-center justify-between hover:bg-gray-700/50 transition-colors -m-4 p-4"
+        >
+          <div className="flex items-center space-x-2">
+            <Settings className="w-4 h-4 text-gray-400" />
+            <span className="text-gray-300 font-medium">Advanced Filters</span>
+            {hasActiveFilters && (
+              <span className="text-xs bg-purple-600 text-purple-100 px-2 py-1 rounded-lg">
+                {Object.keys(advancedFilters).length} active
+              </span>
+            )}
+          </div>
           <ChevronDown
             className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
           />
-        </div>
-      </button>
+        </button>
+        {hasActiveFilters && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClearAdvancedFilters();
+            }}
+            className="ml-2 text-xs text-gray-400 hover:text-red-400 p-1"
+            title="Clear advanced filters"
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
 
       <AnimatePresence>
         {isExpanded && (

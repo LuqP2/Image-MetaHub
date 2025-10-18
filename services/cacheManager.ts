@@ -35,7 +35,6 @@ class CacheManager {
 
   async init(basePath?: string): Promise<void> {
     if (this.isInitialized) {
-      console.log(`ℹ️ Cache already initialized with DB: ${this.dbName}`);
       return;
     }
 

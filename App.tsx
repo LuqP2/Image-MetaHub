@@ -49,6 +49,7 @@ export default function App() {
     availableModels,
     availableLoras,
     availableSchedulers,
+    availableDimensions,
     selectedModels,
     selectedLoras,
     selectedSchedulers,
@@ -164,7 +165,6 @@ export default function App() {
       if (!path && window.electronAPI) {
         path = undefined;
       }
-      console.log(`Initializing cache with base path: ${path}`);
       await cacheManager.init(path || undefined);
       
       // Validate cached images have valid file handles (for hot reload scenarios in browser)
@@ -323,6 +323,7 @@ export default function App() {
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
           onClearAdvancedFilters={() => setAdvancedFilters({})}
+          availableDimensions={availableDimensions}
         >
           <DirectoryList
             directories={directories}
