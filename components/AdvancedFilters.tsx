@@ -30,9 +30,17 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         delete newFilters[k];
       }
       // For date objects, check if both from and to are empty
-      if (k === 'date' && typeof newFilters[k] === 'object') {
+      else if (k === 'date' && typeof newFilters[k] === 'object') {
         const dateObj = newFilters[k];
         if ((!dateObj.from || dateObj.from === '') && (!dateObj.to || dateObj.to === '')) {
+          delete newFilters[k];
+        }
+      }
+      // For steps/cfg objects, remove if both min and max are null/undefined
+      else if ((k === 'steps' || k === 'cfg') && typeof newFilters[k] === 'object') {
+        const rangeObj = newFilters[k];
+        if ((rangeObj.min === null || rangeObj.min === undefined) && 
+            (rangeObj.max === null || rangeObj.max === undefined)) {
           delete newFilters[k];
         }
       }
@@ -118,11 +126,21 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   <input
                     type="number"
                     placeholder="Min"
-                    value={localFilters.steps?.min || ''}
+                    value={localFilters.steps?.min ?? ''}
                     onChange={(e) => {
-                      const min = parseInt(e.target.value) || 0;
-                      const max = localFilters.steps?.max || 100;
-                      updateFilter('steps', { min: Math.max(0, min), max: Math.max(min + 1, max) });
+                      const value = e.target.value;
+                      if (value === '') {
+                        // If both are empty, remove the filter
+                        if (!localFilters.steps?.max) {
+                          updateFilter('steps', null);
+                        } else {
+                          updateFilter('steps', { min: null, max: localFilters.steps.max });
+                        }
+                      } else {
+                        const min = parseInt(value);
+                        const max = localFilters.steps?.max ?? 100;
+                        updateFilter('steps', { min: Math.max(0, min), max: Math.max(min + 1, max) });
+                      }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     min="0"
@@ -131,11 +149,21 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   <input
                     type="number"
                     placeholder="Max"
-                    value={localFilters.steps?.max || ''}
+                    value={localFilters.steps?.max ?? ''}
                     onChange={(e) => {
-                      const max = parseInt(e.target.value) || 100;
-                      const min = localFilters.steps?.min || 0;
-                      updateFilter('steps', { min: Math.min(min, max - 1), max: Math.min(100, max) });
+                      const value = e.target.value;
+                      if (value === '') {
+                        // If both are empty, remove the filter
+                        if (!localFilters.steps?.min) {
+                          updateFilter('steps', null);
+                        } else {
+                          updateFilter('steps', { min: localFilters.steps.min, max: null });
+                        }
+                      } else {
+                        const max = parseInt(value);
+                        const min = localFilters.steps?.min ?? 0;
+                        updateFilter('steps', { min: Math.min(min, max - 1), max: Math.min(100, max) });
+                      }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     min="0"
@@ -154,11 +182,21 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     type="number"
                     placeholder="Min"
                     step="0.1"
-                    value={localFilters.cfg?.min || ''}
+                    value={localFilters.cfg?.min ?? ''}
                     onChange={(e) => {
-                      const min = parseFloat(e.target.value) || 0;
-                      const max = localFilters.cfg?.max || 20;
-                      updateFilter('cfg', { min: Math.max(0, min), max: Math.max(min + 0.1, max) });
+                      const value = e.target.value;
+                      if (value === '') {
+                        // If both are empty, remove the filter
+                        if (!localFilters.cfg?.max) {
+                          updateFilter('cfg', null);
+                        } else {
+                          updateFilter('cfg', { min: null, max: localFilters.cfg.max });
+                        }
+                      } else {
+                        const min = parseFloat(value);
+                        const max = localFilters.cfg?.max ?? 20;
+                        updateFilter('cfg', { min: Math.max(0, min), max: Math.max(min + 0.1, max) });
+                      }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     min="0"
@@ -168,11 +206,21 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     type="number"
                     placeholder="Max"
                     step="0.1"
-                    value={localFilters.cfg?.max || ''}
+                    value={localFilters.cfg?.max ?? ''}
                     onChange={(e) => {
-                      const max = parseFloat(e.target.value) || 20;
-                      const min = localFilters.cfg?.min || 0;
-                      updateFilter('cfg', { min: Math.min(min, max - 0.1), max: Math.min(20, max) });
+                      const value = e.target.value;
+                      if (value === '') {
+                        // If both are empty, remove the filter
+                        if (!localFilters.cfg?.min) {
+                          updateFilter('cfg', null);
+                        } else {
+                          updateFilter('cfg', { min: localFilters.cfg.min, max: null });
+                        }
+                      } else {
+                        const max = parseFloat(value);
+                        const min = localFilters.cfg?.min ?? 0;
+                        updateFilter('cfg', { min: Math.min(min, max - 0.1), max: Math.min(20, max) });
+                      }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
                     min="0"

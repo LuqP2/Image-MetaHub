@@ -166,11 +166,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center space-x-2">
                 <span className="text-gray-300 font-medium">Models</span>
-                <span className="text-xs bg-accent text-blue-100 px-2 py-1 rounded-lg">
+                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
                   {availableModels.length}
                 </span>
                 {selectedModels.length > 0 && (
-                  <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded-lg">
+                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                     {selectedModels.length} selected
                   </span>
                 )}
@@ -231,11 +231,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center space-x-2">
                 <span className="text-gray-300 font-medium">LoRAs</span>
-                <span className="text-xs bg-purple-600 text-purple-100 px-2 py-1 rounded-lg">
+                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
                   {availableLoras.length}
                 </span>
                 {selectedLoras.length > 0 && (
-                  <span className="text-xs bg-purple-500 text-white px-2 py-1 rounded-lg">
+                  <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded border border-purple-700/50">
                     {selectedLoras.length} selected
                   </span>
                 )}
@@ -296,11 +296,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center space-x-2">
                 <span className="text-gray-300 font-medium">Schedulers</span>
-                <span className="text-xs bg-green-600 text-green-100 px-2 py-1 rounded-lg">
+                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
                   {availableSchedulers.length}
                 </span>
                 {selectedSchedulers.length > 0 && (
-                  <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-lg">
+                  <span className="text-xs bg-green-900/40 text-green-300 px-2 py-0.5 rounded border border-green-700/50">
                     {selectedSchedulers.length} selected
                   </span>
                 )}
