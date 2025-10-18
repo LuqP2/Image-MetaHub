@@ -5,11 +5,11 @@ interface StatusBarProps {
   filteredCount: number;
   totalCount: number;
   directoryCount: number;
-  indexingState?: 'idle' | 'indexing' | 'paused';
-  progress?: { current: number; total: number } | null;
-  onPauseIndexing?: () => void;
-  onResumeIndexing?: () => void;
-  onCancelIndexing?: () => void;
+  indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
+  progress: { current: number; total: number } | null;
+  onPauseIndexing: () => void;
+  onResumeIndexing: () => void;
+  onCancelIndexing: () => void;
 }
 
 const StatusBar: React.FC<StatusBarProps> = ({ 
@@ -29,9 +29,16 @@ const StatusBar: React.FC<StatusBarProps> = ({
       <span>
         {progress ? (
           <>
-            {indexingState === 'paused' ? '⏸️' : '🔄'} <span className={`font-bold ${indexingState === 'paused' ? 'text-orange-400' : 'text-yellow-400'}`}>
-              {indexingState === 'paused' ? 'Indexing Paused:' : 'Indexing:'}
-            </span> {progress.current} / {progress.total} files processed
+            {indexingState === 'completed' ? '✅' : indexingState === 'paused' ? '⏸️' : '🔄'}{' '}
+            <span className={`font-bold ${
+              indexingState === 'completed' ? 'text-green-400' : 
+              indexingState === 'paused' ? 'text-orange-400' : 
+              'text-yellow-400'
+            }`}>
+              {indexingState === 'completed' ? 'Indexing Complete:' :
+               indexingState === 'paused' ? 'Indexing Paused:' : 
+               'Indexing:'}
+            </span> {indexingState === 'completed' ? progress.total : `${progress.current} / ${progress.total}`} files processed
           </>
         ) : (
           <>
@@ -41,7 +48,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
       </span>
       
       <div className="flex items-center gap-2">
-        {progress && (
+        {progress && indexingState !== 'completed' && (
           <>
             {indexingState !== 'paused' && onPauseIndexing && (
               <button

@@ -235,6 +235,7 @@ export function useImageLoader() {
                 models: Array.from(models).sort(),
                 loras: Array.from(loras).sort(),
                 schedulers: Array.from(schedulers).sort(),
+                dimensions: [],
             });
         };
 
@@ -305,8 +306,13 @@ export function useImageLoader() {
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         setLoading(false);
-        setIndexingState('idle');
-        setProgress(null);
+        setIndexingState('completed');
+        
+        // Clear the completed state after 3 seconds
+        setTimeout(() => {
+            setIndexingState('idle');
+            setProgress(null);
+        }, 3000);
     }, [setSuccess, setLoading, setIndexingState, setProgress]);
 
 
@@ -579,7 +585,8 @@ export function useImageLoader() {
                     const allPaths = useImageStore.getState().directories.map(d => d.path);
                     await window.electronAPI.updateAllowedPaths(allPaths);
 
-                    setSuccess(`Loaded ${directoriesToLoad.length} director(y|ies) from cache.`);
+                    const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
+                    setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
                 } catch (e) {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");

@@ -5,6 +5,7 @@ import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
 import { Directory } from './types';
+import { X } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
@@ -66,6 +67,8 @@ export default function App() {
     setIndexingState,
     setLoading,
     setProgress,
+    setSuccess,
+    setError,
     handleNavigateNext,
     handleNavigatePrevious,
     cleanupInvalidImages,
@@ -327,7 +330,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
-            isIndexing={progress && progress.total > 0 && progress.current < progress.total}
+            isIndexing={indexingState === 'indexing' && progress && progress.total > 0 && progress.current < progress.total}
           />
         </Sidebar>
       )}
@@ -338,13 +341,35 @@ export default function App() {
         <Header
           onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
-          isIndexing={progress && progress.total > 0 && progress.current < progress.total}
+          isIndexing={indexingState === 'indexing' && progress && progress.total > 0 && progress.current < progress.total}
           isIndexingPaused={indexingState === 'paused'}
         />
 
         <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
-          {error && <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4">{error}</div>}
-          {success && <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4">{success}</div>}
+          {error && (
+            <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
+              <span>{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="ml-4 p-1 hover:bg-red-800/50 rounded transition-colors"
+                title="Dismiss message"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {success && (
+            <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4 flex items-center justify-between">
+              <span>{success}</span>
+              <button
+                onClick={() => setSuccess(null)}
+                className="ml-4 p-1 hover:bg-green-800/50 rounded transition-colors"
+                title="Dismiss message"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {isLoading && progress && progress.total === 0 && <Loader progress={progress} />}
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}

@@ -10,7 +10,7 @@ interface ImageState {
   // UI State
   isLoading: boolean;
   progress: { current: number; total: number } | null;
-  indexingState: 'idle' | 'indexing' | 'paused';
+  indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
   success: string | null;
   selectedImage: IndexedImage | null;
@@ -36,7 +36,7 @@ interface ImageState {
   toggleDirectoryVisibility: (directoryId: string) => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
-  setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused') => void;
+  setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
   setImages: (images: IndexedImage[]) => void;

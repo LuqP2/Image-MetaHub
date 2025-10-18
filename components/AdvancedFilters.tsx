@@ -42,6 +42,8 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       }
     });
     
+    setLocalFilters(newFilters);
+    onAdvancedFiltersChange(newFilters);
   };
 
   const hasActiveFilters = Object.keys(advancedFilters || {}).length > 0;
