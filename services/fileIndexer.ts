@@ -22,6 +22,7 @@ import { parseFireflyMetadata } from './parsers/fireflyParser';
 import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
+import { parseSDNextMetadata } from './parsers/sdNextParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -446,8 +447,14 @@ if (rawMetadata) {
     console.log('[Metadata Processing] Parameters string detected, analyzing...');
     console.log('[Metadata Processing] First 200 chars:', params.substring(0, 200));
     
-    // Sub-priority 2.1: Forge (most specific - has Model hash + Forge/Gradio)
-    if ((params.includes('Forge') || params.includes('Gradio')) && 
+    // Sub-priority 2.1: SD.Next (has "App: SD.Next" indicator)
+    if (params.includes('App: SD.Next')) {
+      console.log('[Metadata Processing] ✅ Using SD.Next parser');
+      normalizedMetadata = parseSDNextMetadata(params);
+    }
+    
+    // Sub-priority 2.2: Forge (most specific - has Model hash + Forge/Gradio)
+    else if ((params.includes('Forge') || params.includes('Gradio')) && 
         params.includes('Steps:') && params.includes('Sampler:') && params.includes('Model hash:')) {
       console.log('[Metadata Processing] ✅ Using Forge parser');
       normalizedMetadata = parseForgeMetadata(rawMetadata);

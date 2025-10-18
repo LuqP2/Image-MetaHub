@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ComfyUI JPEG Metadata Parsing**: Fixed parser selection bug where ComfyUI metadata in JPEG files was incorrectly detected as Fooocus format due to regex `.match()` returning array instead of boolean, preventing proper metadata extraction and display
 - **Midjourney Parser Dimensions**: Fixed incorrect dimension calculation in Midjourney parser that was using aspect ratio values instead of reading actual image dimensions from the file
 - **Niji Journey Parser Dimensions**: Fixed incorrect dimension calculation in Niji Journey parser that was using aspect ratio values instead of reading actual image dimensions from the file
+- **SD.Next Parser**: Added dedicated parser for SD.Next images with proper detection based on "App: SD.Next" identifier, supporting all SD.Next specific metadata fields including backend, pipeline, operations, and hires parameters
 
 ### Added
 - **Midjourney PNG Support**: Added support for Midjourney images stored in PNG format with metadata in 'Description' chunk
