@@ -43,7 +43,6 @@ class CacheManager {
       // Sanitize the path to be a valid DB name
       this.dbName = `image-metahub-cache-${basePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
     }
-    console.log(`🔧 Initializing cache with basePath: "${basePath}" -> DB name: "${this.dbName}"`);
 
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, this.dbVersion);
@@ -55,7 +54,6 @@ class CacheManager {
       request.onsuccess = () => {
         this.db = request.result;
         this.isInitialized = true;
-        console.log(`✅ IndexedDB initialized successfully: ${this.dbName}`);
         resolve();
       };
 
@@ -108,11 +106,6 @@ class CacheManager {
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const result = request.result;
-        if (result) {
-          console.log(`✅ Cache found for ${cacheId}: ${result.imageCount} images`);
-        } else {
-          console.log(`❌ No cache found for ${cacheId}`);
-        }
         resolve(result || null);
       };
     });
@@ -129,7 +122,6 @@ class CacheManager {
       return;
     }
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    console.log(`💾 Saving cache for ${directoryName} (${cacheId}): ${images.length} images to DB: ${this.dbName}`);
     const cacheEntry: CacheEntry = {
       id: cacheId,
       directoryPath,
@@ -152,7 +144,6 @@ class CacheManager {
       const store = transaction.objectStore('cache');
       
       transaction.oncomplete = () => {
-        console.log(`✅ Transaction completed for cache ${cacheId}`);
       };
       
       transaction.onerror = () => {
@@ -166,7 +157,6 @@ class CacheManager {
         reject(request.error);
       };
       request.onsuccess = () => {
-        console.log(`✅ Cache saved successfully for ${cacheId}`);
         resolve();
       };
     });
@@ -281,7 +271,6 @@ class CacheManager {
         reject(request.error);
       };
       request.onsuccess = () => {
-        console.log(`✅ Cleared cache for directory: ${cacheId}`);
         resolve();
       };
     });
@@ -297,7 +286,6 @@ class CacheManager {
 
     if (!cached) {
       const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-      console.log(`❌ NO CACHE FOUND for "${cacheId}". Performing full scan.`);
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -306,7 +294,6 @@ class CacheManager {
       };
     }
     
-    console.log(`✅ CACHE FOUND for "${directoryName}". Analyzing diff...`);
 
     const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
     const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
@@ -333,10 +320,6 @@ class CacheManager {
     const deletedFileIds = cached.metadata
       .filter(m => !currentFileNames.has(m.name))
       .map(m => m.id);
-
-    console.log(`   - ${newAndModifiedFiles.length} new or modified files to process.`);
-    console.log(`   - ${deletedFileIds.length} deleted files to remove.`);
-    console.log(`   - ${cachedImages.length} images restored from cache.`);
 
     return {
       newAndModifiedFiles,

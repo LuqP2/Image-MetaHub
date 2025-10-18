@@ -224,20 +224,16 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     if (!metadataText) {
-      console.log('[JPEG Parser] No metadata text found in EXIF');
       return null;
     }
-
-    console.log('[JPEG Parser] Raw EXIF metadata text:', metadataText.substring(0, 500) + (metadataText.length > 500 ? '...' : ''));
 
     // ========== CRITICAL FIX: Check for ComfyUI FIRST (before other patterns) ==========
     // ComfyUI images stored as JPEG with A1111-style parameters in EXIF
     if (metadataText.includes('Version: ComfyUI')) {
-      console.log('[JPEG Parser] ✅ DETECTED ComfyUI metadata in EXIF - returning parameters');
       return { parameters: metadataText };
     }
 
-    console.log('[JPEG Parser] No ComfyUI detected, checking other patterns...');
+    // No ComfyUI detected, checking other patterns...
 
     // ========== DRAW THINGS XMP FORMAT DETECTION ==========
     // Draw Things stores metadata in XMP format: {"lang":"x-default","value":"{JSON}"}
@@ -248,7 +244,6 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           const innerJson = xmpData.value;
           // Check if the inner JSON contains Draw Things characteristics
           if (innerJson.includes('"c":') && (innerJson.includes('"model":') || innerJson.includes('"sampler":') || innerJson.includes('"scale":'))) {
-            console.log('[JPEG Parser] ✅ DETECTED Draw Things XMP metadata');
             // Return in the expected format with Draw Things indicators so it gets routed to Draw Things parser
             return { parameters: 'Draw Things ' + innerJson, userComment: innerJson };
           }
@@ -260,13 +255,11 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
-      console.log('[JPEG Parser] Detected A1111-style metadata with Model hash');
       return { parameters: metadataText };
     }
 
     // Easy Diffusion uses similar format but without Model hash
     if (metadataText.includes('Prompt:') && metadataText.includes('Steps:') && metadataText.includes('Sampler:') && !metadataText.includes('Model hash:')) {
-      console.log('[JPEG Parser] Detected Easy Diffusion-style metadata');
       return { parameters: metadataText };
     }
 
@@ -293,7 +286,6 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           userComment = comment;
         }
       }
-      console.log('[Metadata Processing] ✅ Using Draw Things parser (simplified detection)');
       return { parameters: metadataText, userComment };
     }
 
@@ -439,7 +431,6 @@ let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
   if (isComfyUIMetadata(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using ComfyUI parser');
     const comfyMetadata = rawMetadata as ComfyUIMetadata;
     let workflow = comfyMetadata.workflow;
     let prompt = comfyMetadata.prompt;
@@ -473,19 +464,15 @@ if (rawMetadata) {
   // Priority 2: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
   else if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
     const params = rawMetadata.parameters;
-    console.log('[Metadata Processing] Parameters string detected, analyzing...');
-    console.log('[Metadata Processing] First 200 chars:', params.substring(0, 200));
     
     // Sub-priority 2.1: SD.Next (has "App: SD.Next" indicator)
     if (params.includes('App: SD.Next')) {
-      console.log('[Metadata Processing] ✅ Using SD.Next parser');
       normalizedMetadata = parseSDNextMetadata(params);
     }
     
     // Sub-priority 2.2: Forge (most specific - has Model hash + Forge/Gradio)
     else if ((params.includes('Forge') || params.includes('Gradio')) && 
         params.includes('Steps:') && params.includes('Sampler:') && params.includes('Model hash:')) {
-      console.log('[Metadata Processing] ✅ Using Forge parser');
       normalizedMetadata = parseForgeMetadata(rawMetadata);
     }
     
@@ -493,7 +480,6 @@ if (rawMetadata) {
     // CRITICAL: Must check for absence of Model hash to avoid capturing Forge/A1111
     else if (params.includes('Fooocus') || 
              (params.includes('Sharpness:') && !params.includes('Model hash:'))) {
-      console.log('[Metadata Processing] ✅ Using Fooocus parser');
       normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
     }
     
@@ -504,62 +490,51 @@ if (rawMetadata) {
              /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
              params.includes('Distilled CFG Scale') ||
              /Module\s*\d+:/i.test(params)) {
-      console.log('[Metadata Processing] ✅ Using A1111 parser (includes Forge/ComfyUI variants)');
       normalizedMetadata = parseA1111Metadata(params);
     }
     
     // Sub-priority 2.4: Other parameter-based formats
     else if (params.includes('DreamStudio') || params.includes('Stability AI')) {
-      console.log('[Metadata Processing] ✅ Using DreamStudio parser');
       normalizedMetadata = parseDreamStudioMetadata(params);
     }
     else if ((params.includes('iPhone') || params.includes('iPad') || params.includes('Draw Things')) &&
              !params.includes('Model hash:')) {
-      console.log('[Metadata Processing] ✅ Using Draw Things parser');
       const userComment = 'userComment' in rawMetadata ? String(rawMetadata.userComment) : undefined;
       normalizedMetadata = parseDrawThingsMetadata(params, userComment);
     }
     else if (params.includes('--niji')) {
-      console.log('[Metadata Processing] ✅ Using Niji parser');
       normalizedMetadata = parseNijiMetadata(params);
     }
     else if (params.includes('--v') || params.includes('--ar') || params.includes('Midjourney')) {
-      console.log('[Metadata Processing] ✅ Using Midjourney parser');
       normalizedMetadata = parseMidjourneyMetadata(params);
     }
     else if (params.includes('Prompt:') && params.includes('Steps:')) {
       // Generic SD-like format - try Easy Diffusion
-      console.log('[Metadata Processing] ✅ Using Easy Diffusion parser');
       normalizedMetadata = parseEasyDiffusionMetadata(params);
     }
     else {
       // Fallback: Try A1111 parser for any other parameter string
-      console.log('[Metadata Processing] ⚠️ Fallback to A1111 parser');
       normalizedMetadata = parseA1111Metadata(params);
     }
   }
   
   // Priority 3: SwarmUI (has unique 'sui_image_params' structure)
   else if (isSwarmUIMetadata(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using SwarmUI parser');
     normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
   }
   
   // Priority 4: Easy Diffusion JSON (simple JSON with 'prompt' field)
   else if (isEasyDiffusionJson(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using Easy Diffusion JSON parser');
     normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
   }
   
   // Priority 5: DALL-E (has C2PA manifest)
   else if (isDalleMetadata(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using DALL-E parser');
     normalizedMetadata = parseDalleMetadata(rawMetadata);
   }
   
   // Priority 6: Firefly (has C2PA with Adobe signatures)
   else if (isFireflyMetadata(rawMetadata)) {
-    console.log('[Metadata Processing] ✅ Using Firefly parser');
     normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
   }
   

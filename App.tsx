@@ -188,12 +188,10 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
-      console.log('Loading directory from CLI path:', path);
       
       // Check if directory already exists in the store
       const existingDir = directories.find(d => d.path === path);
       if (existingDir) {
-        console.log('Directory already loaded, skipping:', path);
         return;
       }
       
@@ -230,7 +228,6 @@ export default function App() {
     const electronAPI = window.electronAPI as any;
     if (electronAPI && typeof electronAPI.onLoadDirectoryFromCLI === 'function') {
       const unsubscribe = electronAPI.onLoadDirectoryFromCLI((path: string) => {
-        console.log('Received directory to load from main process:', path);
         if (path) {
           handleLoadFromPath(path);
         }

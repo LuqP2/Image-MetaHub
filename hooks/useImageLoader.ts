@@ -280,12 +280,10 @@ export function useImageLoader() {
     }, [addImages, setProgress, setError, setLoading]);
 
     const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
-        console.log(`🏁 FINALIZING LOAD for ${directory.name} (${directory.path})`);
         
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
         if ((window as any)[finalizationKey]) {
-            console.log(`⚠️ Directory ${directory.name} already finalized, skipping`);
             return;
         }
         (window as any)[finalizationKey] = true;
@@ -294,7 +292,6 @@ export function useImageLoader() {
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
-        console.log(`📊 Found ${finalDirectoryImages.length} images for directory ${directory.name}`);
         
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
@@ -478,7 +475,6 @@ export function useImageLoader() {
             } else {
                 // No new files to process, just finalize with what we have
                 // But wait a bit to allow UI to show indexing state
-                console.log(`[LOAD] No new files for ${directory.name}, finalizing after delay`);
                 setTimeout(() => {
                     finalizeDirectoryLoad(directory);
                 }, 100);
