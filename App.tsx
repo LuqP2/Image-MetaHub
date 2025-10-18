@@ -47,6 +47,7 @@ export default function App() {
     selectedImage,
     selectedImages,
     searchQuery,
+    scanSubfolders,
     availableModels,
     availableLoras,
     availableSchedulers,
@@ -56,6 +57,7 @@ export default function App() {
     selectedSchedulers,
     advancedFilters,
     visibleSubfolders,
+    visibleRoots,
     setSearchQuery,
     setSelectedFilters,
     setAdvancedFilters,
@@ -65,6 +67,7 @@ export default function App() {
     updateImage,
     toggleDirectoryVisibility,
     toggleSubfolderVisibility,
+    toggleRootVisibility,
     resetState,
     setIndexingState,
     setLoading,
@@ -333,8 +336,11 @@ export default function App() {
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
             onToggleSubfolderVisibility={toggleSubfolderVisibility}
+            onToggleRootVisibility={toggleRootVisibility}
             visibleSubfolders={visibleSubfolders}
+            visibleRoots={visibleRoots}
             isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
+            scanSubfolders={scanSubfolders}
           />
         </Sidebar>
       )}

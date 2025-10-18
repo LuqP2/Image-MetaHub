@@ -9,8 +9,11 @@ interface DirectoryListProps {
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
   onToggleSubfolderVisibility?: (subfolderPath: string) => void;
+  onToggleRootVisibility?: (directoryPath: string) => void;
   visibleSubfolders?: Set<string>;
+  visibleRoots?: Set<string>;
   isIndexing?: boolean;
+  scanSubfolders?: boolean;
 }
 
 interface Subfolder {
@@ -24,8 +27,11 @@ export default function DirectoryList({
   onUpdateDirectory, 
   onToggleVisibility, 
   onToggleSubfolderVisibility,
+  onToggleRootVisibility,
   visibleSubfolders = new Set(),
-  isIndexing = false 
+  visibleRoots = new Set(),
+  isIndexing = false,
+  scanSubfolders = false
 }: DirectoryListProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [subfolders, setSubfolders] = useState<Map<string, Subfolder[]>>(new Map());
@@ -61,6 +67,21 @@ export default function DirectoryList({
         
         if (result.success) {
           setSubfolders(prev => new Map(prev).set(dirId, result.subfolders || []));
+          
+          // Auto-mark root and subfolders ONLY if scanSubfolders was enabled during indexing
+          if (scanSubfolders && result.subfolders && result.subfolders.length > 0) {
+            // Mark root
+            if (onToggleRootVisibility && !visibleRoots.has(dirPath)) {
+              onToggleRootVisibility(dirPath);
+            }
+            
+            // Mark all subfolders
+            result.subfolders.forEach((subfolder: { path: string }) => {
+              if (onToggleSubfolderVisibility && !visibleSubfolders.has(subfolder.path)) {
+                onToggleSubfolderVisibility(subfolder.path);
+              }
+            });
+          }
         } else {
           console.error('Failed to load subfolders:', result.error);
         }
@@ -90,6 +111,7 @@ export default function DirectoryList({
       alert('Failed to open folder. Please check the path.');
     }
   };
+
   return (
     <div className="p-4 border-t border-gray-700">
       <h3 className="text-lg font-semibold text-gray-300 mb-3">Folders</h3>
@@ -150,32 +172,67 @@ export default function DirectoryList({
                   <li className="text-xs text-gray-500 italic py-1">
                     Loading subfolders...
                   </li>
-                ) : subfolders.get(dir.id)?.length ? (
-                  subfolders.get(dir.id)!.map((subfolder) => (
-                    <li key={subfolder.path} className="py-1">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={visibleSubfolders.has(subfolder.path)}
-                          onChange={() => onToggleSubfolderVisibility?.(subfolder.path)}
-                          className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                          title="Show/hide images from this subfolder"
-                        />
-                        <button
-                          onClick={() => handleOpenInExplorer(subfolder.path)}
-                          className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
-                          title={`Click to open: ${subfolder.path}`}
-                        >
-                          <Folder className="w-3 h-3 mr-1" />
-                          {subfolder.name}
-                        </button>
-                      </div>
-                    </li>
-                  ))
                 ) : (
-                  <li className="text-xs text-gray-500 italic py-1">
-                    No subfolders found
-                  </li>
+                  <>
+                    {/* Only show subfolder controls if scanSubfolders was enabled */}
+                    {scanSubfolders ? (
+                      <>
+                        {/* Root directory checkbox */}
+                        <li className="py-1">
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={visibleRoots.has(dir.path)}
+                              onChange={() => onToggleRootVisibility?.(dir.path)}
+                              className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                              title="Show/hide images from root directory"
+                            />
+                            <button
+                              onClick={() => handleOpenInExplorer(dir.path)}
+                              className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
+                              title={`Click to open: ${dir.path}`}
+                            >
+                              <Folder className="w-3 h-3 mr-1" />
+                              <span className="italic">(root)</span>
+                            </button>
+                          </div>
+                        </li>
+                        
+                        {/* Subfolders list */}
+                        {subfolders.get(dir.id)?.length ? (
+                          subfolders.get(dir.id)!.map((subfolder) => (
+                            <li key={subfolder.path} className="py-1">
+                              <div className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={visibleSubfolders.has(subfolder.path)}
+                                  onChange={() => onToggleSubfolderVisibility?.(subfolder.path)}
+                                  className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                                  title="Show/hide images from this subfolder"
+                                />
+                                <button
+                                  onClick={() => handleOpenInExplorer(subfolder.path)}
+                                  className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
+                                  title={`Click to open: ${subfolder.path}`}
+                                >
+                                  <Folder className="w-3 h-3 mr-1" />
+                                  {subfolder.name}
+                                </button>
+                              </div>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-xs text-gray-500 italic py-1">
+                            No subfolders found
+                          </li>
+                        )}
+                      </>
+                    ) : (
+                      <li className="text-xs text-gray-500 italic py-1">
+                        No subfolders (folder loaded without "Scan Subfolders")
+                      </li>
+                    )}
+                  </>
                 )}
               </ul>
             )}

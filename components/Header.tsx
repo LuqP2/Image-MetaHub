@@ -1,5 +1,4 @@
 import React from 'react';
-import { useImageStore } from '../store/useImageStore';
 import { Settings, Plus, GalleryHorizontal, Bug } from 'lucide-react';
 
 interface HeaderProps {
@@ -10,10 +9,6 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false, isIndexingPaused = false }) => {
-  const { scanSubfolders, setScanSubfolders } = useImageStore();
-  const directories = useImageStore((state) => state.directories);
-  const hasDirectories = directories.length > 0;
-
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between gap-4">
@@ -22,23 +17,6 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing
           <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.2</h1>
         </div>
         <div className="flex items-center gap-4">
-          {hasDirectories && (
-            <>
-              <div className="flex items-center" title="Toggles whether sub-folders are scanned for images. A manual refresh of a folder is required to apply this setting.">
-                <input
-                  type="checkbox"
-                  id="scanSubfolders"
-                  checked={scanSubfolders}
-                  onChange={(e) => setScanSubfolders(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                />
-                <label htmlFor="scanSubfolders" className="ml-2 block text-sm text-gray-300">
-                  Scan Subfolders
-                </label>
-              </div>
-              <div className="border-l border-gray-600 h-8 mx-2"></div>
-            </>
-          )}
           <button
             onClick={onAddFolder}
             disabled={isIndexing || isIndexingPaused}

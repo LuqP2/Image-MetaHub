@@ -7,6 +7,7 @@ interface ImageState {
   filteredImages: IndexedImage[];
   directories: Directory[];
   visibleSubfolders: Set<string>; // Track which subfolder paths are visible
+  visibleRoots: Set<string>; // Track which directory roots are visible
 
   // UI State
   isLoading: boolean;
@@ -36,6 +37,7 @@ interface ImageState {
   removeDirectory: (directoryId: string) => void;
   toggleDirectoryVisibility: (directoryId: string) => void;
   toggleSubfolderVisibility: (subfolderPath: string) => void;
+  toggleRootVisibility: (directoryPath: string) => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
@@ -111,7 +113,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, visibleSubfolders } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, visibleSubfolders, visibleRoots } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -124,30 +126,74 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return false;
             }
             
-            // If we have subfolder visibility controls, check them
-            // Only filter out if the image is in a subfolder that's been explicitly hidden
-            if (visibleSubfolders.size > 0 && img.id) {
+            // Check subfolder visibility logic
+            if (img.id) {
                 // Extract the directory path from the image's directory
                 const parentDir = directories.find(d => d.id === img.directoryId);
                 if (parentDir) {
                     const parentPath = parentDir.path;
-                    const imagePath = img.id; // id is the file path
                     
-                    // Check if image is in a subfolder
-                    if (imagePath.startsWith(parentPath)) {
-                        const relativePath = imagePath.substring(parentPath.length);
+                    // The id format is: directoryId::relativePath
+                    // Extract the relative path part after `::`
+                    const idParts = img.id.split('::');
+                    if (idParts.length === 2) {
+                        const relativePath = idParts[1];
                         const pathParts = relativePath.split(/[/\\]/).filter(p => p);
+                        
+                        // Debug - log first 3 images
+                        if (images.indexOf(img) < 3) {
+                            console.log(`📸 Image ${images.indexOf(img)}:`, img.name);
+                            console.log('   relativePath:', relativePath);
+                            console.log('   pathParts:', pathParts);
+                            console.log('   parentPath:', parentPath);
+                        }
                         
                         // If there's more than just the filename (meaning it's in a subfolder)
                         if (pathParts.length > 1) {
                             const subfolderName = pathParts[0];
                             const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
                             
-                            // Check if this specific subfolder exists in visibility set
-                            // If it exists and is not in the set, filter it out
-                            // We only filter if the subfolder has been registered (clicked)
+                            if (images.indexOf(img) < 3) {
+                                console.log('   → IN SUBFOLDER:', subfolderName);
+                                console.log('   → Constructed path:', subfolderPath);
+                                console.log('   → Visible subfolders:', Array.from(visibleSubfolders));
+                                console.log('   → Match found?', visibleSubfolders.has(subfolderPath));
+                                console.log('   → Result:', visibleSubfolders.has(subfolderPath) ? '✅ SHOW' : '❌ HIDE');
+                            }
+                            
+                            // Only show if this specific subfolder is marked as visible
                             return visibleSubfolders.has(subfolderPath);
                         }
+                        
+                        // Image is in root directory
+                        const { visibleRoots } = state;
+                        
+                        if (images.indexOf(img) < 3) {
+                            console.log('   → IN ROOT');
+                            console.log('   → parentPath:', parentPath);
+                            console.log('   → visibleRoots:', Array.from(visibleRoots));
+                            console.log('   → Root is marked?', visibleRoots.has(parentPath));
+                            console.log('   → visibleSubfolders.size:', visibleSubfolders.size);
+                            console.log('   → visibleRoots.size:', visibleRoots.size);
+                        }
+                        
+                        // Show root if:
+                        // 1. Root is explicitly marked as visible
+                        // 2. OR no subfolders/roots are selected at all (default: show root)
+                        const hasAnySelection = visibleSubfolders.size > 0 || visibleRoots.size > 0;
+                        
+                        if (visibleRoots.has(parentPath)) {
+                            if (images.indexOf(img) < 3) console.log('   → Result: ✅ SHOW (root marked)');
+                            return true;
+                        }
+                        
+                        if (!hasAnySelection) {
+                            if (images.indexOf(img) < 3) console.log('   → Result: ✅ SHOW (nothing selected)');
+                            return true;
+                        }
+                        
+                        if (images.indexOf(img) < 3) console.log('   → Result: ❌ HIDE (root not marked)');
+                        return false;
                     }
                 }
             }
@@ -252,6 +298,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         filteredImages: [],
         directories: [],
         visibleSubfolders: new Set(),
+        visibleRoots: new Set(),
         isLoading: false,
         progress: null,
         indexingState: 'idle',
@@ -295,10 +342,27 @@ export const useImageStore = create<ImageState>((set, get) => {
             const newVisibleSubfolders = new Set(state.visibleSubfolders);
             if (newVisibleSubfolders.has(subfolderPath)) {
                 newVisibleSubfolders.delete(subfolderPath);
+                console.log('🔴 Hiding subfolder:', subfolderPath);
             } else {
                 newVisibleSubfolders.add(subfolderPath);
+                console.log('🟢 Showing subfolder:', subfolderPath);
             }
+            console.log('📂 Visible subfolders:', Array.from(newVisibleSubfolders));
             const newState = { ...state, visibleSubfolders: newVisibleSubfolders };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        toggleRootVisibility: (directoryPath) => set(state => {
+            const newVisibleRoots = new Set(state.visibleRoots);
+            if (newVisibleRoots.has(directoryPath)) {
+                newVisibleRoots.delete(directoryPath);
+                console.log('🔴 Hiding root:', directoryPath);
+            } else {
+                newVisibleRoots.add(directoryPath);
+                console.log('🟢 Showing root:', directoryPath);
+            }
+            console.log('📁 Visible roots:', Array.from(newVisibleRoots));
+            const newState = { ...state, visibleRoots: newVisibleRoots };
             return { ...newState, ...filterAndSort(newState) };
         }),
 
