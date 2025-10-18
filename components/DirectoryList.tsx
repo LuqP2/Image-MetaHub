@@ -1,10 +1,6 @@
 import React from 'react';
 import { Directory } from '../types';
-
-// Placeholder for icons - you can replace these with actual icon components
-const FolderIcon = () => <span>📁</span>;
-const RefreshIcon = () => <span>🔄</span>;
-const TrashIcon = () => <span>🗑️</span>;
+import { FolderOpen, RotateCcw, Trash2 } from 'lucide-react';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -15,6 +11,20 @@ interface DirectoryListProps {
 }
 
 export default function DirectoryList({ directories, onRemoveDirectory, onUpdateDirectory, onToggleVisibility, isIndexing = false }: DirectoryListProps) {
+  const handleOpenInExplorer = async (path: string) => {
+    try {
+      // Use Electron API to open folder in Explorer/Finder/File Manager
+      const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+      if (isElectron && (window as any).electronAPI.showItemInFolder) {
+        await (window as any).electronAPI.showItemInFolder(path);
+      } else {
+        alert('This feature requires the desktop app. Please use the Image MetaHub application.');
+      }
+    } catch (error) {
+      console.error('Error opening folder:', error);
+      alert('Failed to open folder. Please check the path.');
+    }
+  };
   return (
     <div className="p-4 border-t border-gray-700">
       <h3 className="text-lg font-semibold text-gray-300 mb-3">Folders</h3>
@@ -32,10 +42,14 @@ export default function DirectoryList({ directories, onRemoveDirectory, onUpdate
                 className="mr-2 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
                 title="Show/hide images from this folder"
               />
-              <FolderIcon />
-              <span className="ml-2 text-sm text-gray-300 truncate" title={dir.path}>
+              <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <button
+                onClick={() => handleOpenInExplorer(dir.path)}
+                className="ml-2 text-sm text-gray-300 hover:text-blue-400 hover:underline truncate text-left transition-colors flex-1"
+                title={`Click to open: ${dir.path}`}
+              >
                 {dir.name}
-              </span>
+              </button>
             </div>
             <div className="flex items-center space-x-2">
               <button
@@ -44,7 +58,7 @@ export default function DirectoryList({ directories, onRemoveDirectory, onUpdate
                 className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                 title={isIndexing ? "Cannot refresh during indexing" : "Refresh folder"}
               >
-                <RefreshIcon />
+                <RotateCcw className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onRemoveDirectory(dir.id)}
@@ -52,7 +66,7 @@ export default function DirectoryList({ directories, onRemoveDirectory, onUpdate
                 className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
                 title={isIndexing ? "Cannot remove during indexing" : "Remove folder"}
               >
-                <TrashIcon />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </li>
