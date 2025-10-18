@@ -27,7 +27,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
   return (
     <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700 text-gray-300 flex justify-between items-center">
       <span>
-        {progress ? (
+        {progress && indexingState !== 'idle' ? (
           <>
             {indexingState === 'completed' ? '✅' : indexingState === 'paused' ? '⏸️' : '🔄'}{' '}
             <span className={`font-bold ${
@@ -48,7 +48,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
       </span>
       
       <div className="flex items-center gap-2">
-        {progress && indexingState !== 'completed' && (
+        {progress && indexingState !== 'completed' && indexingState !== 'idle' && (
           <>
             {indexingState !== 'paused' && onPauseIndexing && (
               <button

@@ -185,6 +185,9 @@ export function useImageLoader() {
 
     // AbortController for cancelling ongoing operations
     const abortControllerRef = useRef<AbortController | null>(null);
+    
+    // Timeout for clearing completed state
+    const completedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback(() => {
@@ -308,10 +311,18 @@ export function useImageLoader() {
         setLoading(false);
         setIndexingState('completed');
         
+        // Clear any existing timeout
+        if (completedTimeoutRef.current) {
+            clearTimeout(completedTimeoutRef.current);
+        }
+        
         // Clear the completed state after 3 seconds
-        setTimeout(() => {
+        completedTimeoutRef.current = setTimeout(() => {
             setIndexingState('idle');
             setProgress(null);
+            // Clear finalization key to allow re-indexing
+            delete (window as any)[finalizationKey];
+            completedTimeoutRef.current = null;
         }, 3000);
     }, [setSuccess, setLoading, setIndexingState, setProgress]);
 
@@ -411,10 +422,17 @@ export function useImageLoader() {
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
-            // Only add cached images if this is NOT an update (first load)
-            // On update, cached images are already in the store, no need to re-add
-            if (!isUpdate) {
-                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
+            // Check if cached images are actually in the store (they might have been cleared)
+            const currentStoreImages = useImageStore.getState().images;
+            const missingCachedImages = diff.cachedImages.filter(img => {
+                const imageId = `${directory.id}::${img.name}`;
+                return !currentStoreImages.some(storeImg => storeImg.id === imageId);
+            });
+
+            // Add cached images if this is first load OR if they're missing from the store
+            if (!isUpdate || missingCachedImages.length > 0) {
+                const imagesToAdd = !isUpdate ? diff.cachedImages : missingCachedImages;
+                const finalCachedImages: IndexedImage[] = imagesToAdd.map(img => ({
                     ...img,
                     handle: handleMap.get(img.name)!,
                     directoryId: directory.id,
