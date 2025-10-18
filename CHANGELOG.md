@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Progress Persistence**: Fixed issue where progress display and control buttons remained visible after indexing completion
 - **Null Reference Error**: Fixed runtime error when accessing progress properties when progress is null - added null checks in App.tsx for all progress property accesses
 - **ComfyUI JPEG Metadata Parsing**: Fixed parser selection bug where ComfyUI metadata in JPEG files was incorrectly detected as Fooocus format due to regex `.match()` returning array instead of boolean, preventing proper metadata extraction and display
+- **Midjourney Parser Dimensions**: Fixed incorrect dimension calculation in Midjourney parser that was using aspect ratio values instead of reading actual image dimensions from the file
+- **Niji Journey Parser Dimensions**: Fixed incorrect dimension calculation in Niji Journey parser that was using aspect ratio values instead of reading actual image dimensions from the file
+
+### Added
+- **Midjourney PNG Support**: Added support for Midjourney images stored in PNG format with metadata in 'Description' chunk
 
 ## [0.9.2] - 2025-10-12
 

@@ -27,7 +27,7 @@ import HotkeyHelp from './components/HotkeyHelp';
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
-  console.log('App.tsx loaded');
+  
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, cancelIndexing } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();

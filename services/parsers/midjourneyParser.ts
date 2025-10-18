@@ -43,22 +43,7 @@ export function parseMidjourneyMetadata(parameters: string): BaseMetadata {
     result.model = 'Midjourney';
   }
 
-  // Extract aspect ratio and calculate dimensions
-  const aspectRatioMatch = parameters.match(/--ar\s+(\d+):(\d+)/);
-  if (aspectRatioMatch) {
-    const widthRatio = parseInt(aspectRatioMatch[1]);
-    const heightRatio = parseInt(aspectRatioMatch[2]);
-    // Midjourney default base size is 1024, but we'll use ratios
-    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-    const divisor = gcd(widthRatio, heightRatio);
-    const normalizedWidth = widthRatio / divisor;
-    const normalizedHeight = heightRatio / divisor;
-
-    // Scale to reasonable dimensions (Midjourney uses various sizes)
-    const scale = Math.min(1024 / Math.max(normalizedWidth, normalizedHeight), 1);
-    result.width = Math.round(normalizedWidth * scale);
-    result.height = Math.round(normalizedHeight * scale);
-  }
+  // Note: Aspect ratio is available in parameters but actual dimensions come from image file
 
   // Extract seed if present
   const seedMatch = parameters.match(/--seed\s+(\d+)/);
