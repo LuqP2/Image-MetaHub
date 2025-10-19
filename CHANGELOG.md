@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Steps**
   - **Image Dimensions** (width and height)
   - **Creation Date**
+- **Indexing Control**: Added ability to use application during indexing, pause indexing operations, and cancel indexing processes.
 - **Expanded AI Platform Support**: Added metadata parsers for a wide range of new tools:
   - Fooocus
   - SwarmUI
@@ -33,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Improved Performance**: Replaced the image grid rendering engine to fix numerous layout bugs and dramatically improve scrolling performance and stability, especially with large image collections.
 - **Filter Persistence**: Fixed an issue where sidebar filters would disappear during a folder refresh.
 - **UI Polish**: Corrected various UI issues, including context menus not closing properly.
-- **Indexing Stability**: Operations like adding or reloading folders are now disabled during indexing to prevent errors.
 - **Full Screen**: Fixed full screen mode to properly use the entire screen instead of being limited to the application window.
 
 
