@@ -270,15 +270,10 @@ export default function App() {
       // Get the current lastViewedVersion from the store after rehydration
       const currentLastViewed = useSettingsStore.getState().lastViewedVersion;
       
-      console.log('🔍 Version check:', { currentVersion: version, lastViewedVersion: currentLastViewed });
-      
       // Check if this is a new version since last view (or first run)
       if (currentLastViewed !== version) {
-        console.log('✅ Showing changelog modal - new version or first run');
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
-      } else {
-        console.log('ℹ️ Same version - not showing changelog');
       }
     };
     

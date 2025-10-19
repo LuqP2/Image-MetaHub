@@ -11,8 +11,11 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
   const [changelog, setChangelog] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
+  console.log('🎬 ChangelogModal rendered with:', { isOpen, currentVersion });
+
   useEffect(() => {
     if (isOpen) {
+      console.log('📂 Modal opened, loading changelog...');
       loadChangelog();
     }
   }, [isOpen]);
@@ -25,12 +28,15 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
       try {
         response = await fetch('/CHANGELOG.md');
         text = await response.text();
+        console.log('📄 Changelog loaded from /CHANGELOG.md, length:', text.length);
       } catch (err) {
         // Electron fallback
         try {
           response = await fetch('CHANGELOG.md');
           text = await response.text();
+          console.log('📄 Changelog loaded from CHANGELOG.md, length:', text.length);
         } catch (err2) {
+          console.error('❌ Failed to load changelog from both paths:', err, err2);
           setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
           setLoading(false);
           return;
@@ -38,20 +44,24 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
       }
 
       // Extract only the current version section
-      const versionRegex = new RegExp(`## \\[${currentVersion}\\][\\s\\S]*?(?=## \\[|$)`, 'i');
+      const versionRegex = new RegExp(`## \[${currentVersion}\][\s\S]*?(?=## \[|$)`, 'i');
       const match = text.match(versionRegex);
 
       if (match) {
         setChangelog(match[0]);
+        console.log('✅ Found version section:', currentVersion);
       } else {
         // Fallback: show first version section
-        const firstVersionRegex = /## \[[^\]]+\][\s\\S]*?(?=## \[|$)/;
+        const firstVersionRegex = /## \[[^\]]+\][\s\S]*?(?=## \[|$)/;
         const firstMatch = text.match(firstVersionRegex);
         setChangelog(firstMatch ? firstMatch[0] : text);
+        console.log('⚠️ Version not found, using fallback');
       }
     } catch (error) {
+      console.error('❌ Failed to load changelog:', error);
       setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
     } finally {
+      console.log('🏁 Loading complete');
       setLoading(false);
     }
   };
@@ -64,7 +74,49 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
   const renderMarkdown = (text: string) => {
     // Simple markdown rendering
     const lines = text.split('\n');
-    return lines.map((line, index) => {
+    
+    // ADD TEST BANNER AT THE TOP
+    const result: JSX.Element[] = [
+      <div key="test-banner" style={{ 
+        padding: '20px', 
+        backgroundColor: '#ff0000', 
+        color: '#ffffff',
+        border: '5px solid yellow',
+        marginBottom: '20px',
+        fontSize: '24px',
+        fontWeight: 'bold'
+      }}>
+        🔴🔴🔴 BANNER TEST - HEY LUCAS HERE 🔴🔴🔴
+      </div>
+    ];
+    
+    lines.forEach((line, index) => {
+      // Headers
+      if (line.startsWith('### ')) {
+        result.push(<h3 key={index} className="text-lg font-semibold text-gray-200 mt-4 mb-2">{line.replace('### ', '')}</h3>);
+      }
+      else if (line.startsWith('## ')) {
+        result.push(<h2 key={index} className="text-xl font-bold text-white mt-6 mb-4">{line.replace(/## \[([^\]]+)\].*/, '$1')}</h2>);
+      }
+      // List items
+      else if (line.startsWith('- **')) {
+        const content = line.replace(/^- \*\*([^*]+)\*\*:\s*(.*)/, '<strong>$1</strong>: $2');
+        result.push(<li key={index} className="text-gray-300" dangerouslySetInnerHTML={{ __html: content }} />);
+      }
+      else if (line.startsWith('- ')) {
+        result.push(<li key={index} className="text-gray-300">{line.replace('- ', '')}</li>);
+      }
+      // Empty lines
+      else if (line.trim() === '') {
+        result.push(<div key={index} className="h-2" />);
+      }
+      // Regular text
+      else {
+        result.push(<p key={index} className="text-gray-300 mb-2">{line}</p>);
+      }
+    });
+    
+    return result;
       // Headers
       if (line.startsWith('### ')) {
         return <h3 key={index} className="text-lg font-semibold text-gray-200 mt-4 mb-2">{line.replace('### ', '')}</h3>;
@@ -122,56 +174,45 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             </div>
           ) : (
             <>
-              {/* Developer Message Banner */}
-              <div className="mb-6 p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-700/30 rounded-lg">
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <p className="text-gray-300 text-sm leading-relaxed mb-3">
-                    <strong className="text-purple-300">Hey, I'm Lucas</strong> — the guy behind Image MetaHub.
-                  </p>
-                  <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    I'm not a career coder. I've spent the last 17 years growing my company — a tourism operator I started from scratch. 
-                    It was doing well until early 2025, when it shut its doors. I lost everything, except the stubborn will to build again.
-                  </p>
-                  <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Image MetaHub was born from that chaos. I wanted a tool that could bring order to the avalanche of AI images — 
-                    something fast, offline, and respectful of user privacy.
-                  </p>
-                  <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Seeing this app being downloaded, used, and genuinely helping people has meant the world to me. 
-                    But to be honest, things are tough. I'm rebuilding from zero, living week to week, fully committed to keeping this project alive.
-                  </p>
-                  <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Every small donation or coffee helps me stay afloat and keep improving the app. It really does make a difference.
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <a
-                      href="https://ko-fi.com/lucaspierri"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs bg-purple-600/80 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      ☕ Support on Ko-fi
-                    </a>
-                    <a
-                      href="https://github.com/LuqP2/Image-MetaHub"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs bg-gray-700/80 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      🔧 Contribute on GitHub
-                    </a>
-                  </div>
-                  <p className="text-gray-500 text-xs mt-3 italic">
-                    Thank you for being part of this reconstruction. The best is still ahead. — Lucas
-                  </p>
-                </div>
-              </div>
-
-              {/* Changelog Content */}
-              <div className="prose prose-invert prose-sm max-w-none">
+              {console.log('🎨 Rendering banner and changelog')}
+              
+              {/* Changelog Content FIRST */}
+              <div className="prose prose-invert prose-sm max-w-none mb-6">
                 <ul className="list-disc list-inside space-y-1">
                   {renderMarkdown(changelog)}
                 </ul>
+              </div>
+
+              {/* Developer Message Banner - SIMPLIFIED TEST */}
+              <div style={{ 
+                padding: '20px', 
+                backgroundColor: '#ff0000', 
+                color: '#ffffff',
+                border: '5px solid yellow',
+                marginTop: '20px'
+              }}>
+                <h1 style={{ fontSize: '32px', fontWeight: 'bold' }}>🔴 TESTING BANNER - CAN YOU SEE THIS???</h1>
+                <p style={{ fontSize: '18px' }}>Hey, I'm Lucas — the guy behind Image MetaHub.</p>
+                <p style={{ fontSize: '14px' }}>
+                  I'm not a career coder. I've spent the last 17 years growing my company — a tourism operator I started from scratch. 
+                  It was doing well until early 2025, when it shut its doors. I lost everything, except the stubborn will to build again.
+                </p>
+                <a 
+                  href="https://ko-fi.com/lucaspierri"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ 
+                    display: 'inline-block',
+                    padding: '10px 20px',
+                    backgroundColor: '#0000ff',
+                    color: '#ffffff',
+                    marginTop: '10px',
+                    textDecoration: 'none',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ☕ Support on Ko-fi
+                </a>
               </div>
             </>
           )}
