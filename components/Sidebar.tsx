@@ -156,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {children}
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-sidebar">
         {/* Models Section */}
         {availableModels.length > 0 && (
           <div className="border-b border-gray-700">
@@ -201,7 +201,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto">
+                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
                     {availableModels
                       .filter(model => typeof model === 'string' && model.trim() !== '')
                       .map((model, index) => (
@@ -266,7 +266,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto">
+                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
                     {availableLoras
                       .filter(lora => typeof lora === 'string' && lora.trim() !== '')
                       .map((lora, index) => (
@@ -331,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto">
+                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
                     {availableSchedulers
                       .filter(scheduler => typeof scheduler === 'string' && scheduler.trim() !== '')
                       .map((scheduler, index) => (

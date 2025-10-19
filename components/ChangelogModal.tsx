@@ -116,13 +116,24 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t border-gray-700 bg-gray-900/50">
-          <button
-            onClick={openGitHubReleases}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-accent transition-colors"
-          >
-            <ExternalLink size={16} />
-            View Full Release Notes
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={openGitHubReleases}
+              className="flex items-center gap-2 text-sm text-gray-400 hover:text-accent transition-colors"
+            >
+              <ExternalLink size={16} />
+              View Full Release Notes
+            </button>
+            <a
+              href="https://www.imagemetahub.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              <ExternalLink size={16} />
+              A message from the dev
+            </a>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-accent hover:bg-blue-700 text-white rounded-lg transition-colors"

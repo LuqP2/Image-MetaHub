@@ -17,3 +17,53 @@
 .masonry-grid_column > div {
   margin-bottom: 16px;
 }
+
+/* Custom Scrollbar Styles */
+
+/* Sidebar main scrollbar - normal width, standard look */
+.scrollbar-sidebar {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(75, 85, 99, 0.8) rgba(31, 41, 55, 0.3);
+}
+
+.scrollbar-sidebar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.scrollbar-sidebar::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.3);
+  border-radius: 6px;
+}
+
+.scrollbar-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.8);
+  border-radius: 6px;
+  border: 2px solid rgba(31, 41, 55, 0.3);
+}
+
+.scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.9);
+}
+
+/* Filter sections scrollbar - thin, more subtle */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.4) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.4);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.6);
+}

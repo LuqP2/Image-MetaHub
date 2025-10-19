@@ -23,6 +23,7 @@
     "release-workflow": "node release-workflow.js",
     "auto-release": "node auto-release.js",
     "reset-cache": "node reset-cache.js",
+    "sync-changelog": "node sync-changelog.js",
     "test": "vitest",
     "cli:parse": "tsx cli.ts parse",
     "cli:index": "tsx cli.ts index"

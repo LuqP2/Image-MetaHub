@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Filter Persistence**: Fixed an issue where sidebar filters would disappear during a folder refresh.
 - **UI Polish**: Corrected various UI issues, including context menus not closing properly.
 - **Indexing Stability**: Operations like adding or reloading folders are now disabled during indexing to prevent errors.
+- **Full Screen**: Fixed full screen mode to properly use the entire screen instead of being limited to the application window.
+
 
 ### Technical Improvements
 

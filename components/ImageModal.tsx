@@ -508,17 +508,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
-            <div className="relative group">
-              <button
-                disabled
-                className="bg-gray-500 text-gray-300 px-3 py-1 rounded-lg text-xs font-medium cursor-not-allowed"
-              >
-                Analyze
-              </button>
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max bg-black/80 text-white text-xs rounded-lg py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                Pro Feature
-              </div>
-            </div>
           </div>
 
           <div>

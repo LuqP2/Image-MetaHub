@@ -52,3 +52,6 @@ test-woman.cjs
 ANALISE-PERFORMANCE.md
 OTIMIZACAO-1-IMPLEMENTADA.md
 favorites-development-issues.md
+
+# Development changelog (local only - see DECISIONS.md for permanent record)
+development-changelog.md

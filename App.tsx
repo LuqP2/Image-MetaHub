@@ -89,7 +89,6 @@ export default function App() {
     viewMode,
     toggleViewMode,
     theme,
-    lastViewedVersion,
     setLastViewedVersion,
   } = useSettingsStore();
 
@@ -253,6 +252,9 @@ export default function App() {
   // Get app version and check if we should show changelog
   useEffect(() => {
     const checkForNewVersion = async () => {
+      // Wait for Zustand persistence to rehydrate
+      await useSettingsStore.persist.rehydrate();
+      
       let version = '0.9.2'; // Default fallback version
       
       if (window.electronAPI && window.electronAPI.getAppVersion) {
@@ -265,15 +267,23 @@ export default function App() {
       
       setCurrentVersion(version);
       
-      // Check if this is a new version since last view
-      if (lastViewedVersion !== version) {
+      // Get the current lastViewedVersion from the store after rehydration
+      const currentLastViewed = useSettingsStore.getState().lastViewedVersion;
+      
+      console.log('🔍 Version check:', { currentVersion: version, lastViewedVersion: currentLastViewed });
+      
+      // Check if this is a new version since last view (or first run)
+      if (currentLastViewed !== version) {
+        console.log('✅ Showing changelog modal - new version or first run');
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
+      } else {
+        console.log('ℹ️ Same version - not showing changelog');
       }
     };
     
     checkForNewVersion();
-  }, [lastViewedVersion, setLastViewedVersion]);
+  }, []); // Run only once on mount
 
   // Listen for menu events
   useEffect(() => {
