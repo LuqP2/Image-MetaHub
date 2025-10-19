@@ -1,5 +1,0 @@
-{
-  "name": "InvokeAI Local Image Search",
-  "description": "A local, offline-first tool to rapidly search through InvokeAI-generated images in a specific folder by leveraging their embedded metadata. Find images by prompt, model, or any other generation parameter.",
-  "requestFramePermissions": []
-}
