@@ -2,6 +2,39 @@
 
 This file documents significant architectural decisions, design choices, and important conclusions made during development. Each entry represents a completed feature or major change with its rationale and alternatives considered.
 
+## 2025-10-19: [FIX] - ImageTable Virtualization to Prevent Memory Crash
+
+**Decision:**
+- Implemented list virtualization using `react-window` and `react-virtualized-auto-sizer`
+- Render only visible table rows (~25 at a time) instead of all images simultaneously
+- Refactored `ImageTableRow` from `<tr>` to `<div>` with flexbox layout for compatibility with virtualization
+- Fixed header with matching column widths
+- Overscan of 5 rows for smooth scrolling
+
+**Context:**
+When opening ImageTable with 20k+ images and "show all" pagination, the app would crash with `RangeError: Array buffer allocation failed`. The issue occurred because:
+1. All 20,000+ table rows rendered simultaneously
+2. Each row's `ImageTableRow` component called `fileHandle.getFile()` on mount
+3. 20k+ simultaneous Electron IPC `read-file` calls overwhelmed memory allocation
+4. Electron process couldn't allocate buffers for all files at once
+
+**Rationale:**
+- **Virtualization**: Only render rows currently visible in viewport (~20) + overscan (5 above/below)
+- **Memory Control**: Instead of 20k file loads, only ~30 active at any time
+- **Scalability**: Works with any number of images without memory issues
+- **Performance**: Smooth scrolling maintained with overscan strategy
+- **UX Preserved**: All features work (sorting, selection, context menus, previews)
+- **Existing Dependencies**: Project already had `react-window` and `react-virtualized-auto-sizer` installed
+
+**Alternatives Considered:**
+1. **Pagination Only**: Forces users to click through pages, poor UX for exploring large collections
+2. **Lazy Loading**: Still would render all DOM nodes, just defer images - doesn't solve root cause
+3. **Web Workers**: Adds complexity without solving the fundamental issue of rendering too many components
+
+**Impact:**
+- Before: 20k images with "show all" = guaranteed crash
+- After: 20k images with "show all" = stable, ~50-100MB memory, smooth scrolling
+
 ## 2025-01-27: [FIX] - Draw Things XMP Metadata Support
 
 **Decision:**

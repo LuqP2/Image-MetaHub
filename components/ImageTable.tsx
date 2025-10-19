@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { FixedSizeList as List } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
@@ -22,7 +24,6 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const {
     contextMenu,
     showContextMenu,
-    hideContextMenu,
     copyPrompt,
     copyNegativePrompt,
     copySeed,
@@ -135,74 +136,107 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     setSortedImages(sorted);
   }, [images, sortField, sortDirection]);
 
+  // Row renderer for virtualized list
+  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const image = sortedImages[index];
+    return (
+      <div style={style}>
+        <ImageTableRow
+          image={image}
+          onImageClick={onImageClick}
+          isSelected={selectedImages.has(image.id)}
+          onContextMenu={handleContextMenu}
+        />
+      </div>
+    );
+  };
+
+  const ROW_HEIGHT = 64; // Height of each table row in pixels
+  const HEADER_HEIGHT = 48; // Height of table header
+
   return (
-    <div className="h-full overflow-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-800 sticky top-0 z-10">
-          <tr className="border-b border-gray-700">
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider">Preview</th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('filename')}
+    <div className="h-full flex flex-col">
+      {/* Fixed Header */}
+      <div className="bg-gray-800 border-b border-gray-700" style={{ height: HEADER_HEIGHT }}>
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider" style={{ width: '80px' }}>Preview</th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('filename')}
+                style={{ width: '250px' }}
+              >
+                <div className="flex items-center gap-1">
+                  Filename {getSortIcon('filename')}
+                </div>
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('model')}
+                style={{ width: '200px' }}
+              >
+                <div className="flex items-center gap-1">
+                  Model {getSortIcon('model')}
+                </div>
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('steps')}
+                style={{ width: '100px' }}
+              >
+                <div className="flex items-center gap-1">
+                  Steps {getSortIcon('steps')}
+                </div>
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('cfg')}
+                style={{ width: '100px' }}
+              >
+                <div className="flex items-center gap-1">
+                  CFG {getSortIcon('cfg')}
+                </div>
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('size')}
+                style={{ width: '120px' }}
+              >
+                <div className="flex items-center gap-1">
+                  Size {getSortIcon('size')}
+                </div>
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
+                onClick={() => handleSort('seed')}
+                style={{ width: '150px' }}
+              >
+                <div className="flex items-center gap-1">
+                  Seed {getSortIcon('seed')}
+                </div>
+              </th>
+            </tr>
+          </thead>
+        </table>
+      </div>
+
+      {/* Virtualized Content */}
+      <div className="flex-1 overflow-hidden">
+        <AutoSizer>
+          {({ height, width }: { height: number; width: number }) => (
+            <List
+              height={height}
+              itemCount={sortedImages.length}
+              itemSize={ROW_HEIGHT}
+              width={width}
+              overscanCount={5}
             >
-              <div className="flex items-center gap-1">
-                Filename {getSortIcon('filename')}
-              </div>
-            </th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('model')}
-            >
-              <div className="flex items-center gap-1">
-                Model {getSortIcon('model')}
-              </div>
-            </th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('steps')}
-            >
-              <div className="flex items-center gap-1">
-                Steps {getSortIcon('steps')}
-              </div>
-            </th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('cfg')}
-            >
-              <div className="flex items-center gap-1">
-                CFG {getSortIcon('cfg')}
-              </div>
-            </th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('size')}
-            >
-              <div className="flex items-center gap-1">
-                Size {getSortIcon('size')}
-              </div>
-            </th>
-            <th 
-              className="px-3 py-3 text-left text-xs font-semibold text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-700/50 transition-colors"
-              onClick={() => handleSort('seed')}
-            >
-              <div className="flex items-center gap-1">
-                Seed {getSortIcon('seed')}
-              </div>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedImages.map((image) => (
-            <ImageTableRow
-              key={image.id}
-              image={image}
-              onImageClick={onImageClick}
-              isSelected={selectedImages.has(image.id)}
-              onContextMenu={handleContextMenu}
-            />
-          ))}
-        </tbody>
-      </table>
+              {Row}
+            </List>
+          )}
+        </AutoSizer>
+      </div>
 
       {contextMenu.visible && (
         <div
@@ -346,14 +380,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
   };
 
   return (
-    <tr
-      className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group ${
+    <div
+      className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group flex items-center ${
         isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
+      style={{ height: '64px' }}
     >
-      <td className="px-3 py-2">
+      <div className="px-3 py-2" style={{ width: '80px' }}>
         <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
@@ -377,14 +412,14 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
             <span className="text-xs text-gray-500">ERR</span>
           )}
         </div>
-      </td>
-      <td className="px-3 py-2 text-gray-300 font-medium max-w-[200px] truncate" title={image.handle.name}>
+      </div>
+      <div className="px-3 py-2 text-gray-300 font-medium truncate" style={{ width: '250px' }} title={image.handle.name}>
         {image.handle.name}
-      </td>
-      <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate" title={image.models?.[0] || 'Unknown'}>
+      </div>
+      <div className="px-3 py-2 text-gray-400 truncate" style={{ width: '200px' }} title={image.models?.[0] || 'Unknown'}>
         {image.models?.[0] || <span className="text-gray-600">Unknown</span>}
-      </td>
-      <td className="px-3 py-2 text-center">
+      </div>
+      <div className="px-3 py-2 text-center" style={{ width: '100px' }}>
         {(() => {
           const steps = image.steps || (image.metadata as any)?.steps || (image.metadata as any)?.normalizedMetadata?.steps;
           return steps ? (
@@ -399,8 +434,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
             <span className="text-gray-600 text-xs">—</span>
           );
         })()}
-      </td>
-      <td className="px-3 py-2 text-center text-gray-400">
+      </div>
+      <div className="px-3 py-2 text-center text-gray-400" style={{ width: '100px' }}>
         {(() => {
           const cfg = image.cfgScale || (image.metadata as any)?.cfg_scale || (image.metadata as any)?.cfgScale || (image.metadata as any)?.normalizedMetadata?.cfg_scale;
           return cfg ? (
@@ -409,8 +444,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
             <span className="text-gray-600 text-xs">—</span>
           );
         })()}
-      </td>
-      <td className="px-3 py-2 text-gray-400 font-mono text-xs">
+      </div>
+      <div className="px-3 py-2 text-gray-400 font-mono text-xs" style={{ width: '120px' }}>
         {(() => {
           const dims = image.dimensions || 
                       (image.metadata as any)?.dimensions ||
@@ -419,14 +454,14 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
                         : null);
           return dims || <span className="text-gray-600">—</span>;
         })()}
-      </td>
-      <td className="px-3 py-2 text-gray-500 font-mono text-xs max-w-[100px] truncate" title={(image.seed || (image.metadata as any)?.seed || (image.metadata as any)?.normalizedMetadata?.seed)?.toString()}>
+      </div>
+      <div className="px-3 py-2 text-gray-500 font-mono text-xs truncate" style={{ width: '150px' }} title={(image.seed || (image.metadata as any)?.seed || (image.metadata as any)?.normalizedMetadata?.seed)?.toString()}>
         {(() => {
           const seed = image.seed || (image.metadata as any)?.seed || (image.metadata as any)?.normalizedMetadata?.seed;
           return seed || <span className="text-gray-600">—</span>;
         })()}
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 };
 

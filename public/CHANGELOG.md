@@ -7,39 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.2] - 2025-10-18
 
-### 🎯 Major Features
+### Added
+- **Native Menu Bar**: Added native application menu (File, Edit, View, Window, Help) with keyboard shortcuts
+- **What's New Modal**: Changelog modal that appears on first startup after update, accessible via Help menu (F1)
+- **Version Tracking**: Automatic detection of app version changes to show changelog on updates
+- **Draw Things Parser**: Complete support for Draw Things (iOS/Mac AI app) generated images with XMP metadata parsing
+- **Midjourney PNG Support**: Support for Midjourney images stored in PNG format with metadata in 'Description' chunk
+- **SD.Next Parser**: Dedicated parser for SD.Next images with proper detection and metadata extraction
+- **Niji Journey Support**: Complete metadata parsing for Niji Journey images with parameter extraction
+- **DreamStudio Support**: Full support for DreamStudio (Stability AI) generated images
+- **Forge Support**: Complete support for Forge (A1111-based) generated images with hires upscaling parameters
+- **Easy Diffusion Support**: Sidecar JSON and embedded metadata parsing for Easy Diffusion images
+- **SwarmUI Support**: Complete metadata parsing with model and LoRA detection
+- **DALL-E 3 Support**: C2PA/EXIF metadata parsing for OpenAI DALL-E 3 images
 
-- **Advanced Filters**: Range sliders for Steps, CFG Scale, Dimensions, and Date filtering - find exactly what you're looking for
-- **Table View Mode**: New list/table view for browsing images with detailed metadata columns alongside the grid view (toggle with Ctrl+L)
-- **Keyboard Shortcuts**: Comprehensive hotkeys for productivity - Shift+Click for range selection, quick view switching, and common actions
-- **Work While Indexing**: Browse and filter images immediately while indexing continues in background with pause/resume/cancel controls
-- **Subfolder Control**: Toggle recursive subfolder scanning on/off per folder for better organization and faster loading
+### Fixed
+- **Indexing Controls**: Fixed pause/resume/cancel button visibility and functionality during directory indexing
+- **Progress Display**: Corrected progress text to show "Indexing: X/Y files processed" instead of "Found X of X images"
+- **Null Reference Error**: Fixed runtime error when accessing progress properties - added null checks in App.tsx
+- **ComfyUI JPEG Parsing**: Fixed parser selection bug where ComfyUI metadata in JPEG files was incorrectly detected as Fooocus format
+- **Dimension Calculation**: Fixed incorrect dimension calculation in Midjourney and Niji Journey parsers
+- **Added Vitest:** Integrated the Vitest testing framework and configured it with a `jsdom` environment.
+- **Added Unit Tests:** Created an initial test suite for the `automatic1111Parser`, demonstrating how to write effective unit tests for the application's parsers.
+- **Added ESLint:** Set up ESLint with a modern `eslint.config.js` configuration, including rules for TypeScript and React.
+- **Configured ESLint Rules:** Established a practical ESLint ruleset that flags potential issues without being overly disruptive, such as downgrading `no-explicit-any` to a warning.
+- **Progressive Loading**: Removed blocking loading overlay after first batch of images, allowing immediate navigation while indexing continues in background
+- **Indexing Progress Display**: Status bar now shows real-time indexing progress ("🔄 Indexing: 200 / 21727 files processed") instead of generic loading message
+- **Newest Files First**: Files are now sorted by modification date (newest first) during indexing for better user experience with recent images
+- **Indexing Safety Controls**: Disabled Add Folder, Reload Folder, and Delete/Rename buttons during indexing to prevent conflicts and data corruption
+- **Incremental Filter Updates**: Fixed sidebar filters disappearing during refresh by updating filter options incrementally as images are processed
+- **Feedback & Bugs Button**: Added a feedback and bug reporting button in the header that links to the GitHub issues page
+- **Keyboard Shortcuts**: Added comprehensive keyboard shortcuts for better productivity, including Shift+Click for range selection, view mode switching, and quick access to common actions
+- **List View Mode**: Added a new table view mode for browsing images in a detailed list format alongside the existing grid view
+- **Context Menu Support**: Added right-click context menu to ImageGrid and ImageTable with the same options as ImageModal (copy prompt, seed, model, show in folder, export image) when a single image is selected
 
-### 🖼️ New Format Support
+### Fixed
+- **Context Menu Auto-Close**: Fixed ImageModal context menu not closing when clicking outside the menu - now closes when clicking anywhere within the modal except the menu itself
+- **Refresh Filter Loss**: Fixed issue where sidebar filters would disappear during folder refresh operations
 
-- **Midjourney**: Full PNG support with parameter extraction (--v, --ar, --q, --s, --seed)
-- **Niji Journey**: Complete support for Niji Journey anime-style generations with parameter parsing
-- **SD.Next**: Dedicated parser for SD.Next generated images
-- **Draw Things**: Complete support for iOS/Mac Draw Things app with XMP metadata
-- **Fooocus**: Support for Fooocus-generated images with metadata extraction
-- **Forge**: A1111-based Forge with hires upscaling parameters
-- **Easy Diffusion**: Sidecar JSON and embedded metadata support
-- **SwarmUI**: Full metadata parsing with model and LoRA detection
+### Changed
+- **Image Grid Virtualization**: Migrated the main image grid from `react-virtualized` Masonry to `react-window` FixedSizeGrid for improved performance and stability with large collections (20k+ images)
+- **Dynamic Column Calculation**: Grid now adapts column count and cell size responsively to zoom and window size, eliminating layout bugs and overflows
+- **Consistent Thumbnail Layout**: Fixed issues with overlapping, excessive spacing, and unpredictable cell heights during zoom in/out
+- **Simplified Codebase**: Removed complex Masonry logic and cell measurement, making the grid code easier to maintain and debug
+- **Performance**: Achieved smooth scrolling and instant rendering even with tens of thousands of images
 
+### Technical Improvements
+- **Enhanced ComfyUI Parser - Phase 1**: Aggressive payload detection with multiple decompression strategies (JSON, Base64, zlib/gzip) and regex fallback for robust metadata extraction
+- **Parser Telemetry**: Local logging system for debugging with detection method tracking, unknown nodes count, and warnings (no external data exfiltration)
+- **Intelligent Fallback Parsing**: Regex-based parameter extraction from text strings when structured parsing fails (Prompt, Steps, CFG, Sampler, Seed, Model)
+- **Payload Detection**: Checks all PNG chunks for ComfyUI indicators (comfyui, workflow, nodes, class_type) and detects large JSON blocks via regex
+- **Layered Decompression**: Try-catch layers for JSON.parse, Base64 decode, and zlib inflate with magic byte detection (\x78\x9c for zlib)
+- **Enhanced ComfyUI Parser - Phase 2**: Advanced parameter extraction with multiple seed formats, model hash mapping, and comprehensive modifier detection
+- **Advanced Seed Extraction**: Support for numeric, hex (0x), and derived seeds with approximateSeed flag for randomized seeds
+- **Model Hash Mapping**: Automatic mapping of unknown models to "unknown (hash: xxxx)" format when model name unavailable
+- **ControlNet/LoRA/VAE Detection**: Comprehensive extraction with weights, modules, and applied_to information from loader and apply nodes
+- **Edit History Tracking**: Parse SaveImage and LoadImage nodes to reconstruct image generation workflow history
+- **ComfyUI Version Detection**: Automatic extraction of ComfyUI version from workflow metadata
+- **Enhanced ComfyUI Parser - Phase 3 (Testing & CLI)**: Comprehensive test suite with 13 test cases covering all parser features, CLI tooling for developers
+- **Automated Testing**: Vitest test suite with fixtures for basic workflows, LoRA, ControlNet, hex seeds, model hashes, edit history, and version detection
+- **Test Coverage**: 13/13 tests passing covering detection methods, error handling, telemetry, and advanced features
+- **CLI Tooling**: New `imagemetahub-cli` command-line tool for parsing single files and batch indexing directories
+- **Developer Documentation**: Added "Common Failure Modes" and "How to Add a New Node" sections to COMFYUI-PARSER-GUIDE.md with real-world examples
+- **Modular Parser Architecture**: Extended parser factory to include Midjourney, Forge, Easy Diffusion, SwarmUI, and DALL-E format detection and parsing
+- **Parameter Flag Detection**: Intelligent detection of Midjourney parameter flags for format identification
+- **Extended Parser Architecture**: Added Forge parser to the modular parser factory with intelligent format detection
+- **A1111 Compatibility**: Forge parser reuses A1111 parsing logic while adding Forge-specific features
+- **Hires Parameter Support**: Extraction of high-resolution upscaling parameters (upscaler, upscale factor, steps, denoising)
+- **Sidecar JSON Detection**: Automatic detection of .json files with same name as images (e.g., image.png + image.json)
+- **Electron-Compatible File Reading**: Uses electronAPI.readFile for secure file access
+- **Fallback Mechanism**: Falls back to embedded PNG metadata if sidecar JSON unavailable
+- **Type-Safe JSON Parsing**: Proper TypeScript interfaces for Easy Diffusion JSON format
+- **Parameter-based Parsing**: Added regex-based parsing for Easy Diffusion's text format (Prompt, Negative prompt, Steps, CFG scale, etc.)
+- **Enhanced Metadata Detection**: Improved automatic format detection to recognize SwarmUI's sui_image_params structure
+- **C2PA/EXIF Parsing**: Offline parsing of C2PA manifests and EXIF metadata for DALL-E images
+- **File Processing Order**: Changed file processing order to sort by lastModified date descending (newest first) for better user experience
+- **UI Safety During Indexing**: Added isIndexing prop to Header, DirectoryList, and ImageModal components to disable destructive operations during indexing
+- **IPC Listener Management**: Added onIndexingProgress, onIndexingBatchResult, onIndexingError, and onIndexingComplete listeners to preload.js for real-time indexing feedback
+- **Batch Processing Logic**: Modified handleBatchProcessed callback to remove loading overlay after first batch while continuing to add images progressively
 
-### ⚡ Performance & UI
-
-- **Grid Performance**: Massive improvement for large collections (20k+ images) - smooth scrolling and instant rendering
-- **Progressive Loading**: Images appear immediately in batches while indexing continues in background
-- **Context Menus**: Right-click support in grid and table views with copy options and file actions
-- **Native Menu Bar**: Application menu (File, Edit, View, Window, Help) with keyboard shortcuts
-
-### 🛠️ Fixed
-
-- **Indexing Controls**: Fixed pause/resume/cancel buttons and real-time progress display
-- **ComfyUI JPEG**: Fixed parser detection issues with JPEG files
-- **Filter Persistence**: Fixed filters disappearing during folder refresh
-- **Context Menu**: Fixed menu not closing properly when clicking outside
+### Changed
+- **Progressive Loading Implementation**: Modified useImageLoader.ts to remove loading overlay after first batch and show images progressively during indexing
+- **Status Bar Enhancement**: Updated StatusBar.tsx to display indexing progress with file counts when indexing is active
+- **File Processing Order**: Changed file processing order to sort by lastModified date descending (newest first) for better user experience
+- **UI Safety During Indexing**: Added isIndexing prop to Header, DirectoryList, and ImageModal components to disable destructive operations during indexing
+- **Filter Synchronization**: The addImages function in the store now recalculates available filters whenever new images are added
+- **Reusable Filter Recalculation**: Created a reusable helper function for recalculating filters that modifies all actions that alter the image list (addImages, removeImages, clearImages, etc.) - this ensures sidebar filters are always synchronized with visible images
 
 ## [0.9.1] - 2025-10-08
 
