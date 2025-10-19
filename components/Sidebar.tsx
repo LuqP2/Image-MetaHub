@@ -177,16 +177,25 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 {selectedModels.length > 0 && (
-                  <button
+                  <span
                     onClick={(e) => {
                       e.stopPropagation();
                       clearSection('models');
                     }}
-                    className="text-xs text-gray-400 hover:text-red-400"
+                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                     title="Clear model filters"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearSection('models');
+                      }
+                    }}
                   >
                     <X size={16} />
-                  </button>
+                  </span>
                 )}
                 <ChevronDown
                   className={`w-4 h-4 transform transition-transform ${expandedSections.models ? 'rotate-180' : ''}`}
@@ -242,16 +251,25 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 {selectedLoras.length > 0 && (
-                  <button
+                  <span
                     onClick={(e) => {
                       e.stopPropagation();
                       clearSection('loras');
                     }}
-                    className="text-xs text-gray-400 hover:text-red-400"
+                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                     title="Clear LoRA filters"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearSection('loras');
+                      }
+                    }}
                   >
                     <X size={16} />
-                  </button>
+                  </span>
                 )}
                 <ChevronDown
                   className={`w-4 h-4 transform transition-transform ${expandedSections.loras ? 'rotate-180' : ''}`}
@@ -307,16 +325,25 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 {selectedSchedulers.length > 0 && (
-                  <button
+                  <span
                     onClick={(e) => {
                       e.stopPropagation();
                       clearSection('schedulers');
                     }}
-                    className="text-xs text-gray-400 hover:text-red-400"
+                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                     title="Clear scheduler filters"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clearSection('schedulers');
+                      }
+                    }}
                   >
                     <X size={16} />
-                  </button>
+                  </span>
                 )}
                 <ChevronDown
                   className={`w-4 h-4 transform transition-transform ${expandedSections.schedulers ? 'rotate-180' : ''}`}
