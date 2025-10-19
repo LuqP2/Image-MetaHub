@@ -152,11 +152,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {/* Render children, which will be the DirectoryList */}
-      {children}
-
-      {/* Scrollable Content */}
+      {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
+        {/* Render children, which will be the DirectoryList */}
+        {children}
+
         {/* Models Section */}
         {availableModels.length > 0 && (
           <div className="border-b border-gray-700">

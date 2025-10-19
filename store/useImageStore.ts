@@ -120,58 +120,37 @@ export const useImageStore = create<ImageState>((set, get) => {
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
         );
         
-        // Filter by directory visibility and subfolder visibility
-        let results = images.filter(img => {
+        let results = images.filter((img) => {
             // First check if the directory is visible
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
             }
-            
-            // Check subfolder visibility logic
-            if (img.id) {
-                // Extract the directory path from the image's directory
-                const parentDir = directories.find(d => d.id === img.directoryId);
-                if (parentDir) {
-                    const parentPath = parentDir.path;
-                    
-                    // The id format is: directoryId::relativePath
-                    // Extract the relative path part after `::`
-                    const idParts = img.id.split('::');
-                    if (idParts.length === 2) {
-                        const relativePath = idParts[1];
-                        const pathParts = relativePath.split(/[/\\]/).filter(p => p);
-                        
-                        // If there's more than just the filename (meaning it's in a subfolder)
-                        if (pathParts.length > 1) {
-                            const subfolderName = pathParts[0];
-                            const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
-                            
-                            // Only show if this specific subfolder is marked as visible
-                            return visibleSubfolders.has(subfolderPath);
-                        }
-                        
-                        // Image is in root directory
-                        const { visibleRoots } = state;
-                        
-                        // Show root if:
-                        // 1. Root is explicitly marked as visible
-                        // 2. OR no subfolders/roots are selected at all (default: show root)
-                        const hasAnySelection = visibleSubfolders.size > 0 || visibleRoots.size > 0;
-                        
-                        if (visibleRoots.has(parentPath)) {
-                            return true;
-                        }
-                        
-                        if (!hasAnySelection) {
-                            return true;
-                        }
-                        
-                        return false;
-                    }
+
+            // Extract the directory path from the image's directory
+            const parentDir = directories.find((d) => d.id === img.directoryId);
+            if (!parentDir) return false;
+            const parentPath = parentDir.path;
+
+            // The id format is: directoryId::relativePath
+            const idParts = img.id.split('::');
+            if (idParts.length === 2) {
+                const relativePath = idParts[1];
+                const pathParts = relativePath.split(/[/\\]/).filter((p) => p);
+
+                // Subfolder image
+                if (pathParts.length > 1) {
+                    const subfolderName = pathParts[0];
+                    const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
+                    // Show if this subfolder is visible, or if no subfolders/roots are selected (default: show all)
+                    if (visibleSubfolders.size === 0 && visibleRoots.size === 0) return true;
+                    return visibleSubfolders.has(subfolderPath);
                 }
+                // Root image
+                if (visibleRoots.size === 0 && visibleSubfolders.size === 0) return true;
+                return visibleRoots.has(parentPath);
             }
-            
-            return true;
+            // If not a recognized id format, show by default
+            return visibleSubfolders.size === 0 && visibleRoots.size === 0;
         });
 
         if (searchQuery) {

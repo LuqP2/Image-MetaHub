@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2025-10-19
+
+### Fixed
+
+- **Critical Bug**: Fixed images not displaying when multiple folders/subfolders were selected. The filtering logic was too restrictive and failed to aggregate images from all selected directories.
+- **Sidebar Scroll Issue**: Fixed DirectoryList occupying entire sidebar height when many subfolders were expanded, making filters inaccessible. DirectoryList now shares the sidebar's unified scroll with filters.
+
+### Improved
+
+- **Consistent UI Design**: DirectoryList now follows the same collapsible design pattern as filter sections (Models, LoRAs, Schedulers) with expand/collapse button and item counter.
+- **Better Navigation**: Single unified scrollbar for the entire sidebar improves navigation between folders and filters.
+
 ## [0.9.2] - 2025-10-19
 
 ### Features

@@ -112,11 +112,29 @@ export default function DirectoryList({
     }
   };
 
+  const [isExpanded, setIsExpanded] = React.useState(true);
+
   return (
-    <div className="p-4 border-t border-gray-700">
-      <h3 className="text-lg font-semibold text-gray-300 mb-3">Folders</h3>
-      <ul className="space-y-1">
-        {directories.map((dir) => (
+    <div className="border-b border-gray-700">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+      >
+        <div className="flex items-center space-x-2">
+          <span className="text-gray-300 font-medium">Folders</span>
+          <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
+            {directories.length}
+          </span>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {isExpanded && (
+        <div className="px-4 pb-4">
+          {/* No scroll here - uses parent sidebar scroll */}
+          <ul className="space-y-1">
+            {directories.map((dir) => (
           <li key={dir.id}>
             <div className="flex items-center justify-between bg-gray-800 p-2 rounded-md">
               <div className="flex items-center overflow-hidden flex-1">
@@ -238,7 +256,9 @@ export default function DirectoryList({
             )}
           </li>
         ))}
-      </ul>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
