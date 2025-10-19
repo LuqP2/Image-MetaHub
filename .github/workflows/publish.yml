@@ -77,7 +77,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Uploading Windows assets for v$VERSION"
           for file in dist-electron/*; do
-            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"latest.yml" ]] || [[ "$file" == *"Setup"*".exe.blockmap" ]]; then
+            if [[ "$file" == *"Setup"*".exe" ]] || [[ "$file" == *"latest.yml" ]] || [[ "$file" == *"Setup"*".exe.blockmap" ]] || [[ "$file" == *".zip" ]]; then
               echo "Uploading $file..."
               gh release upload v$VERSION "$file" --clobber
             fi
