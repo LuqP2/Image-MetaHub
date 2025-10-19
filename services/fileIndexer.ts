@@ -652,31 +652,12 @@ export async function processFiles(
     return;
   }
 
-  const currentFiles = fileEntries.map((entry) => ({
-    name: entry.handle.name,
-    lastModified: entry.lastModified,
-  }));
-
-  const diff = await cacheManager.validateCacheAndGetDiff(
-    directoryId,
-    directoryName,
-    currentFiles,
-    scanSubfolders
-  );
-
-  if (diff.cachedImages.length > 0) {
-    onBatchProcessed(diff.cachedImages);
-  }
-
-  if (diff.deletedFileIds.length > 0) {
-    onDeletion(diff.deletedFileIds);
-  }
-
-  const filesToProcess = fileEntries.filter((entry) =>
-    diff.newAndModifiedFiles.some((file) => file.name === entry.handle.name)
-  );
-  const imageFiles = filesToProcess.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
-  const total = filesToProcess.length;
+  // NOTE: Cache validation is now done in useImageLoader, NOT here!
+  // This function only processes the files passed to it.
+  // The cached images are already added by useImageLoader before calling this function.
+  
+  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
+  const total = imageFiles.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
   const CONCURRENCY_LIMIT = isElectron ? 50 : 20; // Higher concurrency in Electron (less IPC overhead)
@@ -865,6 +846,27 @@ export async function processFiles(
     return;
   }
 
-  const allImages = [...diff.cachedImages, ...newlyProcessedImages];
-  await cacheManager.cacheData(directoryId, directoryName, allImages, scanSubfolders);
+  // CRITICAL: Get existing cache and merge with newly processed images
+  // This ensures we don't lose previously cached images
+  const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
+  const existingCachedImages = existingCache ? existingCache.metadata.map(m => ({
+    id: m.id,
+    name: m.name,
+    metadataString: m.metadataString,
+    metadata: m.metadata,
+    lastModified: m.lastModified,
+    models: m.models,
+    loras: m.loras,
+    scheduler: m.scheduler,
+    directoryId,
+  } as IndexedImage)) : [];
+
+  // Merge: Keep existing cache + add/update newly processed
+  const newImagesMap = new Map(newlyProcessedImages.map(img => [img.name, img]));
+  const mergedImages = [
+    ...existingCachedImages.filter(img => !newImagesMap.has(img.name)), // Existing that weren't re-processed
+    ...newlyProcessedImages // Newly processed (these override existing with same name)
+  ];
+
+  await cacheManager.cacheData(directoryId, directoryName, mergedImages, scanSubfolders);
 }

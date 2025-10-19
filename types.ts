@@ -14,8 +14,13 @@ export interface ElectronAPI {
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
+  onMenuAddFolder: (callback: () => void) => () => void;
+  onMenuOpenSettings: (callback: () => void) => () => void;
+  onMenuToggleView: (callback: () => void) => () => void;
+  onMenuShowChangelog: (callback: () => void) => () => void;
   testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;

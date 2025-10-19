@@ -1,14 +1,15 @@
 import React from 'react';
-import { Settings, Plus, GalleryHorizontal, Bug } from 'lucide-react';
+import { Settings, Plus, GalleryHorizontal, Bug, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
+  onShowChangelog?: () => void;
   isIndexing?: boolean;
   isIndexingPaused?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, isIndexing = false, isIndexingPaused = false }) => {
+const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, onShowChangelog, isIndexing = false, isIndexingPaused = false }) => {
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between gap-4">

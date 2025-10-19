@@ -464,28 +464,24 @@ export function useImageLoader() {
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
-            // Check if cached images are actually in the store (they might have been cleared)
-            const currentStoreImages = useImageStore.getState().images;
-            const missingCachedImages = diff.cachedImages.filter(img => {
-                const imageId = `${directory.id}::${img.name}`;
-                return !currentStoreImages.some(storeImg => storeImg.id === imageId);
-            });
+            // CRITICAL FIX: Clear directory BEFORE adding cached images to avoid race conditions
+            // This ensures the store is in a clean state before we start adding images
+            if (isUpdate) {
+                clearImages(directory.id);
+            }
 
-            // Add cached images if this is first load OR if they're missing from the store
-            if (!isUpdate || missingCachedImages.length > 0) {
-                const imagesToAdd = !isUpdate ? diff.cachedImages : missingCachedImages;
-                const finalCachedImages: IndexedImage[] = imagesToAdd.map(img => ({
+            // Add cached images (both first load and refresh)
+            if (diff.cachedImages.length > 0) {
+                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
                     ...img,
                     handle: handleMap.get(img.name)!,
                     directoryId: directory.id,
                 }));
-
-                if (finalCachedImages.length > 0) {
-                    addImages(finalCachedImages);
-                }
+                
+                addImages(finalCachedImages);
             }
 
-            // Remove deleted files from the UI
+            // Remove deleted files from the UI (if any were detected)
             if (diff.deletedFileIds.length > 0) {
                 removeImages(diff.deletedFileIds);
             }

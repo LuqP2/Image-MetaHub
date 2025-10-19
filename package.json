@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:app": "node start-dev.js",
+    "prebuild": "node -e \"require('fs').copyFileSync('CHANGELOG.md', 'public/CHANGELOG.md')\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

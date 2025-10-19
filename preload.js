@@ -53,6 +53,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  // Menu event listeners
+  onMenuAddFolder: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('menu-add-folder', handler);
+    return () => {
+      ipcRenderer.removeListener('menu-add-folder', handler);
+    };
+  },
+
+  onMenuOpenSettings: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('menu-open-settings', handler);
+    return () => {
+      ipcRenderer.removeListener('menu-open-settings', handler);
+    };
+  },
+
+  onMenuToggleView: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('menu-toggle-view', handler);
+    return () => {
+      ipcRenderer.removeListener('menu-toggle-view', handler);
+    };
+  },
+
+  onMenuShowChangelog: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('menu-show-changelog', handler);
+    return () => {
+      ipcRenderer.removeListener('menu-show-changelog', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
@@ -70,6 +103,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')

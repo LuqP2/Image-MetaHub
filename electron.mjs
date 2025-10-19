@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -40,6 +40,179 @@ async function saveSettings(settings) {
   }
 }
 // --- End Settings Management ---
+
+// --- Application Menu ---
+function createApplicationMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Add Folder...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-add-folder');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-open-settings');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Alt+F4',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Toggle Grid/List View',
+          accelerator: 'CmdOrCtrl+L',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-toggle-view');
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(process.platform === 'darwin' ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: `What's New (v${app.getVersion()})`,
+          accelerator: 'F1',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu-show-changelog');
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates...',
+          click: async () => {
+            if (autoUpdater) {
+              try {
+                console.log('Manually checking for updates...');
+                await autoUpdater.checkForUpdates();
+              } catch (error) {
+                console.error('Error checking for updates:', error);
+                if (mainWindow) {
+                  dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: 'Update Check',
+                    message: 'Failed to check for updates.',
+                    detail: error.message || 'Please try again later.',
+                    buttons: ['OK']
+                  });
+                }
+              }
+            } else {
+              if (mainWindow) {
+                dialog.showMessageBox(mainWindow, {
+                  type: 'info',
+                  title: 'Update Check',
+                  message: 'Auto-updater is not available in development mode.',
+                  buttons: ['OK']
+                });
+              }
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Documentation',
+          click: async () => {
+            await shell.openExternal('https://github.com/LuqP2/Image-MetaHub#readme');
+          }
+        },
+        {
+          label: 'Report Bug',
+          click: async () => {
+            await shell.openExternal('https://github.com/LuqP2/Image-MetaHub/issues/new');
+          }
+        },
+        {
+          label: 'View on GitHub',
+          click: async () => {
+            await shell.openExternal('https://github.com/LuqP2/Image-MetaHub');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: `About Image MetaHub`,
+          click: () => {
+            if (mainWindow) {
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'About Image MetaHub',
+                message: `Image MetaHub v${app.getVersion()}`,
+                detail: 'A powerful tool for browsing and managing AI-generated images with metadata support for InvokeAI, ComfyUI, A1111, and more.\n\n© 2025 LuqP2',
+                buttons: ['OK']
+              });
+            }
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+// --- End Application Menu ---
 
 // Configure auto-updater
 if (autoUpdater) {
@@ -249,6 +422,9 @@ function createWindow(startupDirectory = null) {
     show: false // Don't show until ready
   });
 
+  // Create application menu
+  createApplicationMenu();
+
   // Set window title to include version (keeps it accurate across builds)
   try {
     const appVersion = app.getVersion();
@@ -348,10 +524,10 @@ app.whenReady().then(async () => {
     }
   }
 
-  createWindow(startupDirectory);
-  
-  // Setup IPC handlers for file operations
+  // Setup IPC handlers for file operations BEFORE creating window
   setupFileOperationHandlers();
+  
+  createWindow(startupDirectory);
 });
 
 // Setup IPC handlers for file operations
@@ -420,6 +596,10 @@ function setupFileOperationHandlers() {
     return {
       shouldUseDarkColors: nativeTheme.shouldUseDarkColors
     };
+  });
+
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
   });
   // --- End Settings IPC ---
 

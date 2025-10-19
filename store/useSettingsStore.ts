@@ -38,6 +38,7 @@ interface SettingsState {
   viewMode: 'grid' | 'list';
   theme: 'light' | 'dark' | 'system';
   keymap: Keymap;
+  lastViewedVersion: string | null;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -50,6 +51,7 @@ interface SettingsState {
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
+  setLastViewedVersion: (version: string) => void;
   resetState: () => void;
 }
 
@@ -71,6 +73,7 @@ export const useSettingsStore = create<SettingsState>()(
       viewMode: 'grid',
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
+      lastViewedVersion: null,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -81,6 +84,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setTheme: (theme) => set({ theme }),
+      setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -102,6 +106,7 @@ export const useSettingsStore = create<SettingsState>()(
         viewMode: 'grid',
         theme: 'system',
         keymap: getDefaultKeymap(),
+        lastViewedVersion: null,
       }),
     }),
     {

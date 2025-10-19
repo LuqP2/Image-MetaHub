@@ -19,6 +19,7 @@ import ActionToolbar from './components/ActionToolbar';
 import { SearchField } from './components/SearchBar';
 import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
+import ChangelogModal from './components/ChangelogModal';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
@@ -88,6 +89,8 @@ export default function App() {
     viewMode,
     toggleViewMode,
     theme,
+    lastViewedVersion,
+    setLastViewedVersion,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -98,6 +101,8 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
+  const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState<string>('0.9.2');
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -233,9 +238,8 @@ export default function App() {
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
-    const electronAPI = window.electronAPI as any;
-    if (electronAPI && typeof electronAPI.onLoadDirectoryFromCLI === 'function') {
-      const unsubscribe = electronAPI.onLoadDirectoryFromCLI((path: string) => {
+    if (window.electronAPI && typeof window.electronAPI.onLoadDirectoryFromCLI === 'function') {
+      const unsubscribe = window.electronAPI.onLoadDirectoryFromCLI((path: string) => {
         if (path) {
           handleLoadFromPath(path);
         }
@@ -245,6 +249,59 @@ export default function App() {
       return unsubscribe;
     }
   }, [handleLoadFromPath]);
+
+  // Get app version and check if we should show changelog
+  useEffect(() => {
+    const checkForNewVersion = async () => {
+      let version = '0.9.2'; // Default fallback version
+      
+      if (window.electronAPI && window.electronAPI.getAppVersion) {
+        try {
+          version = await window.electronAPI.getAppVersion();
+        } catch (error) {
+          console.warn('Failed to get app version from Electron, using fallback:', error);
+        }
+      }
+      
+      setCurrentVersion(version);
+      
+      // Check if this is a new version since last view
+      if (lastViewedVersion !== version) {
+        setIsChangelogModalOpen(true);
+        setLastViewedVersion(version);
+      }
+    };
+    
+    checkForNewVersion();
+  }, [lastViewedVersion, setLastViewedVersion]);
+
+  // Listen for menu events
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubscribeAddFolder = window.electronAPI.onMenuAddFolder(() => {
+      handleSelectFolder();
+    });
+
+    const unsubscribeOpenSettings = window.electronAPI.onMenuOpenSettings(() => {
+      setIsSettingsModalOpen(true);
+    });
+
+    const unsubscribeToggleView = window.electronAPI.onMenuToggleView(() => {
+      toggleViewMode();
+    });
+
+    const unsubscribeShowChangelog = window.electronAPI.onMenuShowChangelog(() => {
+      setIsChangelogModalOpen(true);
+    });
+
+    return () => {
+      unsubscribeAddFolder();
+      unsubscribeOpenSettings();
+      unsubscribeToggleView();
+      unsubscribeShowChangelog();
+    };
+  }, [handleSelectFolder, toggleViewMode]);
 
   // Reset page on filter change
   useEffect(() => {
@@ -449,6 +506,12 @@ export default function App() {
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           />
         )}
+
+        <ChangelogModal
+          isOpen={isChangelogModalOpen}
+          onClose={() => setIsChangelogModalOpen(false)}
+          currentVersion={currentVersion}
+        />
       </div>
     </div>
   );
