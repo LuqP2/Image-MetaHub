@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
+import { cacheManager } from '../services/cacheManager';
 
 export function useImageSelection() {
     const {
@@ -46,6 +47,8 @@ export function useImageSelection() {
         if (!window.confirm(confirmMessage)) return;
 
         const imagesToDelete = Array.from(selectedImages);
+        const deletedImageIds: string[] = [];
+
         for (const imageId of imagesToDelete) {
             const image = images.find(img => img.id === imageId);
             if (image) {
@@ -53,6 +56,7 @@ export function useImageSelection() {
                     const result = await FileOperations.deleteFile(image);
                     if (result.success) {
                         removeImage(imageId);
+                        deletedImageIds.push(imageId);
                     } else {
                         setError(`Failed to delete ${image.name}: ${result.error}`);
                     }
@@ -61,6 +65,11 @@ export function useImageSelection() {
                 }
             }
         }
+
+        if (deletedImageIds.length > 0) {
+            await cacheManager.removeImages(deletedImageIds);
+        }
+
         clearImageSelection();
     }, [selectedImages, images, removeImage, setError, clearImageSelection]);
 

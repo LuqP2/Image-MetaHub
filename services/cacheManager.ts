@@ -276,6 +276,45 @@ class CacheManager {
     });
   }
 
+  async removeImages(imageIds: string[]): Promise<void> {
+    if (!this.db || imageIds.length === 0) {
+        return;
+    }
+
+    return new Promise((resolve, reject) => {
+        const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
+        const cacheStore = transaction.objectStore('cache');
+        const thumbStore = transaction.objectStore('thumbnails');
+        const idsToRemove = new Set(imageIds);
+
+        // Remove thumbnails
+        for (const id of imageIds) {
+            thumbStore.delete(id);
+        }
+
+        // Remove metadata from cache entries
+        const request = cacheStore.openCursor();
+        request.onerror = (event) => reject((event.target as IDBRequest).error);
+        request.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+            if (cursor) {
+                const entry = cursor.value as CacheEntry;
+                const initialCount = entry.metadata.length;
+                entry.metadata = entry.metadata.filter(meta => !idsToRemove.has(meta.id));
+
+                if (entry.metadata.length < initialCount) {
+                    entry.imageCount = entry.metadata.length;
+                    cursor.update(entry);
+                }
+                cursor.continue();
+            }
+        };
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = (event) => reject((event.target as IDBTransaction).error);
+    });
+}
+
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,

@@ -4,9 +4,9 @@ import { BaseMetadata } from '../../types';
 
 describe('parseA1111Metadata', () => {
   it('should return a default object if the parameters string is empty or whitespace', () => {
-    const expected: Partial<BaseMetadata> = { loras: [], models: [], prompt: '' };
+    const expected: Partial<BaseMetadata> = { loras: [], models: [], prompt: '', generator: 'A1111' };
     expect(parseA1111Metadata('')).toEqual(expected);
-    const expectedWhiteSpace: Partial<BaseMetadata> = { loras: [], models: [], prompt: '   ' };
+    const expectedWhiteSpace: Partial<BaseMetadata> = { loras: [], models: [], prompt: '   ', generator: 'A1111' };
     expect(parseA1111Metadata('   ')).toEqual(expectedWhiteSpace);
   });
 
