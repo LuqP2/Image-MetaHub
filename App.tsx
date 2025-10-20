@@ -448,16 +448,19 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              <StatusBar
-                filteredCount={filteredImages.length}
-                totalCount={images.length}
-                directoryCount={directories.length}
-                indexingState={indexingState}
-                progress={progress}
-                onPauseIndexing={handlePauseIndexing}
-                onResumeIndexing={handleResumeIndexing}
-                onCancelIndexing={handleCancelIndexing}
-              />
+              {/* Show StatusBar only during indexing operations */}
+              {(indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed') && (
+                <StatusBar
+                  filteredCount={filteredImages.length}
+                  totalCount={images.length}
+                  directoryCount={directories.length}
+                  indexingState={indexingState}
+                  progress={progress}
+                  onPauseIndexing={handlePauseIndexing}
+                  onResumeIndexing={handleResumeIndexing}
+                  onCancelIndexing={handleCancelIndexing}
+                />
+              )}
 
               <ActionToolbar
                 sortOrder={sortOrder}
@@ -467,6 +470,9 @@ export default function App() {
                 onDeleteSelected={handleDeleteSelectedImages}
                 viewMode={viewMode}
                 onViewModeChange={toggleViewMode}
+                filteredCount={filteredImages.length}
+                totalCount={images.length}
+                directoryCount={directories.length}
               />
 
               <div className="flex-1 min-h-0">

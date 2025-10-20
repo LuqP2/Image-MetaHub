@@ -12,6 +12,9 @@ interface ActionToolbarProps {
   viewMode: 'grid' | 'list';
   onViewModeChange: (mode: 'grid' | 'list') => void;
   onTestBatchReading?: () => void; // Temporary test function
+  filteredCount?: number;
+  totalCount?: number;
+  directoryCount?: number;
 }
 
 const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -22,10 +25,15 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   onDeleteSelected,
   viewMode,
   onViewModeChange,
-  onTestBatchReading
+  onTestBatchReading,
+  filteredCount,
+  totalCount,
+  directoryCount
 }) => {
+  const folderText = directoryCount === 1 ? 'folder' : 'folders';
+  
   return (
-    <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
+    <div className="flex justify-between items-center mb-4 px-4 py-2 bg-gray-800/60 rounded-lg border border-gray-700">
       <div className="flex items-center gap-4">
         <label htmlFor="sortOrder" className="mr-2 text-gray-300">Sort by:</label>
         <select
@@ -39,6 +47,15 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
           <option value="asc">A-Z</option>
           <option value="desc">Z-A</option>
         </select>
+        
+        {filteredCount !== undefined && totalCount !== undefined && directoryCount !== undefined && (
+          <>
+            <div className="border-l border-gray-600 h-6 mx-2"></div>
+            <span className="text-gray-400 text-sm">
+              Displaying <span className="font-semibold text-gray-200">{filteredCount}</span> of <span className="font-semibold text-gray-200">{totalCount}</span> images across <span className="font-semibold text-gray-200">{directoryCount}</span> {folderText}
+            </span>
+          </>
+        )}
         {onTestBatchReading && (
           <button
             onClick={onTestBatchReading}
