@@ -120,6 +120,8 @@ export const useHotkeys = ({
         const previewPane = document.querySelector('[data-area="preview"]');
         if (previewPane && previewPane.contains(activeElement)) {
           hotkeyManager.setScope('preview');
+        } else if (selectedImage) {
+          hotkeyManager.setScope('preview');
         } else {
           hotkeyManager.setScope('global');
         }
@@ -127,6 +129,7 @@ export const useHotkeys = ({
     };
 
     document.addEventListener('focusin', handleFocusChange);
+    handleFocusChange();
 
     // Subscribe to keymap changes and re-bind hotkeys
     const unsubscribe = useSettingsStore.subscribe((state) => {

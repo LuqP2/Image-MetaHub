@@ -3,6 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
+import hotkeyManager from '../services/hotkeyManager';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -104,6 +105,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    hotkeyManager.setScope('preview');
+    return () => {
+      hotkeyManager.setScope('global');
+    };
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -343,32 +351,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     loadImage();
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isRenaming) return;
-      if (event.key === 'Escape') {
-        if (isFullscreen) exitFullscreen();
-        else onClose();
-      }
-      if (event.key === 'ArrowLeft') onNavigatePrevious?.();
-      if (event.key === 'ArrowRight') onNavigateNext?.();
-    };
-
     const handleClickOutside = () => {
       hideContextMenu();
     };
 
-    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('click', handleClickOutside);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleClickOutside);
       if (currentUrl) {
         URL.revokeObjectURL(currentUrl);
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext]);
+  }, [image.handle]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
