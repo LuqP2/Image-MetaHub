@@ -24,6 +24,12 @@ export interface ElectronAPI {
   testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
+  // Update notification methods
+  onUpdateAvailable: (callback: (info: { version: string; releaseNotes?: string; releaseName?: string }) => void) => void;
+  onUpdateProgress: (callback: (progress: { percent: number; bytesPerSecond?: number; transferred?: number; total?: number }) => void) => void;
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
+  startUpdateDownload: () => Promise<void>;
+  installUpdate: () => Promise<void>;
 }
 
 declare global {

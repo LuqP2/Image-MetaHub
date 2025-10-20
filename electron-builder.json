@@ -37,7 +37,7 @@
         "arch": ["x64"]
       }
     ],
-    "category": "Utility",
+    "category": "Graphics",
     "synopsis": "Local image browser for InvokeAI outputs",
     "generateUpdatesFilesForAllChannels": true
   },

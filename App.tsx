@@ -27,6 +27,7 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
+import UpdateNotification from './components/updateNotification';
 
 export default function App() {
   
@@ -541,6 +542,7 @@ export default function App() {
           onClose={() => setIsChangelogModalOpen(false)}
           currentVersion={currentVersion}
         />
+        <UpdateNotification />
       </div>
     </div>
   );

@@ -106,7 +106,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   // TEST ONLY: Simulate update dialog
-  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
+  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog'),
+
+  // Updates
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('update-available', (event, ...args) => callback(...args));
+  },
+  onUpdateProgress: (callback) => {
+    ipcRenderer.on('update-progress', (event, ...args) => callback(...args));
+  },
+  onUpdateDownloaded: (callback) => {
+    ipcRenderer.on('update-downloaded', (event, ...args) => callback(...args));
+  },
+  startUpdateDownload: () => ipcRenderer.invoke('start-update-download'),
+  installUpdate: () => ipcRenderer.invoke('install-update')
 });
 
 // DEBUG: Log that preload script has loaded

@@ -253,80 +253,9 @@ if (autoUpdater) {
 
   autoUpdater.on('update-available', (info) => {
     console.log('Update available:', info.version);
-
-    // Check if user previously skipped this version
-    if (skippedVersions.has(info.version)) {
-      console.log('User previously skipped version', info.version, '- not showing dialog');
-      return;
-    }
-
     if (mainWindow) {
-      // Extract and format changelog from release notes
-      let changelogText = 'No release notes available.';
-      
-      if (info.releaseNotes) {
-        if (typeof info.releaseNotes === 'string') {
-          // Clean up markdown formatting for dialog display
-          changelogText = info.releaseNotes
-            .replace(/#{1,6}\s/g, '') // Remove markdown headers
-            .replace(/\*\*/g, '') // Remove bold markers
-            .replace(/\*/g, '•') // Convert asterisks to bullets
-            .replace(/<[^>]*>/g, '') // Remove HTML tags
-            .trim();
-        } else if (Array.isArray(info.releaseNotes)) {
-          changelogText = info.releaseNotes
-            .map(note => note.note || '')
-            .join('\n')
-            .trim();
-        }
-      }
-
-      // Limit changelog length for dialog (show main highlights only)
-      if (changelogText.length > 400) {
-        changelogText = changelogText.substring(0, 397) + '...';
-      }
-
-      // If still "No release notes available", try to extract from other fields
-      if (changelogText === 'No release notes available.' && info.releaseName) {
-        changelogText = `Release: ${info.releaseName}`;
-      }
-
-      // Add link to full changelog
-      const changelogUrl = `https://github.com/LuqP2/image-metahub/releases/tag/v${info.version}`;
-      const fullMessage = `What's new:\n\n${changelogText}\n\nView full changelog: ${changelogUrl}\n\nWould you like to download this update now?`;
-
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: '🎉 Update Available',
-        message: `Version ${info.version} is ready to download!`,
-        detail: fullMessage,
-        buttons: ['Download Now', 'Download Later', 'Skip this version'],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true
-      }).then((result) => {
-        if (result.response === 0) {
-          // User chose to download - START DOWNLOAD NOW
-          console.log('User accepted update download - starting download...');
-          autoUpdater.downloadUpdate();
-        } else if (result.response === 1) {
-          // User chose "Download Later"
-          console.log('User postponed download - will ask again later');
-          // Ensure no download starts automatically
-        } else {
-          // User chose "Skip this version"
-          console.log('User skipped version', info.version);
-          skippedVersions.add(info.version);
-          // Ensure no download starts automatically
-        }
-      }).catch((error) => {
-        console.error('Error showing update dialog:', error);
-        // If dialog fails, don't download automatically - respect user choice
-        console.log('Dialog failed - not downloading update');
-      });
-    } else {
-      console.log('Main window not available - not downloading update');
-      // Don't download if we can't ask for permission
+      // Instead of showing a dialog, send an event to the renderer process
+      mainWindow.webContents.send('update-available', info);
     }
   });
 
@@ -366,38 +295,8 @@ if (autoUpdater) {
   autoUpdater.on('update-downloaded', (info) => {
     console.log('Update downloaded:', info.version);
     if (mainWindow) {
-      dialog.showMessageBox(mainWindow, {
-        type: 'question',
-        title: 'Update Downloaded',
-        message: `Update ${info.version} downloaded successfully!`,
-        detail: 'The update is ready to install. When would you like to apply it?',
-        buttons: ['Install Now', 'Install on Next Start', 'Cancel'],
-        defaultId: 0,
-        cancelId: 2
-      }).then((result) => {
-        if (result.response === 0) {
-          // Install now
-          console.log('User chose to install update now');
-          autoUpdater.quitAndInstall();
-        } else if (result.response === 1) {
-          // Install on next start - don't restart now
-          console.log('User chose to install update on next start');
-          // The update will be installed automatically on next app launch
-          // No need to call quitAndInstall() here
-        } else {
-          // Cancel - user changed their mind
-          console.log('User cancelled update installation');
-          // Update remains downloaded but not installed
-          // User can still install it later if they change their mind
-        }
-      }).catch((error) => {
-        console.error('Error showing installation dialog:', error);
-        // If dialog fails, don't force install - respect user choice
-        console.log('Installation dialog failed - update will install on next start');
-      });
-    } else {
-      console.log('Main window not available - update will install on next start');
-      // Don't force restart if window is not available
+      // Notify the renderer that the update is ready
+      mainWindow.webContents.send('update-downloaded', info);
     }
   });
 } else {
@@ -589,6 +488,27 @@ function setupFileOperationHandlers() {
       return { success: true, path: cachePath };
     } catch (error) {
       return { success: false, error: error.message };
+    }
+  });
+
+  // Handle starting the update download
+  ipcMain.handle('start-update-download', async () => {
+    if (autoUpdater) {
+      try {
+        await autoUpdater.downloadUpdate();
+        return { success: true };
+      } catch (error) {
+        console.error('Error starting update download:', error);
+        return { success: false, error: error.message };
+      }
+    }
+    return { success: false, error: 'Auto-updater not available' };
+  });
+
+  // Handle installing the update
+  ipcMain.handle('install-update', () => {
+    if (autoUpdater) {
+      autoUpdater.quitAndInstall();
     }
   });
 
