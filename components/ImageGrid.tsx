@@ -121,7 +121,7 @@ interface ImageGridProps {
   selectedImages: Set<string>;
 }
 
-const GUTTER_SIZE = 16; // Space between images
+const GUTTER_SIZE = 8; // Space between images
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
