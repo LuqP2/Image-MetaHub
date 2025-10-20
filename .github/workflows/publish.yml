@@ -58,14 +58,14 @@ jobs:
             gh release create v$VERSION \
               --title "Image MetaHub v$VERSION" \
               --notes-file "$RELEASE_NOTES_FILE" \
-              --latest \
+              --prerelease \
               --draft
           else
             echo "Release notes file not found, creating basic release..."
             gh release create v$VERSION \
               --title "Image MetaHub v$VERSION" \
               --generate-notes \
-              --latest \
+              --prerelease \
               --draft
           fi
         env:
@@ -85,12 +85,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Release
+      - name: Publish Release as Pre-release
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Publishing release v$VERSION..."
-          gh release edit v$VERSION --draft=false
+          echo "Publishing pre-release v$VERSION..."
+          gh release edit v$VERSION --draft=false --prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
