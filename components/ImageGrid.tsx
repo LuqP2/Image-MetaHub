@@ -99,12 +99,12 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         <img
           src={imageUrl}
           alt={image.name}
-          className="w-full h-auto object-cover"
+          className="w-full h-full object-cover"
           loading="lazy"
           onLoad={onImageLoad}
         />
       ) : (
-        <div className="w-full h-48 animate-pulse bg-gray-700"></div>
+        <div className="w-full h-full animate-pulse bg-gray-700"></div>
       )}
       <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
         <p className="text-white text-xs truncate">{image.name}</p>
@@ -121,7 +121,7 @@ interface ImageGridProps {
   selectedImages: Set<string>;
 }
 
-const GUTTER_SIZE = 8; // Space between images
+const GUTTER_SIZE = 16; // Space between images
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
@@ -264,7 +264,7 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
         image={image}
         onImageClick={onImageClick}
         isSelected={selectedImages.has(image.id)}
-        style={{ width: '100%' }}
+        style={{ width: '100%', height: '100%' }}
         onImageLoad={() => {}}
         onContextMenu={handleContextMenu}
         directoryPath={directoryPath}

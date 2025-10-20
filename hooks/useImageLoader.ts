@@ -631,15 +631,15 @@ export function useImageLoader() {
                         const newDirectory: Directory = { id: directoryId, path, name, handle };
                         addDirectory(newDirectory);
                     }
+
+                    // CRITICAL: Update allowed paths BEFORE trying to read from cache.
+                    const allPaths = useImageStore.getState().directories.map(d => d.path);
+                    await window.electronAPI.updateAllowedPaths(allPaths);
                     
                     // Then, load them all from cache in parallel.
                     const directoriesToLoad = useImageStore.getState().directories;
                     const loadPromises = directoriesToLoad.map(dir => loadDirectoryFromCache(dir));
                     await Promise.all(loadPromises);
-
-                    // Final update for allowed paths.
-                    const allPaths = useImageStore.getState().directories.map(d => d.path);
-                    await window.electronAPI.updateAllowedPaths(allPaths);
 
                     const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
                     setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
