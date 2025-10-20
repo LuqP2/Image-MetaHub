@@ -78,6 +78,8 @@ export default function App() {
     handleNavigateNext,
     handleNavigatePrevious,
     cleanupInvalidImages,
+    handleNavigateNextPreview,
+    handleNavigatePreviousPreview,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
@@ -307,6 +309,22 @@ export default function App() {
       unsubscribeShowChangelog();
     };
   }, [handleSelectFolder, toggleViewMode]);
+
+  // Keyboard navigation for preview
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (previewImage && !isSettingsModalOpen && !isCommandPaletteOpen && !isHotkeyHelpOpen) {
+        if (e.key === 'ArrowRight') {
+          handleNavigateNextPreview();
+        } else if (e.key === 'ArrowLeft') {
+          handleNavigatePreviousPreview();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [previewImage, isSettingsModalOpen, isCommandPaletteOpen, isHotkeyHelpOpen, selectedImage, handleNavigateNextPreview, handleNavigatePreviousPreview]);
 
   // Reset page on filter change
   useEffect(() => {

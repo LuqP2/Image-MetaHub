@@ -12,13 +12,14 @@ interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
+  isPreviewed: boolean;
   style: React.CSSProperties; // Added for react-virtualized
   onImageLoad: () => void; // Added to notify parent of image load
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   directoryPath?: string;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isPreviewed, style, onImageLoad, onContextMenu, directoryPath }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
@@ -75,7 +76,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     <div
       style={style}
       className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative masonry-cell ${
-        isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
+        isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : isPreviewed ? 'ring-4 ring-purple-500 ring-opacity-75' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
@@ -126,6 +127,7 @@ const GUTTER_SIZE = 8; // Space between images
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
+  const previewImage = useImageStore((state) => state.previewImage);
   const {
     contextMenu,
     showContextMenu,
@@ -168,7 +170,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               rowHeight={imageSize + GUTTER_SIZE}
               height={height}
               width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories }}
+              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories, previewImage }}
               overscanRowCount={4}
               overscanColumnCount={2}
             >
@@ -251,7 +253,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
 // Cell renderer for react-window grid
 const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu } = data;
+  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, previewImage } = data;
   const index = rowIndex * columnCount + columnIndex;
   const image = images[index];
   if (!image) return null;
@@ -264,6 +266,7 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
         image={image}
         onImageClick={onImageClick}
         isSelected={selectedImages.has(image.id)}
+        isPreviewed={previewImage?.id === image.id}
         style={{ width: '100%', height: '100%' }}
         onImageLoad={() => {}}
         onContextMenu={handleContextMenu}

@@ -71,6 +71,8 @@ interface ImageState {
   // Navigation Actions
   handleNavigateNext: () => void;
   handleNavigatePrevious: () => void;
+  handleNavigateNextPreview: () => void;
+  handleNavigatePreviousPreview: () => void;
 
   // Cleanup invalid images
   cleanupInvalidImages: () => void;
@@ -467,6 +469,26 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (currentIndex > 0) {
                 const prevImage = state.filteredImages[currentIndex - 1];
                 set({ selectedImage: prevImage });
+            }
+        },
+
+        handleNavigateNextPreview: () => {
+            const state = get();
+            if (!state.previewImage) return;
+            const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
+            if (currentIndex < state.filteredImages.length - 1) {
+                const nextImage = state.filteredImages[currentIndex + 1];
+                set({ previewImage: nextImage });
+            }
+        },
+
+        handleNavigatePreviousPreview: () => {
+            const state = get();
+            if (!state.previewImage) return;
+            const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
+            if (currentIndex > 0) {
+                const prevImage = state.filteredImages[currentIndex - 1];
+                set({ previewImage: prevImage });
             }
         },
 
