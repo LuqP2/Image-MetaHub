@@ -97,7 +97,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
             </button>
           </>
         )}
-  <span className="text-xs text-gray-500">v0.9.2</span>
+  <span className="text-xs text-gray-500">v0.9.4</span>
       </div>
     </div>
   );

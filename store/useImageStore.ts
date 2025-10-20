@@ -140,7 +140,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 // Subfolder image
                 if (pathParts.length > 1) {
                     const subfolderName = pathParts[0];
-                    const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : '\\') + subfolderName;
+                    // Use path separator detection for cross-platform compatibility
+                    const separator = parentPath.includes('/') ? '/' : '\\';
+                    const subfolderPath = parentPath + (parentPath.endsWith('/') || parentPath.endsWith('\\') ? '' : separator) + subfolderName;
                     // Show if this subfolder is visible, or if no subfolders/roots are selected (default: show all)
                     if (visibleSubfolders.size === 0 && visibleRoots.size === 0) return true;
                     return visibleSubfolders.has(subfolderPath);

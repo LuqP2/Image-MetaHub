@@ -36,6 +36,7 @@ export default function DirectoryList({
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [subfolders, setSubfolders] = useState<Map<string, Subfolder[]>>(new Map());
   const [loadingSubfolders, setLoadingSubfolders] = useState<Set<string>>(new Set());
+  const [autoMarkedDirs, setAutoMarkedDirs] = useState<Set<string>>(new Set()); // Track which directories have been auto-marked
 
   const toggleExpanded = async (dirId: string) => {
     const newExpanded = new Set(expandedDirs);
@@ -68,8 +69,10 @@ export default function DirectoryList({
         if (result.success) {
           setSubfolders(prev => new Map(prev).set(dirId, result.subfolders || []));
           
-          // Auto-mark root and subfolders ONLY if scanSubfolders was enabled during indexing
-          if (scanSubfolders && result.subfolders && result.subfolders.length > 0) {
+          // Auto-mark root and subfolders ONLY if:
+          // 1. scanSubfolders was enabled during indexing
+          // 2. This directory hasn't been auto-marked before (first time loading)
+          if (scanSubfolders && result.subfolders && result.subfolders.length > 0 && !autoMarkedDirs.has(dirId)) {
             // Mark root
             if (onToggleRootVisibility && !visibleRoots.has(dirPath)) {
               onToggleRootVisibility(dirPath);
@@ -81,6 +84,9 @@ export default function DirectoryList({
                 onToggleSubfolderVisibility(subfolder.path);
               }
             });
+            
+            // Mark this directory as auto-marked
+            setAutoMarkedDirs(prev => new Set(prev).add(dirId));
           }
         } else {
           console.error('Failed to load subfolders:', result.error);
@@ -109,6 +115,27 @@ export default function DirectoryList({
     } catch (error) {
       console.error('Error opening folder:', error);
       alert('Failed to open folder. Please check the path.');
+    }
+  };
+
+  const handleToggleRootWithCascade = (dirPath: string, dirId: string) => {
+    // First toggle the root
+    onToggleRootVisibility?.(dirPath);
+    
+    // Then cascade to all subfolders
+    const shouldBeVisible = !visibleRoots.has(dirPath); // Will be the new state
+    const dirSubfolders = subfolders.get(dirId);
+    
+    if (dirSubfolders && onToggleSubfolderVisibility) {
+      dirSubfolders.forEach((subfolder) => {
+        const isCurrentlyVisible = visibleSubfolders.has(subfolder.path);
+        // Only toggle if the state needs to change
+        if (shouldBeVisible && !isCurrentlyVisible) {
+          onToggleSubfolderVisibility(subfolder.path);
+        } else if (!shouldBeVisible && isCurrentlyVisible) {
+          onToggleSubfolderVisibility(subfolder.path);
+        }
+      });
     }
   };
 
@@ -201,9 +228,9 @@ export default function DirectoryList({
                             <input
                               type="checkbox"
                               checked={visibleRoots.has(dir.path)}
-                              onChange={() => onToggleRootVisibility?.(dir.path)}
+                              onChange={() => handleToggleRootWithCascade(dir.path, dir.id)}
                               className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                              title="Show/hide images from root directory"
+                              title="Show/hide images from root directory and all subfolders"
                             />
                             <button
                               onClick={() => handleOpenInExplorer(dir.path)}

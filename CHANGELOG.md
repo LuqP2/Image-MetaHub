@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2025-10-20
+
+### Fixed
+
+- **CRITICAL Linux Bug**: Fixed images not displaying on Linux systems when selecting root + subfolders. The issue was caused by hardcoded Windows path separators (`\`) that didn't match Linux paths (`/`). Now automatically detects and uses the correct path separator for each platform.
+- **Auto-marking Aggressive Behavior**: Fixed subfolders being re-marked automatically every time the folder was expanded. Auto-marking now only happens once (first time the folder is loaded).
+
+### Added
+
+- **Cascade Selection**: Clicking the root folder checkbox now automatically selects/deselects all subfolders, making it easier to manage large directory trees.
+
+### Changed
+
+- **Version Display**: Updated version number to 0.9.4 across all UI elements (Header, Window Title, About dialog).
+
 ## [0.9.3] - 2025-10-19
 
 ### Fixed
