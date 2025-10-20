@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Select All / Clear Buttons**: Added bulk selection buttons for subfolders, making it easier to manage large directory trees. (Thanks to [Taruvi](https://github.com/Taruvi) for the suggestion)
+- **Select All / Clear Buttons**: Added bulk selection buttons for subfolders, making it easier to manage large directory trees.
 
 ### Improved
 
