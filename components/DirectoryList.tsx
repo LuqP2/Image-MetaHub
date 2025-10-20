@@ -118,21 +118,36 @@ export default function DirectoryList({
     }
   };
 
-  const handleToggleRootWithCascade = (dirPath: string, dirId: string) => {
-    // First toggle the root
-    onToggleRootVisibility?.(dirPath);
-    
-    // Then cascade to all subfolders
-    const shouldBeVisible = !visibleRoots.has(dirPath); // Will be the new state
+  const handleSelectAll = (dirPath: string, dirId: string) => {
     const dirSubfolders = subfolders.get(dirId);
     
+    // Mark root
+    if (onToggleRootVisibility && !visibleRoots.has(dirPath)) {
+      onToggleRootVisibility(dirPath);
+    }
+    
+    // Mark all subfolders
     if (dirSubfolders && onToggleSubfolderVisibility) {
       dirSubfolders.forEach((subfolder) => {
-        const isCurrentlyVisible = visibleSubfolders.has(subfolder.path);
-        // Only toggle if the state needs to change
-        if (shouldBeVisible && !isCurrentlyVisible) {
+        if (!visibleSubfolders.has(subfolder.path)) {
           onToggleSubfolderVisibility(subfolder.path);
-        } else if (!shouldBeVisible && isCurrentlyVisible) {
+        }
+      });
+    }
+  };
+
+  const handleDeselectAll = (dirPath: string, dirId: string) => {
+    const dirSubfolders = subfolders.get(dirId);
+    
+    // Unmark root
+    if (onToggleRootVisibility && visibleRoots.has(dirPath)) {
+      onToggleRootVisibility(dirPath);
+    }
+    
+    // Unmark all subfolders
+    if (dirSubfolders && onToggleSubfolderVisibility) {
+      dirSubfolders.forEach((subfolder) => {
+        if (visibleSubfolders.has(subfolder.path)) {
           onToggleSubfolderVisibility(subfolder.path);
         }
       });
@@ -222,15 +237,36 @@ export default function DirectoryList({
                     {/* Only show subfolder controls if scanSubfolders was enabled */}
                     {scanSubfolders ? (
                       <>
+                        {/* Select All / Deselect All buttons */}
+                        <li className="py-1 flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Subfolder Selection:</span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleSelectAll(dir.path, dir.id)}
+                              className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+                              title="Select all subfolders and root"
+                            >
+                              Select All
+                            </button>
+                            <button
+                              onClick={() => handleDeselectAll(dir.path, dir.id)}
+                              className="text-xs px-2 py-0.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                              title="Deselect all subfolders and root"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </li>
+                        
                         {/* Root directory checkbox */}
                         <li className="py-1">
                           <div className="flex items-center">
                             <input
                               type="checkbox"
                               checked={visibleRoots.has(dir.path)}
-                              onChange={() => handleToggleRootWithCascade(dir.path, dir.id)}
+                              onChange={() => onToggleRootVisibility?.(dir.path)}
                               className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                              title="Show/hide images from root directory and all subfolders"
+                              title="Show/hide images from root directory only"
                             />
                             <button
                               onClick={() => handleOpenInExplorer(dir.path)}
