@@ -98,9 +98,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         const newState: Partial<ImageState> = {
             images: newImages,
-            availableModels: Array.from(models).sort(),
-            availableLoras: Array.from(loras).sort(),
-            availableSchedulers: Array.from(schedulers).sort(),
+            availableModels: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+            availableLoras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+            availableSchedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
             availableDimensions: Array.from(dimensions).sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
                 const [aWidth, aHeight] = a.split('x').map(Number);
