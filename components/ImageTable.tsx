@@ -138,6 +138,13 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     setSortedImages(sorted);
   }, [images, sortField, sortDirection]);
 
+  const minImageSize = 80;
+  const maxImageSize = 320;
+  const minRowHeight = 48;
+  const maxRowHeight = 128;
+  const slope = (maxRowHeight - minRowHeight) / (maxImageSize - minImageSize);
+  const rowHeight = Math.round(minRowHeight + (imageSize - minImageSize) * slope);
+
   // Row renderer for virtualized list
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const image = sortedImages[index];
@@ -148,12 +155,12 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           onImageClick={onImageClick}
           isSelected={selectedImages.has(image.id)}
           onContextMenu={handleContextMenu}
+          rowHeight={rowHeight}
         />
       </div>
     );
   };
 
-  const ROW_HEIGHT = 64; // Height of each table row in pixels
   const HEADER_HEIGHT = 48; // Height of table header
 
   return (
@@ -230,7 +237,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             <List
               height={height}
               itemCount={sortedImages.length}
-              itemSize={ROW_HEIGHT}
+              itemSize={rowHeight}
               width={width}
               overscanCount={5}
             >
@@ -317,12 +324,15 @@ interface ImageTableRowProps {
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
+  rowHeight: number;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu, rowHeight }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  
+  const thumbnailSize = rowHeight - 16; // 16px for padding
 
   useEffect(() => {
     let isMounted = true;
@@ -388,10 +398,13 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
-      style={{ height: '64px' }}
+      style={{ height: `${rowHeight}px` }}
     >
-      <div className="px-3 py-2" style={{ width: '80px' }}>
-        <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
+      <div className="px-3 py-2 flex-shrink-0" style={{ width: `${thumbnailSize + 24}px` }}>
+        <div 
+          className="relative bg-gray-700 rounded overflow-hidden flex items-center justify-center"
+          style={{ width: `${thumbnailSize}px`, height: `${thumbnailSize}px` }}
+        >
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
           ) : imageUrl ? (

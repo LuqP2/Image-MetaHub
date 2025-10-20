@@ -14,7 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Cascade Selection**: Clicking the root folder checkbox now automatically selects/deselects all subfolders, making it easier to manage large directory trees.
+- **Select All / Clear Buttons**: Added bulk selection buttons for subfolders, making it easier to manage large directory trees.
+
+### Improved
+
+- **Compact UI**: Reduced vertical padding on status and action toolbars for better space utilization. (Thanks to [Taruvi](https://github.com/Taruvi) for the suggestion)
+- **Integrated Status Display**: Moved image count display into the action toolbar to reduce vertical space usage and improve information density.
 
 ### Changed
 

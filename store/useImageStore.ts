@@ -90,18 +90,18 @@ export const useImageStore = create<ImageState>((set, get) => {
         const dimensions = new Set<string>();
 
         for (const image of newImages) {
-            image.models?.forEach(model => { if(model) models.add(model) });
-            image.loras?.forEach(lora => { if(lora) loras.add(lora) });
-            if (image.scheduler) schedulers.add(image.scheduler);
-            if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
+            image.models?.forEach(model => { if(model && typeof model === 'string') models.add(model) });
+            image.loras?.forEach(lora => { if(lora && typeof lora === 'string') loras.add(lora) });
+            if (image.scheduler && typeof image.scheduler === 'string') schedulers.add(image.scheduler);
+            if (image.dimensions && image.dimensions !== '0x0' && typeof image.dimensions === 'string') dimensions.add(image.dimensions);
         }
 
         const newState: Partial<ImageState> = {
             images: newImages,
-            availableModels: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-            availableLoras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-            availableSchedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-            availableDimensions: Array.from(dimensions).sort((a, b) => {
+            availableModels: Array.from(models).filter(m => typeof m === 'string').sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+            availableLoras: Array.from(loras).filter(l => typeof l === 'string').sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+            availableSchedulers: Array.from(schedulers).filter(s => typeof s === 'string').sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+            availableDimensions: Array.from(dimensions).filter(d => typeof d === 'string').sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
                 const [aWidth, aHeight] = a.split('x').map(Number);
                 const [bWidth, bHeight] = b.split('x').map(Number);
