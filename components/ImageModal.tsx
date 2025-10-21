@@ -398,11 +398,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     hotkeyManager.setScope('preview');
     
-    // Add Delete key handler specifically for ImageModal
+    // Add Delete key and Escape key handler specifically for ImageModal
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Delete') {
         e.preventDefault();
         handleDelete();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
       }
     };
 
@@ -412,7 +415,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       hotkeyManager.setScope('global');
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleDelete]);
+  }, [handleDelete, onClose]);
 
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {

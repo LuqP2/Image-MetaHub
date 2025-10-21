@@ -28,8 +28,6 @@ const bindAllActions = () => {
   const { keymap } = useSettingsStore.getState();
   const defaultKeymap = getDefaultKeymap();
 
-  console.log('[HotkeyManager] Starting bindAllActions, registered actions:', Array.from(registeredActions.keys()));
-
   // Migrate keymap: add missing actions from default
   let needsMigration = false;
   Object.keys(defaultKeymap).forEach(scope => {
@@ -40,27 +38,23 @@ const bindAllActions = () => {
     Object.keys(defaultKeymap[scope] as Record<string, string>).forEach(actionId => {
       if (!(keymap[scope] as Record<string, string>)[actionId]) {
         (keymap[scope] as Record<string, string>)[actionId] = (defaultKeymap[scope] as Record<string, string>)[actionId];
-        console.log(`[HotkeyManager] Migrating missing action: ${actionId}`);
         needsMigration = true;
       }
     });
   });
 
   if (needsMigration) {
-    console.log('[HotkeyManager] Keymap was migrated, saving to settings');
     useSettingsStore.setState({ keymap });
   }
 
   registeredActions.forEach((action) => {
     const scopeKeymap = keymap[action.scope] as Record<string, string> | undefined;
     if (!scopeKeymap) {
-      console.log(`[HotkeyManager] No keymap for scope: ${action.scope}`);
       return;
     }
 
     const key = scopeKeymap[action.id];
     if (!key) {
-      console.log(`[HotkeyManager] No key binding for action: ${action.id}`);
       return;
     }
 
@@ -72,15 +66,11 @@ const bindAllActions = () => {
       keysToRegister = `${key}, ${platformKey}`;
     }
 
-    console.log(`[HotkeyManager] Binding ${action.id} to "${keysToRegister}" in scope "${action.scope}"`);
-
     hotkeys(keysToRegister, { scope: action.scope }, (event, handler) => {
-      console.log(`[HotkeyManager] Hotkey triggered: ${action.id}`);
       event.preventDefault();
       action.callback(event, handler);
     });
   });
-  console.log('[HotkeyManager] bindAllActions completed');
 };
 
 /**
@@ -96,7 +86,6 @@ const registerAction = (id: string, callback: KeyHandler) => {
     return;
   }
 
-  console.log(`[HotkeyManager] Registering action: ${id} with scope: ${config.scope}`);
   registeredActions.set(id, { id, scope: config.scope, callback });
 };
 
