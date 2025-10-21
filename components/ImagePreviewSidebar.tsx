@@ -1,6 +1,9 @@
 import React, { useEffect, useState, FC } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
+import { FileOperations } from '../services/fileOperations';
+import { cacheManager } from '../services/cacheManager';
+import { Trash2 } from 'lucide-react';
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -33,9 +36,60 @@ const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,
     setPreviewImage,
-    directories
+    directories,
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (previewImage && window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
+      const result = await FileOperations.deleteFile(previewImage);
+      if (result.success) {
+        // Find the current position BEFORE removal
+        const { filteredImages } = useImageStore.getState();
+        const currentPos = filteredImages.findIndex(img => img.id === previewImage.id);
+        
+        // Remove the image from store
+        const { removeImage } = useImageStore.getState();
+        removeImage(previewImage.id);
+        
+        // Also update the cache
+        await cacheManager.removeImages([previewImage.id]);
+        
+        // NOW get the updated filteredImages AFTER removal
+        const { filteredImages: updatedImages, setPreviewImage } = useImageStore.getState();
+        
+        // Try to navigate to next/previous image
+        if (currentPos < updatedImages.length) {
+          // There's an image at the same position (the next one shifted down)
+          setPreviewImage(updatedImages[currentPos]);
+        } else if (currentPos > 0) {
+          // There's a previous image
+          setPreviewImage(updatedImages[currentPos - 1]);
+        } else {
+          // No more images
+          setPreviewImage(null);
+        }
+      } else {
+        alert(`Failed to delete file: ${result.error}`);
+      }
+    }
+  };
+
+  // Add Delete key handler for sidebar preview
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' && previewImage) {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [previewImage, handleDelete]);
 
   useEffect(() => {
     let isMounted = true;
@@ -135,13 +189,22 @@ const ImagePreviewSidebar: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <h2 className="text-lg font-semibold text-gray-200">Image Preview</h2>
-        <button
-          onClick={() => setPreviewImage(null)}
-          className="text-gray-400 hover:text-white transition-colors"
-          title="Close preview"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
+        <div>
+          <button
+            onClick={handleDelete}
+            className="text-gray-400 hover:text-red-400 transition-colors mr-2"
+            title="Delete image"
+          >
+            <Trash2 size={18} />
+          </button>
+          <button
+            onClick={() => setPreviewImage(null)}
+            className="text-gray-400 hover:text-white transition-colors"
+            title="Close preview"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Content */}

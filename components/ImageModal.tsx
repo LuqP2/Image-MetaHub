@@ -1,14 +1,15 @@
 import React, { useEffect, useState, FC } from 'react';
+import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 import hotkeyManager from '../services/hotkeyManager';
+import { cacheManager } from '../services/cacheManager';
 
 interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
-  onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (imageId: string, newName: string) => void;
   currentIndex?: number;
   totalImages?: number;
@@ -49,7 +50,6 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
 const ImageModal: React.FC<ImageModalProps> = ({
   image,
   onClose,
-  onImageDeleted,
   onImageRenamed,
   currentIndex = 0,
   totalImages = 0,
@@ -105,13 +105,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  useEffect(() => {
-    hotkeyManager.setScope('preview');
-    return () => {
-      hotkeyManager.setScope('global');
-    };
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -370,13 +363,56 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const result = await FileOperations.deleteFile(image);
       if (result.success) {
-        onImageDeleted?.(image.id);
-        onClose();
+        // Find the current position BEFORE removal
+        const { filteredImages } = useImageStore.getState();
+        const currentPos = filteredImages.findIndex(img => img.id === image.id);
+        
+        // Remove the image from store
+        const { removeImage } = useImageStore.getState();
+        removeImage(image.id);
+        
+        // Also update the cache
+        await cacheManager.removeImages([image.id]);
+        
+        // NOW get the updated filteredImages AFTER removal
+        const { filteredImages: updatedImages, setSelectedImage } = useImageStore.getState();
+        
+        // Try to navigate to next/previous image
+        if (currentPos < updatedImages.length) {
+          // There's an image at the same position (the next one shifted down)
+          setSelectedImage(updatedImages[currentPos]);
+        } else if (currentPos > 0) {
+          // There's a previous image
+          setSelectedImage(updatedImages[currentPos - 1]);
+        } else {
+          // No more images, close modal
+          onClose();
+        }
       } else {
         alert(`Failed to delete file: ${result.error}`);
       }
     }
   };
+
+  // Set scope and add Delete key handler when modal opens
+  useEffect(() => {
+    hotkeyManager.setScope('preview');
+    
+    // Add Delete key handler specifically for ImageModal
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      hotkeyManager.setScope('global');
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleDelete]);
 
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {

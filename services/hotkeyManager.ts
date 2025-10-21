@@ -1,6 +1,6 @@
 import hotkeys, { KeyHandler } from 'hotkeys-js';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hotkeyConfig, HotkeyDefinition } from './hotkeyConfig';
+import { hotkeyConfig, HotkeyDefinition, getDefaultKeymap } from './hotkeyConfig';
 
 interface RegisteredAction {
   id: string;
@@ -26,23 +26,61 @@ const unbindAll = () => {
 const bindAllActions = () => {
   unbindAll();
   const { keymap } = useSettingsStore.getState();
+  const defaultKeymap = getDefaultKeymap();
+
+  console.log('[HotkeyManager] Starting bindAllActions, registered actions:', Array.from(registeredActions.keys()));
+
+  // Migrate keymap: add missing actions from default
+  let needsMigration = false;
+  Object.keys(defaultKeymap).forEach(scope => {
+    if (!keymap[scope]) {
+      keymap[scope] = {};
+      needsMigration = true;
+    }
+    Object.keys(defaultKeymap[scope] as Record<string, string>).forEach(actionId => {
+      if (!(keymap[scope] as Record<string, string>)[actionId]) {
+        (keymap[scope] as Record<string, string>)[actionId] = (defaultKeymap[scope] as Record<string, string>)[actionId];
+        console.log(`[HotkeyManager] Migrating missing action: ${actionId}`);
+        needsMigration = true;
+      }
+    });
+  });
+
+  if (needsMigration) {
+    console.log('[HotkeyManager] Keymap was migrated, saving to settings');
+    useSettingsStore.setState({ keymap });
+  }
 
   registeredActions.forEach((action) => {
     const scopeKeymap = keymap[action.scope] as Record<string, string> | undefined;
-    if (!scopeKeymap) return;
+    if (!scopeKeymap) {
+      console.log(`[HotkeyManager] No keymap for scope: ${action.scope}`);
+      return;
+    }
 
     const key = scopeKeymap[action.id];
-    if (!key) return; // No keybinding for this action
+    if (!key) {
+      console.log(`[HotkeyManager] No key binding for action: ${action.id}`);
+      return;
+    }
 
     // Handle platform differences (Ctrl/Cmd)
-    const platformKey = key.replace('ctrl', 'cmd');
-    const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
+    let keysToRegister = key;
+    if (key.includes('ctrl') && !key.includes('cmd')) {
+      // Only add cmd variant if it has ctrl and doesn't already have cmd
+      const platformKey = key.replace('ctrl', 'cmd');
+      keysToRegister = `${key}, ${platformKey}`;
+    }
+
+    console.log(`[HotkeyManager] Binding ${action.id} to "${keysToRegister}" in scope "${action.scope}"`);
 
     hotkeys(keysToRegister, { scope: action.scope }, (event, handler) => {
+      console.log(`[HotkeyManager] Hotkey triggered: ${action.id}`);
       event.preventDefault();
       action.callback(event, handler);
     });
   });
+  console.log('[HotkeyManager] bindAllActions completed');
 };
 
 /**
@@ -58,6 +96,7 @@ const registerAction = (id: string, callback: KeyHandler) => {
     return;
   }
 
+  console.log(`[HotkeyManager] Registering action: ${id} with scope: ${config.scope}`);
   registeredActions.set(id, { id, scope: config.scope, callback });
 };
 

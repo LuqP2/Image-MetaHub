@@ -21,11 +21,11 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'addFolder', name: 'Add Folder', scope: 'global', defaultKey: 'ctrl+o, cmd+o' },
   { id: 'rescanFolders', name: 'Rescan Folders', scope: 'global', defaultKey: 'ctrl+shift+r, cmd+shift+r' },
   { id: 'selectAll', name: 'Select All', scope: 'global', defaultKey: 'ctrl+a, cmd+a' },
-  { id: 'deleteSelected', name: 'Delete Selected', scope: 'global', defaultKey: 'delete' },
   { id: 'toggleQuickPreview', name: 'Toggle Quick Preview', scope: 'global', defaultKey: 'space' },
   { id: 'openFullscreen', name: 'Open Fullscreen', scope: 'global', defaultKey: 'enter' },
   { id: 'toggleListGridView', name: 'Toggle List/Grid View', scope: 'global', defaultKey: 'ctrl+l, cmd+l' },
   { id: 'closeModalsOrClearSelection', name: 'Close Modals / Clear Selection', scope: 'global', defaultKey: 'esc' },
+  { id: 'deleteSelected', name: 'Delete Selected / Image', scope: 'global', defaultKey: 'delete' },
 
   // Preview Scope
   { id: 'navigatePrevious', name: 'Previous Image', scope: 'preview', defaultKey: 'left' },

@@ -64,7 +64,6 @@ export default function App() {
     setSelectedFilters,
     setAdvancedFilters,
     setSelectedImage,
-    removeImage,
     removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
@@ -341,11 +340,6 @@ export default function App() {
   }, [selectedImage, directories, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
-  const handleImageDeleted = useCallback((imageId: string) => {
-    removeImage(imageId);
-    setSelectedImage(null);
-  }, [removeImage, setSelectedImage]);
-
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
     updateImage(imageId, newName);
     setSelectedImage(null);
@@ -526,7 +520,6 @@ export default function App() {
           <ImageModal
             image={selectedImage}
             onClose={() => setSelectedImage(null)}
-            onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
             totalImages={filteredImages.length}
