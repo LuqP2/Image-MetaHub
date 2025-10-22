@@ -144,6 +144,4 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
-
-This is an independent project and is not affiliated with Invoke AI, Inc.
+Licensed under the [Mozilla Public License 2.0](LICENSE).
