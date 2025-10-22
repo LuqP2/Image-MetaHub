@@ -25,6 +25,7 @@ export const useHotkeys = ({
   const {
     selectedImage,
     setSelectedImage,
+    setShouldOpenModal,
     selectedImages,
     clearImageSelection,
     setPreviewImage,
@@ -99,9 +100,11 @@ export const useHotkeys = ({
         // We'll use a trick: if selectedImage is set and modal exists, it's already open
         // So we just need to toggle by clearing and resetting
         setSelectedImage(null);
+        setShouldOpenModal(false);
         // Use setTimeout to allow the modal to close before reopening
         setTimeout(() => {
           setSelectedImage(selectedImage);
+          setShouldOpenModal(true);
         }, 100);
       }
     });
