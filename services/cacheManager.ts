@@ -8,11 +8,12 @@ interface CacheEntry {
   directoryName: string;
   lastScan: number;
   imageCount: number;
-  metadata: {
+  metadataChunkIds?: string[]; // Store IDs of metadata chunks
+  metadata?: { // Kept for backwards compatibility during migration
     id: string;
     name: string;
     metadataString: string;
-    metadata: any; // Store complete metadata including normalizedMetadata
+    metadata: any;
     lastModified: number;
     models: string[];
     loras: string[];
@@ -29,7 +30,7 @@ export interface CacheDiff {
 
 class CacheManager {
   private dbName = 'invokeai-browser-cache'; // Default name
-  private dbVersion = 3;
+  private dbVersion = 4;
   private db: IDBDatabase | null = null;
   private isInitialized = false;
 
@@ -59,18 +60,24 @@ class CacheManager {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
 
+        // Clear old stores for a clean upgrade
         if (db.objectStoreNames.contains('cache')) {
           db.deleteObjectStore('cache');
         }
         if (db.objectStoreNames.contains('thumbnails')) {
           db.deleteObjectStore('thumbnails');
         }
+        if (db.objectStoreNames.contains('cache_chunks')) {
+          db.deleteObjectStore('cache_chunks');
+        }
 
         const cacheStore = db.createObjectStore('cache', { keyPath: 'id' });
         cacheStore.createIndex('directoryName', 'directoryName', { unique: false });
 
-        const thumbStore = db.createObjectStore('thumbnails', { keyPath: 'id' });
+        db.createObjectStore('thumbnails', { keyPath: 'id' });
+        db.createObjectStore('cache_chunks', { keyPath: 'id' });
       };
     });
   }
@@ -98,15 +105,53 @@ class CacheManager {
       return null;
     }
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    console.log(`🔍 Looking for cache with ID: ${cacheId} in DB: ${this.dbName}`);
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readonly');
-      const store = transaction.objectStore('cache');
-      const request = store.get(cacheId);
+      const transaction = this.db!.transaction(['cache', 'cache_chunks'], 'readonly');
+      const cacheStore = transaction.objectStore('cache');
+      const chunkStore = transaction.objectStore('cache_chunks');
+
+      const request = cacheStore.get(cacheId);
+
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
-        const result = request.result;
-        resolve(result || null);
+        const entry = request.result;
+
+        if (!entry) {
+          resolve(null);
+          return;
+        }
+
+        // Handle legacy data structure
+        if (entry.metadata) {
+          resolve(entry);
+          return;
+        }
+
+        if (!entry.metadataChunkIds || entry.metadataChunkIds.length === 0) {
+          entry.metadata = [];
+          resolve(entry);
+          return;
+        }
+
+        const allMetadata: any[] = [];
+        let chunksRetrieved = 0;
+
+        entry.metadataChunkIds.forEach((chunkId: string) => {
+          const chunkRequest = chunkStore.get(chunkId);
+          chunkRequest.onerror = () => reject(chunkRequest.error);
+          chunkRequest.onsuccess = () => {
+            if (chunkRequest.result && chunkRequest.result.data) {
+              allMetadata.push(...chunkRequest.result.data);
+            }
+            chunksRetrieved++;
+            if (chunksRetrieved === entry.metadataChunkIds.length) {
+              entry.metadata = allMetadata;
+              delete entry.metadataChunkIds;
+              resolve(entry);
+            }
+          };
+        });
       };
     });
   }
@@ -115,49 +160,73 @@ class CacheManager {
     directoryPath: string,
     directoryName: string,
     images: IndexedImage[],
-    scanSubfolders: boolean
+    scanSubfolders: boolean,
   ): Promise<void> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
       return;
     }
+
+    const CHUNK_SIZE = 10000; // Store 10,000 records per chunk
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+
+    const allMetadata = images.map((img) => ({
+      id: img.id,
+      name: img.name,
+      metadataString: img.metadataString,
+      metadata: img.metadata,
+      lastModified: img.lastModified,
+      models: img.models,
+      loras: img.loras,
+      scheduler: img.scheduler,
+    }));
+
+    const metadataChunks = [];
+    for (let i = 0; i < allMetadata.length; i += CHUNK_SIZE) {
+      metadataChunks.push(allMetadata.slice(i, i + CHUNK_SIZE));
+    }
+
+    const metadataChunkIds = metadataChunks.map((_, index) => `${cacheId}-chunk-${index}`);
+
     const cacheEntry: CacheEntry = {
       id: cacheId,
       directoryPath,
       directoryName,
       lastScan: Date.now(),
       imageCount: images.length,
-      metadata: images.map(img => ({
-        id: img.id,
-        name: img.name,
-        metadataString: img.metadataString,
-        metadata: img.metadata,
-        lastModified: img.lastModified,
-        models: img.models,
-        loras: img.loras,
-        scheduler: img.scheduler,
-      })),
+      metadataChunkIds,
     };
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
-      
-      transaction.oncomplete = () => {
-      };
-      
-      transaction.onerror = () => {
-        console.error('❌ Transaction failed for cache:', transaction.error);
-        reject(transaction.error);
-      };
-      
-      const request = store.put(cacheEntry);
-      request.onerror = () => {
-        console.error('❌ CACHE SAVE REQUEST FAILED:', request.error);
-        reject(request.error);
-      };
-      request.onsuccess = () => {
-        resolve();
+      const transaction = this.db!.transaction(['cache', 'cache_chunks'], 'readwrite');
+      const cacheStore = transaction.objectStore('cache');
+      const chunkStore = transaction.objectStore('cache_chunks');
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+
+      // 1. Get the old entry to find and delete old chunk IDs
+      const getRequest = cacheStore.get(cacheId);
+
+      getRequest.onerror = () => reject(getRequest.error);
+      getRequest.onsuccess = () => {
+        const oldEntry = getRequest.result;
+
+        // 2. If old entry exists, delete its chunks to prevent orphans
+        if (oldEntry && oldEntry.metadataChunkIds) {
+          oldEntry.metadataChunkIds.forEach((chunkId: string) => {
+            chunkStore.delete(chunkId);
+          });
+        }
+
+        // 3. Save the new metadata chunks
+        metadataChunks.forEach((chunk, index) => {
+          const chunkId = metadataChunkIds[index];
+          chunkStore.put({ id: chunkId, data: chunk });
+        });
+
+        // 4. Save the main cache entry with references to the new chunks
+        cacheStore.put(cacheEntry);
       };
     });
   }
@@ -238,21 +307,22 @@ class CacheManager {
       console.warn('Cache not initialized. Call init() first.');
       return;
     }
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
-      const cacheStore = transaction.objectStore('cache');
-      const thumbStore = transaction.objectStore('thumbnails');
-      const clearCache = cacheStore.clear();
-      const clearThumbs = thumbStore.clear();
+      const transaction = this.db!.transaction(['cache', 'thumbnails', 'cache_chunks'], 'readwrite');
+      const stores = ['cache', 'thumbnails', 'cache_chunks'];
       let completed = 0;
-      const checkComplete = () => {
-        completed++;
-        if (completed === 2) resolve();
-      };
-      clearCache.onerror = () => reject(clearCache.error);
-      clearThumbs.onerror = () => reject(clearThumbs.error);
-      clearCache.onsuccess = checkComplete;
-      clearThumbs.onsuccess = checkComplete;
+
+      stores.forEach((storeName) => {
+        const request = transaction.objectStore(storeName).clear();
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          completed++;
+          if (completed === stores.length) {
+            resolve();
+          }
+        };
+      });
     });
   }
 
@@ -262,58 +332,107 @@ class CacheManager {
       return;
     }
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['cache'], 'readwrite');
-      const store = transaction.objectStore('cache');
-      const request = store.delete(cacheId);
-      request.onerror = () => {
-        console.error(`❌ Failed to clear cache for directory: ${cacheId}`, request.error);
-        reject(request.error);
-      };
-      request.onsuccess = () => {
-        resolve();
+      const transaction = this.db!.transaction(['cache', 'cache_chunks'], 'readwrite');
+      const cacheStore = transaction.objectStore('cache');
+      const chunkStore = transaction.objectStore('cache_chunks');
+
+      // First, get the entry to find its chunk IDs
+      const getRequest = cacheStore.get(cacheId);
+
+      getRequest.onerror = () => reject(getRequest.error);
+      getRequest.onsuccess = () => {
+        const entry = getRequest.result;
+
+        // If the entry has chunk IDs, delete them
+        if (entry && entry.metadataChunkIds) {
+          entry.metadataChunkIds.forEach((chunkId: string) => {
+            chunkStore.delete(chunkId);
+          });
+        }
+
+        // Now, delete the main cache entry
+        const deleteRequest = cacheStore.delete(cacheId);
+        deleteRequest.onerror = () => reject(deleteRequest.error);
+        deleteRequest.onsuccess = () => resolve();
       };
     });
   }
 
   async removeImages(imageIds: string[]): Promise<void> {
     if (!this.db || imageIds.length === 0) {
-        return;
+      return;
     }
-
-    return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(['cache', 'thumbnails'], 'readwrite');
-        const cacheStore = transaction.objectStore('cache');
-        const thumbStore = transaction.objectStore('thumbnails');
-        const idsToRemove = new Set(imageIds);
-
-        // Remove thumbnails
-        for (const id of imageIds) {
-            thumbStore.delete(id);
+    const idsToRemove = new Set(imageIds);
+    const transaction = this.db.transaction(['cache', 'cache_chunks', 'thumbnails'], 'readwrite');
+    const cacheStore = transaction.objectStore('cache');
+    const chunkStore = transaction.objectStore('cache_chunks');
+    const thumbStore = transaction.objectStore('thumbnails');
+    for (const id of imageIds) {
+      thumbStore.delete(id);
+    }
+    const entriesToUpdate: { entry: CacheEntry; cursor: IDBCursorWithValue }[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const cursorRequest = cacheStore.openCursor();
+      cursorRequest.onerror = reject;
+      cursorRequest.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+        if (cursor) {
+          entriesToUpdate.push({ entry: cursor.value, cursor });
+          cursor.continue();
+        } else {
+          resolve();
         }
-
-        // Remove metadata from cache entries
-        const request = cacheStore.openCursor();
-        request.onerror = (event) => reject((event.target as IDBRequest).error);
-        request.onsuccess = (event) => {
-            const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
-            if (cursor) {
-                const entry = cursor.value as CacheEntry;
-                const initialCount = entry.metadata.length;
-                entry.metadata = entry.metadata.filter(meta => !idsToRemove.has(meta.id));
-
-                if (entry.metadata.length < initialCount) {
-                    entry.imageCount = entry.metadata.length;
-                    cursor.update(entry);
-                }
-                cursor.continue();
-            }
-        };
-
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = (event) => reject((event.target as IDBTransaction).error);
+      };
     });
-}
+    for (const { entry, cursor } of entriesToUpdate) {
+      if (entry.metadata) {
+        const initialCount = entry.metadata.length;
+        entry.metadata = entry.metadata.filter((meta) => !idsToRemove.has(meta.id));
+        const removedCount = initialCount - entry.metadata.length;
+        if (removedCount > 0) {
+          entry.imageCount -= removedCount;
+          cursor.update(entry);
+        }
+      } else if (entry.metadataChunkIds) {
+        let totalRemoved = 0;
+        const newChunkIds: string[] = [];
+        for (const chunkId of entry.metadataChunkIds) {
+          const chunk = await new Promise<any>((res, rej) => {
+            const req = chunkStore.get(chunkId);
+            req.onerror = rej;
+            req.onsuccess = () => res(req.result);
+          });
+          if (!chunk || !chunk.data) continue;
+          const initialChunkCount = chunk.data.length;
+          chunk.data = chunk.data.filter((meta: any) => !idsToRemove.has(meta.id));
+          const removedInChunk = initialChunkCount - chunk.data.length;
+          totalRemoved += removedInChunk;
+          if (chunk.data.length === 0) {
+            chunkStore.delete(chunk.id);
+          } else {
+            if (removedInChunk > 0) {
+              chunkStore.put(chunk);
+            }
+            newChunkIds.push(chunk.id);
+          }
+        }
+        if (totalRemoved > 0) {
+          entry.imageCount -= totalRemoved;
+          entry.metadataChunkIds = newChunkIds;
+          if (entry.metadataChunkIds.length === 0) {
+            delete entry.metadataChunkIds;
+          }
+          cursor.update(entry);
+        }
+      }
+    }
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = reject;
+    });
+  }
 
   async validateCacheAndGetDiff(
     directoryPath: string,
