@@ -445,7 +445,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { selectedImages: allImageIds };
         }),
 
-        clearImageSelection: () => set({ selectedImages: new Set() }),
+        clearImageSelection: () => set({ selectedImages: new Set(), selectedImage: null }),
 
         deleteSelectedImages: async () => {
             get().clearImageSelection();
@@ -463,7 +463,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 : -1;
             const nextIndex = currentIndex < state.filteredImages.length - 1 ? currentIndex + 1 : 0;
             const nextImage = state.filteredImages[nextIndex];
-            set({ selectedImage: nextImage, selectedImages: new Set(), shouldOpenModal: false });
+            set({ selectedImage: nextImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
         },
 
         handleNavigatePrevious: () => {
@@ -473,7 +473,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 : 0;
             const prevIndex = currentIndex > 0 ? currentIndex - 1 : state.filteredImages.length - 1;
             const prevImage = state.filteredImages[prevIndex];
-            set({ selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: false });
+            set({ selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
         },
 
         handleNavigateNextPreview: () => {

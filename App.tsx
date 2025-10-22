@@ -65,6 +65,7 @@ export default function App() {
     setSelectedFilters,
     setAdvancedFilters,
     setSelectedImage,
+    setShouldOpenModal,
     removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
@@ -565,7 +566,9 @@ export default function App() {
         {selectedImage && directoryPath && shouldOpenModal && (
           <ImageModal
             image={selectedImage}
-            onClose={() => setSelectedImage(null)}
+            onClose={() => {
+              setShouldOpenModal(false);
+            }}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
             totalImages={filteredImages.length}

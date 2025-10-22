@@ -25,6 +25,7 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'openFullscreen', name: 'Open Fullscreen', scope: 'preview', defaultKey: 'enter' },
   { id: 'toggleListGridView', name: 'Toggle List/Grid View', scope: 'global', defaultKey: 'ctrl+l, cmd+l' },
   { id: 'closeModalsOrClearSelection', name: 'Close Modals / Clear Selection', scope: 'global', defaultKey: 'esc' },
+  { id: 'closeModalsOrClearSelection', name: 'Close Modals / Clear Selection', scope: 'preview', defaultKey: 'esc' },
   { id: 'deleteSelected', name: 'Delete Selected / Image', scope: 'global', defaultKey: 'delete' },
 
   // Preview Scope

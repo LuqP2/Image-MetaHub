@@ -26,6 +26,7 @@ export const useHotkeys = ({
     selectedImage,
     setSelectedImage,
     setShouldOpenModal,
+    shouldOpenModal,
     selectedImages,
     clearImageSelection,
     setPreviewImage,
@@ -115,6 +116,7 @@ export const useHotkeys = ({
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
       else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
+      else if (shouldOpenModal) setShouldOpenModal(false);
       else if (previewImage) setPreviewImage(null);
       else if (selectedImage) setSelectedImage(null);
       else if (selectedImages.size > 0) clearImageSelection();
