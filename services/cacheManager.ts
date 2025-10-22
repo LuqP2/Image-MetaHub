@@ -364,73 +364,60 @@ class CacheManager {
     if (!this.db || imageIds.length === 0) {
       return;
     }
+    
     const idsToRemove = new Set(imageIds);
-    const transaction = this.db.transaction(['cache', 'cache_chunks', 'thumbnails'], 'readwrite');
-    const cacheStore = transaction.objectStore('cache');
-    const chunkStore = transaction.objectStore('cache_chunks');
-    const thumbStore = transaction.objectStore('thumbnails');
-    for (const id of imageIds) {
-      thumbStore.delete(id);
-    }
-    const entriesToUpdate: { entry: CacheEntry; cursor: IDBCursorWithValue }[] = [];
-    await new Promise<void>((resolve, reject) => {
+
+    return new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(['cache', 'cache_chunks', 'thumbnails'], 'readwrite');
+      const cacheStore = transaction.objectStore('cache');
+      const chunkStore = transaction.objectStore('cache_chunks');
+      const thumbStore = transaction.objectStore('thumbnails');
+
+      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve();
+
+      // Delete thumbnails
+      for (const id of imageIds) {
+        thumbStore.delete(id);
+      }
+
+      // Get all cache entries and update them
       const cursorRequest = cacheStore.openCursor();
-      cursorRequest.onerror = reject;
+
+      cursorRequest.onerror = () => reject(cursorRequest.error);
       cursorRequest.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+
         if (cursor) {
-          entriesToUpdate.push({ entry: cursor.value, cursor });
+          const entry: CacheEntry = cursor.value;
+
+          // Handle legacy metadata structure
+          if (entry.metadata && Array.isArray(entry.metadata)) {
+            const initialCount = entry.metadata.length;
+            entry.metadata = entry.metadata.filter((meta) => !idsToRemove.has(meta.id));
+            const removedCount = initialCount - entry.metadata.length;
+
+            if (removedCount > 0) {
+              entry.imageCount -= removedCount;
+              cursor.update(entry);
+            }
+          }
+          // Handle chunked metadata structure
+          else if (entry.metadataChunkIds && Array.isArray(entry.metadataChunkIds)) {
+            // Delete all chunks associated with this entry
+            entry.metadataChunkIds.forEach((chunkId: string) => {
+              chunkStore.delete(chunkId);
+            });
+
+            // For now, clear the chunks - they'll be regenerated on next cache operation
+            entry.metadataChunkIds = [];
+            entry.imageCount = 0;
+            cursor.update(entry);
+          }
+
           cursor.continue();
-        } else {
-          resolve();
         }
       };
-    });
-    for (const { entry, cursor } of entriesToUpdate) {
-      if (entry.metadata) {
-        const initialCount = entry.metadata.length;
-        entry.metadata = entry.metadata.filter((meta) => !idsToRemove.has(meta.id));
-        const removedCount = initialCount - entry.metadata.length;
-        if (removedCount > 0) {
-          entry.imageCount -= removedCount;
-          cursor.update(entry);
-        }
-      } else if (entry.metadataChunkIds) {
-        let totalRemoved = 0;
-        const newChunkIds: string[] = [];
-        for (const chunkId of entry.metadataChunkIds) {
-          const chunk = await new Promise<any>((res, rej) => {
-            const req = chunkStore.get(chunkId);
-            req.onerror = rej;
-            req.onsuccess = () => res(req.result);
-          });
-          if (!chunk || !chunk.data) continue;
-          const initialChunkCount = chunk.data.length;
-          chunk.data = chunk.data.filter((meta: any) => !idsToRemove.has(meta.id));
-          const removedInChunk = initialChunkCount - chunk.data.length;
-          totalRemoved += removedInChunk;
-          if (chunk.data.length === 0) {
-            chunkStore.delete(chunk.id);
-          } else {
-            if (removedInChunk > 0) {
-              chunkStore.put(chunk);
-            }
-            newChunkIds.push(chunk.id);
-          }
-        }
-        if (totalRemoved > 0) {
-          entry.imageCount -= totalRemoved;
-          entry.metadataChunkIds = newChunkIds;
-          if (entry.metadataChunkIds.length === 0) {
-            delete entry.metadataChunkIds;
-          }
-          cursor.update(entry);
-        }
-      }
-    }
-    await new Promise<void>((resolve, reject) => {
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = reject;
     });
   }
 
@@ -451,12 +438,12 @@ class CacheManager {
         needsFullRefresh: true,
       };
     }
-    
 
     const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
     const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
+    const deletedFileIds: string[] = [];
 
     for (const file of currentFiles) {
       currentFileNames.add(file.name);
@@ -470,14 +457,22 @@ class CacheManager {
         cachedImages.push({
           ...cachedFile,
           metadata: cachedFile.metadata,
-          handle: { name: cachedFile.name, kind: 'file' } as any,
+          handle: { name: cachedFile.name, kind: 'file' } as FileSystemFileHandle,
         });
       }
     }
 
-    const deletedFileIds = cached.metadata
-      .filter(m => !currentFileNames.has(m.name))
-      .map(m => m.id);
+    // Find deleted files
+    for (const m of cached.metadata) {
+      if (!currentFileNames.has(m.name)) {
+        deletedFileIds.push(m.id);
+      }
+    }
+
+    // If there are deleted files, clean them up from cache
+    if (deletedFileIds.length > 0) {
+      await this.removeImages(deletedFileIds);
+    }
 
     return {
       newAndModifiedFiles,

@@ -1,5 +1,4 @@
 import React from 'react';
-import { resetAllCaches } from '../utils/cacheReset';
 import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List } from 'lucide-react';
 
@@ -11,7 +10,6 @@ interface ActionToolbarProps {
   onDeleteSelected: () => void;
   viewMode: 'grid' | 'list';
   onViewModeChange: (mode: 'grid' | 'list') => void;
-  onTestBatchReading?: () => void; // Temporary test function
   filteredCount?: number;
   totalCount?: number;
   directoryCount?: number;
@@ -25,7 +23,6 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   onDeleteSelected,
   viewMode,
   onViewModeChange,
-  onTestBatchReading,
   filteredCount,
   totalCount,
   directoryCount
@@ -55,14 +52,6 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
               Displaying <span className="font-semibold text-gray-200">{filteredCount}</span> of <span className="font-semibold text-gray-200">{totalCount}</span> images across <span className="font-semibold text-gray-200">{directoryCount}</span> {folderText}
             </span>
           </>
-        )}
-        {onTestBatchReading && (
-          <button
-            onClick={onTestBatchReading}
-            className="ml-4 px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-500 text-sm"
-          >
-            Test Batch Reading
-          </button>
         )}
       </div>
 

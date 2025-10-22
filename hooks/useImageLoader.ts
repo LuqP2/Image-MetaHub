@@ -565,7 +565,7 @@ export function useImageLoader() {
                 if (result.canceled || !result.path) return;
                 path = result.path;
                 name = result.name || 'Selected Folder';
-                handle = { name, kind: 'directory' } as any;
+                handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
             } else {
                 handle = await window.showDirectoryPicker();
                 path = handle.name; // Path is just the name in the browser version for simplicity
@@ -626,7 +626,7 @@ export function useImageLoader() {
                     // First, add all directories to the store without loading.
                     for (const path of paths) {
                         const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
-                        const handle = { name, kind: 'directory' } as any;
+                        const handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
                         const directoryId = path;
                         const newDirectory: Directory = { id: directoryId, path, name, handle };
                         addDirectory(newDirectory);
@@ -675,11 +675,23 @@ export function useImageLoader() {
         }
     }, []);
 
+    const handleRefreshCache = useCallback(async () => {
+        // This function is no longer needed - removed automatic cache cleanup
+        setSuccess('Cache refresh is no longer needed');
+    }, [setSuccess]);
+
+    // Automatic cache cleanup when window regains focus
+    useEffect(() => {
+        // Cache cleanup on focus has been disabled to prevent IndexedDB transaction conflicts
+        return;
+    }, []);
+
     return {
         handleSelectFolder,
         handleUpdateFolder,
         handleLoadFromStorage,
         handleRemoveDirectory,
+        handleRefreshCache,
         loadDirectory,
         loadDirectoryFromCache,
         cancelIndexing: () => {
