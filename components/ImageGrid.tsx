@@ -76,7 +76,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     <div
       style={style}
       className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative masonry-cell ${
-        isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : isPreviewed ? 'ring-4 ring-purple-500 ring-opacity-75' : ''
+        isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : isPreviewed ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       }`}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}

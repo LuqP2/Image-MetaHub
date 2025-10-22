@@ -458,7 +458,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
             if (currentIndex < state.filteredImages.length - 1) {
                 const nextImage = state.filteredImages[currentIndex + 1];
-                set({ selectedImage: nextImage });
+                set({ selectedImage: nextImage, selectedImages: new Set() });
             }
         },
 
@@ -468,7 +468,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
             if (currentIndex > 0) {
                 const prevImage = state.filteredImages[currentIndex - 1];
-                set({ selectedImage: prevImage });
+                set({ selectedImage: prevImage, selectedImages: new Set() });
             }
         },
 
@@ -478,7 +478,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
             if (currentIndex < state.filteredImages.length - 1) {
                 const nextImage = state.filteredImages[currentIndex + 1];
-                set({ previewImage: nextImage });
+                set({ previewImage: nextImage, selectedImages: new Set() });
             }
         },
 
@@ -488,7 +488,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
             if (currentIndex > 0) {
                 const prevImage = state.filteredImages[currentIndex - 1];
-                set({ previewImage: prevImage });
+                set({ previewImage: prevImage, selectedImages: new Set() });
             }
         },
 
