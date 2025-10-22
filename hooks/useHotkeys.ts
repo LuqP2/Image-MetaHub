@@ -160,7 +160,6 @@ export const useHotkeys = ({
     handleLoadFromStorage,
     selectAllImages,
     handleDeleteSelectedImages,
-    selectedImage,
     previewImage,
     setPreviewImage,
     setSelectedImage,
@@ -176,6 +175,21 @@ export const useHotkeys = ({
     setIsHotkeyHelpOpen,
     setIsSettingsModalOpen,
   ]);
+
+  // Separate effect to handle scope changes based on selectedImage
+  useEffect(() => {
+    const activeElement = document.activeElement;
+    const previewPane = document.querySelector('[data-area="preview"]');
+    
+    // Only change scope if we're not in the preview pane
+    if (!previewPane || !previewPane.contains(activeElement)) {
+      if (selectedImage) {
+        hotkeyManager.setScope('preview');
+      } else {
+        hotkeyManager.setScope('global');
+      }
+    }
+  }, [selectedImage]);
 
   const commands = useMemo(() => [
     { id: 'toggle-theme', name: 'Toggle Theme', description: 'Switch between light and dark mode', action: () => {
