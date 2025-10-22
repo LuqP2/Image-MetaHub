@@ -48,6 +48,7 @@ export default function App() {
     previewImage,
     selectedImage,
     selectedImages,
+    shouldOpenModal,
     searchQuery,
     scanSubfolders,
     availableModels,
@@ -324,7 +325,32 @@ export default function App() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [previewImage, isSettingsModalOpen, isCommandPaletteOpen, isHotkeyHelpOpen, selectedImage, handleNavigateNextPreview, handleNavigatePreviousPreview]);
+  }, [previewImage, isSettingsModalOpen, isCommandPaletteOpen, isHotkeyHelpOpen, handleNavigateNextPreview, handleNavigatePreviousPreview]);
+
+  // Arrow keys navigation for grid (when grid is visible)
+  useEffect(() => {
+    const handleArrowKeys = (e: KeyboardEvent) => {
+      // Only handle arrow keys when:
+      // 1. Not in any modal or input
+      // 2. Not in preview pane (preview has its own handler)
+      if (isSettingsModalOpen || isCommandPaletteOpen || isHotkeyHelpOpen || previewImage) return;
+      
+      const isInInput = document.activeElement?.tagName === 'INPUT' || 
+                       document.activeElement?.tagName === 'TEXTAREA';
+      if (isInInput) return;
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNavigateNext();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleNavigatePrevious();
+      }
+    };
+
+    document.addEventListener('keydown', handleArrowKeys);
+    return () => document.removeEventListener('keydown', handleArrowKeys);
+  }, [isSettingsModalOpen, isCommandPaletteOpen, isHotkeyHelpOpen, previewImage, handleNavigateNext, handleNavigatePrevious]);
 
   // NOTE: We intentionally do NOT reset currentPage when filters/search change.
   // The user requested to remain on the same page when filtering. The clamp
@@ -450,7 +476,7 @@ export default function App() {
           isIndexingPaused={indexingState === 'paused'}
         />
 
-        <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
+        <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0" onClick={() => clearSelection()}>
           {error && (
             <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
               <span>{error}</span>
@@ -536,7 +562,7 @@ export default function App() {
           )}
         </main>
 
-        {selectedImage && directoryPath && (
+        {selectedImage && directoryPath && shouldOpenModal && (
           <ImageModal
             image={selectedImage}
             onClose={() => setSelectedImage(null)}

@@ -95,7 +95,14 @@ export const useHotkeys = ({
     });
     hotkeyManager.registerAction('openFullscreen', () => {
       if (selectedImage) {
-        setSelectedImage(selectedImage);
+        // If modal is already open, close it. Otherwise open it.
+        // We'll use a trick: if selectedImage is set and modal exists, it's already open
+        // So we just need to toggle by clearing and resetting
+        setSelectedImage(null);
+        // Use setTimeout to allow the modal to close before reopening
+        setTimeout(() => {
+          setSelectedImage(selectedImage);
+        }, 100);
       }
     });
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);

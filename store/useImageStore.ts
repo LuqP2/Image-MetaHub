@@ -18,6 +18,7 @@ interface ImageState {
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
+  shouldOpenModal: boolean;
   scanSubfolders: boolean;
 
   // Filter & Sort State
@@ -62,6 +63,7 @@ interface ImageState {
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
+  setShouldOpenModal: (shouldOpen: boolean) => void;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -263,6 +265,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
+        shouldOpenModal: false,
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -423,6 +426,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
+        setShouldOpenModal: (shouldOpen) => set({ shouldOpenModal: shouldOpen }),
 
         toggleImageSelection: (imageId) => {
             set(state => {
@@ -454,22 +458,22 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         handleNavigateNext: () => {
             const state = get();
-            if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
-            if (currentIndex < state.filteredImages.length - 1) {
-                const nextImage = state.filteredImages[currentIndex + 1];
-                set({ selectedImage: nextImage, selectedImages: new Set() });
-            }
+            const currentIndex = state.selectedImage 
+                ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
+                : -1;
+            const nextIndex = currentIndex < state.filteredImages.length - 1 ? currentIndex + 1 : 0;
+            const nextImage = state.filteredImages[nextIndex];
+            set({ selectedImage: nextImage, selectedImages: new Set(), shouldOpenModal: false });
         },
 
         handleNavigatePrevious: () => {
             const state = get();
-            if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
-            if (currentIndex > 0) {
-                const prevImage = state.filteredImages[currentIndex - 1];
-                set({ selectedImage: prevImage, selectedImages: new Set() });
-            }
+            const currentIndex = state.selectedImage 
+                ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
+                : 0;
+            const prevIndex = currentIndex > 0 ? currentIndex - 1 : state.filteredImages.length - 1;
+            const prevImage = state.filteredImages[prevIndex];
+            set({ selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: false });
         },
 
         handleNavigateNextPreview: () => {
@@ -478,7 +482,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
             if (currentIndex < state.filteredImages.length - 1) {
                 const nextImage = state.filteredImages[currentIndex + 1];
-                set({ previewImage: nextImage, selectedImages: new Set() });
+                set({ previewImage: nextImage, selectedImage: nextImage, selectedImages: new Set(), shouldOpenModal: false });
             }
         },
 
@@ -488,7 +492,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const currentIndex = state.filteredImages.findIndex(img => img.id === state.previewImage!.id);
             if (currentIndex > 0) {
                 const prevImage = state.filteredImages[currentIndex - 1];
-                set({ previewImage: prevImage, selectedImages: new Set() });
+                set({ previewImage: prevImage, selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: false });
             }
         },
 

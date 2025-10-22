@@ -19,6 +19,7 @@ type SortDirection = 'asc' | 'desc' | null;
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
   const directories = useImageStore((state) => state.directories);
   const imageSize = useSettingsStore((state) => state.imageSize);
+  const selectedImage = useImageStore((state) => state.selectedImage);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
@@ -153,7 +154,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
         <ImageTableRow
           image={image}
           onImageClick={onImageClick}
-          isSelected={selectedImages.has(image.id)}
+          isSelected={selectedImages.has(image.id) || selectedImage?.id === image.id}
           onContextMenu={handleContextMenu}
           rowHeight={rowHeight}
         />
@@ -396,7 +397,10 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
       className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group flex items-center ${
         isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
-      onClick={(e) => onImageClick(image, e)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onImageClick(image, e);
+      }}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
       style={{ height: `${rowHeight}px` }}
     >

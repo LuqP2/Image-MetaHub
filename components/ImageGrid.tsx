@@ -78,7 +78,10 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
       className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative masonry-cell ${
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : isPreviewed ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       }`}
-      onClick={(e) => onImageClick(image, e)}
+      onClick={(e) => {
+        e.stopPropagation();
+        onImageClick(image, e);
+      }}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
       {isSelected && (
@@ -128,6 +131,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
   const previewImage = useImageStore((state) => state.previewImage);
+  const selectedImage = useImageStore((state) => state.selectedImage);
   const {
     contextMenu,
     showContextMenu,
@@ -170,7 +174,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               rowHeight={imageSize + GUTTER_SIZE}
               height={height}
               width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories, previewImage }}
+              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories, previewImage, selectedImage }}
               overscanRowCount={4}
               overscanColumnCount={2}
             >
@@ -253,7 +257,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
 // Cell renderer for react-window grid
 const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, previewImage } = data;
+  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, previewImage, selectedImage } = data;
   const index = rowIndex * columnCount + columnIndex;
   const image = images[index];
   if (!image) return null;
@@ -265,7 +269,7 @@ const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
       <ImageCard
         image={image}
         onImageClick={onImageClick}
-        isSelected={selectedImages.has(image.id)}
+        isSelected={selectedImages.has(image.id) || selectedImage?.id === image.id}
         isPreviewed={previewImage?.id === image.id}
         style={{ width: '100%', height: '100%' }}
         onImageLoad={() => {}}

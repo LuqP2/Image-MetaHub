@@ -11,6 +11,7 @@ export function useImageSelection() {
         selectedImage,
         selectedImages,
         setSelectedImage,
+        setShouldOpenModal,
         toggleImageSelection,
         clearImageSelection,
         removeImage,
@@ -18,27 +19,46 @@ export function useImageSelection() {
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
-        if (event.shiftKey && selectedImage) {
-            const lastSelectedIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+        // Shift+Click: Range selection from last selected to clicked
+        if (event.shiftKey) {
+            // Find the last selected image (either from selectedImage or from selectedImages)
+            let lastSelectedIndex = -1;
+            if (selectedImage) {
+                lastSelectedIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
+            } else if (selectedImages.size > 0) {
+                const lastId = Array.from(selectedImages)[selectedImages.size - 1];
+                lastSelectedIndex = filteredImages.findIndex(img => img.id === lastId);
+            } else {
+                // No previous selection, start range from clicked image
+                lastSelectedIndex = filteredImages.findIndex(img => img.id === image.id);
+            }
+            
             const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
+            
             if (lastSelectedIndex !== -1 && clickedIndex !== -1) {
                 const start = Math.min(lastSelectedIndex, clickedIndex);
                 const end = Math.max(lastSelectedIndex, clickedIndex);
                 const rangeIds = filteredImages.slice(start, end + 1).map(img => img.id);
-                const newSelection = new Set(selectedImages);
-                rangeIds.forEach(id => newSelection.add(id));
-                useImageStore.setState({ selectedImages: newSelection });
+                useImageStore.setState({ 
+                    selectedImages: new Set(rangeIds),
+                    shouldOpenModal: false
+                });
                 return;
             }
         }
 
+        // Ctrl+Click: Toggle individual selection (don't open modal)
         if (event.ctrlKey || event.metaKey) {
             toggleImageSelection(image.id);
-        } else {
-            clearImageSelection();
-            setSelectedImage(image);
-        }
-    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage]);
+            setShouldOpenModal(false);
+            return;
+        } 
+        
+        // Regular click: Single selection (opens modal)
+        clearImageSelection();
+        setSelectedImage(image);
+        setShouldOpenModal(true);
+    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage, setShouldOpenModal]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
         if (selectedImages.size === 0) return;
