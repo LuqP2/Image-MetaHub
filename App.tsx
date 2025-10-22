@@ -347,6 +347,18 @@ export default function App() {
     }
   }, [selectedImage, directories, setSelectedImage]);
 
+  // Sync current page when selectedImage or previewImage changes via keyboard navigation
+  useEffect(() => {
+    const imageToSync = previewImage || selectedImage;
+    if (!imageToSync || itemsPerPage === 'all') return;
+
+    const imageIndex = filteredImages.findIndex(img => img.id === imageToSync.id);
+    if (imageIndex === -1) return;
+
+    const targetPage = Math.floor(imageIndex / itemsPerPage) + 1;
+    setCurrentPage(targetPage);
+  }, [selectedImage, previewImage, filteredImages, itemsPerPage]);
+
   // --- Memoized Callbacks for UI ---
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
     updateImage(imageId, newName);
