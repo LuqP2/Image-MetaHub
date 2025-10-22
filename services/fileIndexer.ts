@@ -849,7 +849,7 @@ export async function processFiles(
   // CRITICAL: Get existing cache and merge with newly processed images
   // This ensures we don't lose previously cached images
   const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
-  const existingCachedImages = existingCache ? existingCache.metadata.map(m => ({
+  const existingCachedImages = existingCache ? existingCache.map(m => ({
     id: m.id,
     name: m.name,
     metadataString: m.metadataString,

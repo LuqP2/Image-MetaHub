@@ -326,26 +326,10 @@ export default function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [previewImage, isSettingsModalOpen, isCommandPaletteOpen, isHotkeyHelpOpen, selectedImage, handleNavigateNextPreview, handleNavigatePreviousPreview]);
 
-  // Reset page when filter inputs change (but not when filteredImages changes due to deletions)
-  // We only want to jump back to page 1 when the user changes filters/search/sort or items-per-page,
-  // not when items are removed from the current result set.
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    searchQuery,
-    // Selected filters
-    selectedModels,
-    selectedLoras,
-    selectedSchedulers,
-    // Advanced filters (stringify to detect deep changes)
-    JSON.stringify(advancedFilters),
-    // Visibility toggles
-    visibleSubfolders,
-    visibleRoots,
-    // Items per page and sort order changes should reset to page 1
-    itemsPerPage,
-    sortOrder,
-  ]);
+  // NOTE: We intentionally do NOT reset currentPage when filters/search change.
+  // The user requested to remain on the same page when filtering. The clamp
+  // effect below will ensure the current page is adjusted only if it becomes
+  // out of range after the results change (for example, deleting many items).
 
   // Clamp current page when the number of filtered images changes (for example after deletion)
   // This preserves the user's current page unless it becomes out of range, in which case we

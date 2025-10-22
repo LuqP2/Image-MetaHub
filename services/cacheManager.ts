@@ -99,7 +99,7 @@ class CacheManager {
     }
   }
 
-  async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<CacheEntry | null> {
+  async getCachedData(directoryPath: string, scanSubfolders: boolean): Promise<IndexedImage[] | null> {
     if (!this.db) {
       console.warn('Cache not initialized. Call init() first.');
       return null;
@@ -115,7 +115,7 @@ class CacheManager {
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
-        const entry = request.result;
+        const entry: CacheEntry | undefined = request.result;
 
         if (!entry) {
           resolve(null);
@@ -124,13 +124,12 @@ class CacheManager {
 
         // Handle legacy data structure
         if (entry.metadata) {
-          resolve(entry);
+          resolve(entry.metadata as unknown as IndexedImage[]);
           return;
         }
 
         if (!entry.metadataChunkIds || entry.metadataChunkIds.length === 0) {
-          entry.metadata = [];
-          resolve(entry);
+          resolve([]);
           return;
         }
 
@@ -146,9 +145,7 @@ class CacheManager {
             }
             chunksRetrieved++;
             if (chunksRetrieved === entry.metadataChunkIds.length) {
-              entry.metadata = allMetadata;
-              delete entry.metadataChunkIds;
-              resolve(entry);
+              resolve(allMetadata as IndexedImage[]);
             }
           };
         });
@@ -404,15 +401,55 @@ class CacheManager {
           }
           // Handle chunked metadata structure
           else if (entry.metadataChunkIds && Array.isArray(entry.metadataChunkIds)) {
-            // Delete all chunks associated with this entry
-            entry.metadataChunkIds.forEach((chunkId: string) => {
-              chunkStore.delete(chunkId);
+            // Load all chunks, filter out deleted images, and save back
+            const loadPromises = entry.metadataChunkIds.map((chunkId: string) => {
+              return new Promise<any[]>((resolveChunk) => {
+                const getRequest = chunkStore.get(chunkId);
+                getRequest.onsuccess = () => {
+                  const chunk = getRequest.result;
+                  resolveChunk(chunk && chunk.data ? chunk.data : []);
+                };
+                getRequest.onerror = () => resolveChunk([]);
+              });
             });
 
-            // For now, clear the chunks - they'll be regenerated on next cache operation
-            entry.metadataChunkIds = [];
-            entry.imageCount = 0;
-            cursor.update(entry);
+            Promise.all(loadPromises).then((allChunks) => {
+              // Flatten all chunks into single array
+              const allMetadata = allChunks.flat();
+              const initialCount = allMetadata.length;
+              
+              // Filter out deleted images
+              const filteredMetadata = allMetadata.filter((meta) => !idsToRemove.has(meta.id));
+              const removedCount = initialCount - filteredMetadata.length;
+
+              if (removedCount > 0) {
+                // Re-chunk the filtered data
+                const CHUNK_SIZE = 10000;
+                const newChunks = [];
+                for (let i = 0; i < filteredMetadata.length; i += CHUNK_SIZE) {
+                  newChunks.push(filteredMetadata.slice(i, i + CHUNK_SIZE));
+                }
+
+                // Delete old chunks
+                entry.metadataChunkIds.forEach((chunkId: string) => {
+                  chunkStore.delete(chunkId);
+                });
+
+                // Save new chunks
+                const cacheId = entry.id;
+                const newChunkIds = newChunks.map((_, index) => `${cacheId}-chunk-${index}`);
+                newChunks.forEach((chunk, index) => {
+                  chunkStore.put({ id: newChunkIds[index], data: chunk });
+                });
+
+                // Update entry
+                entry.metadataChunkIds = newChunkIds;
+                entry.imageCount = filteredMetadata.length;
+                cursor.update(entry);
+              }
+            }).catch((err) => {
+              console.error('Error processing chunks in removeImages:', err);
+            });
           }
 
           cursor.continue();
@@ -429,8 +466,7 @@ class CacheManager {
   ): Promise<CacheDiff> {
     const cached = await this.getCachedData(directoryPath, scanSubfolders);
 
-    if (!cached) {
-      const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    if (!cached || cached.length === 0) {
       return {
         newAndModifiedFiles: currentFiles,
         deletedFileIds: [],
@@ -439,7 +475,7 @@ class CacheManager {
       };
     }
 
-    const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
+    const cachedMetadataMap = new Map(cached.map(m => [m.name, m]));
     const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
@@ -463,7 +499,7 @@ class CacheManager {
     }
 
     // Find deleted files
-    for (const m of cached.metadata) {
+    for (const m of cached) {
       if (!currentFileNames.has(m.name)) {
         deletedFileIds.push(m.id);
       }

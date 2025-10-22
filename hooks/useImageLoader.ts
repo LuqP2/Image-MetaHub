@@ -370,13 +370,13 @@ export function useImageLoader() {
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
-            if (cachedData && cachedData.metadata.length > 0) {
+            if (cachedData && cachedData.length > 0) {
                 const isElectron = getIsElectron();
                 const filePaths = await Promise.all(
-                    cachedData.metadata.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
+                    cachedData.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
                 );
 
-                const cachedImages: IndexedImage[] = cachedData.metadata.map((meta, i) => {
+                const cachedImages: IndexedImage[] = cachedData.map((meta, i) => {
                     const joinResult = filePaths[i];
                     const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
 
@@ -488,7 +488,6 @@ export function useImageLoader() {
 
             // Set progress even if no new files to process
             setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
-            console.log(`[loadDirectory] Progress set to 0/${diff.newAndModifiedFiles.length}`);
 
             if (diff.newAndModifiedFiles.length > 0) {
                 console.log(`[loadDirectory] Processing ${diff.newAndModifiedFiles.length} new files`);
