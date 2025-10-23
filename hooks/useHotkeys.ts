@@ -113,10 +113,18 @@ export const useHotkeys = ({
       }
     });
     hotkeyManager.registerAction('toggleImageFullscreen', () => {
-      // This hotkey should only work if the modal is already open.
-      // The `openFullscreen` action handles opening the modal.
-      if (shouldOpenModal && window.electronAPI?.toggleFullscreen) {
-        window.electronAPI.toggleFullscreen();
+      if (selectedImage) {
+        if (shouldOpenModal) {
+          // Modal is already open, just toggle fullscreen
+          window.electronAPI?.toggleFullscreen();
+        } else {
+          // Modal is closed, open it AND enter fullscreen
+          setShouldOpenModal(true);
+          // Use a short timeout to ensure the modal is mounted before toggling fullscreen
+          setTimeout(() => {
+            window.electronAPI?.toggleFullscreen();
+          }, 100);
+        }
       }
     });
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
