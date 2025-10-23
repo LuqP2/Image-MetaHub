@@ -73,8 +73,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // --- Unified Fullscreen Logic ---
   const toggleFullscreen = () => {
-    if (window.electronAPI?.toggleFullscreen) {
-      window.electronAPI.toggleFullscreen();
+    if ((window as any).electronAPI?.toggleFullscreen) {
+      (window as any).electronAPI.toggleFullscreen();
     } else {
       console.warn('Fullscreen API not available.');
     }
@@ -82,7 +82,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     // Listen for fullscreen changes from the main process and update the global store
-    const cleanup = window.electronAPI?.onFullscreenChange?.((isFullScreen) => {
+    const cleanup = (window as any).electronAPI?.onFullscreenChange?.((isFullScreen) => {
       setIsModalFullscreen(isFullScreen);
     });
 
