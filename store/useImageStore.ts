@@ -64,6 +64,10 @@ interface ImageState {
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
   setShouldOpenModal: (shouldOpen: boolean) => void;
+  isModalFullscreen: boolean;
+  setIsModalFullscreen: (isFullscreen: boolean) => void;
+  modalOpenedViaFullscreenHotkey: boolean;
+  setModalOpenedViaFullscreenHotkey: (value: boolean) => void;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -268,6 +272,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         previewImage: null,
         selectedImages: new Set(),
         shouldOpenModal: false,
+        isModalFullscreen: false,
+        modalOpenedViaFullscreenHotkey: false,
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -429,6 +435,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
         setShouldOpenModal: (shouldOpen) => set({ shouldOpenModal: shouldOpen }),
+        setIsModalFullscreen: (isFullscreen) => set({ isModalFullscreen: isFullscreen }),
+        setModalOpenedViaFullscreenHotkey: (value) => set({ modalOpenedViaFullscreenHotkey: value }),
 
         toggleImageSelection: (imageId) => {
             set(state => {

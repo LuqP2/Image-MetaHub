@@ -62,9 +62,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+  const {
+    isModalFullscreen,
+    setIsModalFullscreen,
+    setModalOpenedViaFullscreenHotkey,
+    shouldOpenModal,
+  } = useImageStore();
 
   // --- Unified Fullscreen Logic ---
   const toggleFullscreen = () => {
@@ -76,18 +81,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   useEffect(() => {
-    // Listen for fullscreen changes from the main process
+    // Listen for fullscreen changes from the main process and update the global store
     const cleanup = window.electronAPI?.onFullscreenChange?.((isFullScreen) => {
-      setIsFullscreen(isFullScreen);
+      setIsModalFullscreen(isFullScreen);
     });
 
     return () => {
-      // Cleanup the listener when the component unmounts
       if (cleanup) {
         cleanup();
       }
     };
-  }, []);
+  }, [setIsModalFullscreen]);
+
+  // Cleanup hotkey flag when modal is closed
+  useEffect(() => {
+    if (!shouldOpenModal) {
+      setModalOpenedViaFullscreenHotkey(false);
+    }
+  }, [shouldOpenModal, setModalOpenedViaFullscreenHotkey]);
   // --- End Unified Fullscreen Logic ---
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -416,18 +427,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
+      className={`fixed inset-0 ${isModalFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isModalFullscreen ? '' : 'backdrop-blur-sm'} ${isModalFullscreen ? 'p-0' : ''}`}
       onClick={onClose}
     >
       <div
-        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
+        className={`${isModalFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
         }}
       >
         {/* Image Display Section */}
-        <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-4'} relative group`}>
+        <div className={`w-full ${isModalFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isModalFullscreen ? 'p-0' : 'p-4'} relative group`}>
           {imageUrl ? <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" onContextMenu={handleContextMenu} /> : <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>}
 
           {onNavigatePrevious && <button onClick={onNavigatePrevious} className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">←</button>}
@@ -436,11 +447,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
-          <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{isFullscreen ? 'Exit' : 'Fullscreen'}</button>
+          <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{isModalFullscreen ? 'Exit' : 'Fullscreen'}</button>
         </div>
 
         {/* Metadata Panel */}
-        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        <div className={`w-full ${isModalFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
           <div>
             {isRenaming ? (
               <div className="flex gap-2">
