@@ -107,6 +107,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // Listen for custom fullscreen toggle events
+  useEffect(() => {
+    const toggleHandler = () => setIsFullscreen(prev => !prev);
+    const setHandler = (e: CustomEvent) => setIsFullscreen(e.detail);
+
+    window.addEventListener('toggleImageFullscreen', toggleHandler);
+    window.addEventListener('setImageFullscreen', setHandler);
+
+    return () => {
+      window.removeEventListener('toggleImageFullscreen', toggleHandler);
+      window.removeEventListener('setImageFullscreen', setHandler);
+    };
+  }, []);
+
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 
   const copyToClipboard = (text: string, type: string) => {

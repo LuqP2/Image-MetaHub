@@ -31,6 +31,7 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   // Preview Scope
   { id: 'navigatePrevious', name: 'Previous Image', scope: 'preview', defaultKey: 'left' },
   { id: 'navigateNext', name: 'Next Image', scope: 'preview', defaultKey: 'right' },
+  { id: 'toggleImageFullscreen', name: 'Toggle Image Fullscreen', scope: 'preview', defaultKey: 'alt+enter' },
 ];
 
 export const getDefaultKeymap = (): Keymap => {

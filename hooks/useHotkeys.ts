@@ -106,6 +106,20 @@ export const useHotkeys = ({
         }
       }
     });
+    hotkeyManager.registerAction('toggleImageFullscreen', () => {
+      if (selectedImage) {
+        if (shouldOpenModal) {
+          // Modal já está aberto, toggle fullscreen via evento
+          window.dispatchEvent(new CustomEvent('toggleImageFullscreen'));
+        } else {
+          // Modal está fechado, abrir e ativar fullscreen via evento
+          setShouldOpenModal(true);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('setImageFullscreen', { detail: true }));
+          }, 100); // Pequeno delay para garantir que o modal esteja montado
+        }
+      }
+    });
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
     hotkeyManager.registerAction('navigateNext', handleNavigateNext);
