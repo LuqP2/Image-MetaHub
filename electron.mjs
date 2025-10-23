@@ -105,9 +105,21 @@ function createApplicationMenu() {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        {
+          label: 'Reset Zoom',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => mainWindow.webContents.send('menu-reset-zoom'),
+        },
+        {
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+=',
+          click: () => mainWindow.webContents.send('menu-zoom-in'),
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => mainWindow.webContents.send('menu-zoom-out'),
+        },
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]
@@ -351,6 +363,13 @@ function createWindow(startupDirectory = null) {
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+
+    // Prevent default browser zoom behavior (we handle it in the renderer)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if ((input.control || input.meta) && ['+', '=', '-', '0'].includes(input.key)) {
+        event.preventDefault();
+      }
+    });
 
     // If a startup directory was provided via CLI, send it to the renderer
     if (startupDirectory) {

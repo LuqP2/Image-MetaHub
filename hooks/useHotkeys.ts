@@ -45,7 +45,7 @@ export const useHotkeys = ({
 
   const { handleDeleteSelectedImages } = useImageSelection();
   const { handleSelectFolder, handleLoadFromStorage } = useImageLoader();
-  const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
+  const { toggleViewMode, theme, setTheme, keymap, zoomInView, zoomOutView, resetZoom } = useSettingsStore();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
     const element = document.querySelector<HTMLElement>(`[data-area='${area}']`);
@@ -160,6 +160,9 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('navigateNextPage', () => {
       setCurrentPage(prev => Math.max(prev - 1, 1));
     });
+    hotkeyManager.registerAction('zoomInView', zoomInView);
+    hotkeyManager.registerAction('zoomOutView', zoomOutView);
+    hotkeyManager.registerAction('resetZoom', resetZoom);
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);

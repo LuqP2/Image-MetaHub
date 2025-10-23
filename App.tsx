@@ -94,6 +94,9 @@ export default function App() {
     toggleViewMode,
     theme,
     setLastViewedVersion,
+    zoomInView,
+    zoomOutView,
+    resetZoom,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -315,13 +318,21 @@ export default function App() {
       setIsChangelogModalOpen(true);
     });
 
+    // --- Zoom handlers ---
+    const unsubscribeZoomIn = window.electronAPI.onMenuZoomIn(zoomInView);
+    const unsubscribeZoomOut = window.electronAPI.onMenuZoomOut(zoomOutView);
+    const unsubscribeResetZoom = window.electronAPI.onMenuResetZoom(resetZoom);
+
     return () => {
       unsubscribeAddFolder();
       unsubscribeOpenSettings();
       unsubscribeToggleView();
       unsubscribeShowChangelog();
+      unsubscribeZoomIn();
+      unsubscribeZoomOut();
+      unsubscribeResetZoom();
     };
-  }, [handleSelectFolder, toggleViewMode]);
+  }, [handleSelectFolder, toggleViewMode, zoomInView, zoomOutView, resetZoom]);
 
   // Keyboard navigation for preview
   useEffect(() => {

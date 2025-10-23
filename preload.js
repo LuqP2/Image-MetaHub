@@ -86,6 +86,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  // Zoom handlers
+  onMenuZoomIn: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu-zoom-in', handler);
+    return () => ipcRenderer.removeListener('menu-zoom-in', handler);
+  },
+  onMenuZoomOut: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu-zoom-out', handler);
+    return () => ipcRenderer.removeListener('menu-zoom-out', handler);
+  },
+  onMenuResetZoom: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu-reset-zoom', handler);
+    return () => ipcRenderer.removeListener('menu-reset-zoom', handler);
+  },
+
   onFullscreenChange: (callback) => {
     const handler = (event, isFullscreen) => callback(isFullscreen);
     ipcRenderer.on('fullscreen-changed', handler);

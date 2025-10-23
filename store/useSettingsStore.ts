@@ -45,6 +45,9 @@ interface SettingsState {
   setItemsPerPage: (count: number | 'all') => void;
   toggleScanSubfolders: () => void;
   setImageSize: (size: number) => void;
+  zoomInView: () => void;
+  zoomOutView: () => void;
+  resetZoom: () => void;
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
@@ -80,6 +83,9 @@ export const useSettingsStore = create<SettingsState>()(
       setItemsPerPage: (count) => set({ itemsPerPage: count }),
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
       setImageSize: (size) => set({ imageSize: size }),
+      zoomInView: () => set((state) => ({ imageSize: Math.min(state.imageSize + 10, 300) })),
+      zoomOutView: () => set((state) => ({ imageSize: Math.max(state.imageSize - 10, 50) })),
+      resetZoom: () => set({ imageSize: 120 }),
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
