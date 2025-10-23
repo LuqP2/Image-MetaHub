@@ -12,6 +12,9 @@ interface HotkeyProps {
   setIsHotkeyHelpOpen: (isOpen: boolean) => void;
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
+  currentPage: number;
+  setCurrentPage: (page: number | ((prev: number) => number)) => void;
+  totalPages: number;
 }
 
 export const useHotkeys = ({
@@ -21,6 +24,9 @@ export const useHotkeys = ({
   setIsHotkeyHelpOpen,
   isSettingsModalOpen,
   setIsSettingsModalOpen,
+  currentPage,
+  setCurrentPage,
+  totalPages,
 }: HotkeyProps) => {
   const {
     selectedImage,
@@ -34,6 +40,8 @@ export const useHotkeys = ({
     directories,
     handleNavigateNext,
     handleNavigatePrevious,
+    navigateToFirstPage,
+    navigateToLastPage,
     selectAllImages,
   } = useImageStore();
 
@@ -123,6 +131,14 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
     hotkeyManager.registerAction('navigateNext', handleNavigateNext);
+    hotkeyManager.registerAction('navigateToFirst', navigateToFirstPage);
+    hotkeyManager.registerAction('navigateToLast', navigateToLastPage);
+    hotkeyManager.registerAction('navigatePreviousPage', () => {
+      setCurrentPage(prev => Math.max(prev - 1, 1));
+    });
+    hotkeyManager.registerAction('navigateNextPage', () => {
+      setCurrentPage(prev => Math.min(prev + 1, totalPages));
+    });
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
@@ -176,6 +192,8 @@ export const useHotkeys = ({
     setSelectedImage,
     handleNavigatePrevious,
     handleNavigateNext,
+    navigateToFirstPage,
+    navigateToLastPage,
     isCommandPaletteOpen,
     isHotkeyHelpOpen,
     isSettingsModalOpen,
@@ -185,6 +203,9 @@ export const useHotkeys = ({
     setIsCommandPaletteOpen,
     setIsHotkeyHelpOpen,
     setIsSettingsModalOpen,
+    currentPage,
+    setCurrentPage,
+    totalPages,
   ]);
 
   // Separate effect to handle scope changes based on selectedImage

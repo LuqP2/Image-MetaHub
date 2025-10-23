@@ -68,6 +68,13 @@ const Pagination: React.FC<PaginationProps> = ({
           {/* Page navigation */}
           <div className="flex items-center gap-3">
         <button
+            onClick={() => onPageChange(1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            First
+        </button>
+        <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
           className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -101,6 +108,13 @@ const Pagination: React.FC<PaginationProps> = ({
           className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
+        </button>
+        <button
+            onClick={() => onPageChange(totalPages)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            Last
         </button>
       </div>
 

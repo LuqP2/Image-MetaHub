@@ -29,9 +29,13 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'deleteSelected', name: 'Delete Selected / Image', scope: 'global', defaultKey: 'delete' },
 
   // Preview Scope
+  { id: 'toggleImageFullscreen', name: 'Toggle Image Fullscreen', scope: 'preview', defaultKey: 'alt+enter' },
   { id: 'navigatePrevious', name: 'Previous Image', scope: 'preview', defaultKey: 'left' },
   { id: 'navigateNext', name: 'Next Image', scope: 'preview', defaultKey: 'right' },
-  { id: 'toggleImageFullscreen', name: 'Toggle Image Fullscreen', scope: 'preview', defaultKey: 'alt+enter' },
+  { id: 'navigateToFirst', name: 'First Image', scope: 'preview', defaultKey: 'home' },
+  { id: 'navigateToLast', name: 'Last Image', scope: 'preview', defaultKey: 'end' },
+  { id: 'navigatePreviousPage', name: 'Previous Page', scope: 'global', defaultKey: 'pageup' },
+  { id: 'navigateNextPage', name: 'Next Page', scope: 'global', defaultKey: 'pagedown' },
 ];
 
 export const getDefaultKeymap = (): Keymap => {

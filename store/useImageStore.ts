@@ -73,6 +73,8 @@ interface ImageState {
   // Navigation Actions
   handleNavigateNext: () => void;
   handleNavigatePrevious: () => void;
+  navigateToFirstPage: () => void;
+  navigateToLastPage: () => void;
   handleNavigateNextPreview: () => void;
   handleNavigatePreviousPreview: () => void;
 
@@ -474,6 +476,22 @@ export const useImageStore = create<ImageState>((set, get) => {
             const prevIndex = currentIndex > 0 ? currentIndex - 1 : state.filteredImages.length - 1;
             const prevImage = state.filteredImages[prevIndex];
             set({ selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
+        },
+
+        navigateToFirstPage: () => {
+            const state = get();
+            if (state.filteredImages.length > 0) {
+                const firstImage = state.filteredImages[0];
+                set({ selectedImage: firstImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
+            }
+        },
+
+        navigateToLastPage: () => {
+            const state = get();
+            if (state.filteredImages.length > 0) {
+                const lastImage = state.filteredImages[state.filteredImages.length - 1];
+                set({ selectedImage: lastImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
+            }
         },
 
         handleNavigateNextPreview: () => {
