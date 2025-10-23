@@ -367,6 +367,14 @@ function createWindow(startupDirectory = null) {
     mainWindow.webContents.openDevTools();
   }
 
+  // Listen for fullscreen changes and notify renderer
+  mainWindow.on('enter-full-screen', () => {
+    mainWindow.webContents.send('fullscreen-changed', true);
+  });
+  mainWindow.on('leave-full-screen', () => {
+    mainWindow.webContents.send('fullscreen-changed', false);
+  });
+
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -516,6 +524,13 @@ function setupFileOperationHandlers() {
     return {
       shouldUseDarkColors: nativeTheme.shouldUseDarkColors
     };
+  });
+
+  ipcMain.handle('toggle-fullscreen', () => {
+    if (mainWindow) {
+      const isFullScreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullScreen);
+    }
   });
 
   ipcMain.handle('get-app-version', () => {

@@ -66,60 +66,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
-  // Full screen browser API functions
-  const enterFullscreen = async () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
-      }
-    } catch (error) {
-      console.error('Failed to enter fullscreen:', error);
-    }
-  };
-
-  const exitFullscreen = async () => {
-    try {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (error) {
-      console.error('Failed to exit fullscreen:', error);
-    }
-  };
-
+  // --- Unified Fullscreen Logic ---
   const toggleFullscreen = () => {
-    if (isFullscreen) {
-      exitFullscreen();
+    if (window.electronAPI?.toggleFullscreen) {
+      window.electronAPI.toggleFullscreen();
     } else {
-      enterFullscreen();
+      console.warn('Fullscreen API not available.');
     }
   };
 
-  // Listen for fullscreen changes (ESC key, etc.)
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  // Listen for custom fullscreen toggle events
-  useEffect(() => {
-    const toggleHandler = () => setIsFullscreen(prev => !prev);
-    const setHandler = (e: CustomEvent) => setIsFullscreen(e.detail);
-
-    window.addEventListener('toggleImageFullscreen', toggleHandler);
-    window.addEventListener('setImageFullscreen', setHandler);
+    // Listen for fullscreen changes from the main process
+    const cleanup = window.electronAPI?.onFullscreenChange?.((isFullScreen) => {
+      setIsFullscreen(isFullScreen);
+    });
 
     return () => {
-      window.removeEventListener('toggleImageFullscreen', toggleHandler);
-      window.removeEventListener('setImageFullscreen', setHandler);
+      // Cleanup the listener when the component unmounts
+      if (cleanup) {
+        cleanup();
+      }
     };
   }, []);
+  // --- End Unified Fullscreen Logic ---
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
 

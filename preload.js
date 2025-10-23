@@ -86,7 +86,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onFullscreenChange: (callback) => {
+    const handler = (event, isFullscreen) => callback(isFullscreen);
+    ipcRenderer.on('fullscreen-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('fullscreen-changed', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
+  toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('rename-file', oldPath, newPath),
