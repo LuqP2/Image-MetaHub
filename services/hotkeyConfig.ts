@@ -32,8 +32,8 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   { id: 'toggleImageFullscreen', name: 'Toggle Image Fullscreen', scope: 'preview', defaultKey: 'alt+enter' },
   { id: 'navigatePrevious', name: 'Previous Image', scope: 'preview', defaultKey: 'left' },
   { id: 'navigateNext', name: 'Next Image', scope: 'preview', defaultKey: 'right' },
-  { id: 'navigateToFirst', name: 'First Image', scope: 'preview', defaultKey: 'home' },
-  { id: 'navigateToLast', name: 'Last Image', scope: 'preview', defaultKey: 'end' },
+  { id: 'navigateToFirstPage', name: 'First Page', scope: 'global', defaultKey: 'home' },
+  { id: 'navigateToLastPage', name: 'Last Page', scope: 'global', defaultKey: 'end' },
   { id: 'navigatePreviousPage', name: 'Previous Page', scope: 'global', defaultKey: 'pageup' },
   { id: 'navigateNextPage', name: 'Next Page', scope: 'global', defaultKey: 'pagedown' },
 ];

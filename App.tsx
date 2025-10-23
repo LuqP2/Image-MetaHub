@@ -108,7 +108,14 @@ export default function App() {
   const [currentVersion, setCurrentVersion] = useState<string>('0.9.4');
 
   // --- Hotkeys Hook ---
-  // Use paginatedImages and totalPages only once, below in render logic.
+
+  // --- Pagination Logic ---
+  const paginatedImages = itemsPerPage === 'all'
+    ? filteredImages
+    : filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
+
+  // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
@@ -118,7 +125,7 @@ export default function App() {
     setIsSettingsModalOpen,
     currentPage,
     setCurrentPage,
-    totalPages: itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage),
+    totalPages,
   });
 
   const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
@@ -402,10 +409,7 @@ export default function App() {
   }, [selectedImage, filteredImages]);
 
   // --- Render Logic ---
-  const paginatedImages = itemsPerPage === 'all'
-    ? filteredImages
-    : filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
+  // ...existing code...
   const hasDirectories = directories.length > 0;
   const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 

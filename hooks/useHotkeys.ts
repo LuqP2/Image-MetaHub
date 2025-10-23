@@ -40,8 +40,6 @@ export const useHotkeys = ({
     directories,
     handleNavigateNext,
     handleNavigatePrevious,
-    navigateToFirstPage,
-    navigateToLastPage,
     selectAllImages,
   } = useImageStore();
 
@@ -131,13 +129,17 @@ export const useHotkeys = ({
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
     hotkeyManager.registerAction('navigateNext', handleNavigateNext);
-    hotkeyManager.registerAction('navigateToFirst', navigateToFirstPage);
-    hotkeyManager.registerAction('navigateToLast', navigateToLastPage);
+    hotkeyManager.registerAction('navigateToFirstPage', () => {
+      setCurrentPage(1);
+    });
+    hotkeyManager.registerAction('navigateToLastPage', () => {
+      setCurrentPage(totalPages);
+    });
     hotkeyManager.registerAction('navigatePreviousPage', () => {
-      setCurrentPage(prev => Math.max(prev - 1, 1));
+      setCurrentPage(prev => Math.min(prev + 1, totalPages));
     });
     hotkeyManager.registerAction('navigateNextPage', () => {
-      setCurrentPage(prev => Math.min(prev + 1, totalPages));
+      setCurrentPage(prev => Math.max(prev - 1, 1));
     });
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
@@ -192,8 +194,6 @@ export const useHotkeys = ({
     setSelectedImage,
     handleNavigatePrevious,
     handleNavigateNext,
-    navigateToFirstPage,
-    navigateToLastPage,
     isCommandPaletteOpen,
     isHotkeyHelpOpen,
     isSettingsModalOpen,
