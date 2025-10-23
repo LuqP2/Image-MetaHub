@@ -467,24 +467,34 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         handleNavigateNext: () => {
-            const state = get();
-            const currentIndex = state.selectedImage 
-                ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
-                : -1;
-            const nextIndex = currentIndex < state.filteredImages.length - 1 ? currentIndex + 1 : 0;
-            const nextImage = state.filteredImages[nextIndex];
-            set({ selectedImage: nextImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
-        },
+    const state = get();
+    const currentIndex = state.selectedImage 
+        ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
+        : -1;
+    const nextIndex = currentIndex < state.filteredImages.length - 1 ? currentIndex + 1 : 0;
+    const nextImage = state.filteredImages[nextIndex];
+    set({ 
+        selectedImage: nextImage, 
+        selectedImages: new Set(), 
+        shouldOpenModal: state.shouldOpenModal,
+        modalOpenedViaFullscreenHotkey: false  // ← ADICIONAR
+    });
+},
 
         handleNavigatePrevious: () => {
-            const state = get();
-            const currentIndex = state.selectedImage 
-                ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
-                : 0;
-            const prevIndex = currentIndex > 0 ? currentIndex - 1 : state.filteredImages.length - 1;
-            const prevImage = state.filteredImages[prevIndex];
-            set({ selectedImage: prevImage, selectedImages: new Set(), shouldOpenModal: state.shouldOpenModal });
-        },
+    const state = get();
+    const currentIndex = state.selectedImage
+        ? state.filteredImages.findIndex(img => img.id === state.selectedImage!.id)
+        : 0;
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : state.filteredImages.length - 1;
+    const prevImage = state.filteredImages[prevIndex];
+    set({
+        selectedImage: prevImage,
+        selectedImages: new Set(),
+        shouldOpenModal: state.shouldOpenModal,
+        modalOpenedViaFullscreenHotkey: false  // ← ADICIONAR
+    });
+},
 
         navigateToFirstPage: () => {
             const state = get();
