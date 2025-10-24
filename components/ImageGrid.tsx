@@ -133,6 +133,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const directories = useImageStore((state) => state.directories);
   const previewImage = useImageStore((state) => state.previewImage);
   const selectedImage = useImageStore((state) => state.selectedImage);
+  const shouldOpenModal = useImageStore((state) => state.shouldOpenModal);
   const { handleDeleteSelectedImages } = useImageSelection();
   const {
     contextMenu,
@@ -149,10 +150,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for a valid selection (either single or multiple)
-      if (e.key === 'Delete' && (selectedImages.size > 0 || selectedImage)) {
+      // Only handle delete if no modal is open and preview is not visible
+      if (e.key === 'Delete' && !shouldOpenModal && !previewImage && (selectedImages.size > 0 || selectedImage)) {
         e.preventDefault();
-        handleDeleteSelectedImages(); // This now handles both cases
+        handleDeleteSelectedImages();
       }
     };
 
@@ -160,7 +161,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedImage, selectedImages, handleDeleteSelectedImages]);
+  }, [selectedImage, selectedImages, handleDeleteSelectedImages, shouldOpenModal, previewImage]);
 
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;

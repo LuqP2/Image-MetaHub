@@ -392,14 +392,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     hotkeyManager.setScope('preview');
     
-    // Add Delete key and Escape key handler specifically for ImageModal
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete') {
-        e.preventDefault();
-        handleDelete();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
+      // Only handle keys if the modal is supposed to be open
+      if (shouldOpenModal) {
+        if (e.key === 'Delete') {
+          e.preventDefault();
+          handleDelete();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
       }
     };
 
@@ -409,7 +411,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       hotkeyManager.setScope('global');
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleDelete, onClose]);
+  }, [handleDelete, onClose, shouldOpenModal]);
 
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {

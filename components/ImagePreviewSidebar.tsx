@@ -37,6 +37,7 @@ const ImagePreviewSidebar: React.FC = () => {
     previewImage,
     setPreviewImage,
     directories,
+    shouldOpenModal,
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -75,10 +76,9 @@ const ImagePreviewSidebar: React.FC = () => {
     }
   };
 
-  // Add Delete key handler for sidebar preview
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && previewImage) {
+      if (e.key === 'Delete' && previewImage && !shouldOpenModal) {
         e.preventDefault();
         handleDelete();
       }
@@ -89,7 +89,7 @@ const ImagePreviewSidebar: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [previewImage, handleDelete]);
+  }, [previewImage, handleDelete, shouldOpenModal]);
 
   useEffect(() => {
     let isMounted = true;
