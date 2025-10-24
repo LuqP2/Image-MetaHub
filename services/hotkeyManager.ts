@@ -27,6 +27,7 @@ const bindAllActions = () => {
   unbindAll();
   const { keymap } = useSettingsStore.getState();
   const defaultKeymap = getDefaultKeymap();
+  const isLinux = navigator.userAgent.toLowerCase().includes('linux');
 
   // Migrate keymap: add missing actions from default
   let needsMigration = false;
@@ -53,14 +54,22 @@ const bindAllActions = () => {
       return;
     }
 
-    const key = scopeKeymap[action.id];
+    let key = scopeKeymap[action.id];
     if (!key) {
       return;
     }
 
-    // Handle platform differences (Ctrl/Cmd)
+    // Linux fallback for alt+enter (intercepted by window managers)
+    if (isLinux && action.id === 'toggleImageFullscreen' && key === 'alt+enter') {
+      key = 'shift+enter'; // Fallback for Linux
+      console.warn(`[HotkeyManager] 'alt+enter' intercepted on Linux. Using 'shift+enter' as fallback for '${action.id}'.`);
+    }
+
+    // Handle platform differences (Ctrl/Cmd) and special delete key handling
     let keysToRegister = key;
-    if (key.includes('ctrl') && !key.includes('cmd')) {
+    if (action.id === 'deleteSelected' && key === 'delete') {
+      keysToRegister = 'delete, del'; // Register both delete and del keys for cross-platform compatibility
+    } else if (key.includes('ctrl') && !key.includes('cmd')) {
       // Only add cmd variant if it has ctrl and doesn't already have cmd
       const platformKey = key.replace('ctrl', 'cmd');
       keysToRegister = `${key}, ${platformKey}`;

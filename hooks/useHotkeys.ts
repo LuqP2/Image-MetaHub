@@ -117,33 +117,37 @@ export const useHotkeys = ({
 
       const { isModalFullscreen, modalOpenedViaFullscreenHotkey, setModalOpenedViaFullscreenHotkey } = useImageStore.getState();
 
-      if (shouldOpenModal) {
-        // Modal is already open
-        if (isModalFullscreen) {
-          // Currently fullscreen
-          if (modalOpenedViaFullscreenHotkey) {
-            // Opened via hotkey, so close everything
-            window.electronAPI?.toggleFullscreen();
-            setTimeout(() => {
-              setShouldOpenModal(false);
-              setModalOpenedViaFullscreenHotkey(false);
-            }, 100);
+      const toggleFullscreenAsync = async () => {
+        try {
+          if (shouldOpenModal) {
+            // Modal is already open
+            if (isModalFullscreen) {
+              // Currently fullscreen
+              if (modalOpenedViaFullscreenHotkey) {
+                // Opened via hotkey, so close everything
+                await window.electronAPI?.toggleFullscreen();
+                setShouldOpenModal(false);
+                setModalOpenedViaFullscreenHotkey(false);
+              } else {
+                // Opened via click, so just exit fullscreen
+                await window.electronAPI?.toggleFullscreen();
+              }
+            } else {
+              // Not fullscreen, so enter fullscreen
+              await window.electronAPI?.toggleFullscreen();
+            }
           } else {
-            // Opened via click, so just exit fullscreen
-            window.electronAPI?.toggleFullscreen();
+            // Modal is closed, open it in fullscreen and set the flag
+            setModalOpenedViaFullscreenHotkey(true);
+            setShouldOpenModal(true);
+            await window.electronAPI?.toggleFullscreen();
           }
-        } else {
-          // Not fullscreen, so enter fullscreen
-          window.electronAPI?.toggleFullscreen();
+        } catch (error) {
+          console.error('Error toggling fullscreen:', error);
         }
-      } else {
-        // Modal is closed, open it in fullscreen and set the flag
-        setModalOpenedViaFullscreenHotkey(true);
-        setShouldOpenModal(true);
-        setTimeout(() => {
-          window.electronAPI?.toggleFullscreen();
-        }, 100);
-      }
+      };
+
+      toggleFullscreenAsync();
     });
     hotkeyManager.registerAction('toggleListGridView', toggleViewMode);
     hotkeyManager.registerAction('navigatePrevious', handleNavigatePrevious);
@@ -155,10 +159,10 @@ export const useHotkeys = ({
       setCurrentPage(totalPages);
     });
     hotkeyManager.registerAction('navigatePreviousPage', () => {
-      setCurrentPage(prev => Math.min(prev + 1, totalPages));
+      setCurrentPage(prev => Math.max(prev - 1, 1));
     });
     hotkeyManager.registerAction('navigateNextPage', () => {
-      setCurrentPage(prev => Math.max(prev - 1, 1));
+      setCurrentPage(prev => Math.min(prev + 1, totalPages));
     });
     hotkeyManager.registerAction('closeModalsOrClearSelection', () => {
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
