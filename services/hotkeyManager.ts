@@ -2,6 +2,33 @@ import hotkeys, { KeyHandler } from 'hotkeys-js';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig, HotkeyDefinition, getDefaultKeymap } from './hotkeyConfig';
 
+// Configure hotkeys-js to ALWAYS allow delete key
+hotkeys.filter = function(event: KeyboardEvent): boolean {
+  const target = (event.target || event.srcElement) as HTMLElement;
+  const tagName = target?.tagName;
+  const key = event.key || '';
+  
+  // ALWAYS allow Delete key - no exceptions
+  if (key === 'Delete' || key === 'Del' || event.keyCode === 46) {
+    return true;
+  }
+  
+  // ALWAYS allow Escape key (for closing modals)
+  if (key === 'Escape' || event.keyCode === 27) {
+    return true;
+  }
+  
+  // Block other hotkeys only when actively typing in text fields
+  if (tagName === 'INPUT' || tagName === 'TEXTAREA') {
+    const inputElement = target as HTMLInputElement | HTMLTextAreaElement;
+    // Allow hotkeys if input is not actively being edited
+    return inputElement.readOnly || inputElement.disabled;
+  }
+  
+  // Allow all other hotkeys on non-input elements
+  return true;
+};
+
 interface RegisteredAction {
   id: string;
   scope: string;
