@@ -5,6 +5,7 @@ import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
+import { useImageSelection } from '../hooks/useImageSelection';
 import { Check, Info, Copy, Folder, Download } from 'lucide-react';
 
 // --- ImageCard Component (with slight modifications) ---
@@ -132,6 +133,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const directories = useImageStore((state) => state.directories);
   const previewImage = useImageStore((state) => state.previewImage);
   const selectedImage = useImageStore((state) => state.selectedImage);
+  const { handleDeleteSelectedImages } = useImageSelection();
   const {
     contextMenu,
     showContextMenu,
@@ -144,6 +146,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     showInFolder,
     exportImage
   } = useContextMenu();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for a valid selection (either single or multiple)
+      if (e.key === 'Delete' && (selectedImages.size > 0 || selectedImage)) {
+        e.preventDefault();
+        handleDeleteSelectedImages(); // This now handles both cases
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedImage, selectedImages, handleDeleteSelectedImages]);
 
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;

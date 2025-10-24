@@ -61,28 +61,38 @@ export function useImageSelection() {
     }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage, setShouldOpenModal]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
-        if (selectedImages.size === 0) return;
+        const imagesToDelete: IndexedImage[] = [];
 
-        const confirmMessage = `Are you sure you want to delete ${selectedImages.size} image(s)?`;
+        // Prioritize multi-selection
+        if (selectedImages.size > 0) {
+            const imageIds = Array.from(selectedImages);
+            imageIds.forEach(id => {
+                const img = images.find(i => i.id === id);
+                if (img) imagesToDelete.push(img);
+            });
+        } 
+        // Fallback to single selection (highlighted image)
+        else if (selectedImage) {
+            imagesToDelete.push(selectedImage);
+        }
+
+        if (imagesToDelete.length === 0) return;
+
+        const confirmMessage = `Are you sure you want to delete ${imagesToDelete.length} image(s)?`;
         if (!window.confirm(confirmMessage)) return;
 
-        const imagesToDelete = Array.from(selectedImages);
         const deletedImageIds: string[] = [];
-
-        for (const imageId of imagesToDelete) {
-            const image = images.find(img => img.id === imageId);
-            if (image) {
-                try {
-                    const result = await FileOperations.deleteFile(image);
-                    if (result.success) {
-                        removeImage(imageId);
-                        deletedImageIds.push(imageId);
-                    } else {
-                        setError(`Failed to delete ${image.name}: ${result.error}`);
-                    }
-                } catch (err) {
-                    setError(`Error deleting ${image.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        for (const image of imagesToDelete) {
+            try {
+                const result = await FileOperations.deleteFile(image);
+                if (result.success) {
+                    removeImage(image.id);
+                    deletedImageIds.push(image.id);
+                } else {
+                    setError(`Failed to delete ${image.name}: ${result.error}`);
                 }
+            } catch (err) {
+                setError(`Error deleting ${image.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
             }
         }
 
@@ -90,8 +100,11 @@ export function useImageSelection() {
             await cacheManager.removeImages(deletedImageIds);
         }
 
+        // Clear all selections after deletion
         clearImageSelection();
-    }, [selectedImages, images, removeImage, setError, clearImageSelection]);
+        setSelectedImage(null);
+
+    }, [selectedImage, selectedImages, images, removeImage, setError, clearImageSelection, setSelectedImage]);
 
     return { handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
 }
