@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { cacheManager } from '../services/cacheManager';
+import { deleteLockManager } from '../utils/deleteLockManager';
 
 export function useImageSelection() {
     const {
@@ -61,6 +62,8 @@ export function useImageSelection() {
     }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage, setShouldOpenModal]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
+        if (deleteLockManager.isLocked()) return;
+        deleteLockManager.lock();
         const imagesToDelete: IndexedImage[] = [];
 
         // Prioritize multi-selection
@@ -78,6 +81,7 @@ export function useImageSelection() {
 
         if (imagesToDelete.length === 0) return;
 
+        // Always use the same confirmation message for grid
         const confirmMessage = `Are you sure you want to delete ${imagesToDelete.length} image(s)?`;
         if (!window.confirm(confirmMessage)) return;
 
