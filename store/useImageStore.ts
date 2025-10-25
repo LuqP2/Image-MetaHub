@@ -8,6 +8,7 @@ interface ImageState {
   directories: Directory[];
   visibleSubfolders: Set<string>; // Track which subfolder paths are visible
   visibleRoots: Set<string>; // Track which directory roots are visible
+  pendingDirectoryImages: Record<string, IndexedImage[]>;
 
   // UI State
   isLoading: boolean;
@@ -51,6 +52,9 @@ interface ImageState {
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
   clearImages: (directoryId?: string) => void;
+  queueDirectoryImages: (directoryId: string, images: IndexedImage[]) => void;
+  commitQueuedImages: (directoryId: string) => IndexedImage[];
+  clearQueuedImages: (directoryId: string) => void;
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
@@ -263,6 +267,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         directories: [],
         visibleSubfolders: new Set(),
         visibleRoots: new Set(),
+        pendingDirectoryImages: {},
         isLoading: false,
         progress: null,
         indexingState: 'idle',
@@ -331,13 +336,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         }),
 
         removeDirectory: (directoryId) => {
-            const { directories, images } = get();
+            const { directories, images, pendingDirectoryImages } = get();
             const newDirectories = directories.filter(d => d.id !== directoryId);
             if (window.electronAPI) {
                 localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
             }
             const newImages = images.filter(img => img.directoryId !== directoryId);
-            set(state => _updateState({ ...state, directories: newDirectories }, newImages));
+            const updatedPending = { ...pendingDirectoryImages };
+            delete updatedPending[directoryId];
+            set(state => _updateState({ ...state, directories: newDirectories, pendingDirectoryImages: updatedPending }, newImages));
         },
 
         setLoading: (loading) => set({ isLoading: loading }),
@@ -375,11 +382,99 @@ export const useImageStore = create<ImageState>((set, get) => {
         clearImages: (directoryId?: string) => set(state => {
             if (directoryId) {
                 const newImages = state.images.filter(img => img.directoryId !== directoryId);
-                return _updateState(state, newImages);
+                const updatedPending = { ...state.pendingDirectoryImages };
+                delete updatedPending[directoryId];
+                return { ..._updateState({ ...state, pendingDirectoryImages: updatedPending }, newImages), pendingDirectoryImages: updatedPending };
             } else {
-                return _updateState(state, []);
+                const clearedPending: Record<string, IndexedImage[]> = {};
+                return { ..._updateState({ ...state, pendingDirectoryImages: clearedPending }, []), pendingDirectoryImages: clearedPending };
             }
         }),
+
+        queueDirectoryImages: (directoryId, images) => {
+            if (images.length === 0) {
+                return;
+            }
+
+            set(state => {
+                const staged = state.pendingDirectoryImages[directoryId] ?? [];
+                const existingIds = new Set<string>([
+                    ...staged.map(img => img.id),
+                    ...state.images.filter(img => img.directoryId === directoryId).map(img => img.id)
+                ]);
+
+                const deduped: IndexedImage[] = [];
+                for (const image of images) {
+                    if (!existingIds.has(image.id)) {
+                        existingIds.add(image.id);
+                        deduped.push(image);
+                    }
+                }
+
+                if (deduped.length === 0) {
+                    return state;
+                }
+
+                return {
+                    pendingDirectoryImages: {
+                        ...state.pendingDirectoryImages,
+                        [directoryId]: [...staged, ...deduped],
+                    }
+                };
+            });
+        },
+
+        commitQueuedImages: (directoryId) => {
+            let finalImages: IndexedImage[] = [];
+
+            set(state => {
+                const staged = state.pendingDirectoryImages[directoryId] ?? [];
+                const currentDirectoryImages = state.images.filter(img => img.directoryId === directoryId);
+
+                if (staged.length === 0) {
+                    finalImages = currentDirectoryImages;
+                    if (state.pendingDirectoryImages[directoryId]) {
+                        const updatedPending = { ...state.pendingDirectoryImages };
+                        delete updatedPending[directoryId];
+                        return { pendingDirectoryImages: updatedPending };
+                    }
+                    return state;
+                }
+
+                const otherImages = state.images.filter(img => img.directoryId !== directoryId);
+                const existingIds = new Set(currentDirectoryImages.map(img => img.id));
+                const mergedDirectoryImages = [...currentDirectoryImages];
+
+                for (const image of staged) {
+                    if (!existingIds.has(image.id)) {
+                        existingIds.add(image.id);
+                        mergedDirectoryImages.push(image);
+                    }
+                }
+
+                finalImages = mergedDirectoryImages;
+                const allImages = [...otherImages, ...mergedDirectoryImages];
+                const updatedPending = { ...state.pendingDirectoryImages };
+                delete updatedPending[directoryId];
+
+                const updatedState = _updateState(state, allImages);
+                return { ...updatedState, pendingDirectoryImages: updatedPending };
+            });
+
+            return finalImages;
+        },
+
+        clearQueuedImages: (directoryId) => {
+            set(state => {
+                if (!state.pendingDirectoryImages[directoryId]) {
+                    return state;
+                }
+
+                const updatedPending = { ...state.pendingDirectoryImages };
+                delete updatedPending[directoryId];
+                return { pendingDirectoryImages: updatedPending };
+            });
+        },
 
         removeImages: (imageIds) => {
             const idsToRemove = new Set(imageIds);
@@ -536,6 +631,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             images: [],
             filteredImages: [],
             directories: [],
+            pendingDirectoryImages: {},
             isLoading: false,
             progress: { current: 0, total: 0 },
             error: null,

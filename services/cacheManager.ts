@@ -18,7 +18,32 @@ interface CacheEntry {
     models: string[];
     loras: string[];
     scheduler: string;
+    board?: string;
+    prompt?: string;
+    negativePrompt?: string;
+    cfgScale?: number | null;
+    steps?: number | null;
+    seed?: number | null;
+    dimensions?: string;
   }[];
+}
+
+interface CachedMetadata {
+  id: string;
+  name: string;
+  metadataString: string;
+  metadata: any;
+  lastModified: number;
+  models: string[];
+  loras: string[];
+  scheduler: string;
+  board?: string;
+  prompt?: string;
+  negativePrompt?: string;
+  cfgScale?: number | null;
+  steps?: number | null;
+  seed?: number | null;
+  dimensions?: string;
 }
 
 export interface CacheDiff {
@@ -133,19 +158,20 @@ class CacheManager {
           return;
         }
 
-        const allMetadata: any[] = [];
+        const allMetadata: CachedMetadata[] = [];
         let chunksRetrieved = 0;
 
         entry.metadataChunkIds.forEach((chunkId: string) => {
           const chunkRequest = chunkStore.get(chunkId);
           chunkRequest.onerror = () => reject(chunkRequest.error);
           chunkRequest.onsuccess = () => {
-            if (chunkRequest.result && chunkRequest.result.data) {
-              allMetadata.push(...chunkRequest.result.data);
+            const chunkResult = chunkRequest.result as { data?: CachedMetadata[] } | undefined;
+            if (chunkResult && Array.isArray(chunkResult.data)) {
+              allMetadata.push(...chunkResult.data);
             }
             chunksRetrieved++;
             if (chunksRetrieved === entry.metadataChunkIds.length) {
-              resolve(allMetadata as IndexedImage[]);
+              resolve(allMetadata as unknown as IndexedImage[]);
             }
           };
         });
@@ -167,7 +193,7 @@ class CacheManager {
     const CHUNK_SIZE = 10000; // Store 10,000 records per chunk
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
 
-    const allMetadata = images.map((img) => ({
+    const allMetadata: CachedMetadata[] = images.map((img) => ({
       id: img.id,
       name: img.name,
       metadataString: img.metadataString,
@@ -176,9 +202,16 @@ class CacheManager {
       models: img.models,
       loras: img.loras,
       scheduler: img.scheduler,
+      board: img.board,
+      prompt: img.prompt,
+      negativePrompt: img.negativePrompt,
+      cfgScale: img.cfgScale ?? null,
+      steps: img.steps ?? null,
+      seed: img.seed ?? null,
+      dimensions: img.dimensions,
     }));
 
-    const metadataChunks = [];
+    const metadataChunks: CachedMetadata[][] = [];
     for (let i = 0; i < allMetadata.length; i += CHUNK_SIZE) {
       metadataChunks.push(allMetadata.slice(i, i + CHUNK_SIZE));
     }
@@ -403,11 +436,11 @@ class CacheManager {
           else if (entry.metadataChunkIds && Array.isArray(entry.metadataChunkIds)) {
             // Load all chunks, filter out deleted images, and save back
             const loadPromises = entry.metadataChunkIds.map((chunkId: string) => {
-              return new Promise<any[]>((resolveChunk) => {
+              return new Promise<CachedMetadata[]>((resolveChunk) => {
                 const getRequest = chunkStore.get(chunkId);
                 getRequest.onsuccess = () => {
-                  const chunk = getRequest.result;
-                  resolveChunk(chunk && chunk.data ? chunk.data : []);
+                  const chunk = getRequest.result as { data?: CachedMetadata[] } | undefined;
+                  resolveChunk(chunk && Array.isArray(chunk.data) ? chunk.data : []);
                 };
                 getRequest.onerror = () => resolveChunk([]);
               });
@@ -415,7 +448,7 @@ class CacheManager {
 
             Promise.all(loadPromises).then((allChunks) => {
               // Flatten all chunks into single array
-              const allMetadata = allChunks.flat();
+              const allMetadata: CachedMetadata[] = allChunks.flat();
               const initialCount = allMetadata.length;
               
               // Filter out deleted images
@@ -425,7 +458,7 @@ class CacheManager {
               if (removedCount > 0) {
                 // Re-chunk the filtered data
                 const CHUNK_SIZE = 10000;
-                const newChunks = [];
+                const newChunks: CachedMetadata[][] = [];
                 for (let i = 0; i < filteredMetadata.length; i += CHUNK_SIZE) {
                   newChunks.push(filteredMetadata.slice(i, i + CHUNK_SIZE));
                 }
@@ -464,7 +497,20 @@ class CacheManager {
     currentFiles: { name: string; lastModified: number }[],
     scanSubfolders: boolean
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath, scanSubfolders);
+    let cached = await this.getCachedData(directoryPath, scanSubfolders);
+    let usedFallbackCache = false;
+
+    if (!cached || cached.length === 0) {
+      const fallbackCache = await this.getCachedData(directoryPath, !scanSubfolders);
+
+      if (fallbackCache && fallbackCache.length > 0) {
+        cached = fallbackCache;
+        usedFallbackCache = true;
+        console.log(
+          `♻️ Reusing cached metadata from ${scanSubfolders ? 'flat' : 'recursive'} scan for ${directoryName}`,
+        );
+      }
+    }
 
     if (!cached || cached.length === 0) {
       return {
@@ -506,7 +552,7 @@ class CacheManager {
     }
 
     // If there are deleted files, clean them up from cache
-    if (deletedFileIds.length > 0) {
+    if (deletedFileIds.length > 0 && !usedFallbackCache) {
       await this.removeImages(deletedFileIds);
     }
 

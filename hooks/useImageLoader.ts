@@ -180,7 +180,8 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, clearImages, setIndexingState
+        removeImages, addImages, clearImages, setIndexingState,
+        queueDirectoryImages, commitQueuedImages, clearQueuedImages
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -191,6 +192,8 @@ export function useImageLoader() {
     
     // Timer for indexing performance tracking
     const indexingStartTimeRef = useRef<number | null>(null);
+
+    const currentDirectoryIdRef = useRef<string | null>(null);
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback(() => {
@@ -227,29 +230,9 @@ export function useImageLoader() {
     useEffect(() => {
         if (!getIsElectron()) return;
 
-        const updateGlobalFilters = () => {
-            const allImages = useImageStore.getState().images;
-            const models = new Set<string>();
-            const loras = new Set<string>();
-            const schedulers = new Set<string>();
-
-            for (const image of allImages) {
-                if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
-                if (image.scheduler) schedulers.add(image.scheduler);
-            }
-
-            setFilterOptions({
-                models: Array.from(models).sort(),
-                loras: Array.from(loras).sort(),
-                schedulers: Array.from(schedulers).sort(),
-                dimensions: [],
-            });
-        };
-
         const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
             setProgress(progress);
-            
+
             // If progress reaches 100%, manually trigger finalization after a short delay
             // This is a workaround for when onIndexingComplete doesn't fire
             if (progress.current === progress.total && progress.total > 0) {
@@ -271,15 +254,16 @@ export function useImageLoader() {
         });
 
         let isFirstBatch = true;
-        const removeBatchListener = (window as any).electronAPI.onIndexingBatchResult(({ batch }: { batch: IndexedImage[] }) => {
-            addImages(batch);
+        const removeBatchListener = (window as any).electronAPI.onIndexingBatchResult(({ batch, directoryId }: { batch: IndexedImage[]; directoryId?: string }) => {
+            const targetDirectoryId = directoryId ?? currentDirectoryIdRef.current;
+            if (targetDirectoryId) {
+                queueDirectoryImages(targetDirectoryId, batch);
+            }
             // Remove loading overlay after first batch
             if (isFirstBatch) {
                 setLoading(false);
                 isFirstBatch = false;
             }
-            // Update filters incrementally as new images are processed
-            updateGlobalFilters();
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
@@ -311,7 +295,7 @@ export function useImageLoader() {
             removeErrorListener();
             removeCompleteListener();
         };
-    }, [addImages, setProgress, setError, setLoading]);
+    }, [queueDirectoryImages, setProgress, setError, setLoading, finalizeDirectoryLoad]);
 
     const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
         
@@ -324,9 +308,10 @@ export function useImageLoader() {
         
         // Wait a bit to ensure all images are added to the store
         await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
-        
+
+        const finalDirectoryImages = commitQueuedImages(directory.id);
+        currentDirectoryIdRef.current = null;
+
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
             setSuccess(`Loaded 0 images from ${directory.name}.`);
@@ -361,7 +346,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [setSuccess, setLoading, setIndexingState, setProgress]);
+    }, [commitQueuedImages, setSuccess, setLoading, setIndexingState, setProgress]);
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
@@ -432,6 +417,9 @@ export function useImageLoader() {
         setIndexingState('indexing');
         console.log(`[loadDirectory] State set to 'indexing'`);
 
+        currentDirectoryIdRef.current = directory.id;
+        clearQueuedImages(directory.id);
+
         // Start performance timer
         indexingStartTimeRef.current = performance.now();
 
@@ -497,7 +485,7 @@ export function useImageLoader() {
                 setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
 
                 const handleBatchProcessed = (batch: IndexedImage[]) => {
-                    addImages(batch);
+                    queueDirectoryImages(directory.id, batch);
                 };
 
                 const throttledSetProgress = throttle(setProgress, 200);
@@ -549,8 +537,13 @@ export function useImageLoader() {
              setLoading(false);
              setIndexingState('idle');
              setProgress(null);
+        } finally {
+            clearQueuedImages(directory.id);
+            if (currentDirectoryIdRef.current === directory.id) {
+                currentDirectoryIdRef.current = null;
+            }
         }
-    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
+    }, [addImages, queueDirectoryImages, removeImages, clearImages, clearQueuedImages, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
 
     const handleSelectFolder = useCallback(async () => {
@@ -655,7 +648,7 @@ export function useImageLoader() {
             console.warn('Loading from storage is only supported in Electron.');
             setLoading(false);
         }
-    }, [loadDirectoryFromCache, addDirectory, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [loadDirectoryFromCache, addDirectory, setLoading, setError, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
@@ -696,6 +689,10 @@ export function useImageLoader() {
         cancelIndexing: () => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
+            }
+            if (currentDirectoryIdRef.current) {
+                clearQueuedImages(currentDirectoryIdRef.current);
+                currentDirectoryIdRef.current = null;
             }
         }
     };

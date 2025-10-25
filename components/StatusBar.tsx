@@ -12,9 +12,9 @@ interface StatusBarProps {
   onCancelIndexing: () => void;
 }
 
-const StatusBar: React.FC<StatusBarProps> = ({ 
-  filteredCount, 
-  totalCount, 
+const StatusBar: React.FC<StatusBarProps> = ({
+  filteredCount,
+  totalCount,
   directoryCount,
   indexingState = 'idle',
   progress,
@@ -23,7 +23,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
   onCancelIndexing
 }) => {
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
-  
+
   return (
     <div className="mb-4 px-4 py-2 bg-gray-800/50 rounded-lg border border-gray-700 text-gray-300 flex justify-between items-center">
       <span>

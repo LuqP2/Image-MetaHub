@@ -541,6 +541,7 @@ export default function App() {
                 filteredCount={filteredImages.length}
                 totalCount={images.length}
                 directoryCount={directories.length}
+                showCounts={indexingState !== 'indexing'}
               />
 
               <div className="flex-1 min-h-0">
