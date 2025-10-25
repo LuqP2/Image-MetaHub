@@ -94,6 +94,7 @@ export default function App() {
     toggleViewMode,
     theme,
     setLastViewedVersion,
+    showImageCounts,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -527,6 +528,7 @@ export default function App() {
                   onPauseIndexing={handlePauseIndexing}
                   onResumeIndexing={handleResumeIndexing}
                   onCancelIndexing={handleCancelIndexing}
+                  showImageCounts={showImageCounts}
                 />
               )}
 
@@ -541,6 +543,7 @@ export default function App() {
                 filteredCount={filteredImages.length}
                 totalCount={images.length}
                 directoryCount={directories.length}
+                showImageCounts={showImageCounts}
               />
 
               <div className="flex-1 min-h-0">

@@ -18,6 +18,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const autoUpdate = useSettingsStore((state) => state.autoUpdate);
   const setCachePath = useSettingsStore((state) => state.setCachePath);
   const toggleAutoUpdate = useSettingsStore((state) => state.toggleAutoUpdate);
+  const showImageCounts = useSettingsStore((state) => state.showImageCounts);
+  const toggleShowImageCounts = useSettingsStore((state) => state.toggleShowImageCounts);
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
@@ -160,6 +162,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   type="checkbox"
                   checked={autoUpdate}
                   onChange={toggleAutoUpdate}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Live Image Count Updates</h3>
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+              <div>
+                <p className="text-sm">Show real-time totals in the toolbar and status bar</p>
+                <p className="text-xs text-gray-400">
+                  Disable to reduce UI updates when browsing very large directories.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showImageCounts}
+                  onChange={toggleShowImageCounts}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

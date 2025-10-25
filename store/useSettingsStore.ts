@@ -39,6 +39,7 @@ interface SettingsState {
   theme: 'light' | 'dark' | 'system';
   keymap: Keymap;
   lastViewedVersion: string | null;
+  showImageCounts: boolean;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -53,6 +54,7 @@ interface SettingsState {
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
   resetState: () => void;
+  toggleShowImageCounts: () => void;
 }
 
 // Check if running in Electron
@@ -74,6 +76,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
+      showImageCounts: true,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -85,6 +88,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
+      toggleShowImageCounts: () => set((state) => ({ showImageCounts: !state.showImageCounts })),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -107,6 +111,7 @@ export const useSettingsStore = create<SettingsState>()(
         theme: 'system',
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
+        showImageCounts: true,
       }),
     }),
     {
