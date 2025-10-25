@@ -83,7 +83,9 @@ try {
     saveSettings: (newSettings) => ipcRenderer.invoke('save-settings', newSettings),
     updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
-    joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths)
+    joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+    getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
+    getSettings: () => ipcRenderer.invoke('get-settings')
   });
   console.log('PRELOAD: electronAPI exposed successfully');
 } catch (error) {
