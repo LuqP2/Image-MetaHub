@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, clipboard } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -536,6 +536,36 @@ function setupFileOperationHandlers() {
   ipcMain.handle('get-app-version', () => {
     return app.getVersion();
   });
+
+  // Handle copying image to clipboard
+  ipcMain.handle('copy-image-to-clipboard', async (event, imageData) => {
+    try {
+      // imageData should be a base64 string or buffer
+      if (!imageData) {
+        return { success: false, error: 'No image data provided' };
+      }
+
+      // If it's a base64 string, convert to buffer
+      let buffer;
+      if (typeof imageData === 'string' && imageData.startsWith('data:image/')) {
+        // Remove data URL prefix and convert to buffer
+        const base64Data = imageData.split(',')[1];
+        buffer = Buffer.from(base64Data, 'base64');
+      } else if (Buffer.isBuffer(imageData)) {
+        buffer = imageData;
+      } else {
+        return { success: false, error: 'Invalid image data format' };
+      }
+
+      // Write to clipboard as image
+      clipboard.writeImage(buffer);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying image to clipboard:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // --- End Settings IPC ---
 
   // Handle updating the set of allowed directories for file operations

@@ -114,6 +114,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+  copyImageToClipboard: (imageData) => ipcRenderer.invoke('copy-image-to-clipboard', imageData),
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog'),
 

@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 import { deleteLockManager } from '../utils/deleteLockManager';
 import hotkeyManager from '../services/hotkeyManager';
@@ -128,6 +128,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     try {
+      // Ensure document has focus before clipboard operation
+      if (document.hidden || !document.hasFocus()) {
+        window.focus();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
       // Usar navigator.clipboard (funciona tanto no Electron quanto no browser)
       await navigator.clipboard.writeText(text);
 

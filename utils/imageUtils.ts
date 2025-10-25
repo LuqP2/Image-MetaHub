@@ -14,10 +14,46 @@ export interface OperationResult {
  */
 export const copyImageToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
   try {
-    const file = await image.handle.getFile();
-    const blob = new Blob([file], { type: file.type });
-    await navigator.clipboard.write([new ClipboardItem({ [file.type]: blob })]);
-    return { success: true };
+    // Check if running in Electron
+    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
+    if (isElectron && (window as any).electronAPI.copyImageToClipboard) {
+      // Use Electron's native clipboard API
+      const file = await image.handle.getFile();
+
+      // Convert file to base64 data URL
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const base64Data = buffer.toString('base64');
+      const dataUrl = `data:${file.type};base64,${base64Data}`;
+
+      const result = await (window as any).electronAPI.copyImageToClipboard(dataUrl);
+      if (result.success) {
+        return { success: true };
+      } else {
+        return { success: false, error: result.error || 'Failed to copy image to clipboard' };
+      }
+    } else {
+      // Use browser Clipboard API
+      // Check if the Clipboard API for images is supported
+      if (!navigator.clipboard || !navigator.clipboard.write) {
+        return {
+          success: false,
+          error: 'Image clipboard copying is not supported in this browser. Please use a Chromium-based browser (Chrome, Edge, etc.) for this feature.'
+        };
+      }
+
+      // Ensure document has focus before clipboard operation
+      if (document.hidden || !document.hasFocus()) {
+        window.focus();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const file = await image.handle.getFile();
+      const blob = new Blob([file], { type: file.type });
+      await navigator.clipboard.write([new ClipboardItem({ [file.type]: blob })]);
+      return { success: true };
+    }
   } catch (error) {
     console.error('Failed to copy image to clipboard:', error);
     return {
