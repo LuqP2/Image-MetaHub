@@ -102,8 +102,10 @@ export function useImageLoader() {
             name: fileName,
             kind: 'file' as const,
             getFile: async () => {
+              console.log('[RENDERER] getFile called for path:', fullPath);
               // Read file using Electron API when needed
               const fileResult = await window.electronAPI.readFile(fullPath);
+              console.log('[RENDERER] readFile result:', { success: fileResult.success, error: fileResult.error, hasData: !!fileResult.data });
               if (fileResult.success && fileResult.data) {
                 // Convert the data to a File object
                 const data = new Uint8Array(fileResult.data);
@@ -186,13 +188,23 @@ export function useImageLoader() {
 
   const loadDirectory = useCallback(async (directory: Directory) => {
     console.log(`[loadDirectory] Starting load for directory: ${directory.id} (${directory.path})`);
+    console.log(`[loadDirectory] Checking Electron...`);
+    const isElectronCheck = getIsElectron();
+    console.log(`[loadDirectory] Is Electron result: ${isElectronCheck}`);
+    
     setLoading(true);
     setError(null);
     setSuccess(null);
     setIndexingState('indexing');
     clearImages(directory.id); // Clear previous images for this directory
 
-    if (getIsElectron()) {
+    if (isElectronCheck) {
+      // Update allowed paths for security
+      const { directories } = useImageStore.getState();
+      const directoryPaths = directories.map(d => d.path);
+      console.log('[loadDirectory] Updating allowed paths:', directoryPaths);
+      await window.electronAPI.updateAllowedPaths(directoryPaths);
+      
       console.log(`[loadDirectory] Electron detected, trying to load from database first`);
       // First try to load from database
       const loadedFromDb = await loadImagesFromDatabase(directory);
@@ -238,10 +250,15 @@ export function useImageLoader() {
   }, [addDirectory, loadDirectory, setError]);
 
   const handleLoadFromStorage = useCallback(async () => {
-    console.log('[handleLoadFromStorage] Starting to load directories from storage');
-    if (!getIsElectron()) return;
+    console.log('[RENDERER] handleLoadFromStorage called - checking Electron...');
+    if (!getIsElectron()) {
+      console.log('[RENDERER] Not in Electron, skipping handleLoadFromStorage');
+      return;
+    }
 
+    console.log('[RENDERER] In Electron, proceeding with handleLoadFromStorage');
     const storedPaths = localStorage.getItem('image-metahub-directories');
+    console.log('[RENDERER] localStorage storedPaths:', storedPaths);
     if (storedPaths) {
       try {
         const paths = JSON.parse(storedPaths) as string[];
@@ -255,7 +272,13 @@ export function useImageLoader() {
           console.log(`[handleLoadFromStorage] Loading directory: ${path}`);
           await loadDirectory(newDirectory);
         }
-      } catch (e) {
+        
+        // Update allowed paths after loading all directories
+        const { directories } = useImageStore.getState();
+        const directoryPaths = directories.map(d => d.path);
+        console.log('[handleLoadFromStorage] Updating allowed paths:', directoryPaths);
+        await window.electronAPI.updateAllowedPaths(directoryPaths);
+      } catch {
         setError('Failed to load previously saved directories.');
       }
     } else {

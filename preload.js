@@ -81,6 +81,7 @@ try {
     getTheme: () => ipcRenderer.invoke('get-theme'),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     saveSettings: (newSettings) => ipcRenderer.invoke('save-settings', newSettings),
+    updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths)
   });

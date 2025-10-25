@@ -9,6 +9,7 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { readFile } from 'fs/promises';
 import { databaseService } from './electron/databaseService.mjs';
 import { indexingService } from './electron/indexingService.mjs';
 
@@ -581,8 +582,10 @@ function setupFileOperationHandlers() {
 
   // Handle updating the set of allowed directories for file operations
   ipcMain.handle('update-allowed-paths', (event, paths) => {
+    console.log('[Main] update-allowed-paths called with:', paths);
     try {
       if (!Array.isArray(paths)) {
+        console.error('[Main] Invalid paths provided - not an array');
         return { success: false, error: 'Invalid paths provided. Must be an array.' };
       }
       allowedDirectoryPaths.clear();
@@ -591,7 +594,7 @@ function setupFileOperationHandlers() {
         allowedDirectoryPaths.add(normalized);
         console.log('[Main] Added allowed directory:', normalized);
       }
-      console.log('[Main] Total allowed directories:', allowedDirectoryPaths.size);
+      console.log('[Main] Total allowed directories:', allowedDirectoryPaths.size, Array.from(allowedDirectoryPaths));
       return { success: true };
     } catch (error) {
       console.error('Error updating allowed paths:', error);
@@ -835,11 +838,14 @@ function setupFileOperationHandlers() {
 
   // Handle reading file content
   ipcMain.handle('read-file', async (event, filePath) => {
+    console.log('[Main] read-file called with path:', filePath);
     try {
       if (!filePath) {
+        console.log('[Main] read-file: No file path provided');
         return { success: false, error: 'No file path provided' };
       }
 
+      console.log('[Main] read-file: Checking if path is allowed...');
       if (!isPathAllowed(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
         console.error('  [read-file] Requested path:', filePath);
@@ -848,11 +854,13 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
       }
 
-      const data = await fs.readFile(filePath);
-      // console.log('Read file:', filePath, 'Size:', data.length); // Commented out to reduce console noise
+      console.log('[Main] read-file: Path allowed, attempting to read file...');
+      const data = await readFile(filePath);
+      console.log('[Main] read-file: Successfully read file, size:', data.length);
 
       return { success: true, data: data };
     } catch (error) {
+      console.error('[Main] read-file: Error reading file:', filePath, error.message);
       // Only log errors that aren't "file not found" to avoid spam when cache is stale
       if (!error.message?.includes('ENOENT') && !error.message?.includes('no such file')) {
         console.error('Error reading file:', error);
@@ -1002,7 +1010,6 @@ function setupFileOperationHandlers() {
       // We'll allow writing to any directory the user has selected via the directory dialog
       // This is more permissive than read operations but still controlled
       const normalizedFilePath = path.normalize(filePath);
-      const fileDir = path.dirname(normalizedFilePath);
 
       // Check if the target directory is within the current directory or a user-selected export directory
       // For now, we'll allow writing to any directory (since users explicitly choose export locations)
