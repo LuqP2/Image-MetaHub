@@ -14,15 +14,15 @@ async function getFilesRecursively(directory, baseDirectory) {
     for (const entry of entries) {
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        files.push(...await getFilesRecursively(fullPath));
+        files.push(...await getFilesRecursively(fullPath, baseDirectory));
       } else if (entry.isFile()) {
         const lowerName = entry.name.toLowerCase();
         if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
           const stats = await fs.stat(fullPath);
           files.push({
             path: fullPath,
-            relativePath: path.relative(directory, fullPath),
-            lastModified: stats.birthtimeMs,
+            relativePath: path.relative(baseDirectory, fullPath),
+            lastModified: stats.mtimeMs,
           });
         }
       }
