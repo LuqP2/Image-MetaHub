@@ -8,7 +8,7 @@ const { autoUpdater } = electronUpdater;
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs/promises';
+import fs from 'fs';
 import { databaseService } from './electron/databaseService.mjs';
 import { indexingService } from './electron/indexingService.mjs';
 
@@ -322,6 +322,9 @@ function createWindow(startupDirectory = null) {
     titleBarStyle: 'default',
     show: false // Don't show until ready
   });
+
+  console.log('🔌 Preload path:', path.join(__dirname, 'preload.js'));
+  console.log('🔌 Preload file exists:', fs.existsSync(path.join(__dirname, 'preload.js')));
 
   // Create application menu
   createApplicationMenu();
@@ -977,6 +980,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-images', (event, { directoryId, offset, limit }) => {
     return databaseService.getImages(directoryId, offset, limit);
+  });
+
+  ipcMain.handle('get-directory-id', (event, directoryPath) => {
+    return databaseService.getDirectoryIdByPath(directoryPath);
   });
   // --- End Database IPC Handlers ---
 

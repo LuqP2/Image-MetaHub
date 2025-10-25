@@ -39,6 +39,7 @@ export interface ElectronAPI {
   onIndexingComplete: (callback: (result: { directoryId: number }) => void) => () => void;
   startIndexing: (directoryPath: string) => Promise<void>;
   getImages: (options: { directoryId?: number; offset?: number; limit?: number }) => Promise<{ images: IndexedImage[]; total: number }>;
+  getDirectoryId: (directoryPath: string) => Promise<number | null>;
   copyImageToClipboard: (imageData: string) => Promise<{ success: boolean; error?: string }>;
 }
 

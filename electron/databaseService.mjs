@@ -53,6 +53,11 @@ function setupDatabaseService() {
       return dir;
     },
 
+    getDirectoryIdByPath(directoryPath) {
+      const dir = db.prepare('SELECT id FROM directories WHERE path = ?').get(directoryPath);
+      return dir ? dir.id : null;
+    },
+
     upsertImages(images) {
       const stmt = db.prepare(`
         INSERT INTO images (id, directory_id, relative_path, last_modified, metadata_string)
@@ -67,8 +72,11 @@ function setupDatabaseService() {
     },
 
     getImages(directoryId, offset = 0, limit = 50) {
-      return db.prepare('SELECT * FROM images WHERE directory_id = ? LIMIT ? OFFSET ?')
-               .all(directoryId, limit, offset);
+      const images = db.prepare('SELECT * FROM images WHERE directory_id = ? LIMIT ? OFFSET ?')
+                     .all(directoryId, limit, offset);
+      const total = db.prepare('SELECT COUNT(*) as count FROM images WHERE directory_id = ?')
+                   .get(directoryId).count;
+      return { images, total };
     },
   };
 }
