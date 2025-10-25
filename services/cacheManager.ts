@@ -497,7 +497,20 @@ class CacheManager {
     currentFiles: { name: string; lastModified: number }[],
     scanSubfolders: boolean
   ): Promise<CacheDiff> {
-    const cached = await this.getCachedData(directoryPath, scanSubfolders);
+    let cached = await this.getCachedData(directoryPath, scanSubfolders);
+    let usedFallbackCache = false;
+
+    if (!cached || cached.length === 0) {
+      const fallbackCache = await this.getCachedData(directoryPath, !scanSubfolders);
+
+      if (fallbackCache && fallbackCache.length > 0) {
+        cached = fallbackCache;
+        usedFallbackCache = true;
+        console.log(
+          `♻️ Reusing cached metadata from ${scanSubfolders ? 'flat' : 'recursive'} scan for ${directoryName}`,
+        );
+      }
+    }
 
     if (!cached || cached.length === 0) {
       return {
@@ -539,7 +552,7 @@ class CacheManager {
     }
 
     // If there are deleted files, clean them up from cache
-    if (deletedFileIds.length > 0) {
+    if (deletedFileIds.length > 0 && !usedFallbackCache) {
       await this.removeImages(deletedFileIds);
     }
 
