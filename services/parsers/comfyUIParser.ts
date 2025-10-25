@@ -12,7 +12,7 @@ async function getZlib(): Promise<any> {
 
   if (!zlibPromise) {
     zlibPromise = import('zlib').catch(() => {
-      console.warn('[ComfyUI Parser] zlib not available, compression support disabled');
+      // zlib not available, compression support disabled
       return null;
     });
   }
@@ -444,8 +444,6 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   const terminalNode = findTerminalNode(graph);
 
   if (!terminalNode) {
-    console.error("[ComfyUI Parser] ❌ Não foi possível encontrar um nó terminal (SINK) no grafo.");
-    console.error("[ComfyUI Parser] Available nodes:", Object.entries(graph).map(([id, n]) => `${id}:${n.class_type}`));
     telemetry.warnings.push('No terminal node found');
     
     // Try regex fallback on workflow text
@@ -453,7 +451,6 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     const regexParams = extractParamsWithRegex(workflowText);
     
     if (Object.keys(regexParams).length > 1) {
-      console.log("[ComfyUI Parser] ✅ Used regex fallback to extract parameters");
       telemetry.detection_method = 'regex_fallback';
       return { ...regexParams, _telemetry: telemetry };
     }
@@ -585,7 +582,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   
   // Add telemetry data to results for debugging
   if (telemetry.unknown_nodes_count > 0 || telemetry.warnings.length > 0) {
-    console.log('[ComfyUI Parser] Telemetry:', telemetry);
+    // Telemetry logging removed
   }
 
   results.generator = 'ComfyUI';
@@ -639,7 +636,7 @@ export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record
 
   } catch (error) {
     telemetry.warnings.push(`Parse error: ${error}`);
-    console.error('[ComfyUI Parser Enhanced] Error:', error);
+    // Error logging removed
   }
 
   return { _parse_telemetry: telemetry };
