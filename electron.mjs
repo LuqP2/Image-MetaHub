@@ -441,32 +441,61 @@ app.whenReady().then(async () => {
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
 
-// Helper function for recursive file search
-async function getFilesRecursively(directory, baseDirectory) {
-    const files = [];
-    try {
-        const entries = await fs.readdir(directory, { withFileTypes: true });
+// Helper function for recursive file search - NOW STREAMS results
+async function streamFilesRecursively(webContents, directory, baseDirectory, directoryId) {
+    const BATCH_SIZE = 100;
+    let filesBatch = [];
+    let totalFound = 0;
 
-        for (const entry of entries) {
-            const fullPath = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                files.push(...await getFilesRecursively(fullPath, baseDirectory));
-            } else if (entry.isFile()) {
-                const lowerName = entry.name.toLowerCase();
-                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
-                    const stats = await fs.stat(fullPath);
-                    files.push({
-                        name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-                        lastModified: stats.birthtimeMs
-                    });
+    async function traverse(currentDirectory) {
+        try {
+            const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
+
+            for (const entry of entries) {
+                const fullPath = path.join(currentDirectory, entry.name);
+                if (entry.isDirectory()) {
+                    await traverse(fullPath);
+                } else if (entry.isFile()) {
+                    const lowerName = entry.name.toLowerCase();
+                    if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+                        try {
+                            const stats = await fs.stat(fullPath);
+                            filesBatch.push({
+                                name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
+                                lastModified: stats.birthtimeMs
+                            });
+
+                            if (filesBatch.length >= BATCH_SIZE) {
+                                if (webContents.isDestroyed()) return;
+                                webContents.send('directory-scan-batch', { directoryId, files: filesBatch });
+                                totalFound += filesBatch.length;
+                                filesBatch = [];
+                                // Yield to the event loop briefly to avoid blocking
+                                await new Promise(resolve => setImmediate(resolve));
+                            }
+                        } catch (statError) {
+                             console.warn(`Could not stat file ${fullPath}: ${statError.message}`);
+                        }
+                    }
                 }
             }
+        } catch (error) {
+            console.warn(`Could not read directory ${currentDirectory}: ${error.message}`);
         }
-    } catch (error) {
-        // Ignore errors from directories we can't read, e.g. permissions
-        console.warn(`Could not read directory ${directory}: ${error.message}`);
     }
-    return files;
+
+    await traverse(directory);
+
+    // Send any remaining files
+    if (filesBatch.length > 0 && !webContents.isDestroyed()) {
+        webContents.send('directory-scan-batch', { directoryId, files: filesBatch });
+        totalFound += filesBatch.length;
+    }
+
+    // Signal completion
+    if (!webContents.isDestroyed()) {
+        webContents.send('directory-scan-complete', { directoryId, total: totalFound });
+    }
 }
 
 function setupFileOperationHandlers() {
@@ -792,38 +821,22 @@ function setupFileOperationHandlers() {
     return { success: true, response: result.response };
   });
 
-  // Handle listing directory files
-  ipcMain.handle('list-directory-files', async (event, { dirPath, recursive = false }) => {
+  // Handle listing directory files by streaming them back
+  ipcMain.handle('stream-directory-files', async (event, { dirPath, recursive = false, directoryId }) => {
     try {
       if (!dirPath) {
         return { success: false, error: 'No directory path provided' };
       }
 
-      let imageFiles = [];
+      // We don't await this, it runs in the background and sends events
+      streamFilesRecursively(event.sender, dirPath, dirPath, directoryId);
 
-      if (recursive) {
-        imageFiles = await getFilesRecursively(dirPath, dirPath);
-      } else {
-        const files = await fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const file of files) {
-          if (file.isFile()) {
-            const name = file.name.toLowerCase();
-            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-              const filePath = path.join(dirPath, file.name);
-              const stats = await fs.stat(filePath);
-              imageFiles.push({
-                name: file.name, // name is already relative for top-level
-                lastModified: stats.birthtimeMs
-              });
-            }
-          }
-        }
-      }
-
-      return { success: true, files: imageFiles };
+      // Immediately return success to the renderer, so it knows the process has started
+      return { success: true };
     } catch (error) {
-      console.error('Error listing directory files:', error);
+      console.error('Error starting to stream directory files:', error);
+      // Also send an error event to the renderer
+      event.sender.send('directory-scan-error', { directoryId, error: error.message });
       return { success: false, error: error.message };
     }
   });

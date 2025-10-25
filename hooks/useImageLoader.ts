@@ -363,6 +363,166 @@ export function useImageLoader() {
         }, 3000);
     }, [setSuccess, setLoading, setIndexingState, setProgress]);
 
+    const processDirectoryFiles = useCallback(async (directory: Directory, allCurrentFiles: { name: string; lastModified: number }[]) => {
+        try {
+            await cacheManager.init();
+            const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+
+            const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
+
+            // Remove deleted files from the UI (if any were detected)
+            if (diff.deletedFileIds.length > 0) {
+                removeImages(diff.deletedFileIds);
+            }
+             // Get handles for cached images to update placeholders
+            const regeneratedCachedImages = diff.cachedImages.length > 0
+                ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => ({ name: img.name, lastModified: img.lastModified })))
+                : [];
+            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
+
+            // Update placeholders with cached images
+            if (diff.cachedImages.length > 0) {
+                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
+                    ...img,
+                    handle: handleMap.get(img.name)!,
+                    directoryId: directory.id,
+                }));
+                addImages(finalCachedImages); // addImages will overwrite placeholders
+            }
+
+            // Set progress for the deep scan part
+            setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
+
+            if (diff.newAndModifiedFiles.length > 0) {
+                console.log(`[processDirectoryFiles] Processing ${diff.newAndModifiedFiles.length} new files`);
+                const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
+                const fileHandles = await getFileHandles(directory.handle, directory.path, sortedFiles);
+
+                const processPromise = processFiles(
+                    fileHandles,
+                    throttle(setProgress, 200),
+                    (batch) => addImages(batch), // onBatchProcessed
+                    directory.id,
+                    directory.name,
+                    shouldScanSubfolders,
+                    (deletedIds) => removeImages(deletedIds), // onDeletion
+                    abortControllerRef.current?.signal,
+                    waitWhilePaused
+                );
+
+                if (shouldCancelIndexing()) {
+                    setIndexingState('idle'); setLoading(false); return;
+                }
+
+                await processPromise;
+
+                if (!shouldCancelIndexing()) {
+                    finalizeDirectoryLoad(directory);
+                }
+
+            } else {
+                console.log(`[processDirectoryFiles] No new files to process, finalizing immediately`);
+                finalizeDirectoryLoad(directory);
+            }
+
+        } catch (err) {
+             if (!(err instanceof DOMException && err.name === 'AbortError')) {
+                console.error(err);
+                setError(`Failed to process directory ${directory.name}. Check console for details.`);
+            }
+             setLoading(false);
+             setIndexingState('idle');
+             setProgress(null);
+        }
+    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad, waitWhilePaused, shouldCancelIndexing]);
+
+    const fileQueueRef = useRef<Map<string, { name: string; lastModified: number }[]>>(new Map());
+    useEffect(() => {
+        if (!getIsElectron()) return;
+
+        const removeScanBatchListener = (window as any).electronAPI.onDirectoryScanBatch(({ directoryId, files }) => {
+            const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
+            if (!directory) return;
+
+            const queue = fileQueueRef.current.get(directoryId) || [];
+            queue.push(...files);
+            fileQueueRef.current.set(directoryId, queue);
+
+            const placeholderImages: IndexedImage[] = files.map(file => ({
+                id: `${directoryId}::${file.name.replace(/\\/g, '/')}`,
+                name: file.name.split(/\\|\//).pop() || file.name,
+                directoryId: directoryId,
+                lastModified: file.lastModified,
+                handle: { name: file.name, kind: 'file', _filePath: `${directory.path}/${file.name}` } as any,
+                metadata: { isPlaceholder: true },
+            } as IndexedImage));
+
+            addImages(placeholderImages);
+        });
+
+        const removeScanCompleteListener = (window as any).electronAPI.onDirectoryScanComplete(async ({ directoryId, total }) => {
+            const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
+            const allFiles = fileQueueRef.current.get(directoryId) || [];
+            if (!directory) return;
+
+            console.log(`[ScanComplete] for ${directory.name}, found ${allFiles.length} of ${total} total. Starting deep scan.`);
+            await processDirectoryFiles(directory, allFiles);
+            fileQueueRef.current.delete(directoryId);
+        });
+
+        const removeScanErrorListener = (window as any).electronAPI.onDirectoryScanError(({ directoryId, error: errorMessage }) => {
+            setError(`Error scanning directory ${directoryId}: ${errorMessage}`);
+            setLoading(false);
+            setIndexingState('idle');
+        });
+
+        return () => {
+            removeScanBatchListener();
+            removeScanCompleteListener();
+            removeScanErrorListener();
+        };
+    }, [addImages, processDirectoryFiles, setError, setLoading, setIndexingState]);
+
+    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
+        console.log(`[loadDirectory] Starting stream for ${directory.name}, isUpdate: ${isUpdate}`);
+        setLoading(true);
+        setError(null);
+        setSuccess(null);
+        setIndexingState('indexing');
+
+        indexingStartTimeRef.current = performance.now();
+        abortControllerRef.current = new AbortController();
+
+        if (isUpdate) {
+            clearImages(directory.id);
+        }
+
+        if (getIsElectron()) {
+            try {
+                const allPaths = useImageStore.getState().directories.map(d => d.path);
+                await window.electronAPI.updateAllowedPaths(allPaths);
+
+                await window.electronAPI.streamDirectoryFiles({
+                    dirPath: directory.path,
+                    recursive: useImageStore.getState().scanSubfolders,
+                    directoryId: directory.id
+                });
+            } catch(err) {
+                console.error("Failed to start directory stream", err);
+                setError(`Failed to start loading directory ${directory.name}.`);
+                setLoading(false);
+                setIndexingState('idle');
+            }
+        } else {
+            // Browser fallback (non-streaming)
+            // This part can be implemented if needed, for now, we focus on Electron
+            console.warn('Progressive loading not supported in browser.');
+            setError("Progressive loading is only available in the Electron app.");
+            setLoading(false);
+            setIndexingState('idle');
+        }
+
+    }, [clearImages, setLoading, setError, setSuccess, setIndexingState]);
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
@@ -405,7 +565,6 @@ export function useImageLoader() {
                     };
                 });
                 
-                // Filter out images that can't be loaded in current environment
                 const validImages = cachedImages.filter(image => {
                     const fileHandle = image.thumbnailHandle || image.handle;
                     return isElectron || (fileHandle && typeof fileHandle.getFile === 'function');
@@ -420,138 +579,8 @@ export function useImageLoader() {
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
-            // Don't set global error for this, as it's a background process
         }
     }, [addImages]);
-
-    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
-        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}`);
-        setLoading(true);
-        setError(null);
-        setSuccess(null);
-        setIndexingState('indexing');
-        console.log(`[loadDirectory] State set to 'indexing'`);
-
-        // Start performance timer
-        indexingStartTimeRef.current = performance.now();
-
-        // Initialize AbortController for this indexing operation
-        abortControllerRef.current = new AbortController();
-
-        try {
-      // Always update the allowed paths in the main process
-      if (getIsElectron()) {
-        const allPaths = useImageStore.getState().directories.map(d => d.path);
-        await window.electronAPI.updateAllowedPaths(allPaths);
-            }
-
-            await cacheManager.init();
-            const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-
-            // Note: We do NOT clear images before validation!
-            // validateCacheAndGetDiff will intelligently detect:
-            // - New files (to be processed)
-            // - Deleted files (to be removed from UI)
-            // - Modified files (to be re-processed)
-            // - Unchanged files (loaded from cache - super fast!)
-            
-            const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
-            const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
-
-            const regeneratedCachedImages = diff.cachedImages.length > 0
-                ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => ({ name: img.name, lastModified: img.lastModified })))
-                : [];
-
-            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
-
-            // CRITICAL FIX: Clear directory BEFORE adding cached images to avoid race conditions
-            // This ensures the store is in a clean state before we start adding images
-            if (isUpdate) {
-                clearImages(directory.id);
-            }
-
-            // Add cached images (both first load and refresh)
-            if (diff.cachedImages.length > 0) {
-                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
-                    ...img,
-                    handle: handleMap.get(img.name)!,
-                    directoryId: directory.id,
-                }));
-                
-                addImages(finalCachedImages);
-            }
-
-            // Remove deleted files from the UI (if any were detected)
-            if (diff.deletedFileIds.length > 0) {
-                removeImages(diff.deletedFileIds);
-            }
-
-            // Set progress even if no new files to process
-            setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
-
-            if (diff.newAndModifiedFiles.length > 0) {
-                console.log(`[loadDirectory] Processing ${diff.newAndModifiedFiles.length} new files`);
-                // Sort files by lastModified descending (newest first)
-                const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
-                const fileHandles = await getFileHandles(directory.handle, directory.path, sortedFiles);
-                setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
-
-                const handleBatchProcessed = (batch: IndexedImage[]) => {
-                    addImages(batch);
-                };
-
-                const throttledSetProgress = throttle(setProgress, 200);
-
-                const handleDeletion = (deletedFileIds: string[]) => {
-                    removeImages(deletedFileIds);
-                };
-
-                // This now delegates to the main process in Electron, and is awaited in browser
-                const processPromise = processFiles(
-                    fileHandles,
-                    throttledSetProgress,
-                    handleBatchProcessed,
-                    directory.id,
-                    directory.name,
-                    shouldScanSubfolders,
-                    handleDeletion,
-                    abortControllerRef.current?.signal,
-                    waitWhilePaused
-                );
-
-                // Check for cancellation before starting
-                if (shouldCancelIndexing()) {
-                    setIndexingState('idle');
-                    setLoading(false);
-                    return;
-                }
-
-                // Wait for processing to complete (both browser and Electron)
-                await processPromise;
-                
-                // Check if cancelled after processing
-                if (!shouldCancelIndexing()) {
-                    finalizeDirectoryLoad(directory);
-                }
-
-            } else {
-                // No new files to process, just finalize immediately
-                // All cached images were already added above
-                console.log(`[loadDirectory] No new files to process, finalizing immediately`);
-                finalizeDirectoryLoad(directory);
-            }
-
-        } catch (err) {
-            if (!(err instanceof DOMException && err.name === 'AbortError')) {
-                console.error(err);
-                setError(`Failed to load directory ${directory.name}. Check console for details.`);
-            }
-             setLoading(false);
-             setIndexingState('idle');
-             setProgress(null);
-        }
-    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
-
 
     const handleSelectFolder = useCallback(async () => {
         try {
@@ -567,11 +596,11 @@ export function useImageLoader() {
                 handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
             } else {
                 handle = await window.showDirectoryPicker();
-                path = handle.name; // Path is just the name in the browser version for simplicity
+                path = handle.name;
                 name = handle.name;
             }
 
-            const directoryId = path; // Use path as a unique ID
+            const directoryId = path;
             const { directories } = useImageStore.getState();
 
             if (directories.some(d => d.id === directoryId)) {
@@ -580,17 +609,12 @@ export function useImageLoader() {
             }
 
             const newDirectory: Directory = { id: directoryId, path, name, handle };
-
-            // Add to store first
             addDirectory(newDirectory);
 
-            // Persist the *new* state after adding
             const updatedDirectories = useImageStore.getState().directories;
             if (getIsElectron()) {
                 localStorage.setItem('image-metahub-directories', JSON.stringify(updatedDirectories.map(d => d.path)));
             }
-
-            // Now load the content of the new directory
             await loadDirectory(newDirectory, false);
 
         } catch (err) {
@@ -622,7 +646,6 @@ export function useImageLoader() {
                         return;
                     }
 
-                    // First, add all directories to the store without loading.
                     for (const path of paths) {
                         const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
                         const handle = { name, kind: 'directory' } as FileSystemDirectoryHandle;
@@ -631,11 +654,9 @@ export function useImageLoader() {
                         addDirectory(newDirectory);
                     }
 
-                    // CRITICAL: Update allowed paths BEFORE trying to read from cache.
                     const allPaths = useImageStore.getState().directories.map(d => d.path);
                     await window.electronAPI.updateAllowedPaths(allPaths);
                     
-                    // Then, load them all from cache in parallel.
                     const directoriesToLoad = useImageStore.getState().directories;
                     const loadPromises = directoriesToLoad.map(dir => loadDirectoryFromCache(dir));
                     await Promise.all(loadPromises);
@@ -660,13 +681,8 @@ export function useImageLoader() {
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
         
-        // Remove from store (this removes images from view and updates localStorage)
-        // NOTE: We intentionally DO NOT clear the cache here!
-        // This allows users to temporarily hide folders without losing the expensive indexing work
-        // The cache will be reused when the folder is added back
         removeDirectoryFromStore(directoryId);
 
-        // Update allowed paths
         if (getIsElectron()) {
             const updatedDirectories = useImageStore.getState().directories;
             const allPaths = updatedDirectories.map(d => d.path);
@@ -674,14 +690,7 @@ export function useImageLoader() {
         }
     }, []);
 
-    const handleRefreshCache = useCallback(async () => {
-        // This function is no longer needed - removed automatic cache cleanup
-        setSuccess('Cache refresh is no longer needed');
-    }, [setSuccess]);
-
-    // Automatic cache cleanup when window regains focus
     useEffect(() => {
-        // Cache cleanup on focus has been disabled to prevent IndexedDB transaction conflicts
         return;
     }, []);
 
@@ -690,7 +699,7 @@ export function useImageLoader() {
         handleUpdateFolder,
         handleLoadFromStorage,
         handleRemoveDirectory,
-        handleRefreshCache,
+        handleRefreshCache: useCallback(() => setSuccess('Cache refresh is no longer needed'), [setSuccess]),
         loadDirectory,
         loadDirectoryFromCache,
         cancelIndexing: () => {

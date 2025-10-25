@@ -105,6 +105,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
+  streamDirectoryFiles: (args) => ipcRenderer.invoke('stream-directory-files', args),
+  onDirectoryScanBatch: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('directory-scan-batch', handler);
+    return () => {
+      ipcRenderer.removeListener('directory-scan-batch', handler);
+    };
+  },
+  onDirectoryScanComplete: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('directory-scan-complete', handler);
+    return () => {
+      ipcRenderer.removeListener('directory-scan-complete', handler);
+    };
+  },
+  onDirectoryScanError: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('directory-scan-error', handler);
+    return () => {
+      ipcRenderer.removeListener('directory-scan-error', handler);
+    };
+  },
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
