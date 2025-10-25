@@ -9,6 +9,8 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import { databaseService } from './electron/databaseService.js';
+import { indexingService } from './electron/indexingService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +18,7 @@ const __dirname = path.dirname(__filename);
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-let mainWindow;
+export let mainWindow;
 let skippedVersions = new Set();
 
 // --- Settings Management ---
@@ -968,6 +970,16 @@ function setupFileOperationHandlers() {
   });
 
   // Handle writing file content
+  // --- Database IPC Handlers ---
+  ipcMain.handle('start-indexing', (event, directoryPath) => {
+    indexingService.startIndexing(directoryPath);
+  });
+
+  ipcMain.handle('get-images', (event, { directoryId, offset, limit }) => {
+    return databaseService.getImages(directoryId, offset, limit);
+  });
+  // --- End Database IPC Handlers ---
+
   ipcMain.handle('write-file', async (event, filePath, data) => {
     try {
       if (!filePath) {

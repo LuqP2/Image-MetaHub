@@ -118,6 +118,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog'),
 
+  // New Database methods
+  startIndexing: (directoryPath) => ipcRenderer.invoke('start-indexing', directoryPath),
+  getImages: (options) => ipcRenderer.invoke('get-images', options),
+
   // Updates
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('update-available', (event, ...args) => callback(...args));
