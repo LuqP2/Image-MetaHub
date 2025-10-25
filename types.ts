@@ -32,6 +32,14 @@ export interface ElectronAPI {
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
   startUpdateDownload: () => Promise<void>;
   installUpdate: () => Promise<void>;
+  // Indexing methods
+  onIndexingProgress: (callback: (progress: { current: number; total: number; status: string }) => void) => () => void;
+  onIndexingBatchResult: (callback: (result: { batch: IndexedImage[] }) => void) => () => void;
+  onIndexingError: (callback: (error: { error: string }) => void) => () => void;
+  onIndexingComplete: (callback: (result: { directoryId: number }) => void) => () => void;
+  startIndexing: (directoryPath: string) => Promise<void>;
+  getImages: (options: { directoryId?: number; offset?: number; limit?: number }) => Promise<{ images: IndexedImage[]; total: number }>;
+  copyImageToClipboard: (imageData: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

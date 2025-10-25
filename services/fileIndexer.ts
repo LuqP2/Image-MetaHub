@@ -1,6 +1,5 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
-import { cacheManager } from './cacheManager';
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
@@ -848,18 +847,8 @@ export async function processFiles(
 
   // CRITICAL: Get existing cache and merge with newly processed images
   // This ensures we don't lose previously cached images
-  const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
-  const existingCachedImages = existingCache ? existingCache.map(m => ({
-    id: m.id,
-    name: m.name,
-    metadataString: m.metadataString,
-    metadata: m.metadata,
-    lastModified: m.lastModified,
-    models: m.models,
-    loras: m.loras,
-    scheduler: m.scheduler,
-    directoryId,
-  } as IndexedImage)) : [];
+  // NOTE: Cache operations moved to Electron SQLite database
+  const existingCachedImages: IndexedImage[] = [];
 
   // Merge: Keep existing cache + add/update newly processed
   const newImagesMap = new Map(newlyProcessedImages.map(img => [img.name, img]));
@@ -868,5 +857,5 @@ export async function processFiles(
     ...newlyProcessedImages // Newly processed (these override existing with same name)
   ];
 
-  await cacheManager.cacheData(directoryId, directoryName, mergedImages, scanSubfolders);
+  // Cache storage now handled by Electron SQLite database
 }

@@ -6,7 +6,6 @@ import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 import { deleteLockManager } from '../utils/deleteLockManager';
 import hotkeyManager from '../services/hotkeyManager';
-import { cacheManager } from '../services/cacheManager';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -372,8 +371,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         // Remove the image from store
         const { removeImage } = useImageStore.getState();
         removeImage(image.id);
-        // Also update the cache
-        await cacheManager.removeImages([image.id]);
+        // Cache removal now handled by SQLite database automatically
         // NOW get the updated filteredImages AFTER removal
         const { filteredImages: updatedImages, setSelectedImage } = useImageStore.getState();
         // Try to navigate to next/previous image

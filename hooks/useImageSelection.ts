@@ -2,7 +2,6 @@ import React, { useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { IndexedImage } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { cacheManager } from '../services/cacheManager';
 import { deleteLockManager } from '../utils/deleteLockManager';
 
 export function useImageSelection() {
@@ -101,7 +100,7 @@ export function useImageSelection() {
         }
 
         if (deletedImageIds.length > 0) {
-            await cacheManager.removeImages(deletedImageIds);
+            // Cache removal now handled by SQLite database automatically
         }
 
         // Clear all selections after deletion

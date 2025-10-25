@@ -1,8 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { databaseService } from './databaseService.js';
+import { databaseService } from './databaseService.mjs';
 import { mainWindow } from '../electron.mjs';
-import { parseFile } from '../services/fileParser.js';
+import { parseFile } from '../services/fileParser.mjs';
 
 const BATCH_SIZE = 100;
 

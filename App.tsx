@@ -20,7 +20,6 @@ import { SearchField } from './components/SearchBar';
 import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
-import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
@@ -192,8 +191,8 @@ export default function App() {
       if (!path && window.electronAPI) {
         path = undefined;
       }
-      await cacheManager.init(path || undefined);
-      
+      // Cache initialization moved to Electron SQLite database
+
       // Validate cached images have valid file handles (for hot reload scenarios in browser)
       // Note: In Electron, mock handles are created with proper getFile() implementation
       const isElectron = typeof window !== 'undefined' && window.electronAPI;
@@ -237,7 +236,7 @@ export default function App() {
       };
       
       // Load the directory using the hook's loadDirectory function
-      await loadDirectory(newDirectory, false);
+      await loadDirectory(newDirectory);
       
     } catch (error) {
       console.error('Error loading directory from path:', error);

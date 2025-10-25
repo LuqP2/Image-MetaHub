@@ -2,7 +2,6 @@ import React, { useEffect, useState, FC } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { cacheManager } from '../services/cacheManager';
 import { Trash2 } from 'lucide-react';
 
 // Helper component from ImageModal.tsx
@@ -53,8 +52,7 @@ const ImagePreviewSidebar: React.FC = () => {
         const { removeImage } = useImageStore.getState();
         removeImage(previewImage.id);
         
-        // Also update the cache
-        await cacheManager.removeImages([previewImage.id]);
+        // Cache removal now handled by SQLite database automatically
         
         // NOW get the updated filteredImages AFTER removal
         const { filteredImages: updatedImages, setPreviewImage } = useImageStore.getState();

@@ -9,8 +9,8 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
-import { databaseService } from './electron/databaseService.js';
-import { indexingService } from './electron/indexingService.js';
+import { databaseService } from './electron/databaseService.mjs';
+import { indexingService } from './electron/indexingService.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

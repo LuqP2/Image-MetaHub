@@ -93,8 +93,32 @@ export function useImageLoader() {
     }
   }, [addDirectory, loadDirectory, setError]);
 
+  const handleUpdateFolder = useCallback(async (directoryId: string) => {
+    const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
+    if (directory) {
+      await loadDirectory(directory);
+    }
+  }, [loadDirectory]);
+
+  const handleRemoveDirectory = useCallback((directoryId: string) => {
+    const { removeDirectory } = useImageStore.getState();
+    removeDirectory(directoryId);
+  }, []);
+
+  const cancelIndexing = useCallback(() => {
+    // For now, just reset the indexing state
+    // TODO: Implement proper cancellation in Electron main process
+    setIndexingState('idle');
+    setLoading(false);
+    setProgress(null);
+  }, [setIndexingState, setLoading, setProgress]);
+
   return {
     handleSelectFolder,
+    handleUpdateFolder,
     handleLoadFromStorage,
+    handleRemoveDirectory,
+    loadDirectory,
+    cancelIndexing,
   };
 }
