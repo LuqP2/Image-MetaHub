@@ -1,6 +1,15 @@
 import { type IndexedImage } from '../types';
 
-// Utility functions for image operations
+// Utility function to convert ArrayBuffer to base64 (works in browser)
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 export interface OperationResult {
   success: boolean;
@@ -23,8 +32,7 @@ export const copyImageToClipboard = async (image: IndexedImage): Promise<Operati
 
       // Convert file to base64 data URL
       const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const base64Data = buffer.toString('base64');
+      const base64Data = arrayBufferToBase64(arrayBuffer);
       const dataUrl = `data:${file.type};base64,${base64Data}`;
 
       const result = await (window as any).electronAPI.copyImageToClipboard(dataUrl);

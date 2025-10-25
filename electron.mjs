@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, clipboard } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, clipboard, nativeImage } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -557,8 +557,14 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Invalid image data format' };
       }
 
+      // Create NativeImage from buffer
+      const image = nativeImage.createFromBuffer(buffer);
+      if (image.isEmpty()) {
+        return { success: false, error: 'Failed to create image from buffer' };
+      }
+
       // Write to clipboard as image
-      clipboard.writeImage(buffer);
+      clipboard.writeImage(image);
       return { success: true };
     } catch (error) {
       console.error('Error copying image to clipboard:', error);
