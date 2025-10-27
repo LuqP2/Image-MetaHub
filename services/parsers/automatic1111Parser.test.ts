@@ -4,9 +4,9 @@ import { BaseMetadata } from '../../types';
 
 describe('parseA1111Metadata', () => {
   it('should return a default object if the parameters string is empty or whitespace', () => {
-    const expected: Partial<BaseMetadata> = { loras: [], models: [], prompt: '' };
+    const expected: Partial<BaseMetadata> = { loras: [], models: [], prompt: '', generator: 'A1111' };
     expect(parseA1111Metadata('')).toEqual(expected);
-    const expectedWhiteSpace: Partial<BaseMetadata> = { loras: [], models: [], prompt: '   ' };
+    const expectedWhiteSpace: Partial<BaseMetadata> = { loras: [], models: [], prompt: '   ', generator: 'A1111' };
     expect(parseA1111Metadata('   ')).toEqual(expectedWhiteSpace);
   });
 
@@ -62,5 +62,12 @@ Steps: 25, Sampler: DPM++ 2M Karras, CFG scale: 7, Seed: 98765, Size: 512x768`;
     expect(result).not.toBeNull();
     expect(result?.prompt).toBe('this is not valid metadata');
     expect(result?.steps).toBeUndefined();
+  });
+
+  it('should prioritize Model name over Model hash when both are present', () => {
+    const params = 'back through time to get more rum, shipwrecked having no fun, but, heavy metal pirates we must be, so give all your beer and your rum to me!,  novuschroma38, eerie, intricate, clean, <lora:- SDXL - AI-Breaker_V3.5:.5>, <lora:CBS_novuschroma38 style:0.8>\nNegative prompt: 3d\nSteps: 15, Sampler: DPM++ SDE, Schedule type: Karras, CFG scale: 3, Seed: 980493476, Size: 816x1232, Model hash: 36fab8f31a, Model: SDXL - T - haveallsdxl_v10, CFG Rescale phi: 0, Lora hashes: "- SDXL - AI-Breaker_V3.5: 62064ee0c3ba, CBS_novuschroma38 style: 29179d2a6166", VAE Decoder: TAESD, Version: v1.9.4, Hashes: {"lora:- SDXL - AI-Breaker_V3.5": "458cc11561", "lora:CBS_novuschroma38 style": "a1c6e6cad2", "model": "36fab8f31a"}';
+    const result = parseA1111Metadata(params);
+    expect(result?.model).toBe('SDXL - T - haveallsdxl_v10');
+    expect(result?.models).toEqual(['SDXL - T - haveallsdxl_v10']);
   });
 });

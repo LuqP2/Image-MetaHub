@@ -113,36 +113,36 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.height = parseInt(sizeMatch[2], 10);
   }
 
-  // Extract model - try Hashes JSON first (especially important for ComfyUI)
-  const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
-  if (hashesMatch) {
-    try {
-      const hashes = JSON.parse(hashesMatch[1]);
-      
-      // Priority order for model extraction from hashes
-      result.model = hashes['model'] || 
-                    hashes['Model'] || 
-                    hashes['checkpoint'] || 
-                    hashes['Checkpoint'] ||
-                    // Look for keys containing 'model' (case insensitive)
-                    Object.keys(hashes).find(key => key.toLowerCase().includes('model') && hashes[key]) ||
-                    // Fallback to first string value
-                    Object.values(hashes).find(val => typeof val === 'string' && val.trim());
-      
-    } catch {
-      // JSON parse error - continue with other extraction methods
-    }
+  // Extract model - try Model: pattern first (human-readable name)
+  const modelMatch = parameters.match(/Model: ([^,]+)/);
+  if (modelMatch) {
+    result.model = modelMatch[1].trim();
   }
   
-  // If no model from hashes, try the regular Model: pattern
+  // If no model from Model: pattern, try Hashes JSON (fallback to hash)
   if (!result.model) {
-    const modelMatch = parameters.match(/Model: ([^,]+)/);
-    if (modelMatch) {
-      result.model = modelMatch[1].trim();
+    const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
+    if (hashesMatch) {
+      try {
+        const hashes = JSON.parse(hashesMatch[1]);
+        
+        // Priority order for model extraction from hashes
+        result.model = hashes['model'] || 
+                      hashes['Model'] || 
+                      hashes['checkpoint'] || 
+                      hashes['Checkpoint'] ||
+                      // Look for keys containing 'model' (case insensitive)
+                      Object.keys(hashes).find(key => key.toLowerCase().includes('model') && hashes[key]) ||
+                      // Fallback to first string value
+                      Object.values(hashes).find(val => typeof val === 'string' && val.trim());
+        
+      } catch {
+        // JSON parse error - continue with other extraction methods
+      }
     }
   }
   
-  // If still no model, try Model hash: pattern
+  // If still no model, try Model hash: pattern (last resort)
   if (!result.model) {
     const hashMatch = parameters.match(/Model hash:\s*([a-f0-9]+)/i);
     if (hashMatch && hashMatch[1]) {
