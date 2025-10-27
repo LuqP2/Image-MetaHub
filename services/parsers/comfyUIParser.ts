@@ -112,11 +112,11 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
   const params: any = { raw_parsed_with_regex: true };
   
   // Prompt block
-  const promptMatch = text.match(/Prompt[:\n]\s*(.+?)(?:\n(?:Negative prompt|Steps|Sampler|Seed)|$)/is);
+  const promptMatch = text.match(/Prompt[:\n]\s*(.+?)(?:\n(?:Negative prompt|Steps|Sampler|Seed)|$)/i);
   if (promptMatch) params.prompt = promptMatch[1].trim();
   
   // Negative prompt
-  const negativeMatch = text.match(/Negative prompt[:\n]\s*(.+?)(?:\n(?:Steps|Sampler|Seed)|$)/is);
+  const negativeMatch = text.match(/Negative prompt[:\n]\s*(.+?)(?:\n(?:Steps|Sampler|Seed)|$)/i);
   if (negativeMatch) params.negativePrompt = negativeMatch[1].trim();
   
   // Steps
@@ -165,7 +165,7 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
   // Try widgets_values for numeric seed
   if (Array.isArray(node.widgets_values)) {
     for (const value of node.widgets_values) {
-      if (typeof value === 'number' && value >= 0 && value <= 18446744073709551615n) {
+      if (typeof value === 'number' && value >= 0 && value <= Number.MAX_SAFE_INTEGER) {
         return { seed: value };
       }
       // Try hex in widgets_values

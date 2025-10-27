@@ -287,7 +287,7 @@ export function resolve(args: { startNode: ParserNode, param: ComfyTraversablePa
         const visited = new Set<string>();
         
         // Função recursiva para coletar LoRAs
-        function collectLoras(currentNode: ParserNode) {
+        const collectLoras = (currentNode: ParserNode) => {
             if (visited.has(currentNode.id)) return;
             visited.add(currentNode.id);
             
@@ -326,12 +326,12 @@ export function resolve(args: { startNode: ParserNode, param: ComfyTraversablePa
                     }
                 }
             }
-        }
+        };
         
         collectLoras(args.startNode);
         
         // Remove duplicatas mantendo ordem
-        const uniqueLoras = [...new Set(allLoras)];
+        const uniqueLoras = Array.from(new Set(allLoras));
         return uniqueLoras.length > 0 ? uniqueLoras : [];
     }
     
