@@ -57,18 +57,18 @@ export default function App() {
     selectedLoras,
     selectedSchedulers,
     advancedFilters,
-    visibleSubfolders,
-    visibleRoots,
+    folderSelection,
+    isFolderSelectionLoaded,
     setSearchQuery,
     setSelectedFilters,
     setAdvancedFilters,
     setSelectedImage,
     removeImage,
-    removeDirectory,
     updateImage,
     toggleDirectoryVisibility,
-    toggleSubfolderVisibility,
-    toggleRootVisibility,
+    setFolderSelectionState,
+    getFolderSelectionState,
+    initializeFolderSelection,
     resetState,
     setIndexingState,
     setLoading,
@@ -122,6 +122,12 @@ export default function App() {
     setIsHotkeyHelpOpen(false);
     handleOpenSettings('hotkeys');
   };
+
+  useEffect(() => {
+    if (!isFolderSelectionLoaded) {
+      initializeFolderSelection();
+    }
+  }, [initializeFolderSelection, isFolderSelectionLoaded]);
 
   // --- Indexing Control Functions ---
   const handlePauseIndexing = useCallback(() => {
@@ -397,10 +403,9 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
-            onToggleSubfolderVisibility={toggleSubfolderVisibility}
-            onToggleRootVisibility={toggleRootVisibility}
-            visibleSubfolders={visibleSubfolders}
-            visibleRoots={visibleRoots}
+            onUpdateSelection={setFolderSelectionState}
+            getSelectionState={getFolderSelectionState}
+            folderSelection={folderSelection}
             isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
             scanSubfolders={scanSubfolders}
           />

@@ -1,17 +1,20 @@
 import React from 'react';
 import { Directory } from '../types';
 import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
-  onToggleSubfolderVisibility?: (subfolderPath: string) => void;
-  onToggleRootVisibility?: (directoryPath: string) => void;
-  visibleSubfolders?: Set<string>;
-  visibleRoots?: Set<string>;
+  onUpdateSelection?: (
+    path: string,
+    state: 'checked' | 'unchecked',
+    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
+  ) => void;
+  getSelectionState?: (path: string) => 'checked' | 'unchecked';
+  folderSelection?: Map<string, 'checked' | 'unchecked'>;
   isIndexing?: boolean;
   scanSubfolders?: boolean;
 }
@@ -21,15 +24,14 @@ interface Subfolder {
   path: string;
 }
 
-export default function DirectoryList({ 
-  directories, 
-  onRemoveDirectory, 
-  onUpdateDirectory, 
-  onToggleVisibility, 
-  onToggleSubfolderVisibility,
-  onToggleRootVisibility,
-  visibleSubfolders = new Set(),
-  visibleRoots = new Set(),
+export default function DirectoryList({
+  directories,
+  onRemoveDirectory,
+  onUpdateDirectory,
+  onToggleVisibility,
+  onUpdateSelection,
+  getSelectionState,
+  folderSelection = new Map<string, 'checked' | 'unchecked'>(),
   isIndexing = false,
   scanSubfolders = false
 }: DirectoryListProps) {
@@ -73,18 +75,18 @@ export default function DirectoryList({
           // 1. scanSubfolders was enabled during indexing
           // 2. This directory hasn't been auto-marked before (first time loading)
           if (scanSubfolders && result.subfolders && result.subfolders.length > 0 && !autoMarkedDirs.has(dirId)) {
-            // Mark root
-            if (onToggleRootVisibility && !visibleRoots.has(dirPath)) {
-              onToggleRootVisibility(dirPath);
-            }
-            
-            // Mark all subfolders
-            result.subfolders.forEach((subfolder: { path: string }) => {
-              if (onToggleSubfolderVisibility && !visibleSubfolders.has(subfolder.path)) {
-                onToggleSubfolderVisibility(subfolder.path);
+            if (onUpdateSelection && getSelectionState) {
+              if (getSelectionState(dirPath) !== 'checked') {
+                onUpdateSelection(dirPath, 'checked', { clearDescendantOverrides: true });
               }
-            });
-            
+
+              result.subfolders.forEach((subfolder: { path: string }) => {
+                if (getSelectionState(subfolder.path) !== 'checked') {
+                  onUpdateSelection(subfolder.path, 'checked', { clearDescendantOverrides: true });
+                }
+              });
+            }
+
             // Mark this directory as auto-marked
             setAutoMarkedDirs(prev => new Set(prev).add(dirId));
           }
@@ -118,39 +120,15 @@ export default function DirectoryList({
     }
   };
 
-  const handleSelectAll = (dirPath: string, dirId: string) => {
-    const dirSubfolders = subfolders.get(dirId);
-    
-    // Mark root
-    if (onToggleRootVisibility && !visibleRoots.has(dirPath)) {
-      onToggleRootVisibility(dirPath);
-    }
-    
-    // Mark all subfolders
-    if (dirSubfolders && onToggleSubfolderVisibility) {
-      dirSubfolders.forEach((subfolder) => {
-        if (!visibleSubfolders.has(subfolder.path)) {
-          onToggleSubfolderVisibility(subfolder.path);
-        }
-      });
+  const handleSelectAll = (dirPath: string) => {
+    if (onUpdateSelection) {
+      onUpdateSelection(dirPath, 'checked', { clearDescendantOverrides: true });
     }
   };
 
-  const handleDeselectAll = (dirPath: string, dirId: string) => {
-    const dirSubfolders = subfolders.get(dirId);
-    
-    // Unmark root
-    if (onToggleRootVisibility && visibleRoots.has(dirPath)) {
-      onToggleRootVisibility(dirPath);
-    }
-    
-    // Unmark all subfolders
-    if (dirSubfolders && onToggleSubfolderVisibility) {
-      dirSubfolders.forEach((subfolder) => {
-        if (visibleSubfolders.has(subfolder.path)) {
-          onToggleSubfolderVisibility(subfolder.path);
-        }
-      });
+  const handleDeselectAll = (dirPath: string) => {
+    if (onUpdateSelection) {
+      onUpdateSelection(dirPath, 'unchecked', { applyToDescendants: true });
     }
   };
 
@@ -242,14 +220,14 @@ export default function DirectoryList({
                           <span className="text-xs text-gray-500">Subfolder Selection:</span>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => handleSelectAll(dir.path, dir.id)}
+                              onClick={() => handleSelectAll(dir.path)}
                               className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
                               title="Select all subfolders and root"
                             >
                               Select All
                             </button>
                             <button
-                              onClick={() => handleDeselectAll(dir.path, dir.id)}
+                              onClick={() => handleDeselectAll(dir.path)}
                               className="text-xs px-2 py-0.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors"
                               title="Deselect all subfolders and root"
                             >
@@ -261,12 +239,13 @@ export default function DirectoryList({
                         {/* Root directory checkbox */}
                         <li className="py-1">
                           <div className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={visibleRoots.has(dir.path)}
-                              onChange={() => onToggleRootVisibility?.(dir.path)}
-                              className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                              title="Show/hide images from root directory only"
+                            <RootCheckbox
+                              directoryPath={dir.path}
+                              dirId={dir.id}
+                              getSelectionState={getSelectionState}
+                              subfolders={subfolders}
+                              onUpdateSelection={onUpdateSelection}
+                              selectionMap={folderSelection}
                             />
                             <button
                               onClick={() => handleOpenInExplorer(dir.path)}
@@ -284,12 +263,11 @@ export default function DirectoryList({
                           subfolders.get(dir.id)!.map((subfolder) => (
                             <li key={subfolder.path} className="py-1">
                               <div className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={visibleSubfolders.has(subfolder.path)}
-                                  onChange={() => onToggleSubfolderVisibility?.(subfolder.path)}
-                                  className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                                  title="Show/hide images from this subfolder"
+                                <SubfolderCheckbox
+                                  path={subfolder.path}
+                                  getSelectionState={getSelectionState}
+                                  onUpdateSelection={onUpdateSelection}
+                                  selectionMap={folderSelection}
                                 />
                                 <button
                                   onClick={() => handleOpenInExplorer(subfolder.path)}
@@ -325,3 +303,134 @@ export default function DirectoryList({
     </div>
   );
 }
+
+interface RootCheckboxProps {
+  directoryPath: string;
+  dirId: string;
+  subfolders: Map<string, Subfolder[]>;
+  getSelectionState?: (path: string) => 'checked' | 'unchecked';
+  onUpdateSelection?: (
+    path: string,
+    state: 'checked' | 'unchecked',
+    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
+  ) => void;
+  selectionMap: Map<string, 'checked' | 'unchecked'>;
+}
+
+const RootCheckbox: React.FC<RootCheckboxProps> = ({
+  directoryPath,
+  dirId,
+  subfolders,
+  getSelectionState,
+  onUpdateSelection,
+  selectionMap,
+}) => {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  const childPaths = useMemo(
+    () => subfolders.get(dirId)?.map((subfolder) => subfolder.path) ?? [],
+    [subfolders, dirId]
+  );
+
+  const ownState = getSelectionState ? getSelectionState(directoryPath) : 'checked';
+
+  const displayState = useMemo(() => {
+    let hasChecked = ownState === 'checked';
+    let hasUnchecked = ownState === 'unchecked';
+
+    childPaths.forEach((childPath) => {
+      const childState = getSelectionState ? getSelectionState(childPath) : 'checked';
+      if (childState === 'checked') {
+        hasChecked = true;
+      } else {
+        hasUnchecked = true;
+      }
+    });
+
+    if (hasChecked && hasUnchecked) {
+      return 'partial';
+    }
+
+    return hasChecked ? 'checked' : 'unchecked';
+  }, [childPaths, getSelectionState, ownState, selectionMap]);
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = displayState === 'partial';
+    }
+  }, [displayState]);
+
+  const handleChange = () => {
+    if (!onUpdateSelection) {
+      return;
+    }
+
+    const nextState = ownState === 'checked' ? 'unchecked' : 'checked';
+    const options = nextState === 'checked'
+      ? { clearDescendantOverrides: true }
+      : { applyToDescendants: true };
+
+    onUpdateSelection(directoryPath, nextState, options);
+  };
+
+  return (
+    <input
+      ref={checkboxRef}
+      type="checkbox"
+      checked={ownState === 'checked'}
+      onChange={handleChange}
+      className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+      title="Show/hide images from root directory only"
+    />
+  );
+};
+
+interface SubfolderCheckboxProps {
+  path: string;
+  getSelectionState?: (path: string) => 'checked' | 'unchecked';
+  onUpdateSelection?: (
+    path: string,
+    state: 'checked' | 'unchecked',
+    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
+  ) => void;
+  selectionMap: Map<string, 'checked' | 'unchecked'>;
+}
+
+const SubfolderCheckbox: React.FC<SubfolderCheckboxProps> = ({
+  path,
+  getSelectionState,
+  onUpdateSelection,
+  selectionMap,
+}) => {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+  const currentState = getSelectionState ? getSelectionState(path) : 'checked';
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = false;
+    }
+  }, [selectionMap, currentState]);
+
+  const handleChange = () => {
+    if (!onUpdateSelection) {
+      return;
+    }
+
+    const nextState = currentState === 'checked' ? 'unchecked' : 'checked';
+    const options = nextState === 'checked'
+      ? { clearDescendantOverrides: true }
+      : { applyToDescendants: true };
+    onUpdateSelection(path, nextState, options);
+  };
+
+  return (
+    <input
+      ref={checkboxRef}
+      type="checkbox"
+      checked={currentState === 'checked'}
+      onChange={handleChange}
+      className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+      title="Show/hide images from this subfolder"
+    />
+  );
+};
