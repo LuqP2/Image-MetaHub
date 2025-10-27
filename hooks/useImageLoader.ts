@@ -368,55 +368,74 @@ export function useImageLoader() {
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
+            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders, { includeMetadata: false });
 
-            if (cachedData && cachedData.metadata.length > 0) {
+            if (cachedData && cachedData.imageCount > 0) {
                 const isElectron = getIsElectron();
-                const filePaths = await Promise.all(
-                    cachedData.metadata.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
-                );
+                let totalLoaded = 0;
+                let totalFilteredOut = 0;
 
-                const cachedImages: IndexedImage[] = cachedData.metadata.map((meta, i) => {
-                    const joinResult = filePaths[i];
-                    const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
+                await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
+                    if (!metadataChunk || metadataChunk.length === 0) {
+                        return;
+                    }
 
-                    const mockHandle = {
-                        name: meta.name,
-                        kind: 'file' as const,
-                        _filePath: filePath,
-                        getFile: async () => {
-                            if (isElectron && filePath) {
-                                const fileResult = await window.electronAPI.readFile(filePath);
-                                if (fileResult.success && fileResult.data) {
-                                    const freshData = new Uint8Array(fileResult.data);
-                                    const lowerName = meta.name.toLowerCase();
-                                    const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                                    return new File([freshData as any], meta.name, { type });
+                    const filePaths = await Promise.all(
+                        metadataChunk.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
+                    );
+
+                    const chunkImages: IndexedImage[] = metadataChunk.map((meta, i) => {
+                        const joinResult = filePaths[i];
+                        const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
+
+                        const mockHandle = {
+                            name: meta.name,
+                            kind: 'file' as const,
+                            _filePath: filePath,
+                            getFile: async () => {
+                                if (isElectron && filePath) {
+                                    const fileResult = await window.electronAPI.readFile(filePath);
+                                    if (fileResult.success && fileResult.data) {
+                                        const freshData = new Uint8Array(fileResult.data);
+                                        const lowerName = meta.name.toLowerCase();
+                                        const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                                        return new File([freshData as any], meta.name, { type });
+                                    }
                                 }
+                                throw new Error(`Failed to read file: ${meta.name}`);
                             }
-                            throw new Error(`Failed to read file: ${meta.name}`);
-                        }
-                    };
+                        };
 
-                    return {
-                        ...meta,
-                        handle: mockHandle as any,
-                        directoryId: directory.id,
-                    };
+                        return {
+                            ...meta,
+                            handle: mockHandle as any,
+                            directoryId: directory.id,
+                            directoryName: directory.name,
+                        };
+                    });
+
+                    const validImages = chunkImages.filter(image => {
+                        const fileHandle = image.thumbnailHandle || image.handle;
+                        return isElectron || (fileHandle && typeof fileHandle.getFile === 'function');
+                    });
+
+                    totalLoaded += validImages.length;
+                    totalFilteredOut += chunkImages.length - validImages.length;
+
+                    if (validImages.length > 0) {
+                        addImages(validImages);
+                        // Yield to keep UI responsive when loading large caches
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
                 });
-                
-                // Filter out images that can't be loaded in current environment
-                const validImages = cachedImages.filter(image => {
-                    const fileHandle = image.thumbnailHandle || image.handle;
-                    return isElectron || (fileHandle && typeof fileHandle.getFile === 'function');
-                });
-                
-                if (validImages.length !== cachedImages.length) {
-                    console.warn(`Filtered out ${cachedImages.length - validImages.length} cached images that can't be loaded in current environment`);
+
+                if (totalFilteredOut > 0) {
+                    console.warn(`Filtered out ${totalFilteredOut} cached images that can't be loaded in current environment`);
                 }
-                
-                addImages(validImages);
-                log(`Loaded ${validImages.length} images from cache for ${directory.name}`);
+
+                if (totalLoaded > 0) {
+                    log(`Loaded ${totalLoaded} images from cache for ${directory.name}`);
+                }
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
