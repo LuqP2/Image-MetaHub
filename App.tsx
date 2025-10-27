@@ -38,6 +38,8 @@ export default function App() {
   const {
     images,
     filteredImages,
+    selectionTotalImages,
+    selectionDirectoryCount,
     directories,
     isLoading,
     progress,
@@ -457,8 +459,8 @@ export default function App() {
               {(indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed') && (
                 <StatusBar
                   filteredCount={filteredImages.length}
-                  totalCount={images.length}
-                  directoryCount={directories.length}
+                  totalCount={selectionTotalImages}
+                  directoryCount={selectionDirectoryCount}
                   indexingState={indexingState}
                   progress={progress}
                   onPauseIndexing={handlePauseIndexing}
@@ -476,8 +478,8 @@ export default function App() {
                 viewMode={viewMode}
                 onViewModeChange={toggleViewMode}
                 filteredCount={filteredImages.length}
-                totalCount={images.length}
-                directoryCount={directories.length}
+                totalCount={selectionTotalImages}
+                directoryCount={selectionDirectoryCount}
               />
 
               <div className="flex-1 min-h-0">
