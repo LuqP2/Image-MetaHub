@@ -201,6 +201,7 @@ export default function DirectoryList({
               onUpdateSelection={onUpdateSelection}
               selectionMap={folderSelection}
               title="Show/hide images from this subfolder"
+              className="mr-2"
             />
             <button
               onClick={() => handleOpenInExplorer(child.path)}
