@@ -713,6 +713,32 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  ipcMain.handle('clear-metadata-cache', async () => {
+    try {
+      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      if (fs.existsSync(cacheDir)) {
+        await fs.promises.rm(cacheDir, { recursive: true, force: true });
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clear-thumbnail-cache', async () => {
+    try {
+      const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+      if (fs.existsSync(cacheDir)) {
+        await fs.promises.rm(cacheDir, { recursive: true, force: true });
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
   // --- End Thumbnail Cache IPC Handlers ---
   // --- End Cache IPC Handlers ---
 
@@ -1126,7 +1152,6 @@ function setupFileOperationHandlers() {
       // We'll allow writing to any directory the user has selected via the directory dialog
       // This is more permissive than read operations but still controlled
       const normalizedFilePath = path.normalize(filePath);
-      const fileDir = path.dirname(normalizedFilePath);
 
       // Check if the target directory is within the current directory or a user-selected export directory
       // For now, we'll allow writing to any directory (since users explicitly choose export locations)
