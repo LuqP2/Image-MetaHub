@@ -549,6 +549,9 @@ export function useImageLoader() {
                 // Wait for processing to complete (both browser and Electron)
                 await processPromise;
                 
+                // Ensure final progress is shown (throttling might have prevented the last update)
+                setProgress({ current: diff.newAndModifiedFiles.length, total: diff.newAndModifiedFiles.length });
+                
                 // Check if cancelled after processing
                 if (!shouldCancelIndexing()) {
                     finalizeDirectoryLoad(directory);
