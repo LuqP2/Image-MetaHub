@@ -105,6 +105,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+
+  // --- Caching ---
+  getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
+  cacheData: (args) => ipcRenderer.invoke('cache-data', args),
+  clearCacheData: (cacheId) => ipcRenderer.invoke('clear-cache-data', cacheId),
+  getCacheChunk: (args) => ipcRenderer.invoke('get-cache-chunk', args),
+  getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),
+  cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),
+
+
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
 });

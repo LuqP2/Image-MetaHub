@@ -185,7 +185,7 @@ export default function App() {
       if (!path && window.electronAPI) {
         path = undefined;
       }
-      await cacheManager.init(path || undefined);
+      await cacheManager.init();
       
       // Validate cached images have valid file handles (for hot reload scenarios in browser)
       // Note: In Electron, mock handles are created with proper getFile() implementation

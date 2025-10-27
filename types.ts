@@ -16,6 +16,15 @@ export interface ElectronAPI {
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
+  
+  // --- Caching ---
+  getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+  getCacheChunk: (args: { cacheId: string; chunkIndex: number }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  cacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
+  clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
+  getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
+  cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
+
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
   onMenuAddFolder: (callback: () => void) => () => void;
   onMenuOpenSettings: (callback: () => void) => () => void;
