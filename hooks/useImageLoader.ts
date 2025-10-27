@@ -368,7 +368,7 @@ export function useImageLoader() {
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders, { includeMetadata: false });
+            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.imageCount > 0) {
                 const isElectron = getIsElectron();
@@ -549,6 +549,9 @@ export function useImageLoader() {
                 // Wait for processing to complete (both browser and Electron)
                 await processPromise;
                 
+                // Ensure final progress is shown (throttling might have prevented the last update)
+                setProgress({ current: diff.newAndModifiedFiles.length, total: diff.newAndModifiedFiles.length });
+                
                 // Check if cancelled after processing
                 if (!shouldCancelIndexing()) {
                     finalizeDirectoryLoad(directory);
@@ -651,10 +654,11 @@ export function useImageLoader() {
                         addDirectory(newDirectory);
                     }
                     
-                    // Then, load them all from cache in parallel.
+                    // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
-                    const loadPromises = directoriesToLoad.map(dir => loadDirectoryFromCache(dir));
-                    await Promise.all(loadPromises);
+                    for (const dir of directoriesToLoad) {
+                        await loadDirectory(dir, true); // `true` indicates this is an update/refresh
+                    }
 
                     // Final update for allowed paths.
                     const allPaths = useImageStore.getState().directories.map(d => d.path);
@@ -675,7 +679,7 @@ export function useImageLoader() {
             console.warn('Loading from storage is only supported in Electron.');
             setLoading(false);
         }
-    }, [loadDirectoryFromCache, addDirectory, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [addDirectory, setLoading, setError, setFilterOptions, setSuccess, loadDirectory]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();

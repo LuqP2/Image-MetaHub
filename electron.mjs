@@ -603,6 +603,146 @@ function setupFileOperationHandlers() {
   });
   // --- End Settings IPC ---
 
+  // --- Cache IPC Handlers ---
+  const getCacheFilePath = (cacheId) => {
+    const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    return path.join(app.getPath('userData'), `${safeCacheId}.json`);
+  };
+
+  ipcMain.handle('get-cached-data', async (event, cacheId) => {
+    const filePath = getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null }; // File not found is not an error
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
+
+  ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
+    const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const { metadata, ...cacheRecord } = data;
+    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+    await fs.mkdir(cacheDir, { recursive: true });
+
+    // Write chunk files
+    const chunkCount = Math.ceil(metadata.length / CHUNK_SIZE);
+    for (let i = 0; i < chunkCount; i++) {
+      const chunk = metadata.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const chunkPath = path.join(cacheDir, `${safeCacheId}_${i}.json`);
+      await fs.writeFile(chunkPath, JSON.stringify(chunk));
+    }
+
+    // Write main cache record (without metadata)
+    const mainCachePath = getCacheFilePath(cacheId);
+    cacheRecord.chunkCount = chunkCount;
+    await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
+
+    return { success: true };
+  });
+
+  ipcMain.handle('get-cache-chunk', async (event, { cacheId, chunkIndex }) => {
+    const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+    const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
+    try {
+      const data = await fs.readFile(chunkPath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clear-cache-data', async (event, cacheId) => {
+    const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+    const mainCachePath = getCacheFilePath(cacheId);
+
+    try {
+        // Delete main cache file
+        await fs.unlink(mainCachePath).catch(err => {
+            if (err.code !== 'ENOENT') throw err;
+        });
+
+        // Delete chunk files
+        const files = await fs.readdir(cacheDir);
+        for (const file of files) {
+            if (file.startsWith(`${safeCacheId}_`)) {
+                await fs.unlink(path.join(cacheDir, file));
+            }
+        }
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+  });
+
+
+  // --- Thumbnail Cache IPC Handlers ---
+  const getThumbnailCachePath = async (thumbnailId) => {
+    const safeId = thumbnailId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+    await fs.mkdir(cacheDir, { recursive: true });
+    return path.join(cacheDir, `${safeId}.webp`);
+  };
+
+  ipcMain.handle('get-thumbnail', async (event, thumbnailId) => {
+    const filePath = await getThumbnailCachePath(thumbnailId);
+    try {
+      const data = await fs.readFile(filePath);
+      return { success: true, data };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null }; // Not an error
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('cache-thumbnail', async (event, { thumbnailId, data }) => {
+    const filePath = await getThumbnailCachePath(thumbnailId);
+    try {
+      await fs.writeFile(filePath, data);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clear-metadata-cache', async () => {
+    try {
+      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      if (fs.existsSync(cacheDir)) {
+        await fs.promises.rm(cacheDir, { recursive: true, force: true });
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clear-thumbnail-cache', async () => {
+    try {
+      const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+      if (fs.existsSync(cacheDir)) {
+        await fs.promises.rm(cacheDir, { recursive: true, force: true });
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+  // --- End Thumbnail Cache IPC Handlers ---
+  // --- End Cache IPC Handlers ---
+
+
   // Handle updating the set of allowed directories for file operations
   ipcMain.handle('update-allowed-paths', (event, paths) => {
     try {
@@ -1012,7 +1152,6 @@ function setupFileOperationHandlers() {
       // We'll allow writing to any directory the user has selected via the directory dialog
       // This is more permissive than read operations but still controlled
       const normalizedFilePath = path.normalize(filePath);
-      const fileDir = path.dirname(normalizedFilePath);
 
       // Check if the target directory is within the current directory or a user-selected export directory
       // For now, we'll allow writing to any directory (since users explicitly choose export locations)

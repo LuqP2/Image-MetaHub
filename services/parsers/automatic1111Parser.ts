@@ -113,40 +113,46 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.height = parseInt(sizeMatch[2], 10);
   }
 
-  // Extract model - try Hashes JSON first (especially important for ComfyUI)
-  const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
-  if (hashesMatch) {
-    try {
-      const hashes = JSON.parse(hashesMatch[1]);
-      
-      // Priority order for model extraction from hashes
-      result.model = hashes['model'] || 
-                    hashes['Model'] || 
-                    hashes['checkpoint'] || 
-                    hashes['Checkpoint'] ||
-                    // Look for keys containing 'model' (case insensitive)
-                    Object.keys(hashes).find(key => key.toLowerCase().includes('model') && hashes[key]) ||
-                    // Fallback to first string value
-                    Object.values(hashes).find(val => typeof val === 'string' && val.trim());
-      
-    } catch {
-      // JSON parse error - continue with other extraction methods
+  // Extract model - prioritize actual model name over hash
+  // Try Model: field first (can appear anywhere in the line)
+  const modelMatch = parameters.match(/Model:\s*([^,\n]+)/);
+  if (modelMatch && modelMatch[1]) {
+    const modelName = modelMatch[1].trim();
+    // Only use it if it's not a hash (hashes are typically 10+ hex chars)
+    if (!/^[a-f0-9]{10,}$/i.test(modelName)) {
+      result.model = modelName;
     }
   }
   
-  // If no model from hashes, try the regular Model: pattern
-  if (!result.model) {
-    const modelMatch = parameters.match(/Model: ([^,]+)/);
-    if (modelMatch) {
-      result.model = modelMatch[1].trim();
-    }
-  }
-  
-  // If still no model, try Model hash: pattern
+  // If no model name found, try Model hash: pattern as fallback
   if (!result.model) {
     const hashMatch = parameters.match(/Model hash:\s*([a-f0-9]+)/i);
     if (hashMatch && hashMatch[1]) {
-      result.model = `Model hash: ${hashMatch[1]}`;
+      result.model = hashMatch[1];
+    }
+  }
+  
+  // Last resort: try to extract from Hashes JSON (for ComfyUI/other)
+  if (!result.model) {
+    const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
+    if (hashesMatch) {
+      try {
+        const hashes = JSON.parse(hashesMatch[1]);
+        
+        // Try to find actual model name first, avoid hash values
+        result.model = hashes['checkpoint'] || 
+                      hashes['Checkpoint'] ||
+                      // Look for keys containing 'model' but not the hash itself
+                      Object.keys(hashes)
+                        .filter(key => key.toLowerCase().includes('model') && 
+                                      !key.toLowerCase().includes('hash'))
+                        .map(key => hashes[key])
+                        .find(val => typeof val === 'string' && val.trim() && 
+                                    !/^[a-f0-9]{10,}$/i.test(val)); // Avoid hash-like strings
+        
+      } catch {
+        // JSON parse error - continue without model info
+      }
     }
   }
 

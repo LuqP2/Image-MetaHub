@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory } from '../types';
 import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -19,10 +18,30 @@ interface DirectoryListProps {
   scanSubfolders?: boolean;
 }
 
-interface Subfolder {
+interface SubfolderNode {
   name: string;
   path: string;
+  relativePath: string;
 }
+
+const normalizePath = (path: string) => path.replace(/[\\/]+$/, '');
+const toForwardSlashes = (path: string) => normalizePath(path).replace(/\\/g, '/');
+const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${relativePath === '' ? '.' : relativePath}`;
+
+const getRelativePath = (rootPath: string, targetPath: string) => {
+  const normalizedRoot = toForwardSlashes(rootPath);
+  const normalizedTarget = toForwardSlashes(targetPath);
+  if (!normalizedRoot) {
+    return normalizedTarget;
+  }
+  if (normalizedRoot === normalizedTarget) {
+    return '';
+  }
+  if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+    return normalizedTarget.slice(normalizedRoot.length + 1);
+  }
+  return normalizedTarget;
+};
 
 export default function DirectoryList({
   directories,
@@ -35,60 +54,62 @@ export default function DirectoryList({
   isIndexing = false,
   scanSubfolders = false
 }: DirectoryListProps) {
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  const [subfolders, setSubfolders] = useState<Map<string, Subfolder[]>>(new Map());
-  const [loadingSubfolders, setLoadingSubfolders] = useState<Set<string>>(new Set());
-  const [autoMarkedDirs, setAutoMarkedDirs] = useState<Set<string>>(new Set()); // Track which directories have been auto-marked
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [subfolderCache, setSubfolderCache] = useState<Map<string, SubfolderNode[]>>(new Map());
+  const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
+  const [autoMarkedNodes, setAutoMarkedNodes] = useState<Set<string>>(new Set());
+  const [isExpanded, setIsExpanded] = useState(true);
 
-  const toggleExpanded = async (dirId: string) => {
-    const newExpanded = new Set(expandedDirs);
-    const isExpanding = !newExpanded.has(dirId);
-    
-    if (newExpanded.has(dirId)) {
-      newExpanded.delete(dirId);
-    } else {
-      newExpanded.add(dirId);
-    }
-    setExpandedDirs(newExpanded);
-
-    // Load subfolders when expanding for the first time
-    if (isExpanding && !subfolders.has(dirId)) {
-      const dir = directories.find(d => d.id === dirId);
-      if (dir) {
-        await loadSubfolders(dirId, dir.path);
-      }
-    }
-  };
-
-  const loadSubfolders = async (dirId: string, dirPath: string) => {
+  const loadSubfolders = useCallback(async (
+    nodeKey: string,
+    nodePath: string,
+    rootDirectory: Directory
+  ) => {
     try {
-      setLoadingSubfolders(prev => new Set(prev).add(dirId));
-      
+      setLoadingNodes(prev => {
+        const next = new Set(prev);
+        next.add(nodeKey);
+        return next;
+      });
+
       const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
       if (isElectron && (window as any).electronAPI.listSubfolders) {
-        const result = await (window as any).electronAPI.listSubfolders(dirPath);
-        
-        if (result.success) {
-          setSubfolders(prev => new Map(prev).set(dirId, result.subfolders || []));
-          
-          // Auto-mark root and subfolders ONLY if:
-          // 1. scanSubfolders was enabled during indexing
-          // 2. This directory hasn't been auto-marked before (first time loading)
-          if (scanSubfolders && result.subfolders && result.subfolders.length > 0 && !autoMarkedDirs.has(dirId)) {
-            if (onUpdateSelection && getSelectionState) {
-              if (getSelectionState(dirPath) !== 'checked') {
-                onUpdateSelection(dirPath, 'checked', { clearDescendantOverrides: true });
-              }
+        const result = await (window as any).electronAPI.listSubfolders(nodePath);
 
-              result.subfolders.forEach((subfolder: { path: string }) => {
-                if (getSelectionState(subfolder.path) !== 'checked') {
-                  onUpdateSelection(subfolder.path, 'checked', { clearDescendantOverrides: true });
-                }
-              });
+        if (result.success) {
+          const subfolders: SubfolderNode[] = (result.subfolders || []).map((subfolder: { name: string; path: string }) => ({
+            name: subfolder.name,
+            path: subfolder.path,
+            relativePath: getRelativePath(rootDirectory.path, subfolder.path)
+          }));
+
+          setSubfolderCache(prev => {
+            const next = new Map(prev);
+            next.set(nodeKey, subfolders);
+            return next;
+          });
+
+          if (
+            scanSubfolders &&
+            onUpdateSelection &&
+            getSelectionState &&
+            !autoMarkedNodes.has(nodeKey)
+          ) {
+            if (getSelectionState(nodePath) !== 'checked') {
+              onUpdateSelection(nodePath, 'checked');
             }
 
-            // Mark this directory as auto-marked
-            setAutoMarkedDirs(prev => new Set(prev).add(dirId));
+            subfolders.forEach(subfolder => {
+              if (getSelectionState(subfolder.path) !== 'checked') {
+                onUpdateSelection(subfolder.path, 'checked');
+              }
+            });
+
+            setAutoMarkedNodes(prev => {
+              const next = new Set(prev);
+              next.add(nodeKey);
+              return next;
+            });
           }
         } else {
           console.error('Failed to load subfolders:', result.error);
@@ -97,17 +118,36 @@ export default function DirectoryList({
     } catch (error) {
       console.error('Error loading subfolders:', error);
     } finally {
-      setLoadingSubfolders(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(dirId);
-        return newSet;
+      setLoadingNodes(prev => {
+        const next = new Set(prev);
+        next.delete(nodeKey);
+        return next;
       });
     }
-  };
+  }, [autoMarkedNodes, getSelectionState, onUpdateSelection, scanSubfolders]);
+
+  const handleToggleNode = useCallback((nodeKey: string, nodePath: string, rootDirectory: Directory) => {
+    let shouldLoad = false;
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeKey)) {
+        next.delete(nodeKey);
+      } else {
+        next.add(nodeKey);
+        if (!subfolderCache.has(nodeKey)) {
+          shouldLoad = true;
+        }
+      }
+      return next;
+    });
+
+    if (shouldLoad) {
+      void loadSubfolders(nodeKey, nodePath, rootDirectory);
+    }
+  }, [loadSubfolders, subfolderCache]);
 
   const handleOpenInExplorer = async (path: string) => {
     try {
-      // Use Electron API to open folder in Explorer/Finder/File Manager
       const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
       if (isElectron && (window as any).electronAPI.showItemInFolder) {
         await (window as any).electronAPI.showItemInFolder(path);
@@ -120,19 +160,73 @@ export default function DirectoryList({
     }
   };
 
-  const handleSelectAll = (dirPath: string) => {
+  const handleSelectAll = useCallback((dirPath: string) => {
     if (onUpdateSelection) {
       onUpdateSelection(dirPath, 'checked', { clearDescendantOverrides: true });
     }
-  };
+  }, [onUpdateSelection]);
 
-  const handleDeselectAll = (dirPath: string) => {
+  const handleDeselectAll = useCallback((dirPath: string) => {
     if (onUpdateSelection) {
       onUpdateSelection(dirPath, 'unchecked', { applyToDescendants: true });
     }
-  };
+  }, [onUpdateSelection]);
 
-  const [isExpanded, setIsExpanded] = React.useState(true);
+  const renderSubfolderList = useCallback((rootDirectory: Directory, parentKey: string): React.ReactNode => {
+    const children = subfolderCache.get(parentKey) || [];
+
+    return children.map(child => {
+      const childKey = makeNodeKey(rootDirectory.id, child.relativePath);
+      const isExpandedNode = expandedNodes.has(childKey);
+      const isLoadingNode = loadingNodes.has(childKey);
+      const grandchildren = subfolderCache.get(childKey) || [];
+      const childPaths = grandchildren.map(grandchild => grandchild.path);
+
+      return (
+        <li key={childKey} className="py-1">
+          <div className="flex items-center">
+            <button
+              onClick={() => handleToggleNode(childKey, child.path, rootDirectory)}
+              className="text-gray-500 hover:text-gray-300 transition-colors mr-1 flex-shrink-0"
+              title={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
+            >
+              <ChevronDown
+                className={`w-3 h-3 transition-transform ${isExpandedNode ? 'rotate-0' : '-rotate-90'}`}
+              />
+            </button>
+            <FolderCheckbox
+              path={child.path}
+              childPaths={childPaths}
+              getSelectionState={getSelectionState}
+              onUpdateSelection={onUpdateSelection}
+              selectionMap={folderSelection}
+              title="Show/hide images from this subfolder"
+              className="mr-2"
+            />
+            <button
+              onClick={() => handleOpenInExplorer(child.path)}
+              className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
+              title={`Click to open: ${child.path}`}
+            >
+              <Folder className="w-3 h-3 mr-1" />
+              {child.name}
+            </button>
+          </div>
+          {isExpandedNode && (
+            <ul className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-2">
+              {isLoadingNode ? (
+                <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
+              ) : grandchildren.length > 0 ? (
+                renderSubfolderList(rootDirectory, childKey)
+              ) : (
+                <li className="text-xs text-gray-500 italic py-1">No subfolders found</li>
+              )}
+            </ul>
+          )}
+        </li>
+      );
+    });
+  }, [expandedNodes, folderSelection, getSelectionState, handleOpenInExplorer, handleToggleNode, loadingNodes, onUpdateSelection, subfolderCache]);
 
   return (
     <div className="border-b border-gray-700">
@@ -152,100 +246,96 @@ export default function DirectoryList({
       </button>
       {isExpanded && (
         <div className="px-4 pb-4">
-          {/* No scroll here - uses parent sidebar scroll */}
           <ul className="space-y-1">
-            {directories.map((dir) => (
-          <li key={dir.id}>
-            <div className="flex items-center justify-between bg-gray-800 p-2 rounded-md">
-              <div className="flex items-center overflow-hidden flex-1">
-                <input
-                  type="checkbox"
-                  checked={dir.visible ?? true}
-                  onChange={() => onToggleVisibility(dir.id)}
-                  className="mr-2 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                  title="Show/hide images from this folder"
-                />
-                <button
-                  onClick={() => toggleExpanded(dir.id)}
-                  className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
-                  title={expandedDirs.has(dir.id) ? "Hide subfolders" : "Show subfolders"}
-                >
-                  <ChevronDown 
-                    className={`w-4 h-4 transition-transform ${expandedDirs.has(dir.id) ? 'rotate-0' : '-rotate-90'}`}
-                  />
-                </button>
-                <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
-                <button
-                  onClick={() => handleOpenInExplorer(dir.path)}
-                  className="ml-2 text-sm text-gray-300 hover:text-blue-400 hover:underline truncate text-left transition-colors flex-1"
-                  title={`Click to open: ${dir.path}`}
-                >
-                  {dir.name}
-                </button>
-              </div>
-              <div className="flex items-center space-x-2 flex-shrink-0">
-                <button
-                  onClick={() => onUpdateDirectory(dir.id)}
-                  disabled={isIndexing}
-                  className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
-                  title={isIndexing ? "Cannot refresh during indexing" : "Refresh folder"}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => onRemoveDirectory(dir.id)}
-                  disabled={isIndexing}
-                  className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
-                  title={isIndexing ? "Cannot remove during indexing" : "Remove folder"}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            
-            {/* Subfolders list */}
-            {expandedDirs.has(dir.id) && (
-              <ul className="ml-4 mt-1 space-y-1 border-l-2 border-gray-700 pl-2">
-                {loadingSubfolders.has(dir.id) ? (
-                  <li className="text-xs text-gray-500 italic py-1">
-                    Loading subfolders...
-                  </li>
-                ) : (
-                  <>
-                    {/* Only show subfolder controls if scanSubfolders was enabled */}
-                    {scanSubfolders ? (
-                      <>
-                        {/* Select All / Deselect All buttons */}
-                        <li className="py-1 flex items-center justify-between">
-                          <span className="text-xs text-gray-500">Subfolder Selection:</span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSelectAll(dir.path)}
-                              className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
-                              title="Select all subfolders and root"
-                            >
-                              Select All
-                            </button>
-                            <button
-                              onClick={() => handleDeselectAll(dir.path)}
-                              className="text-xs px-2 py-0.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors"
-                              title="Deselect all subfolders and root"
-                            >
-                              Clear
-                            </button>
+            {directories.map((dir) => {
+              const rootKey = makeNodeKey(dir.id, '');
+              const isRootExpanded = expandedNodes.has(rootKey);
+              const isRootLoading = loadingNodes.has(rootKey);
+              const rootChildren = subfolderCache.get(rootKey) || [];
+              const rootChildPaths = rootChildren.map(child => child.path);
+
+              return (
+                <li key={dir.id}>
+                  <div className="flex items-center justify-between bg-gray-800 p-2 rounded-md">
+                    <div className="flex items-center overflow-hidden flex-1">
+                      <input
+                        type="checkbox"
+                        checked={dir.visible ?? true}
+                        onChange={() => onToggleVisibility(dir.id)}
+                        className="mr-2 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
+                        title="Show/hide images from this folder"
+                      />
+                      <button
+                        onClick={() => handleToggleNode(rootKey, dir.path, dir)}
+                        className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
+                        title={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${isRootExpanded ? 'rotate-0' : '-rotate-90'}`}
+                        />
+                      </button>
+                      <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
+                      <button
+                        onClick={() => handleOpenInExplorer(dir.path)}
+                        className="ml-2 text-sm text-gray-300 hover:text-blue-400 hover:underline truncate text-left transition-colors flex-1"
+                        title={`Click to open: ${dir.path}`}
+                      >
+                        {dir.name}
+                      </button>
+                    </div>
+                    <div className="flex items-center space-x-2 flex-shrink-0">
+                      <button
+                        onClick={() => onUpdateDirectory(dir.id)}
+                        disabled={isIndexing}
+                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                        title={isIndexing ? 'Cannot refresh during indexing' : 'Refresh folder'}
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onRemoveDirectory(dir.id)}
+                        disabled={isIndexing}
+                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
+                        title={isIndexing ? 'Cannot remove during indexing' : 'Remove folder'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {isRootExpanded && (
+                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-700 pl-2">
+                      {scanSubfolders ? (
+                        <>
+                          <div className="py-1 flex items-center justify-between">
+                            <span className="text-xs text-gray-500">Subfolder Selection:</span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleSelectAll(dir.path)}
+                                className="text-xs px-2 py-0.5 bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+                                title="Select all subfolders and root"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={() => handleDeselectAll(dir.path)}
+                                className="text-xs px-2 py-0.5 bg-gray-600 hover:bg-gray-500 rounded transition-colors"
+                                title="Deselect all subfolders and root"
+                              >
+                                Clear
+                              </button>
+                            </div>
                           </div>
-                        </li>
-                        
-                        {/* Root directory checkbox */}
-                        <li className="py-1">
-                          <div className="flex items-center">
-                            <RootCheckbox
-                              directoryPath={dir.path}
-                              dirId={dir.id}
+
+                          <div className="py-1 flex items-center">
+                            <FolderCheckbox
+                              path={dir.path}
+                              childPaths={rootChildPaths}
                               getSelectionState={getSelectionState}
-                              subfolders={subfolders}
                               onUpdateSelection={onUpdateSelection}
                               selectionMap={folderSelection}
+                              title="Show/hide images from root directory only"
+                              className="mr-2"
                             />
                             <button
                               onClick={() => handleOpenInExplorer(dir.path)}
@@ -256,47 +346,27 @@ export default function DirectoryList({
                               <span className="italic">(root)</span>
                             </button>
                           </div>
-                        </li>
-                        
-                        {/* Subfolders list */}
-                        {subfolders.get(dir.id)?.length ? (
-                          subfolders.get(dir.id)!.map((subfolder) => (
-                            <li key={subfolder.path} className="py-1">
-                              <div className="flex items-center">
-                                <SubfolderCheckbox
-                                  path={subfolder.path}
-                                  getSelectionState={getSelectionState}
-                                  onUpdateSelection={onUpdateSelection}
-                                  selectionMap={folderSelection}
-                                />
-                                <button
-                                  onClick={() => handleOpenInExplorer(subfolder.path)}
-                                  className="flex items-center text-sm text-gray-400 hover:text-blue-400 hover:underline transition-colors"
-                                  title={`Click to open: ${subfolder.path}`}
-                                >
-                                  <Folder className="w-3 h-3 mr-1" />
-                                  {subfolder.name}
-                                </button>
-                              </div>
-                            </li>
-                          ))
-                        ) : (
-                          <li className="text-xs text-gray-500 italic py-1">
-                            No subfolders found
-                          </li>
-                        )}
-                      </>
-                    ) : (
-                      <li className="text-xs text-gray-500 italic py-1">
-                        No subfolders (folder loaded without "Scan Subfolders")
-                      </li>
-                    )}
-                  </>
-                )}
-              </ul>
-            )}
-          </li>
-        ))}
+
+                          <ul className="ml-3 space-y-1">
+                            {isRootLoading ? (
+                              <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
+                            ) : rootChildren.length > 0 ? (
+                              renderSubfolderList(dir, rootKey)
+                            ) : (
+                              <li className="text-xs text-gray-500 italic py-1">No subfolders found</li>
+                            )}
+                          </ul>
+                        </>
+                      ) : (
+                        <div className="text-xs text-gray-500 italic py-1">
+                          No subfolders (folder loaded without "Scan Subfolders")
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -304,42 +374,34 @@ export default function DirectoryList({
   );
 }
 
-interface RootCheckboxProps {
-  directoryPath: string;
-  dirId: string;
-  subfolders: Map<string, Subfolder[]>;
+interface FolderCheckboxProps {
+  path: string;
+  childPaths: string[];
   getSelectionState?: (path: string) => 'checked' | 'unchecked';
-  onUpdateSelection?: (
-    path: string,
-    state: 'checked' | 'unchecked',
-    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
-  ) => void;
+  onUpdateSelection?: (path: string, state: 'checked' | 'unchecked') => void;
   selectionMap: Map<string, 'checked' | 'unchecked'>;
+  title: string;
+  className?: string;
 }
 
-const RootCheckbox: React.FC<RootCheckboxProps> = ({
-  directoryPath,
-  dirId,
-  subfolders,
+const FolderCheckbox: React.FC<FolderCheckboxProps> = ({
+  path,
+  childPaths,
   getSelectionState,
   onUpdateSelection,
   selectionMap,
+  title,
+  className
 }) => {
   const checkboxRef = useRef<HTMLInputElement>(null);
-
-  const childPaths = useMemo(
-    () => subfolders.get(dirId)?.map((subfolder) => subfolder.path) ?? [],
-    [subfolders, dirId]
-  );
-
-  const ownState = getSelectionState ? getSelectionState(directoryPath) : 'checked';
+  const ownState = getSelectionState ? getSelectionState(path) : 'unchecked';
 
   const displayState = useMemo(() => {
     let hasChecked = ownState === 'checked';
     let hasUnchecked = ownState === 'unchecked';
 
-    childPaths.forEach((childPath) => {
-      const childState = getSelectionState ? getSelectionState(childPath) : 'checked';
+    childPaths.forEach(childPath => {
+      const childState = getSelectionState ? getSelectionState(childPath) : 'unchecked';
       if (childState === 'checked') {
         hasChecked = true;
       } else {
@@ -358,7 +420,7 @@ const RootCheckbox: React.FC<RootCheckboxProps> = ({
     if (checkboxRef.current) {
       checkboxRef.current.indeterminate = displayState === 'partial';
     }
-  }, [displayState]);
+  }, [displayState, selectionMap]);
 
   const handleChange = () => {
     if (!onUpdateSelection) {
@@ -366,11 +428,7 @@ const RootCheckbox: React.FC<RootCheckboxProps> = ({
     }
 
     const nextState = ownState === 'checked' ? 'unchecked' : 'checked';
-    const options = nextState === 'checked'
-      ? { clearDescendantOverrides: true }
-      : { applyToDescendants: true };
-
-    onUpdateSelection(directoryPath, nextState, options);
+    onUpdateSelection(path, nextState);
   };
 
   return (
@@ -379,58 +437,8 @@ const RootCheckbox: React.FC<RootCheckboxProps> = ({
       type="checkbox"
       checked={ownState === 'checked'}
       onChange={handleChange}
-      className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-      title="Show/hide images from root directory only"
-    />
-  );
-};
-
-interface SubfolderCheckboxProps {
-  path: string;
-  getSelectionState?: (path: string) => 'checked' | 'unchecked';
-  onUpdateSelection?: (
-    path: string,
-    state: 'checked' | 'unchecked',
-    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
-  ) => void;
-  selectionMap: Map<string, 'checked' | 'unchecked'>;
-}
-
-const SubfolderCheckbox: React.FC<SubfolderCheckboxProps> = ({
-  path,
-  getSelectionState,
-  onUpdateSelection,
-  selectionMap,
-}) => {
-  const checkboxRef = useRef<HTMLInputElement>(null);
-  const currentState = getSelectionState ? getSelectionState(path) : 'checked';
-
-  useEffect(() => {
-    if (checkboxRef.current) {
-      checkboxRef.current.indeterminate = false;
-    }
-  }, [selectionMap, currentState]);
-
-  const handleChange = () => {
-    if (!onUpdateSelection) {
-      return;
-    }
-
-    const nextState = currentState === 'checked' ? 'unchecked' : 'checked';
-    const options = nextState === 'checked'
-      ? { clearDescendantOverrides: true }
-      : { applyToDescendants: true };
-    onUpdateSelection(path, nextState, options);
-  };
-
-  return (
-    <input
-      ref={checkboxRef}
-      type="checkbox"
-      checked={currentState === 'checked'}
-      onChange={handleChange}
-      className="mr-2 w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-      title="Show/hide images from this subfolder"
+      className={`w-3 h-3 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0 ${className ?? ''}`.trim()}
+      title={title}
     />
   );
 };

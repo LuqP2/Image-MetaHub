@@ -21,28 +21,30 @@ async function openDatabase(): Promise<IDBDatabase | null> {
     return null;
   }
 
-  return new Promise((resolve, reject) => {
-    const request = idb.open(DB_NAME, DB_VERSION);
+  try {
+    return await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = idb.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    };
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+      };
 
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
 
-    request.onerror = () => {
-      console.error('Failed to open folder selection storage', request.error);
-      reject(request.error);
-    };
-  }).catch((error) => {
+      request.onerror = () => {
+        console.error('Failed to open folder selection storage', request.error);
+        reject(request.error);
+      };
+    });
+  } catch (error) {
     console.error('IndexedDB open error for folder selection storage:', error);
     return null;
-  });
+  }
 }
 
 export async function loadFolderSelection(): Promise<Record<string, StoredSelectionState>> {

@@ -34,15 +34,31 @@ const isDescendantPath = (child: string, parent: string) => {
     return normalizedChild.startsWith(normalizedParent + separator);
 };
 
-const getEffectiveSelectionState = (selection: FolderSelectionMap, path: string): SelectionState => {
-    let current: string | null = normalizePath(path);
-    while (current !== null) {
-        if (selection.has(current)) {
-            return selection.get(current)!;
-        }
-        current = getParentPath(current);
+const isSameOrDescendantPath = (child: string, parent: string) => {
+    const normalizedChild = normalizePath(child);
+    const normalizedParent = normalizePath(parent);
+    if (normalizedChild === normalizedParent) {
+        return true;
     }
-    return 'checked';
+    return isDescendantPath(normalizedChild, normalizedParent);
+};
+
+const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
+    const normalizedDirectory = normalizePath(directoryPath);
+    const idParts = image.id.split('::');
+    if (idParts.length !== 2) {
+        return normalizedDirectory;
+    }
+
+    const relativePath = idParts[1];
+    const segments = relativePath.split(/[/\\]/).filter(Boolean);
+    if (segments.length <= 1) {
+        return normalizedDirectory;
+    }
+
+    const folderSegments = segments.slice(0, -1);
+    const folderRelativePath = folderSegments.join('/');
+    return joinPath(normalizedDirectory, folderRelativePath);
 };
 
 const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/')) ? '\\' : '/';
@@ -75,6 +91,8 @@ interface ImageState {
   // Core Data
   images: IndexedImage[];
   filteredImages: IndexedImage[];
+  selectionTotalImages: number;
+  selectionDirectoryCount: number;
   directories: Directory[];
   folderSelection: FolderSelectionMap;
   isFolderSelectionLoaded: boolean;
@@ -194,30 +212,68 @@ export const useImageStore = create<ImageState>((set, get) => {
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
         );
-        
-        let results = images.filter((img) => {
-            // First check if the directory is visible
+
+        const normalizedSelection = new Map<string, SelectionState>();
+        for (const [path, value] of folderSelection.entries()) {
+            normalizedSelection.set(normalizePath(path), value);
+        }
+
+        const directoryPathMap = new Map<string, string>();
+        const rootPaths: string[] = [];
+        directories.forEach(dir => {
+            const normalized = normalizePath(dir.path);
+            directoryPathMap.set(dir.id, normalized);
+            rootPaths.push(normalized);
+        });
+
+        const rootCoverage = new Map<string, boolean>();
+        rootPaths.forEach(rootPath => {
+            const storedState = normalizedSelection.get(rootPath);
+            rootCoverage.set(rootPath, storedState ? storedState === 'checked' : true);
+        });
+
+        for (const [path, stateValue] of normalizedSelection.entries()) {
+            if (stateValue !== 'checked') {
+                continue;
+            }
+            const matchedRoot = rootPaths.find(rootPath => isSameOrDescendantPath(path, rootPath));
+            if (matchedRoot) {
+                rootCoverage.set(matchedRoot, true);
+            }
+        }
+
+        const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
             }
 
-            // Extract the directory path from the image's directory
-            const parentDir = directories.find((d) => d.id === img.directoryId);
-            if (!parentDir) return false;
-            const parentPath = normalizePath(parentDir.path);
-
-            // The id format is: directoryId::relativePath
-            const idParts = img.id.split('::');
-            if (idParts.length === 2) {
-                const relativePath = idParts[1];
-                const pathParts = relativePath.split(/[/\\]/).filter((p) => p);
-                const folderParts = pathParts.slice(0, Math.max(pathParts.length - 1, 0));
-                const folderRelativePath = folderParts.join('/');
-                const folderPath = folderRelativePath ? joinPath(parentPath, folderRelativePath) : parentPath;
-                return getEffectiveSelectionState(folderSelection, folderPath) === 'checked';
+            const parentPath = directoryPathMap.get(img.directoryId || '');
+            if (!parentPath) {
+                return false;
             }
-            return getEffectiveSelectionState(folderSelection, parentPath) === 'checked';
+
+            const folderPath = getImageFolderPath(img, parentPath);
+            if (folderPath === parentPath) {
+                const rootState = normalizedSelection.get(parentPath);
+                return rootState ? rootState === 'checked' : true;
+            }
+
+            let current: string | null = folderPath;
+            while (current && current !== parentPath) {
+                const entry = normalizedSelection.get(current);
+                if (entry === 'checked') {
+                    return true;
+                }
+                if (entry === 'unchecked') {
+                    return false;
+                }
+                current = getParentPath(current);
+            }
+
+            return false;
         });
+
+        let results = selectionFiltered;
 
         if (searchQuery) {
             const searchTerms = searchQuery.toLowerCase().split(' ').filter(term => term.trim() !== '');
@@ -298,6 +354,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         }
 
+        const totalInScope = selectionFiltered.length;
+        const selectionDirectoryCount = Array.from(rootCoverage.entries())
+            .filter(([, selected]) => selected)
+            .length;
+
         const sorted = [...results].sort((a, b) => {
             if (sortOrder === 'asc') return a.name.localeCompare(b.name);
             if (sortOrder === 'desc') return b.name.localeCompare(a.name);
@@ -306,7 +367,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             return 0;
         });
 
-        return { filteredImages: sorted };
+        return {
+            filteredImages: sorted,
+            selectionTotalImages: totalInScope,
+            selectionDirectoryCount
+        };
     };
 
 
@@ -314,6 +379,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Initial State
         images: [],
         filteredImages: [],
+        selectionTotalImages: 0,
+        selectionDirectoryCount: 0,
         directories: [],
         folderSelection: new Map(),
         isFolderSelectionLoaded: false,
@@ -343,9 +410,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (state.directories.some(d => d.id === directory.id)) {
                 return state; // Prevent adding duplicates
             }
-            return {
-                directories: [...state.directories, { ...directory, visible: directory.visible ?? true }]
-            };
+            const newDirectories = [...state.directories, { ...directory, visible: directory.visible ?? true }];
+            const newState = { ...state, directories: newDirectories };
+            return { ...newState, ...filterAndSort(newState) };
         }),
 
         toggleDirectoryVisibility: (directoryId) => set(state => {
@@ -359,8 +426,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         initializeFolderSelection: async () => {
             const persisted = await loadFolderSelection();
             set(state => {
-                const selectionEntries = Object.entries(persisted || {});
-                const selectionMap: FolderSelectionMap = new Map(selectionEntries);
+                const selectionMap: FolderSelectionMap = new Map();
+                Object.entries(persisted || {}).forEach(([key, value]) => {
+                    selectionMap.set(normalizePath(key), value as SelectionState);
+                });
                 const newState = { ...state, folderSelection: selectionMap, isFolderSelectionLoaded: true };
                 return { ...newState, ...filterAndSort(newState) };
             });
@@ -370,32 +439,37 @@ export const useImageStore = create<ImageState>((set, get) => {
             const normalizedPath = normalizePath(path);
             set(state => {
                 const selection = new Map(state.folderSelection);
+                selection.set(normalizedPath, selectionState);
 
-                if (selectionState === 'checked') {
-                    selection.delete(normalizedPath);
-                } else {
-                    selection.set(normalizedPath, 'unchecked');
-                }
+                const shouldApplyDescendants = selectionState === 'unchecked' && options?.applyToDescendants;
+                const shouldClearOverrides = selectionState === 'checked' && options?.clearDescendantOverrides;
 
-                if (options?.applyToDescendants || options?.clearDescendantOverrides) {
-                    for (const key of Array.from(selection.keys())) {
-                        if (isDescendantPath(key, normalizedPath)) {
-                            if (selectionState === 'checked' && options?.clearDescendantOverrides) {
-                                selection.delete(key);
-                            } else if (selectionState === 'unchecked' && options?.applyToDescendants) {
-                                selection.set(key, 'unchecked');
-                            }
+                if (shouldApplyDescendants || shouldClearOverrides) {
+                    const directoryPathMap = new Map(state.directories.map(dir => [dir.id, normalizePath(dir.path)]));
+                    const descendantPaths = new Set<string>();
+                    descendantPaths.add(normalizedPath);
+
+                    for (const image of state.images) {
+                        const rootPath = directoryPathMap.get(image.directoryId || '');
+                        if (!rootPath) {
+                            continue;
+                        }
+                        const folderPath = getImageFolderPath(image, rootPath);
+                        if (isSameOrDescendantPath(folderPath, normalizedPath)) {
+                            descendantPaths.add(folderPath);
                         }
                     }
-                }
 
-                if (selectionState === 'checked') {
-                    let parent = getParentPath(normalizedPath);
-                    while (parent !== null) {
-                        if (selection.get(parent) === 'unchecked') {
-                            selection.delete(parent);
-                        }
-                        parent = getParentPath(parent);
+                    if (shouldClearOverrides) {
+                        descendantPaths.forEach(descPath => {
+                            selection.set(descPath, 'checked');
+                        });
+                    }
+
+                    if (shouldApplyDescendants) {
+                        descendantPaths.forEach(descPath => {
+                            selection.set(descPath, 'unchecked');
+                        });
                     }
                 }
 
@@ -412,7 +486,19 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         getFolderSelectionState: (path) => {
             const selection = get().folderSelection;
-            return getEffectiveSelectionState(selection, path);
+            const directories = get().directories;
+            const normalizedPath = normalizePath(path);
+
+            if (selection.has(normalizedPath)) {
+                return selection.get(normalizedPath)!;
+            }
+
+            const rootPaths = new Set(directories.map(dir => normalizePath(dir.path)));
+            if (rootPaths.has(normalizedPath)) {
+                return 'checked';
+            }
+
+            return 'unchecked';
         },
 
         removeDirectory: (directoryId) => {
@@ -590,6 +676,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         resetState: () => set({
             images: [],
             filteredImages: [],
+            selectionTotalImages: 0,
+            selectionDirectoryCount: 0,
             directories: [],
             isLoading: false,
             progress: { current: 0, total: 0 },
