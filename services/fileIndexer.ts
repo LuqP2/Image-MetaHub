@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
-import { cacheManager, IncrementalCacheWriter } from './cacheManager';
+import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
@@ -624,319 +624,579 @@ if (rawMetadata) {
 }
 
 /**
- * Processes a single file entry (wrapper for backward compatibility).
- */
-async function processSingleFile(
-  fileEntry: { handle: FileSystemFileHandle, path: string },
-  directoryId: string
-): Promise<IndexedImage | null> {
-  return processSingleFileOptimized(fileEntry, directoryId, undefined);
-}
-
-/**
  * Processes an array of file entries in batches to avoid blocking the main thread.
  * Invokes a callback with each batch of processed images.
  * OPTIMIZED: Uses batch file reading in Electron to reduce IPC overhead.
  */
+interface CatalogFileEntry {
+  handle: FileSystemFileHandle;
+  path: string;
+  lastModified: number;
+  size?: number;
+  type?: string;
+}
+
+interface CatalogEntryState {
+  image: IndexedImage;
+  chunkIndex: number;
+  chunkOffset: number;
+  needsEnrichment: boolean;
+  source?: CatalogFileEntry;
+}
+
+interface PhaseTelemetry {
+  startTime: number;
+  processed: number;
+  bytesWritten: number;
+  ipcCalls: number;
+  diskWrites: number;
+}
+
+interface ProcessFilesOptions {
+  cacheWriter?: IncrementalCacheWriter | null;
+  concurrency?: number;
+  flushChunkSize?: number;
+  preloadedImages?: IndexedImage[];
+  fileStats?: Map<string, { size?: number; type?: string }>;
+  onEnrichmentBatch?: (batch: IndexedImage[]) => void;
+  enrichmentBatchSize?: number;
+}
+
+export interface ProcessFilesResult {
+  phaseB: Promise<void>;
+}
+
+function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
+  return {
+    id: image.id,
+    name: image.name,
+    metadataString: image.metadataString,
+    metadata: image.metadata,
+    lastModified: image.lastModified,
+    models: image.models,
+    loras: image.loras,
+    scheduler: image.scheduler,
+    board: image.board,
+    prompt: image.prompt,
+    negativePrompt: image.negativePrompt,
+    cfgScale: image.cfgScale,
+    steps: image.steps,
+    seed: image.seed,
+    dimensions: image.dimensions,
+    enrichmentState: image.enrichmentState,
+    fileSize: image.fileSize,
+    fileType: image.fileType,
+  };
+}
+
 export async function processFiles(
-  fileEntries: { handle: FileSystemFileHandle, path: string, lastModified: number }[],
+  fileEntries: CatalogFileEntry[],
   setProgress: (progress: { current: number; total: number }) => void,
   onBatchProcessed: (batch: IndexedImage[]) => void,
   directoryId: string,
   directoryName: string,
   scanSubfolders: boolean,
-  onDeletion: (deletedFileIds: string[]) => void,
+  _onDeletion: (deletedFileIds: string[]) => void,
   abortSignal?: AbortSignal,
   waitWhilePaused?: () => Promise<void>,
-  options?: {
-    cacheWriter?: IncrementalCacheWriter | null;
-    concurrency?: number;
-    flushChunkSize?: number;
-  }
-): Promise<void> {
-  // Check for cancellation at the start
+  options: ProcessFilesOptions = {}
+): Promise<ProcessFilesResult> {
   if (abortSignal?.aborted) {
-    return;
+    return { phaseB: Promise.resolve() };
   }
 
-  // NOTE: Cache validation is now done in useImageLoader, NOT here!
-  // This function only processes the files passed to it.
-  // The cached images are already added by useImageLoader before calling this function.
-  
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
-  const total = imageFiles.length;
-  let processedCount = 0;
-  const BATCH_SIZE = 50; // For sending data to the store
-  const DEFAULT_CONCURRENCY = 4;
-  const cacheWriter = options?.cacheWriter ?? null;
-  const shouldTrackNewImages = !cacheWriter;
-  const CONCURRENCY_LIMIT = options?.concurrency ?? DEFAULT_CONCURRENCY;
-  const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
-  const flushChunkLimit = options?.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
-  let batch: IndexedImage[] = [];
-  const newlyProcessedImages: IndexedImage[] = [];
-  let chunkBuffer: IndexedImage[] = [];
+  const cacheWriter = options.cacheWriter ?? null;
+  const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
+  const concurrencyLimit = options.concurrency ?? 4;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
+  const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string }>();
+
+  const phaseAStats: PhaseTelemetry = {
+    startTime: performance.now(),
+    processed: 0,
+    bytesWritten: 0,
+    ipcCalls: 0,
+    diskWrites: 0,
+  };
+  const phaseBStats: PhaseTelemetry = {
+    startTime: 0,
+    processed: 0,
+    bytesWritten: 0,
+    ipcCalls: 0,
+    diskWrites: 0,
+  };
+
+  performance.mark('indexing:phaseA:start');
+
+  const catalogState = new Map<string, CatalogEntryState>();
+  const chunkRecords: CacheImageMetadata[][] = [];
+  const chunkMap = new Map<string, { chunkIndex: number; offset: number }>();
+  const enrichmentQueue: CatalogEntryState[] = [];
+  const chunkBuffer: IndexedImage[] = [];
+  const uiBatch: IndexedImage[] = [];
+  const BATCH_SIZE = 50;
+  const totalPhaseAFiles = (options.preloadedImages?.length ?? 0) + fileEntries.length;
+  const totalNewFiles = fileEntries.length;
+  let processedNew = 0;
+  let nextPhaseALog = 5000;
+
+  const pushUiBatch = async (force = false) => {
+    if (uiBatch.length === 0) {
+      return;
+    }
+    if (!force && uiBatch.length < BATCH_SIZE) {
+      return;
+    }
+    onBatchProcessed([...uiBatch]);
+    uiBatch.length = 0;
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
 
   const flushChunk = async (force = false) => {
-    if (!cacheWriter) return;
-    if (chunkBuffer.length === 0) return;
-    if (!force && chunkBuffer.length < flushChunkLimit) {
+    if (chunkBuffer.length === 0) {
+      return;
+    }
+    if (!force && chunkBuffer.length < chunkThreshold) {
       return;
     }
 
-    const chunk = chunkBuffer;
-    chunkBuffer = [];
-    try {
-      await cacheWriter.append(chunk);
-    } catch (error) {
-      console.error('Failed to persist cache chunk:', error);
+    const chunkImages = chunkBuffer.splice(0, chunkBuffer.length);
+    const metadataChunk = chunkImages.map(mapIndexedImageToCache);
+    const chunkIndex = chunkRecords.length;
+    chunkRecords.push(metadataChunk);
+
+    chunkImages.forEach((img, offset) => {
+      chunkMap.set(img.id, { chunkIndex, offset });
+      const entry = catalogState.get(img.id);
+      if (entry) {
+        entry.chunkIndex = chunkIndex;
+        entry.chunkOffset = offset;
+      }
+    });
+
+    if (cacheWriter) {
+      const flushStart = performance.now();
+      await cacheWriter.append(chunkImages, metadataChunk);
+      const duration = performance.now() - flushStart;
+      const bytesWritten = JSON.stringify(metadataChunk).length;
+      phaseAStats.bytesWritten += bytesWritten;
+      phaseAStats.diskWrites += 1;
+      phaseAStats.ipcCalls += 1;
+      performance.mark('indexing:phaseA:chunk-flush', {
+        detail: { chunkIndex, durationMs: duration, bytesWritten }
+      });
     }
   };
 
-  // Async pool implementation for controlled concurrency
-  async function asyncPool<T, R>(
+  const maybeLogPhaseA = () => {
+    if (phaseAStats.processed === 0) {
+      return;
+    }
+    if (phaseAStats.processed >= nextPhaseALog || phaseAStats.processed === totalPhaseAFiles) {
+      const elapsed = performance.now() - phaseAStats.startTime;
+      const avg = phaseAStats.processed > 0 ? elapsed / phaseAStats.processed : 0;
+      console.log('[indexing]', {
+        phase: 'A',
+        files: phaseAStats.processed,
+        ipc_calls: phaseAStats.ipcCalls,
+        writes: phaseAStats.diskWrites,
+        bytes_written: phaseAStats.bytesWritten,
+        avg_ms_per_file: Number(avg.toFixed(2)),
+      });
+      nextPhaseALog += 5000;
+    }
+  };
+
+  const registerCatalogImage = async (
+    image: IndexedImage,
+    source: CatalogFileEntry | undefined,
+    needsEnrichment: boolean,
+    countTowardsProgress: boolean
+  ) => {
+    if (abortSignal?.aborted) {
+      return;
+    }
+
+    const entry: CatalogEntryState = {
+      image,
+      chunkIndex: -1,
+      chunkOffset: -1,
+      needsEnrichment,
+      source,
+    };
+    catalogState.set(image.id, entry);
+
+    if (needsEnrichment && source) {
+      enrichmentQueue.push(entry);
+    }
+
+    uiBatch.push(image);
+    chunkBuffer.push(image);
+
+    phaseAStats.processed += 1;
+    maybeLogPhaseA();
+
+    if (countTowardsProgress) {
+      processedNew += 1;
+      setProgress({ current: processedNew, total: totalNewFiles });
+    }
+
+    await pushUiBatch();
+    await flushChunk();
+  };
+
+  const buildCatalogStub = (
+    entry: CatalogFileEntry,
+    needsEnrichment: boolean
+  ): IndexedImage => {
+    const stat = statsLookup.get(entry.path);
+    const fileSize = entry.size ?? stat?.size;
+    const inferredType = entry.type ?? stat?.type ?? (entry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const catalogMetadata = {
+      phase: 'catalog',
+      fileSize,
+      fileType: inferredType,
+      lastModified: entry.lastModified,
+    } as any;
+
+    const metadataString = JSON.stringify({
+      phase: 'catalog',
+      fileSize,
+      fileType: inferredType,
+      lastModified: entry.lastModified,
+    });
+
+    return {
+      id: `${directoryId}::${entry.path}`,
+      name: entry.handle.name,
+      handle: entry.handle,
+      thumbnailStatus: 'pending',
+      thumbnailError: null,
+      directoryId,
+      directoryName,
+      metadata: catalogMetadata,
+      metadataString,
+      lastModified: entry.lastModified,
+      models: [],
+      loras: [],
+      scheduler: '',
+      board: undefined,
+      prompt: undefined,
+      negativePrompt: undefined,
+      cfgScale: undefined,
+      steps: undefined,
+      seed: undefined,
+      dimensions: undefined,
+      enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
+      fileSize,
+      fileType: inferredType,
+    };
+  };
+
+  // Phase A: load any cached images first so they are part of the catalog output
+  const preloadedImages = options.preloadedImages ?? [];
+  for (const image of preloadedImages) {
+    const stub = {
+      ...image,
+      directoryId,
+      directoryName,
+      enrichmentState: image.enrichmentState ?? 'enriched',
+      fileSize: image.fileSize ?? statsLookup.get(image.name)?.size,
+      fileType: image.fileType ?? statsLookup.get(image.name)?.type,
+    } as IndexedImage;
+    await registerCatalogImage(stub, undefined, false, false);
+  }
+
+  if (preloadedImages.length > 0) {
+    await flushChunk(true);
+    await pushUiBatch(true);
+  }
+
+  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
+
+  const asyncPool = async <T, R>(
     concurrency: number,
     iterable: T[],
     iteratorFn: (item: T) => Promise<R>
-  ): Promise<R[]> {
+  ): Promise<R[]> => {
     const ret: Promise<R>[] = [];
     const executing = new Set<Promise<R>>();
 
     for (const item of iterable) {
+      if (abortSignal?.aborted) {
+        break;
+      }
+
       const p = Promise.resolve().then(() => iteratorFn(item));
       ret.push(p);
       executing.add(p);
-
       const clean = () => executing.delete(p);
       p.then(clean).catch(clean);
-
       if (executing.size >= concurrency) {
         await Promise.race(executing);
       }
     }
 
     return Promise.all(ret);
-  }
+  };
 
-  // Check if we're in Electron and can use optimized batch reading
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
+  const FILE_READ_BATCH_SIZE = 64;
 
-  // ===== OPTIMIZED PATH: Batch file reading (Electron only) =====
-  if (useOptimizedPath) {
-    // Split files into read batches to reduce IPC overhead
-    const fileReadBatches = chunkArray(imageFiles, FILE_READ_BATCH_SIZE);
-    
-    for (const readBatch of fileReadBatches) {
-      // Check for cancellation before processing each batch
+  const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
+    if (!enriched) {
+      return null;
+    }
+
+    const merged: IndexedImage = {
+      ...entry.image,
+      metadata: enriched.metadata,
+      metadataString: enriched.metadataString,
+      lastModified: enriched.lastModified,
+      models: enriched.models,
+      loras: enriched.loras,
+      scheduler: enriched.scheduler,
+      board: enriched.board,
+      prompt: enriched.prompt,
+      negativePrompt: enriched.negativePrompt,
+      cfgScale: enriched.cfgScale,
+      steps: enriched.steps,
+      seed: enriched.seed,
+      dimensions: enriched.dimensions,
+      enrichmentState: 'enriched',
+    };
+
+    entry.image = merged;
+    const loc = chunkMap.get(merged.id);
+    if (loc) {
+      const cacheRecord = chunkRecords[loc.chunkIndex][loc.offset];
+      Object.assign(cacheRecord, mapIndexedImageToCache(merged));
+    }
+
+    return merged;
+  };
+
+  for (const entry of imageFiles) {
+    if (abortSignal?.aborted) {
+      break;
+    }
+
+    if (waitWhilePaused) {
+      await waitWhilePaused();
       if (abortSignal?.aborted) {
         break;
       }
-
-      // Wait while paused
-      if (waitWhilePaused) {
-        await waitWhilePaused();
-        if (abortSignal?.aborted) {
-          break;
-        }
-      }
-
-      // Extract ABSOLUTE file paths for batch reading (required for security check)
-      const filePaths = readBatch.map(entry => {
-        const filePath = (entry.handle as ElectronFileHandle)._filePath!;
-        if (!filePath) {
-          console.error('Missing _filePath on file handle:', entry.handle.name);
-        }
-        return filePath;
-      }).filter(Boolean);
-      
-      // Read all files in this batch at once via IPC
-      const batchReadResult = await (window as any).electronAPI.readFilesBatch(filePaths);
-      
-      if (!batchReadResult.success) {
-        console.error('Batch file read failed, falling back to individual reads');
-        // Fall back to processing files individually
-        for (const fileEntry of readBatch) {
-          const indexedImage = await processSingleFile(fileEntry, directoryId);
-          processedCount++;
-          setProgress({ current: processedCount, total });
-
-          if (indexedImage) {
-            batch.push(indexedImage);
-            if (cacheWriter) {
-              chunkBuffer.push(indexedImage);
-              await flushChunk();
-            }
-            if (batch.length >= BATCH_SIZE) {
-              onBatchProcessed(batch);
-              if (shouldTrackNewImages) {
-                newlyProcessedImages.push(...batch);
-              }
-              batch = [];
-              await new Promise(resolve => setTimeout(resolve, 0));
-            }
-          }
-        }
-        continue;
-      }
-      
-      // Process files with pre-loaded data
-      const fileDataMap = new Map<string, ArrayBuffer>();
-      for (const fileResult of batchReadResult.files) {
-        if (!fileResult.success || !fileResult.data) {
-          continue;
-        }
-
-        const rawData = fileResult.data as ArrayBuffer | ArrayBufferView;
-        let arrayBuffer: ArrayBuffer;
-
-        if (rawData instanceof ArrayBuffer) {
-          arrayBuffer = rawData;
-        } else if (ArrayBuffer.isView(rawData)) {
-          const view = rawData as ArrayBufferView;
-          const copy = new Uint8Array(view.byteLength);
-          copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
-          arrayBuffer = copy.buffer;
-        } else {
-          // Fallback for unexpected shapes
-          const copy = Uint8Array.from(rawData as unknown as ArrayLike<number>);
-          arrayBuffer = copy.buffer;
-        }
-
-        fileDataMap.set(fileResult.path, arrayBuffer);
-      }
-      
-      // Process this read batch with controlled concurrency
-      const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string, lastModified: number }): Promise<IndexedImage | null> => {
-        const filePath = (fileEntry.handle as ElectronFileHandle)._filePath!;
-        const fileData = fileDataMap.get(filePath);
-        
-        const indexedImage = await processSingleFileOptimized(fileEntry, directoryId, fileData);
-        processedCount++;
-        
-        return indexedImage;
-      };
-
-      const results = await asyncPool(CONCURRENCY_LIMIT, readBatch, iteratorFn);
-      
-      // Update progress once per batch (more efficient)
-      setProgress({ current: processedCount, total });
-      
-      // Collect results into batches
-      for (const indexedImage of results) {
-        if (indexedImage) {
-          batch.push(indexedImage);
-          if (cacheWriter) {
-            chunkBuffer.push(indexedImage);
-            await flushChunk();
-          }
-          if (batch.length >= BATCH_SIZE) {
-            onBatchProcessed(batch);
-            if (shouldTrackNewImages) {
-              newlyProcessedImages.push(...batch);
-            }
-            batch = [];
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        }
-      }
-    }
-    
-    // Process any remaining images
-    if (batch.length > 0) {
-      onBatchProcessed(batch);
-      if (shouldTrackNewImages) {
-        newlyProcessedImages.push(...batch);
-      }
     }
 
-  } else {
-    // ===== STANDARD PATH: Individual file reading (Browser or fallback) =====
-    
-    const iteratorFn = async (fileEntry: { handle: FileSystemFileHandle, path: string, lastModified: number }): Promise<IndexedImage | null> => {
-      // Check for cancellation before processing each file
+    const stub = buildCatalogStub(entry, true);
+    await registerCatalogImage(stub, entry, true, true);
+  }
+
+  await flushChunk(true);
+  await pushUiBatch(true);
+
+  if (cacheWriter) {
+    const finalizeStart = performance.now();
+    await cacheWriter.finalize();
+    const finalizeDuration = performance.now() - finalizeStart;
+    const bytesWritten = JSON.stringify({
+      id: `${directoryId}-${scanSubfolders ? 'recursive' : 'flat'}`,
+      imageCount: totalPhaseAFiles,
+    }).length;
+    phaseAStats.bytesWritten += bytesWritten;
+    phaseAStats.diskWrites += 1;
+    phaseAStats.ipcCalls += 1;
+    performance.mark('indexing:phaseA:finalize', { detail: { durationMs: finalizeDuration, bytesWritten } });
+  }
+
+  performance.mark('indexing:phaseA:complete', {
+    detail: { elapsedMs: performance.now() - phaseAStats.startTime, files: phaseAStats.processed }
+  });
+
+  if (totalNewFiles > 0) {
+    setProgress({ current: totalNewFiles, total: totalNewFiles });
+  }
+
+  const ipcPerThousand = totalPhaseAFiles > 0 ? (phaseAStats.ipcCalls / totalPhaseAFiles) * 1000 : 0;
+  performance.mark('indexing:phaseA:ipc-per-1k', { detail: { value: ipcPerThousand } });
+  const writesPerThousand = totalPhaseAFiles > 0 ? (phaseAStats.diskWrites / totalPhaseAFiles) * 1000 : 0;
+
+  if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && totalPhaseAFiles > 0) {
+    if (ipcPerThousand > 10) {
+      throw new Error(`Phase A IPC calls per 1k files exceeded limit: ${ipcPerThousand.toFixed(2)}`);
+    }
+    if (writesPerThousand > 5) {
+      throw new Error(`Phase A disk writes per 1k files exceeded limit: ${writesPerThousand.toFixed(2)}`);
+    }
+  }
+
+  const needsEnrichment = enrichmentQueue.filter(entry => entry.needsEnrichment && entry.source);
+  if (needsEnrichment.length === 0) {
+    performance.mark('indexing:phaseB:start');
+    performance.mark('indexing:phaseB:complete', { detail: { elapsedMs: 0, files: 0 } });
+    return { phaseB: Promise.resolve() };
+  }
+
+  const nextPhaseBLogInitial = 5000;
+  let nextPhaseBLog = nextPhaseBLogInitial;
+
+  const runEnrichmentPhase = async () => {
+    phaseBStats.startTime = performance.now();
+    performance.mark('indexing:phaseB:start');
+
+    const queue = [...needsEnrichment];
+    const resultsBatch: IndexedImage[] = [];
+    const touchedChunks = new Set<number>();
+
+    const commitBatch = async () => {
+      if (resultsBatch.length === 0) {
+        return;
+      }
+
+      options.onEnrichmentBatch?.([...resultsBatch]);
+      resultsBatch.length = 0;
+
+      if (cacheWriter && touchedChunks.size > 0) {
+        for (const chunkIndex of Array.from(touchedChunks)) {
+          const metadata = chunkRecords[chunkIndex];
+          const rewriteStart = performance.now();
+          await cacheWriter.overwrite(chunkIndex, metadata);
+          const duration = performance.now() - rewriteStart;
+          const bytesWritten = JSON.stringify(metadata).length;
+          phaseBStats.bytesWritten += bytesWritten;
+          phaseBStats.diskWrites += 1;
+          phaseBStats.ipcCalls += 1;
+          performance.mark('indexing:phaseB:chunk-flush', {
+            detail: { chunkIndex, durationMs: duration, bytesWritten }
+          });
+        }
+        touchedChunks.clear();
+      }
+    };
+
+    const iterator = async (entry: CatalogEntryState) => {
+      if (!entry.source) {
+        return null;
+      }
       if (abortSignal?.aborted) {
         return null;
       }
 
-      // Wait while paused
-      if (waitWhilePaused) {
-        await waitWhilePaused();
-        if (abortSignal?.aborted) {
-          return null;
+      const enriched = await processSingleFileOptimized(entry.source, directoryId, undefined);
+      const merged = processEnrichmentResult(entry, enriched);
+      if (merged) {
+        entry.needsEnrichment = false;
+        resultsBatch.push(merged);
+        const loc = chunkMap.get(merged.id);
+        if (loc) {
+          touchedChunks.add(loc.chunkIndex);
+        }
+        phaseBStats.processed += 1;
+        const elapsed = performance.now() - phaseBStats.startTime;
+        if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
+          const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
+          console.log('[indexing]', {
+            phase: 'B',
+            files: phaseBStats.processed,
+            ipc_calls: phaseBStats.ipcCalls,
+            writes: phaseBStats.diskWrites,
+            bytes_written: phaseBStats.bytesWritten,
+            avg_ms_per_file: Number(avg.toFixed(2)),
+          });
+          nextPhaseBLog += 5000;
+        }
+        performance.mark('indexing:phaseB:queue-depth', {
+          detail: { depth: queue.length - phaseBStats.processed }
+        });
+
+        if (resultsBatch.length >= enrichmentBatchSize) {
+          await commitBatch();
         }
       }
-
-      const indexedImage = await processSingleFile(fileEntry, directoryId);
-      processedCount++;
-
-      // Update progress after each file
-      setProgress({ current: processedCount, total });
-
-      return indexedImage;
+      return merged;
     };
 
-    // Process files with controlled concurrency
-    const results = await asyncPool(CONCURRENCY_LIMIT, imageFiles, iteratorFn);
-
-    // Filter valid images and collect them into batches
-    for (const indexedImage of results) {
-      if (indexedImage) {
-        batch.push(indexedImage);
-        if (cacheWriter) {
-          chunkBuffer.push(indexedImage);
-          await flushChunk();
+    if (useOptimizedPath) {
+      const batches = chunkArray(queue, FILE_READ_BATCH_SIZE);
+      for (const batch of batches) {
+        const filePaths = batch.map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath!).filter(Boolean);
+        if (filePaths.length === 0) {
+          await asyncPool(concurrencyLimit, batch, iterator);
+          continue;
         }
 
-        if (batch.length >= BATCH_SIZE) {
-          onBatchProcessed(batch);
-          if (shouldTrackNewImages) {
-            newlyProcessedImages.push(...batch);
+        const readResult = await (window as any).electronAPI.readFilesBatch(filePaths);
+        phaseBStats.ipcCalls += 1;
+
+        const dataMap = new Map<string, ArrayBuffer>();
+        if (readResult.success && Array.isArray(readResult.files)) {
+          for (const file of readResult.files) {
+            if (!file.success || !file.data) {
+              continue;
+            }
+            const raw = file.data as ArrayBuffer | ArrayBufferView;
+            if (raw instanceof ArrayBuffer) {
+              dataMap.set(file.path, raw);
+            } else if (ArrayBuffer.isView(raw)) {
+              const view = raw as ArrayBufferView;
+              const copy = new Uint8Array(view.byteLength);
+              copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+              dataMap.set(file.path, copy.buffer);
+            }
           }
-          batch = [];
-          // Yield to the main thread to allow UI updates after a batch is sent
-          await new Promise(resolve => setTimeout(resolve, 0));
         }
+
+        const batchIterator = async (entry: CatalogEntryState) => {
+          if (!entry.source) {
+            return null;
+          }
+          const filePath = (entry.source.handle as ElectronFileHandle)?._filePath!;
+          const buffer = dataMap.get(filePath);
+          const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer);
+          const merged = processEnrichmentResult(entry, enriched);
+          if (merged) {
+            entry.needsEnrichment = false;
+            resultsBatch.push(merged);
+            const loc = chunkMap.get(merged.id);
+            if (loc) {
+              touchedChunks.add(loc.chunkIndex);
+            }
+            phaseBStats.processed += 1;
+            const elapsed = performance.now() - phaseBStats.startTime;
+            if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
+              const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
+              console.log('[indexing]', {
+                phase: 'B',
+                files: phaseBStats.processed,
+                ipc_calls: phaseBStats.ipcCalls,
+                writes: phaseBStats.diskWrites,
+                bytes_written: phaseBStats.bytesWritten,
+                avg_ms_per_file: Number(avg.toFixed(2)),
+              });
+              nextPhaseBLog += 5000;
+            }
+            performance.mark('indexing:phaseB:queue-depth', {
+              detail: { depth: queue.length - phaseBStats.processed }
+            });
+            if (resultsBatch.length >= enrichmentBatchSize) {
+              await commitBatch();
+            }
+          }
+          return merged;
+        };
+
+        await asyncPool(concurrencyLimit, batch, batchIterator);
       }
+    } else {
+      await asyncPool(concurrencyLimit, queue, iterator);
     }
 
-    // Process any remaining images in the last batch
-    if (batch.length > 0) {
-      onBatchProcessed(batch);
-      if (shouldTrackNewImages) {
-        newlyProcessedImages.push(...batch);
-      }
-    }
-  }
+    await commitBatch();
 
-  await flushChunk(true);
+    performance.mark('indexing:phaseB:complete', {
+      detail: { elapsedMs: performance.now() - phaseBStats.startTime, files: phaseBStats.processed }
+    });
+  };
 
-  // Check for cancellation before caching
-  if (abortSignal?.aborted) {
-    return;
-  }
-
-  // CRITICAL: Get existing cache and merge with newly processed images
-  // This ensures we don't lose previously cached images
-  if (shouldTrackNewImages) {
-    const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
-    const existingCachedImages = existingCache ? existingCache.metadata.map(m => ({
-      id: m.id,
-      name: m.name,
-      metadataString: m.metadataString,
-      metadata: m.metadata,
-      lastModified: m.lastModified,
-      models: m.models,
-      loras: m.loras,
-      scheduler: m.scheduler,
-      directoryId,
-    } as IndexedImage)) : [];
-
-    const newImagesMap = new Map(newlyProcessedImages.map(img => [img.name, img]));
-    const mergedImages = [
-      ...existingCachedImages.filter(img => !newImagesMap.has(img.name)),
-      ...newlyProcessedImages
-    ];
-
-    await cacheManager.cacheData(directoryId, directoryName, mergedImages, scanSubfolders);
-  }
+  return { phaseB: runEnrichmentPhase() };
 }

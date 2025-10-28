@@ -22,10 +22,16 @@ interface ImageCardProps {
 const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, style, onImageLoad, onContextMenu, directoryPath }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
 
   useThumbnail(image);
 
   useEffect(() => {
+    if (thumbnailsDisabled) {
+      setImageUrl(null);
+      return;
+    }
+
     if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       setImageUrl(image.thumbnailUrl);
       return;
@@ -61,7 +67,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl]);
+  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();

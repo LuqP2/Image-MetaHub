@@ -548,9 +548,12 @@ async function getFilesRecursively(directory, baseDirectory) {
                 const lowerName = entry.name.toLowerCase();
                 if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
                     const stats = await fs.stat(fullPath);
+                    const fileType = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
                     files.push({
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-                        lastModified: stats.birthtimeMs
+                        lastModified: stats.birthtimeMs,
+                        size: stats.size,
+                        type: fileType
                     });
                 }
             }
@@ -1044,9 +1047,12 @@ function setupFileOperationHandlers() {
             if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
               const filePath = path.join(dirPath, file.name);
               const stats = await fs.stat(filePath);
+              const fileType = name.endsWith('.png') ? 'image/png' : 'image/jpeg';
               imageFiles.push({
                 name: file.name, // name is already relative for top-level
-                lastModified: stats.birthtimeMs
+                lastModified: stats.birthtimeMs,
+                size: stats.size,
+                type: fileType
               });
             }
           }

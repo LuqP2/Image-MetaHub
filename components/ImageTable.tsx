@@ -6,6 +6,7 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -322,10 +323,17 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
 
   useThumbnail(image);
 
   useEffect(() => {
+    if (thumbnailsDisabled) {
+      setImageUrl(null);
+      setIsLoading(false);
+      return;
+    }
+
     if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       setImageUrl(image.thumbnailUrl);
       setIsLoading(false);
@@ -368,7 +376,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl]);
+  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();

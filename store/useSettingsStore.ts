@@ -40,6 +40,7 @@ interface SettingsState {
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
+  disableThumbnails: boolean;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -54,6 +55,7 @@ interface SettingsState {
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
   setIndexingConcurrency: (value: number) => void;
+  setDisableThumbnails: (value: boolean) => void;
   resetState: () => void;
 }
 
@@ -77,6 +79,7 @@ export const useSettingsStore = create<SettingsState>()(
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
       indexingConcurrency: 4,
+      disableThumbnails: false,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -89,6 +92,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
       setIndexingConcurrency: (value) => set({ indexingConcurrency: Math.max(1, Math.floor(value)) }),
+      setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -112,6 +116,7 @@ export const useSettingsStore = create<SettingsState>()(
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
         indexingConcurrency: 4,
+        disableThumbnails: false,
       }),
     }),
     {

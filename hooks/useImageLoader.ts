@@ -47,14 +47,14 @@ function clearFileDataCache() {
 }
 
 // Helper for getting files recursively in the browser
-async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number }[]> {
+async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number; size: number; type: string }[]> {
     const files = [];
     for await (const entry of (directoryHandle as any).values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
             if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
                 const file = await entry.getFile();
-                files.push({ name: entryPath, lastModified: file.lastModified });
+                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image' });
             }
         } else if (entry.kind === 'directory') {
             try {
@@ -68,7 +68,7 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
     return files;
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number }[]> {
+async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number; size: number; type: string }[]> {
     if (getIsElectron()) {
         const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
         if (result.success && result.files) {
@@ -83,7 +83,7 @@ async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, dir
             for await (const entry of (directoryHandle as any).values()) {
                 if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
                     const file = await entry.getFile();
-                    files.push({ name: file.name, lastModified: file.lastModified });
+                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image' });
                 }
             }
             return files;
@@ -120,8 +120,12 @@ async function getHandleFromPath(rootHandle: FileSystemDirectoryHandle, path: st
     return currentHandle.kind === 'file' ? currentHandle as FileSystemFileHandle : null;
 }
 
-async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, files: { name: string; lastModified: number }[]): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number}[]> {
-    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number}[] = [];
+async function getFileHandles(
+    directoryHandle: FileSystemDirectoryHandle,
+    directoryPath: string,
+    files: { name: string; lastModified: number; size?: number; type?: string }[]
+): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string}[]> {
+    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string}[] = [];
 
     if (getIsElectron()) {
         // Process paths in smaller chunks to avoid overwhelming IPC
@@ -164,14 +168,14 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
                     throw new Error(`Failed to read file: ${filePath}`);
                 }
             };
-            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified });
+            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type });
         }
     } else {
         // Browser implementation needs to handle sub-paths
         for (const file of files) {
             const handle = await getHandleFromPath(directoryHandle, file.name);
             if (handle) {
-                handles.push({ handle, path: file.name, lastModified: file.lastModified });
+                handles.push({ handle, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type });
             }
         }
     }
@@ -181,7 +185,7 @@ async function getFileHandles(directoryHandle: FileSystemDirectoryHandle, direct
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, clearImages, setIndexingState
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -475,6 +479,7 @@ export function useImageLoader() {
             // - Unchanged files (loaded from cache - super fast!)
             
             const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
+            const fileStatsMap = new Map(allCurrentFiles.map(file => [file.name, { size: file.size, type: file.type }]));
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
             let cacheWriter: IncrementalCacheWriter | null = null;
@@ -489,10 +494,21 @@ export function useImageLoader() {
             }
 
             const regeneratedCachedImages = diff.cachedImages.length > 0
-                ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => ({ name: img.name, lastModified: img.lastModified })))
+                ? await getFileHandles(
+                    directory.handle,
+                    directory.path,
+                    diff.cachedImages.map(img => ({
+                        name: img.name,
+                        lastModified: img.lastModified,
+                        size: fileStatsMap.get(img.name)?.size,
+                        type: fileStatsMap.get(img.name)?.type,
+                    }))
+                )
                 : [];
 
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
+
+            let preloadedImages: IndexedImage[] = [];
 
             // CRITICAL FIX: Clear directory BEFORE adding cached images to avoid race conditions
             // This ensures the store is in a clean state before we start adding images
@@ -502,23 +518,21 @@ export function useImageLoader() {
 
             // Add cached images (both first load and refresh)
             if (diff.cachedImages.length > 0) {
-                const finalCachedImages: IndexedImage[] = diff.cachedImages.map(img => ({
-                    ...img,
-                    handle: handleMap.get(img.name)!,
-                    directoryId: directory.id,
-                    thumbnailStatus: 'pending',
-                    thumbnailError: null,
-                }));
-
-                addImages(finalCachedImages);
-
-                if (cacheWriter) {
-                    const chunkSize = cacheWriter.targetChunkSize;
-                    for (let i = 0; i < finalCachedImages.length; i += chunkSize) {
-                        const chunk = finalCachedImages.slice(i, i + chunkSize);
-                        await cacheWriter.append(chunk);
-                    }
-                }
+                preloadedImages = diff.cachedImages.map(img => {
+                    const stats = fileStatsMap.get(img.name);
+                    const handle = handleMap.get(img.name);
+                    return {
+                        ...img,
+                        handle: handle ?? img.handle,
+                        directoryId: directory.id,
+                        directoryName: directory.name,
+                        thumbnailStatus: 'pending',
+                        thumbnailError: null,
+                        enrichmentState: 'enriched',
+                        fileSize: stats?.size,
+                        fileType: stats?.type,
+                    } as IndexedImage;
+                });
             }
 
             // Remove deleted files from the UI (if any were detected)
@@ -526,31 +540,50 @@ export function useImageLoader() {
                 removeImages(diff.deletedFileIds);
             }
 
-            // Set progress even if no new files to process
-            setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
-            console.log(`[loadDirectory] Progress set to 0/${diff.newAndModifiedFiles.length}`);
+            const totalNewFiles = diff.newAndModifiedFiles.length;
+            setProgress({ current: 0, total: totalNewFiles });
+            console.log(`[loadDirectory] Progress set to 0/${totalNewFiles}`);
 
-            if (diff.newAndModifiedFiles.length > 0) {
-                console.log(`[loadDirectory] Processing ${diff.newAndModifiedFiles.length} new files`);
-                // Sort files by lastModified descending (newest first)
-                const sortedFiles = [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified);
-                const fileHandles = await getFileHandles(directory.handle, directory.path, sortedFiles);
-                setProgress({ current: 0, total: diff.newAndModifiedFiles.length });
+            const sortedFiles = totalNewFiles > 0
+                ? [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified)
+                : [];
 
-                const handleBatchProcessed = (batch: IndexedImage[]) => {
-                    addImages(batch);
-                };
+            const sortedFilesWithStats = sortedFiles.map(file => ({
+                ...file,
+                size: fileStatsMap.get(file.name)?.size,
+                type: fileStatsMap.get(file.name)?.type,
+            }));
 
-                const throttledSetProgress = throttle(setProgress, 200);
+            const fileHandles = sortedFilesWithStats.length > 0
+                ? await getFileHandles(directory.handle, directory.path, sortedFilesWithStats)
+                : [];
 
-                const handleDeletion = (deletedFileIds: string[]) => {
-                    removeImages(deletedFileIds);
-                };
+            const handleBatchProcessed = (batch: IndexedImage[]) => {
+                addImages(batch);
+            };
 
-                // This now delegates to the main process in Electron, and is awaited in browser
+            const handleEnrichmentBatch = (batch: IndexedImage[]) => {
+                mergeImages(batch);
+            };
+
+            const throttledSetProgress = throttle(setProgress, 200);
+
+            const handleDeletion = (deletedFileIds: string[]) => {
+                removeImages(deletedFileIds);
+            };
+
+            const shouldProcessPipeline = (fileHandles.length > 0) || (preloadedImages.length > 0) || !!cacheWriter;
+
+            if (shouldProcessPipeline) {
+                if (shouldCancelIndexing()) {
+                    setIndexingState('idle');
+                    setLoading(false);
+                    return;
+                }
+
                 const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
 
-                const processPromise = processFiles(
+                const { phaseB } = await processFiles(
                     fileHandles,
                     throttledSetProgress,
                     handleBatchProcessed,
@@ -563,37 +596,20 @@ export function useImageLoader() {
                     {
                         cacheWriter,
                         concurrency: indexingConcurrency,
+                        preloadedImages,
+                        fileStats: fileStatsMap,
+                        onEnrichmentBatch: handleEnrichmentBatch,
                     }
                 );
 
-                // Check for cancellation before starting
-                if (shouldCancelIndexing()) {
-                    setIndexingState('idle');
-                    setLoading(false);
-                    return;
-                }
+                phaseB.catch(err => console.error('Phase B enrichment failed', err));
 
-                // Wait for processing to complete (both browser and Electron)
-                await processPromise;
-
-                if (cacheWriter) {
-                    await cacheWriter.finalize();
-                }
-
-                // Ensure final progress is shown (throttling might have prevented the last update)
-                setProgress({ current: diff.newAndModifiedFiles.length, total: diff.newAndModifiedFiles.length });
-
-                // Check if cancelled after processing
                 if (!shouldCancelIndexing()) {
                     finalizeDirectoryLoad(directory);
                 }
-
             } else {
-                // No new files to process, just finalize immediately
-                // All cached images were already added above
-                console.log(`[loadDirectory] No new files to process, finalizing immediately`);
-                if (cacheWriter) {
-                    await cacheWriter.finalize();
+                if (preloadedImages.length > 0) {
+                    addImages(preloadedImages);
                 }
                 finalizeDirectoryLoad(directory);
             }
@@ -607,7 +623,7 @@ export function useImageLoader() {
              setIndexingState('idle');
              setProgress(null);
         }
-    }, [addImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
+    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
 
     const handleSelectFolder = useCallback(async () => {

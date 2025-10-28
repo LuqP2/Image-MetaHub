@@ -139,6 +139,7 @@ interface ImageState {
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
+  mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
@@ -568,6 +569,17 @@ export const useImageStore = create<ImageState>((set, get) => {
                 // Add new images for this directory
                 const allImages = [...otherImages, ...newImages];
                 return _updateState(state, allImages);
+            });
+        },
+
+        mergeImages: (updatedImages) => {
+            set(state => {
+                if (!updatedImages || updatedImages.length === 0) {
+                    return state;
+                }
+                const updates = new Map(updatedImages.map(img => [img.id, img]));
+                const merged = state.images.map(img => updates.get(img.id) ?? img);
+                return _updateState(state, merged);
             });
         },
 

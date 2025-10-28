@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { IndexedImage } from '../types';
 import { thumbnailManager } from '../services/thumbnailManager';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export function useThumbnail(image: IndexedImage | null): void {
+  const disableThumbnails = useSettingsStore((state) => state.disableThumbnails);
+
   useEffect(() => {
-    if (!image) {
+    if (disableThumbnails || !image) {
       return;
     }
 
@@ -29,6 +32,6 @@ export function useThumbnail(image: IndexedImage | null): void {
     return () => {
       cancelled = true;
     };
-  }, [image?.id, image?.thumbnailStatus]);
+  }, [image?.id, image?.thumbnailStatus, disableThumbnails]);
 }
 

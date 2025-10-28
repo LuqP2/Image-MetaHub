@@ -6,7 +6,11 @@ export interface ElectronAPI {
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
-  listDirectoryFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>;
+  listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
+    success: boolean;
+    files?: { name: string; lastModified: number; size: number; type: string }[];
+    error?: string;
+  }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
@@ -507,6 +511,9 @@ export interface IndexedImage {
   dimensions?: string; // Extracted dimensions (width x height) from metadata
   directoryName?: string; // Name of the selected directory for context
   directoryId?: string; // Unique ID for the parent directory
+  enrichmentState?: 'catalog' | 'enriched';
+  fileSize?: number;
+  fileType?: string;
 }
 
 export interface Directory {

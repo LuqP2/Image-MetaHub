@@ -5,7 +5,7 @@ export interface CacheImageMetadata {
   id: string;
   name:string;
   metadataString: string;
-  metadata: any; 
+  metadata: any;
   lastModified: number;
   models: string[];
   loras: string[];
@@ -17,6 +17,9 @@ export interface CacheImageMetadata {
   steps?: number;
   seed?: number;
   dimensions?: string;
+  enrichmentState?: 'catalog' | 'enriched';
+  fileSize?: number;
+  fileType?: string;
 }
 
 // Main structure for the JSON cache file
@@ -31,7 +34,7 @@ export interface CacheEntry {
 }
 
 export interface CacheDiff {
-  newAndModifiedFiles: { name: string; lastModified: number }[];
+  newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string }[];
   deletedFileIds: string[];
   cachedImages: IndexedImage[];
   needsFullRefresh: boolean;
@@ -56,6 +59,9 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     steps: img.steps,
     seed: img.seed,
     dimensions: img.dimensions,
+    enrichmentState: img.enrichmentState,
+    fileSize: img.fileSize,
+    fileType: img.fileType,
   }));
 }
 
@@ -85,12 +91,12 @@ class IncrementalCacheWriter {
     }
   }
 
-  async append(images: IndexedImage[]): Promise<void> {
+  async append(images: IndexedImage[], precomputed?: CacheImageMetadata[]): Promise<CacheImageMetadata[]> {
     if (!images || images.length === 0) {
-      return;
+      return [];
     }
 
-    const metadata = toCacheMetadata(images);
+    const metadata = precomputed ?? toCacheMetadata(images);
     const chunkNumber = this.chunkIndex++;
     this.totalImages += images.length;
 
@@ -102,6 +108,26 @@ class IncrementalCacheWriter {
       });
       if (result && !result.success) {
         throw new Error(result.error || 'Failed to write cache chunk');
+      }
+    });
+
+    await this.writeQueue;
+    return metadata;
+  }
+
+  async overwrite(chunkIndex: number, metadata: CacheImageMetadata[]): Promise<void> {
+    if (!metadata) {
+      return;
+    }
+
+    this.writeQueue = this.writeQueue.then(async () => {
+      const result = await window.electronAPI?.writeCacheChunk?.({
+        cacheId: this.cacheId,
+        chunkIndex,
+        data: metadata,
+      });
+      if (result && !result.success) {
+        throw new Error(result.error || 'Failed to rewrite cache chunk');
       }
     });
 
@@ -310,7 +336,7 @@ class CacheManager {
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,
-    currentFiles: { name: string; lastModified: number }[],
+    currentFiles: { name: string; lastModified: number; size?: number; type?: string }[],
     scanSubfolders: boolean
   ): Promise<CacheDiff> {
     const cached = await this.getCachedData(directoryPath, scanSubfolders);
@@ -326,7 +352,7 @@ class CacheManager {
     }
     
     const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
-    const newAndModifiedFiles: { name: string; lastModified: number }[] = [];
+    const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
 
@@ -336,10 +362,20 @@ class CacheManager {
 
       // File is new
       if (!cachedFile) {
-        newAndModifiedFiles.push(file);
+        newAndModifiedFiles.push({
+          name: file.name,
+          lastModified: file.lastModified,
+          size: file.size,
+          type: file.type,
+        });
       // File has been modified since last scan
       } else if (cachedFile.lastModified < file.lastModified) {
-        newAndModifiedFiles.push(file);
+        newAndModifiedFiles.push({
+          name: file.name,
+          lastModified: file.lastModified,
+          size: file.size,
+          type: file.type,
+        });
       // File is unchanged, add it to the list of images to be loaded from cache
       } else {
         cachedImages.push({

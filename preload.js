@@ -95,7 +95,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
-  listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
+  listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
