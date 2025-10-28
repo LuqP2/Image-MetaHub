@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
-import { cacheManager } from '../services/cacheManager';
+import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { IndexedImage, Directory } from '../types';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 // Configure logging level
 const DEBUG = false;
@@ -314,7 +315,7 @@ export function useImageLoader() {
     }, [addImages, setProgress, setError, setLoading]);
 
     const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
-        
+
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
         if ((window as any)[finalizationKey]) {
@@ -333,9 +334,6 @@ export function useImageLoader() {
             setLoading(false);
             return;
         }
-        
-        const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-        await cacheManager.cacheData(directory.path, directory.name, finalDirectoryImages, shouldScanSubfolders);
 
         // Calculate and log indexing time
         if (indexingStartTimeRef.current !== null) {
@@ -411,6 +409,8 @@ export function useImageLoader() {
                             handle: mockHandle as any,
                             directoryId: directory.id,
                             directoryName: directory.name,
+                            thumbnailStatus: 'pending',
+                            thumbnailError: null,
                         };
                     });
 
@@ -477,6 +477,17 @@ export function useImageLoader() {
             const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
+            let cacheWriter: IncrementalCacheWriter | null = null;
+            const shouldUseWriter = getIsElectron() && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
+
+            if (shouldUseWriter) {
+                try {
+                    cacheWriter = await cacheManager.createIncrementalWriter(directory.path, directory.name, shouldScanSubfolders);
+                } catch (err) {
+                    console.error('Failed to initialize incremental cache writer:', err);
+                }
+            }
+
             const regeneratedCachedImages = diff.cachedImages.length > 0
                 ? await getFileHandles(directory.handle, directory.path, diff.cachedImages.map(img => ({ name: img.name, lastModified: img.lastModified })))
                 : [];
@@ -495,9 +506,19 @@ export function useImageLoader() {
                     ...img,
                     handle: handleMap.get(img.name)!,
                     directoryId: directory.id,
+                    thumbnailStatus: 'pending',
+                    thumbnailError: null,
                 }));
-                
+
                 addImages(finalCachedImages);
+
+                if (cacheWriter) {
+                    const chunkSize = cacheWriter.targetChunkSize;
+                    for (let i = 0; i < finalCachedImages.length; i += chunkSize) {
+                        const chunk = finalCachedImages.slice(i, i + chunkSize);
+                        await cacheWriter.append(chunk);
+                    }
+                }
             }
 
             // Remove deleted files from the UI (if any were detected)
@@ -527,6 +548,8 @@ export function useImageLoader() {
                 };
 
                 // This now delegates to the main process in Electron, and is awaited in browser
+                const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
+
                 const processPromise = processFiles(
                     fileHandles,
                     throttledSetProgress,
@@ -536,7 +559,11 @@ export function useImageLoader() {
                     shouldScanSubfolders,
                     handleDeletion,
                     abortControllerRef.current?.signal,
-                    waitWhilePaused
+                    waitWhilePaused,
+                    {
+                        cacheWriter,
+                        concurrency: indexingConcurrency,
+                    }
                 );
 
                 // Check for cancellation before starting
@@ -548,10 +575,14 @@ export function useImageLoader() {
 
                 // Wait for processing to complete (both browser and Electron)
                 await processPromise;
-                
+
+                if (cacheWriter) {
+                    await cacheWriter.finalize();
+                }
+
                 // Ensure final progress is shown (throttling might have prevented the last update)
                 setProgress({ current: diff.newAndModifiedFiles.length, total: diff.newAndModifiedFiles.length });
-                
+
                 // Check if cancelled after processing
                 if (!shouldCancelIndexing()) {
                     finalizeDirectoryLoad(directory);
@@ -561,6 +592,9 @@ export function useImageLoader() {
                 // No new files to process, just finalize immediately
                 // All cached images were already added above
                 console.log(`[loadDirectory] No new files to process, finalizing immediately`);
+                if (cacheWriter) {
+                    await cacheWriter.finalize();
+                }
                 finalizeDirectoryLoad(directory);
             }
 
@@ -656,16 +690,23 @@ export function useImageLoader() {
                     
                     // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
-                    for (const dir of directoriesToLoad) {
-                        await loadDirectory(dir, true); // `true` indicates this is an update/refresh
-                    }
 
-                    // Final update for allowed paths.
-                    const allPaths = useImageStore.getState().directories.map(d => d.path);
-                    await window.electronAPI.updateAllowedPaths(allPaths);
+                    setLoading(false);
+                    const hydrateInBackground = async () => {
+                        for (const dir of directoriesToLoad) {
+                            await loadDirectoryFromCache(dir);
+                        }
 
-                    const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
-                    setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
+                        const allPaths = useImageStore.getState().directories.map(d => d.path);
+                        await window.electronAPI.updateAllowedPaths(allPaths);
+
+                        const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
+                        setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
+                    };
+
+                    void hydrateInBackground();
+
+                    return;
                 } catch (e) {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");

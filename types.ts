@@ -20,7 +20,11 @@ export interface ElectronAPI {
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   getCacheChunk: (args: { cacheId: string; chunkIndex: number }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  getCacheSummary: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   cacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
+  prepareCacheWrite: (args: { cacheId: string }) => Promise<{ success: boolean; error?: string }>;
+  writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
+  finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
@@ -476,12 +480,18 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
   }
 
   return false;
-}export interface IndexedImage {
+}
+
+export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
+
+export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
   name: string;
   handle: FileSystemFileHandle;
   thumbnailHandle?: FileSystemFileHandle; // Handle to .webp thumbnail
   thumbnailUrl?: string; // Blob URL for thumbnail
+  thumbnailStatus?: ThumbnailStatus;
+  thumbnailError?: string | null;
   metadata: ImageMetadata;
   metadataString: string; // For faster searching
   lastModified: number; // File's last modified date

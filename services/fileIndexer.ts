@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
-import { cacheManager } from './cacheManager';
+import { cacheManager, IncrementalCacheWriter } from './cacheManager';
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
@@ -600,6 +600,8 @@ if (rawMetadata) {
       id: `${directoryId}::${fileEntry.path}`,
       name: fileEntry.handle.name,
       handle: fileEntry.handle,
+      thumbnailStatus: 'pending',
+      thumbnailError: null,
       directoryId,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
       metadataString: rawMetadata ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata
@@ -645,7 +647,12 @@ export async function processFiles(
   scanSubfolders: boolean,
   onDeletion: (deletedFileIds: string[]) => void,
   abortSignal?: AbortSignal,
-  waitWhilePaused?: () => Promise<void>
+  waitWhilePaused?: () => Promise<void>,
+  options?: {
+    cacheWriter?: IncrementalCacheWriter | null;
+    concurrency?: number;
+    flushChunkSize?: number;
+  }
 ): Promise<void> {
   // Check for cancellation at the start
   if (abortSignal?.aborted) {
@@ -660,9 +667,31 @@ export async function processFiles(
   const total = imageFiles.length;
   let processedCount = 0;
   const BATCH_SIZE = 50; // For sending data to the store
-  const CONCURRENCY_LIMIT = isElectron ? 50 : 20; // Higher concurrency in Electron (less IPC overhead)
+  const DEFAULT_CONCURRENCY = 4;
+  const cacheWriter = options?.cacheWriter ?? null;
+  const shouldTrackNewImages = !cacheWriter;
+  const CONCURRENCY_LIMIT = options?.concurrency ?? DEFAULT_CONCURRENCY;
   const FILE_READ_BATCH_SIZE = 100; // Number of files to read at once (Electron only)
+  const flushChunkLimit = options?.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   let batch: IndexedImage[] = [];
+  const newlyProcessedImages: IndexedImage[] = [];
+  let chunkBuffer: IndexedImage[] = [];
+
+  const flushChunk = async (force = false) => {
+    if (!cacheWriter) return;
+    if (chunkBuffer.length === 0) return;
+    if (!force && chunkBuffer.length < flushChunkLimit) {
+      return;
+    }
+
+    const chunk = chunkBuffer;
+    chunkBuffer = [];
+    try {
+      await cacheWriter.append(chunk);
+    } catch (error) {
+      console.error('Failed to persist cache chunk:', error);
+    }
+  };
 
   // Async pool implementation for controlled concurrency
   async function asyncPool<T, R>(
@@ -691,8 +720,6 @@ export async function processFiles(
 
   // Check if we're in Electron and can use optimized batch reading
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-
-  const newlyProcessedImages: IndexedImage[] = [];
 
   // ===== OPTIMIZED PATH: Batch file reading (Electron only) =====
   if (useOptimizedPath) {
@@ -732,12 +759,18 @@ export async function processFiles(
           const indexedImage = await processSingleFile(fileEntry, directoryId);
           processedCount++;
           setProgress({ current: processedCount, total });
-          
+
           if (indexedImage) {
             batch.push(indexedImage);
+            if (cacheWriter) {
+              chunkBuffer.push(indexedImage);
+              await flushChunk();
+            }
             if (batch.length >= BATCH_SIZE) {
               onBatchProcessed(batch);
-              newlyProcessedImages.push(...batch);
+              if (shouldTrackNewImages) {
+                newlyProcessedImages.push(...batch);
+              }
               batch = [];
               await new Promise(resolve => setTimeout(resolve, 0));
             }
@@ -749,9 +782,27 @@ export async function processFiles(
       // Process files with pre-loaded data
       const fileDataMap = new Map<string, ArrayBuffer>();
       for (const fileResult of batchReadResult.files) {
-        if (fileResult.success && fileResult.data) {
-          fileDataMap.set(fileResult.path, fileResult.data.buffer || fileResult.data);
+        if (!fileResult.success || !fileResult.data) {
+          continue;
         }
+
+        const rawData = fileResult.data as ArrayBuffer | ArrayBufferView;
+        let arrayBuffer: ArrayBuffer;
+
+        if (rawData instanceof ArrayBuffer) {
+          arrayBuffer = rawData;
+        } else if (ArrayBuffer.isView(rawData)) {
+          const view = rawData as ArrayBufferView;
+          const copy = new Uint8Array(view.byteLength);
+          copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+          arrayBuffer = copy.buffer;
+        } else {
+          // Fallback for unexpected shapes
+          const copy = Uint8Array.from(rawData as unknown as ArrayLike<number>);
+          arrayBuffer = copy.buffer;
+        }
+
+        fileDataMap.set(fileResult.path, arrayBuffer);
       }
       
       // Process this read batch with controlled concurrency
@@ -774,9 +825,15 @@ export async function processFiles(
       for (const indexedImage of results) {
         if (indexedImage) {
           batch.push(indexedImage);
+          if (cacheWriter) {
+            chunkBuffer.push(indexedImage);
+            await flushChunk();
+          }
           if (batch.length >= BATCH_SIZE) {
             onBatchProcessed(batch);
-            newlyProcessedImages.push(...batch);
+            if (shouldTrackNewImages) {
+              newlyProcessedImages.push(...batch);
+            }
             batch = [];
             await new Promise(resolve => setTimeout(resolve, 0));
           }
@@ -787,7 +844,9 @@ export async function processFiles(
     // Process any remaining images
     if (batch.length > 0) {
       onBatchProcessed(batch);
-      newlyProcessedImages.push(...batch);
+      if (shouldTrackNewImages) {
+        newlyProcessedImages.push(...batch);
+      }
     }
 
   } else {
@@ -823,10 +882,16 @@ export async function processFiles(
     for (const indexedImage of results) {
       if (indexedImage) {
         batch.push(indexedImage);
+        if (cacheWriter) {
+          chunkBuffer.push(indexedImage);
+          await flushChunk();
+        }
 
         if (batch.length >= BATCH_SIZE) {
           onBatchProcessed(batch);
-          newlyProcessedImages.push(...batch);
+          if (shouldTrackNewImages) {
+            newlyProcessedImages.push(...batch);
+          }
           batch = [];
           // Yield to the main thread to allow UI updates after a batch is sent
           await new Promise(resolve => setTimeout(resolve, 0));
@@ -837,9 +902,13 @@ export async function processFiles(
     // Process any remaining images in the last batch
     if (batch.length > 0) {
       onBatchProcessed(batch);
-      newlyProcessedImages.push(...batch);
+      if (shouldTrackNewImages) {
+        newlyProcessedImages.push(...batch);
+      }
     }
   }
+
+  await flushChunk(true);
 
   // Check for cancellation before caching
   if (abortSignal?.aborted) {
@@ -848,25 +917,26 @@ export async function processFiles(
 
   // CRITICAL: Get existing cache and merge with newly processed images
   // This ensures we don't lose previously cached images
-  const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
-  const existingCachedImages = existingCache ? existingCache.metadata.map(m => ({
-    id: m.id,
-    name: m.name,
-    metadataString: m.metadataString,
-    metadata: m.metadata,
-    lastModified: m.lastModified,
-    models: m.models,
-    loras: m.loras,
-    scheduler: m.scheduler,
-    directoryId,
-  } as IndexedImage)) : [];
+  if (shouldTrackNewImages) {
+    const existingCache = await cacheManager.getCachedData(directoryId, scanSubfolders);
+    const existingCachedImages = existingCache ? existingCache.metadata.map(m => ({
+      id: m.id,
+      name: m.name,
+      metadataString: m.metadataString,
+      metadata: m.metadata,
+      lastModified: m.lastModified,
+      models: m.models,
+      loras: m.loras,
+      scheduler: m.scheduler,
+      directoryId,
+    } as IndexedImage)) : [];
 
-  // Merge: Keep existing cache + add/update newly processed
-  const newImagesMap = new Map(newlyProcessedImages.map(img => [img.name, img]));
-  const mergedImages = [
-    ...existingCachedImages.filter(img => !newImagesMap.has(img.name)), // Existing that weren't re-processed
-    ...newlyProcessedImages // Newly processed (these override existing with same name)
-  ];
+    const newImagesMap = new Map(newlyProcessedImages.map(img => [img.name, img]));
+    const mergedImages = [
+      ...existingCachedImages.filter(img => !newImagesMap.has(img.name)),
+      ...newlyProcessedImages
+    ];
 
-  await cacheManager.cacheData(directoryId, directoryName, mergedImages, scanSubfolders);
+    await cacheManager.cacheData(directoryId, directoryName, mergedImages, scanSubfolders);
+  }
 }

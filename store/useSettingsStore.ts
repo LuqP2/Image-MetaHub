@@ -39,6 +39,7 @@ interface SettingsState {
   theme: 'light' | 'dark' | 'system';
   keymap: Keymap;
   lastViewedVersion: string | null;
+  indexingConcurrency: number;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -52,6 +53,7 @@ interface SettingsState {
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
+  setIndexingConcurrency: (value: number) => void;
   resetState: () => void;
 }
 
@@ -74,6 +76,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
+      indexingConcurrency: 4,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -85,6 +88,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
+      setIndexingConcurrency: (value) => set({ indexingConcurrency: Math.max(1, Math.floor(value)) }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -107,6 +111,7 @@ export const useSettingsStore = create<SettingsState>()(
         theme: 'system',
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
+        indexingConcurrency: 4,
       }),
     }),
     {

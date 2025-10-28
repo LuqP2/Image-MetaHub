@@ -37,9 +37,99 @@ export interface CacheDiff {
   needsFullRefresh: boolean;
 }
 
+const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
+
+function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
+  return images.map(img => ({
+    id: img.id,
+    name: img.name,
+    metadataString: img.metadataString,
+    metadata: img.metadata,
+    lastModified: img.lastModified,
+    models: img.models,
+    loras: img.loras,
+    scheduler: img.scheduler,
+    board: img.board,
+    prompt: img.prompt,
+    negativePrompt: img.negativePrompt,
+    cfgScale: img.cfgScale,
+    steps: img.steps,
+    seed: img.seed,
+    dimensions: img.dimensions,
+  }));
+}
+
+class IncrementalCacheWriter {
+  private chunkIndex = 0;
+  private totalImages = 0;
+  private writeQueue: Promise<void> = Promise.resolve();
+  private readonly cacheId: string;
+
+  constructor(
+    private readonly directoryPath: string,
+    private readonly directoryName: string,
+    private readonly scanSubfolders: boolean,
+    private readonly chunkSize: number = DEFAULT_INCREMENTAL_CHUNK_SIZE
+  ) {
+    this.cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+  }
+
+  get targetChunkSize(): number {
+    return this.chunkSize;
+  }
+
+  async initialize(): Promise<void> {
+    const result = await window.electronAPI?.prepareCacheWrite?.({ cacheId: this.cacheId });
+    if (result && !result.success) {
+      throw new Error(result.error || 'Failed to prepare cache write');
+    }
+  }
+
+  async append(images: IndexedImage[]): Promise<void> {
+    if (!images || images.length === 0) {
+      return;
+    }
+
+    const metadata = toCacheMetadata(images);
+    const chunkNumber = this.chunkIndex++;
+    this.totalImages += images.length;
+
+    this.writeQueue = this.writeQueue.then(async () => {
+      const result = await window.electronAPI?.writeCacheChunk?.({
+        cacheId: this.cacheId,
+        chunkIndex: chunkNumber,
+        data: metadata,
+      });
+      if (result && !result.success) {
+        throw new Error(result.error || 'Failed to write cache chunk');
+      }
+    });
+
+    await this.writeQueue;
+  }
+
+  async finalize(): Promise<void> {
+    await this.writeQueue;
+
+    const record = {
+      id: this.cacheId,
+      directoryPath: this.directoryPath,
+      directoryName: this.directoryName,
+      lastScan: Date.now(),
+      imageCount: this.totalImages,
+      chunkCount: this.chunkIndex,
+    } satisfies Omit<CacheEntry, 'metadata'>;
+
+    const result = await window.electronAPI?.finalizeCacheWrite?.({ cacheId: this.cacheId, record });
+    if (result && !result.success) {
+      throw new Error(result.error || 'Failed to finalize cache write');
+    }
+  }
+}
+
 class CacheManager {
   private isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-  
+
   // No longer need init() for IndexedDB
   async init(): Promise<void> {
     if (!this.isElectron) {
@@ -48,27 +138,6 @@ class CacheManager {
     return Promise.resolve();
   }
 
-  // Helper to build the metadata array for caching
-  private buildCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
-    return images.map(img => ({
-      id: img.id,
-      name: img.name,
-      metadataString: img.metadataString,
-      metadata: img.metadata,
-      lastModified: img.lastModified,
-      models: img.models,
-      loras: img.loras,
-      scheduler: img.scheduler,
-      board: img.board,
-      prompt: img.prompt,
-      negativePrompt: img.negativePrompt,
-      cfgScale: img.cfgScale,
-      steps: img.steps,
-      seed: img.seed,
-      dimensions: img.dimensions,
-    }));
-  }
-  
   // Reads the entire cache from the JSON file via IPC
   async getCachedData(
     directoryPath: string,
@@ -77,43 +146,81 @@ class CacheManager {
     if (!this.isElectron) return null;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    const result = await window.electronAPI.getCachedData(cacheId);
+    const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const result = await summaryFn(cacheId);
 
-    if (result.success) {
-      const cacheRecord = result.data;
-      if (!cacheRecord) return null;
-
-      // If chunkCount is present, load metadata from chunks
-      if (cacheRecord.chunkCount > 0) {
-        let metadata: CacheImageMetadata[] = [];
-        for (let i = 0; i < cacheRecord.chunkCount; i++) {
-          const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
-          if (chunkResult.success) {
-            metadata = metadata.concat(chunkResult.data);
-          } else {
-            console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
-          }
-        }
-        cacheRecord.metadata = metadata;
-      }
-
-      return cacheRecord;
-
-    } else {
-      console.error("Failed to get cached data:", result.error);
+    if (!result.success) {
+      console.error('Failed to get cached data:', result.error);
       return null;
     }
+
+    const summary = result.data;
+    if (!summary) {
+      return null;
+    }
+
+    let metadata: CacheImageMetadata[] = Array.isArray(summary.metadata) ? summary.metadata : [];
+    const chunkCount = summary.chunkCount ?? 0;
+
+    if (metadata.length === 0 && chunkCount > 0) {
+      const chunks: CacheImageMetadata[] = [];
+      for (let i = 0; i < chunkCount; i++) {
+        const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
+        if (chunkResult.success && Array.isArray(chunkResult.data)) {
+          chunks.push(...chunkResult.data);
+        } else if (!chunkResult.success) {
+          console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
+        }
+      }
+      metadata = chunks;
+    }
+
+    const cacheEntry: CacheEntry = {
+      id: summary.id,
+      directoryPath: summary.directoryPath,
+      directoryName: summary.directoryName,
+      lastScan: summary.lastScan,
+      imageCount: summary.imageCount,
+      metadata,
+      chunkCount: summary.chunkCount,
+    };
+
+    return cacheEntry;
   }
-  
+
   // (No-op) - This functionality is now implicit in getCachedData
   async iterateCachedMetadata(
     directoryPath: string,
     scanSubfolders: boolean,
     onChunk: (chunk: CacheImageMetadata[]) => void | Promise<void>
   ): Promise<void> {
-    const cachedData = await this.getCachedData(directoryPath, scanSubfolders);
-    if (cachedData && cachedData.metadata.length > 0) {
-      await onChunk(cachedData.metadata);
+    if (!this.isElectron) return;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const result = await summaryFn(cacheId);
+
+    if (!result.success || !result.data) {
+      if (!result.success) {
+        console.error('Failed to iterate cached metadata:', result.error);
+      }
+      return;
+    }
+
+    const summary = result.data;
+    if (Array.isArray(summary.metadata) && summary.metadata.length > 0) {
+      await onChunk(summary.metadata);
+      return;
+    }
+
+    const chunkCount = summary.chunkCount ?? 0;
+    for (let i = 0; i < chunkCount; i++) {
+      const chunkResult = await window.electronAPI.getCacheChunk({ cacheId, chunkIndex: i });
+      if (chunkResult.success && Array.isArray(chunkResult.data) && chunkResult.data.length > 0) {
+        await onChunk(chunkResult.data);
+      } else if (!chunkResult.success) {
+        console.error(`Failed to load cache chunk ${i} for ${cacheId}:`, chunkResult.error);
+      }
     }
   }
 
@@ -128,7 +235,7 @@ class CacheManager {
     if (!this.isElectron) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    const metadata = this.buildCacheMetadata(images);
+    const metadata = toCacheMetadata(images);
     
     const cacheEntry: CacheEntry = {
       id: cacheId,
@@ -143,6 +250,25 @@ class CacheManager {
     if (!result.success) {
       console.error("Failed to cache data:", result.error);
     }
+  }
+
+  async createIncrementalWriter(
+    directoryPath: string,
+    directoryName: string,
+    scanSubfolders: boolean,
+    options?: { chunkSize?: number }
+  ): Promise<IncrementalCacheWriter | null> {
+    if (!this.isElectron) return null;
+
+    const writer = new IncrementalCacheWriter(
+      directoryPath,
+      directoryName,
+      scanSubfolders,
+      options?.chunkSize ?? DEFAULT_INCREMENTAL_CHUNK_SIZE
+    );
+
+    await writer.initialize();
+    return writer;
   }
 
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
@@ -238,5 +364,5 @@ class CacheManager {
 }
 
 const cacheManager = new CacheManager();
-export { cacheManager };
+export { cacheManager, IncrementalCacheWriter };
 export default cacheManager;

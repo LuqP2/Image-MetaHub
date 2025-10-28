@@ -5,6 +5,7 @@ import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { useThumbnail } from '../hooks/useThumbnail';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -322,57 +323,52 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
-  useEffect(() => {
-    let isMounted = true;
-    let currentUrl: string | null = null;
-    const fileHandle = image.thumbnailHandle || image.handle;
+  useThumbnail(image);
 
-    // Check if we can actually load this image
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-    if (!isElectron && (!fileHandle || typeof fileHandle.getFile !== 'function')) {
-      // In browser mode with invalid handles, don't try to load
+  useEffect(() => {
+    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
+      setImageUrl(image.thumbnailUrl);
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
-    fileHandle.getFile().then(file => {
-      if (isMounted) {
-        currentUrl = URL.createObjectURL(file);
-        setImageUrl(currentUrl);
-        setIsLoading(false);
-      }
-    }).catch(error => {
-      // Only log error if we're in Electron mode - browser mode failures are expected
-      if (isElectron) {
-        console.error('Failed to load image:', error);
-      }
-      if (image.thumbnailHandle && isMounted) {
-        // Fallback to original image if thumbnail fails
-        image.handle.getFile().then(file => {
-          if (isMounted) {
-            currentUrl = URL.createObjectURL(file);
-            setImageUrl(currentUrl);
-            setIsLoading(false);
-          }
-        }).catch(err => {
-          if (isElectron) {
-            console.error('Failed to load fallback image:', err);
-          }
+    let isMounted = true;
+    let fallbackUrl: string | null = null;
+    const fileHandle = image.thumbnailHandle || image.handle;
+    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+
+    if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+      setIsLoading(false);
+      return;
+    }
+
+    const loadFallback = async () => {
+      setIsLoading(true);
+      try {
+        const file = await fileHandle.getFile();
+        if (!isMounted) return;
+        fallbackUrl = URL.createObjectURL(file);
+        setImageUrl(fallbackUrl);
+      } catch (error) {
+        if (isElectron) {
+          console.error('Failed to load image:', error);
+        }
+      } finally {
+        if (isMounted) {
           setIsLoading(false);
-        });
-      } else {
-        setIsLoading(false);
+        }
       }
-    });
+    };
+
+    void loadFallback();
 
     return () => {
       isMounted = false;
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
+      if (fallbackUrl) {
+        URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.thumbnailHandle, image.handle]);
+  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();

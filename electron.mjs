@@ -622,6 +622,19 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('get-cache-summary', async (event, cacheId) => {
+    const filePath = getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
   const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
@@ -644,6 +657,56 @@ function setupFileOperationHandlers() {
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
     return { success: true };
+  });
+
+  ipcMain.handle('prepare-cache-write', async (event, { cacheId }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      await fs.mkdir(cacheDir, { recursive: true });
+
+      try {
+        const files = await fs.readdir(cacheDir);
+        await Promise.all(
+          files
+            .filter(file => file.startsWith(`${safeCacheId}_`))
+            .map(file => fs.unlink(path.join(cacheDir, file)).catch(err => {
+              if (err.code !== 'ENOENT') throw err;
+            }))
+        );
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-cache-chunk', async (event, { cacheId, chunkIndex, data }) => {
+    try {
+      const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      await fs.mkdir(cacheDir, { recursive: true });
+      const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
+      await fs.writeFile(chunkPath, JSON.stringify(data));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
+    try {
+      const mainCachePath = getCacheFilePath(cacheId);
+      await fs.writeFile(mainCachePath, JSON.stringify(record, null, 2));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   });
 
   ipcMain.handle('get-cache-chunk', async (event, { cacheId, chunkIndex }) => {

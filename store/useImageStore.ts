@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
 
 type SelectionState = StoredSelectionState;
@@ -143,6 +143,15 @@ interface ImageState {
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
   clearImages: (directoryId?: string) => void;
+  setImageThumbnail: (
+    imageId: string,
+    data: {
+      thumbnailUrl?: string | null;
+      thumbnailHandle?: FileSystemFileHandle | null;
+      status: ThumbnailStatus;
+      error?: string | null;
+    }
+  ) => void;
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
@@ -591,6 +600,29 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
                 // No need to recalculate filters for a simple name change
                 return { ...state, ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
+            });
+        },
+
+        setImageThumbnail: (imageId, data) => {
+            set(state => {
+                const updateList = (list: IndexedImage[]) => list.map(img => {
+                    if (img.id !== imageId) {
+                        return img;
+                    }
+                    return {
+                        ...img,
+                        thumbnailUrl: data.thumbnailUrl ?? img.thumbnailUrl,
+                        thumbnailHandle: data.thumbnailHandle ?? img.thumbnailHandle,
+                        thumbnailStatus: data.status,
+                        thumbnailError: data.error ?? (data.status === 'error' ? (data.error ?? 'Failed to load thumbnail') : null),
+                    };
+                });
+
+                return {
+                    ...state,
+                    images: updateList(state.images),
+                    filteredImages: updateList(state.filteredImages),
+                };
             });
         },
 

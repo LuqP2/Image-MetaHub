@@ -108,7 +108,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // --- Caching ---
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
+  getCacheSummary: (cacheId) => ipcRenderer.invoke('get-cache-summary', cacheId),
   cacheData: (args) => ipcRenderer.invoke('cache-data', args),
+  prepareCacheWrite: (args) => ipcRenderer.invoke('prepare-cache-write', args),
+  writeCacheChunk: (args) => ipcRenderer.invoke('write-cache-chunk', args),
+  finalizeCacheWrite: (args) => ipcRenderer.invoke('finalize-cache-write', args),
   clearCacheData: (cacheId) => ipcRenderer.invoke('clear-cache-data', cacheId),
   getCacheChunk: (args) => ipcRenderer.invoke('get-cache-chunk', args),
   getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),
