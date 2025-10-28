@@ -95,7 +95,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
-  listDirectoryFiles: (dirPath) => ipcRenderer.invoke('list-directory-files', dirPath),
+  listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
@@ -108,7 +108,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // --- Caching ---
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
+  getCacheSummary: (cacheId) => ipcRenderer.invoke('get-cache-summary', cacheId),
   cacheData: (args) => ipcRenderer.invoke('cache-data', args),
+  prepareCacheWrite: (args) => ipcRenderer.invoke('prepare-cache-write', args),
+  writeCacheChunk: (args) => ipcRenderer.invoke('write-cache-chunk', args),
+  finalizeCacheWrite: (args) => ipcRenderer.invoke('finalize-cache-write', args),
   clearCacheData: (cacheId) => ipcRenderer.invoke('clear-cache-data', cacheId),
   getCacheChunk: (args) => ipcRenderer.invoke('get-cache-chunk', args),
   getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),

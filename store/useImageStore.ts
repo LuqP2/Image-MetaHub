@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
 
 type SelectionState = StoredSelectionState;
@@ -87,6 +87,50 @@ const mapToRecord = (selection: FolderSelectionMap): Record<string, SelectionSta
     return record;
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+    if (!image?.id) return image?.name ?? '';
+    const [, relative = ''] = image.id.split('::');
+    return relative || image.name;
+};
+
+const buildCatalogSearchText = (image: IndexedImage): string => {
+    const relativePath = getRelativeImagePath(image).replace(/\\/g, '/').toLowerCase();
+    const name = (image.name || '').toLowerCase();
+    const directory = (image.directoryName || '').replace(/\\/g, '/').toLowerCase();
+    return [name, relativePath, directory].filter(Boolean).join(' ');
+};
+
+const buildEnrichedSearchText = (image: IndexedImage): string => {
+    if (image.enrichmentState !== 'enriched') {
+        return '';
+    }
+
+    const segments: string[] = [];
+    if (image.metadataString) {
+        segments.push(image.metadataString.toLowerCase());
+    }
+    if (image.prompt) {
+        segments.push(image.prompt.toLowerCase());
+    }
+    if (image.negativePrompt) {
+        segments.push(image.negativePrompt.toLowerCase());
+    }
+    if (image.models?.length) {
+        segments.push(image.models.map(model => model.toLowerCase()).join(' '));
+    }
+    if (image.loras?.length) {
+        segments.push(image.loras.map(lora => lora.toLowerCase()).join(' '));
+    }
+    if (image.scheduler) {
+        segments.push(image.scheduler.toLowerCase());
+    }
+    if (image.board) {
+        segments.push(image.board.toLowerCase());
+    }
+
+    return segments.join(' ');
+};
+
 interface ImageState {
   // Core Data
   images: IndexedImage[];
@@ -100,6 +144,7 @@ interface ImageState {
   // UI State
   isLoading: boolean;
   progress: { current: number; total: number } | null;
+  enrichmentProgress: { processed: number; total: number } | null;
   indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
   success: string | null;
@@ -133,16 +178,27 @@ interface ImageState {
   getFolderSelectionState: (path: string) => SelectionState;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
+  setEnrichmentProgress: (progress: { processed: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
+  mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
   clearImages: (directoryId?: string) => void;
+  setImageThumbnail: (
+    imageId: string,
+    data: {
+      thumbnailUrl?: string | null;
+      thumbnailHandle?: FileSystemFileHandle | null;
+      status: ThumbnailStatus;
+      error?: string | null;
+    }
+  ) => void;
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
@@ -276,11 +332,25 @@ export const useImageStore = create<ImageState>((set, get) => {
         let results = selectionFiltered;
 
         if (searchQuery) {
-            const searchTerms = searchQuery.toLowerCase().split(' ').filter(term => term.trim() !== '');
+            const searchTerms = searchQuery
+                .toLowerCase()
+                .split(/\s+/)
+                .filter(Boolean);
+
             if (searchTerms.length > 0) {
                 results = results.filter(image => {
-                    const metadata = image.metadataString.toLowerCase();
-                    return searchTerms.every(term => metadata.includes(term));
+                    const catalogText = buildCatalogSearchText(image);
+                    const catalogMatch = searchTerms.every(term => catalogText.includes(term));
+                    if (catalogMatch) {
+                        return true;
+                    }
+
+                    const enrichedText = buildEnrichedSearchText(image);
+                    if (!enrichedText) {
+                        return false;
+                    }
+
+                    return searchTerms.every(term => enrichedText.includes(term));
                 });
             }
         }
@@ -386,6 +456,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         isFolderSelectionLoaded: false,
         isLoading: false,
         progress: null,
+        enrichmentProgress: null,
         indexingState: 'idle',
         error: null,
         success: null,
@@ -532,6 +603,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setLoading: (loading) => set({ isLoading: loading }),
         setProgress: (progress) => set({ progress }),
+        setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
         setIndexingState: (indexingState) => set({ indexingState }),
         setError: (error) => set({ error, success: null }),
         setSuccess: (success) => set({ success, error: null }),
@@ -559,6 +631,17 @@ export const useImageStore = create<ImageState>((set, get) => {
                 // Add new images for this directory
                 const allImages = [...otherImages, ...newImages];
                 return _updateState(state, allImages);
+            });
+        },
+
+        mergeImages: (updatedImages) => {
+            set(state => {
+                if (!updatedImages || updatedImages.length === 0) {
+                    return state;
+                }
+                const updates = new Map(updatedImages.map(img => [img.id, img]));
+                const merged = state.images.map(img => updates.get(img.id) ?? img);
+                return _updateState(state, merged);
             });
         },
 
@@ -591,6 +674,29 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
                 // No need to recalculate filters for a simple name change
                 return { ...state, ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
+            });
+        },
+
+        setImageThumbnail: (imageId, data) => {
+            set(state => {
+                const updateList = (list: IndexedImage[]) => list.map(img => {
+                    if (img.id !== imageId) {
+                        return img;
+                    }
+                    return {
+                        ...img,
+                        thumbnailUrl: data.thumbnailUrl ?? img.thumbnailUrl,
+                        thumbnailHandle: data.thumbnailHandle ?? img.thumbnailHandle,
+                        thumbnailStatus: data.status,
+                        thumbnailError: data.error ?? (data.status === 'error' ? (data.error ?? 'Failed to load thumbnail') : null),
+                    };
+                });
+
+                return {
+                    ...state,
+                    images: updateList(state.images),
+                    filteredImages: updateList(state.filteredImages),
+                };
             });
         },
 
@@ -681,6 +787,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             directories: [],
             isLoading: false,
             progress: { current: 0, total: 0 },
+            enrichmentProgress: null,
             error: null,
             success: null,
             selectedImage: null,
