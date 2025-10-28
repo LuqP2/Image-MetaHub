@@ -51,6 +51,7 @@ export default function App() {
     selectedImages,
     searchQuery,
     scanSubfolders,
+    enrichmentProgress,
     availableModels,
     availableLoras,
     availableSchedulers,
@@ -463,6 +464,7 @@ export default function App() {
                   directoryCount={selectionDirectoryCount}
                   indexingState={indexingState}
                   progress={progress}
+                  enrichmentProgress={enrichmentProgress}
                   onPauseIndexing={handlePauseIndexing}
                   onResumeIndexing={handleResumeIndexing}
                   onCancelIndexing={handleCancelIndexing}

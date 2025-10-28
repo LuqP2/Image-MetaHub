@@ -185,7 +185,7 @@ async function getFileHandles(
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState, setEnrichmentProgress
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -566,6 +566,10 @@ export function useImageLoader() {
                 mergeImages(batch);
             };
 
+            const handleEnrichmentProgress = (progress: { processed: number; total: number } | null) => {
+                setEnrichmentProgress(progress);
+            };
+
             const throttledSetProgress = throttle(setProgress, 200);
 
             const handleDeletion = (deletedFileIds: string[]) => {
@@ -583,6 +587,8 @@ export function useImageLoader() {
 
                 const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
 
+                setEnrichmentProgress(null);
+
                 const { phaseB } = await processFiles(
                     fileHandles,
                     throttledSetProgress,
@@ -599,10 +605,18 @@ export function useImageLoader() {
                         preloadedImages,
                         fileStats: fileStatsMap,
                         onEnrichmentBatch: handleEnrichmentBatch,
+                        onEnrichmentProgress: handleEnrichmentProgress,
                     }
                 );
 
-                phaseB.catch(err => console.error('Phase B enrichment failed', err));
+                phaseB
+                    .then(() => {
+                        setTimeout(() => setEnrichmentProgress(null), 750);
+                    })
+                    .catch(err => {
+                        console.error('Phase B enrichment failed', err);
+                        setEnrichmentProgress(null);
+                    });
 
                 if (!shouldCancelIndexing()) {
                     finalizeDirectoryLoad(directory);

@@ -660,6 +660,7 @@ interface ProcessFilesOptions {
   fileStats?: Map<string, { size?: number; type?: string }>;
   onEnrichmentBatch?: (batch: IndexedImage[]) => void;
   enrichmentBatchSize?: number;
+  onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
 }
 
 export interface ProcessFilesResult {
@@ -1031,9 +1032,12 @@ export async function processFiles(
   }
 
   const needsEnrichment = enrichmentQueue.filter(entry => entry.needsEnrichment && entry.source);
-  if (needsEnrichment.length === 0) {
+  const totalEnrichment = needsEnrichment.length;
+
+  if (totalEnrichment === 0) {
     performance.mark('indexing:phaseB:start');
     performance.mark('indexing:phaseB:complete', { detail: { elapsedMs: 0, files: 0 } });
+    options.onEnrichmentProgress?.(null);
     return { phaseB: Promise.resolve() };
   }
 
@@ -1045,6 +1049,7 @@ export async function processFiles(
     performance.mark('indexing:phaseB:start');
 
     const queue = [...needsEnrichment];
+    options.onEnrichmentProgress?.({ processed: 0, total: totalEnrichment });
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
 
@@ -1092,6 +1097,7 @@ export async function processFiles(
           touchedChunks.add(loc.chunkIndex);
         }
         phaseBStats.processed += 1;
+        options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
         const elapsed = performance.now() - phaseBStats.startTime;
         if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
           const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1162,6 +1168,7 @@ export async function processFiles(
               touchedChunks.add(loc.chunkIndex);
             }
             phaseBStats.processed += 1;
+            options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
             const elapsed = performance.now() - phaseBStats.startTime;
             if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
               const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1196,6 +1203,8 @@ export async function processFiles(
     performance.mark('indexing:phaseB:complete', {
       detail: { elapsedMs: performance.now() - phaseBStats.startTime, files: phaseBStats.processed }
     });
+
+    options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
   };
 
   return { phaseB: runEnrichmentPhase() };
