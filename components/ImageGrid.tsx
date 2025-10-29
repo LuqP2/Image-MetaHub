@@ -6,7 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download } from 'lucide-react';
-import { useThumbnail } from '../hooks/useThumbnail';
+import { thumbnailManager } from '../services/thumbnailManager';
 
 // --- ImageCard Component (with slight modifications) ---
 interface ImageCardProps {
@@ -23,8 +23,6 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
-
-  useThumbnail(image);
 
   useEffect(() => {
     if (thumbnailsDisabled) {
@@ -122,12 +120,20 @@ interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
+  pageEpoch: number;
 }
 
 const GUTTER_SIZE = 8; // Space between images
 
-const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
+const DEFAULT_PAGE_THUMBNAIL_CONCURRENCY = 6;
+const envConcurrency = Number((import.meta as any)?.env?.VITE_PAGE_THUMBNAIL_CONCURRENCY);
+const PAGE_THUMBNAIL_CONCURRENCY = Number.isFinite(envConcurrency) && envConcurrency > 0
+  ? Math.floor(envConcurrency)
+  : DEFAULT_PAGE_THUMBNAIL_CONCURRENCY;
+
+const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, pageEpoch }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
+  const disableThumbnails = useSettingsStore((state) => state.disableThumbnails);
   const directories = useImageStore((state) => state.directories);
   const {
     contextMenu,
@@ -153,6 +159,104 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
   };
+
+  const imagesRef = useRef(images);
+  const schedulerRef = useRef<{ flush: () => void; cancel: () => void } | null>(null);
+
+  useEffect(() => {
+    imagesRef.current = images;
+    schedulerRef.current?.flush();
+  }, [images]);
+
+  useEffect(() => {
+    if (disableThumbnails) {
+      schedulerRef.current?.cancel();
+      schedulerRef.current = null;
+      return;
+    }
+
+    let disposed = false;
+    const controllers = new Map<string, AbortController>();
+    const scheduled = new Set<string>();
+    let activeCount = 0;
+
+    const flush = () => {
+      if (disposed) {
+        return;
+      }
+
+      const currentImages = imagesRef.current;
+      if (!currentImages || currentImages.length === 0) {
+        return;
+      }
+
+      for (const image of currentImages) {
+        if (!image) {
+          continue;
+        }
+
+        if (image.thumbnailStatus === 'ready') {
+          continue;
+        }
+
+        if (scheduled.has(image.id)) {
+          continue;
+        }
+
+        if (activeCount >= PAGE_THUMBNAIL_CONCURRENCY) {
+          break;
+        }
+
+        const controller = new AbortController();
+        controllers.set(image.id, controller);
+        scheduled.add(image.id);
+        activeCount += 1;
+
+        thumbnailManager.ensureThumbnail(image, { signal: controller.signal, epoch: pageEpoch })
+          .catch((error) => {
+            if ((error as { name?: string })?.name === 'AbortError') {
+              return;
+            }
+            console.error('Failed to ensure thumbnail:', error);
+          })
+          .finally(() => {
+            controllers.delete(image.id);
+            scheduled.delete(image.id);
+            activeCount -= 1;
+            flush();
+          });
+      }
+    };
+
+    schedulerRef.current = {
+      flush,
+      cancel: () => {
+        disposed = true;
+        controllers.forEach((controller) => {
+          if (!controller.signal.aborted) {
+            controller.abort();
+          }
+        });
+        controllers.clear();
+        scheduled.clear();
+        activeCount = 0;
+      },
+    };
+
+    flush();
+
+    return () => {
+      schedulerRef.current = null;
+      disposed = true;
+      controllers.forEach((controller) => {
+        if (!controller.signal.aborted) {
+          controller.abort();
+        }
+      });
+      controllers.clear();
+      scheduled.clear();
+    };
+  }, [disableThumbnails, pageEpoch]);
 
   return (
     <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }} data-area="grid" tabIndex={-1}>

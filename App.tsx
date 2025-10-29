@@ -21,6 +21,7 @@ import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
 import cacheManager from './services/cacheManager';
+import { thumbnailManager } from './services/thumbnailManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
@@ -134,6 +135,104 @@ export default function App() {
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.9.5-rc');
+  const [pageEpoch, setPageEpoch] = useState(0);
+
+  const totalPages = itemsPerPage === 'all'
+    ? 1
+    : Math.max(1, Math.ceil(filteredImages.length / itemsPerPage));
+
+  const setCurrentPage = useCallback((page: number) => {
+    setCurrentPageState((previous) => {
+      if (itemsPerPage === 'all') {
+        return previous === 1 ? previous : 1;
+      }
+
+      const normalized = clampPage(page, totalPages);
+      if (normalized === previous) {
+        return previous;
+      }
+
+      return normalized;
+    });
+  }, [itemsPerPage, totalPages]);
+
+  const requestPageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, [setCurrentPage]);
+
+  const forcePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, [setCurrentPage]);
+
+  const [paginatedImages, setPaginatedImages] = useState<IndexedImage[]>(() =>
+    getPageSlice(filteredImages, itemsPerPage, currentPage),
+  );
+  const pageWorkTokenRef = useRef(0);
+  const pageFrameRef = useRef<number | null>(null);
+
+  const updatePaginatedImages = useCallback((page: number) => {
+    const next = getPageSlice(filteredImages, itemsPerPage, page);
+
+    setPaginatedImages((prev) => {
+      if (prev === next) {
+        return prev;
+      }
+
+      if (prev.length === next.length) {
+        let identical = true;
+        for (let index = 0; index < next.length; index += 1) {
+          if (prev[index]?.id !== next[index]?.id) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) {
+          return prev;
+        }
+      }
+
+      return next;
+    });
+  }, [filteredImages, itemsPerPage]);
+
+  useEffect(() => {
+    setPageEpoch((previous) => previous + 1);
+  }, [currentPage]);
+
+  useEffect(() => {
+    thumbnailManager.setActiveEpoch(pageEpoch);
+  }, [pageEpoch]);
+
+  useEffect(() => {
+    pageWorkTokenRef.current += 1;
+    const token = pageWorkTokenRef.current;
+
+    if (pageFrameRef.current != null) {
+      cancelAnimationFrame(pageFrameRef.current);
+      pageFrameRef.current = null;
+    }
+
+    if (itemsPerPage === 'all') {
+      updatePaginatedImages(currentPage);
+      return;
+    }
+
+    pageFrameRef.current = requestAnimationFrame(() => {
+      if (pageWorkTokenRef.current !== token) {
+        return;
+      }
+
+      pageFrameRef.current = null;
+      updatePaginatedImages(currentPage);
+    });
+
+    return () => {
+      if (pageFrameRef.current != null) {
+        cancelAnimationFrame(pageFrameRef.current);
+        pageFrameRef.current = null;
+      }
+    };
+  }, [itemsPerPage, currentPage, updatePaginatedImages]);
 
   const totalPages = itemsPerPage === 'all'
     ? 1
@@ -618,6 +717,7 @@ export default function App() {
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
                       selectedImages={selectedImages}
+                      pageEpoch={pageEpoch}
                     />
                   ) : (
                     <ImageTable
