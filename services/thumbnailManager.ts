@@ -36,11 +36,26 @@ async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   }
 }
 
-class ThumbnailManager {
-  private inflight = new Map<string, Promise<void>>();
-  private activeUrls = new Map<string, string>();
+type EnsureThumbnailOptions = {
+  signal?: AbortSignal;
+  epoch?: number;
+};
 
-  async ensureThumbnail(image: IndexedImage): Promise<void> {
+type InflightEntry = {
+  promise: Promise<void>;
+  epoch: number;
+};
+
+class ThumbnailManager {
+  private inflight = new Map<string, InflightEntry>();
+  private activeUrls = new Map<string, string>();
+  private activeEpoch = 0;
+
+  setActiveEpoch(epoch: number): void {
+    this.activeEpoch = epoch;
+  }
+
+  async ensureThumbnail(image: IndexedImage, options: EnsureThumbnailOptions = {}): Promise<void> {
     if (!image || !image.id) {
       return;
     }
@@ -49,46 +64,110 @@ class ThumbnailManager {
       return;
     }
 
-    const existing = this.inflight.get(image.id);
-    if (existing) {
-      return existing;
+    const epoch = options.epoch ?? this.activeEpoch;
+    const signal = options.signal;
+
+    if (signal?.aborted) {
+      return;
     }
 
-    const loadPromise = this.loadThumbnail(image).finally(() => {
-      this.inflight.delete(image.id);
+    const existing = this.inflight.get(image.id);
+    if (existing && existing.epoch === epoch) {
+      return existing.promise;
+    }
+
+    const loadPromise = this.loadThumbnail(image, epoch, signal).finally(() => {
+      const current = this.inflight.get(image.id);
+      if (current?.promise === loadPromise) {
+        this.inflight.delete(image.id);
+      }
     });
 
-    this.inflight.set(image.id, loadPromise);
+    this.inflight.set(image.id, { promise: loadPromise, epoch });
     await loadPromise;
   }
 
-  private async loadThumbnail(image: IndexedImage): Promise<void> {
+  private isEpochValid(epoch?: number): boolean {
+    return typeof epoch !== 'number' || epoch === this.activeEpoch;
+  }
+
+  private createAbortError(): Error {
+    const error = new Error('Aborted');
+    (error as any).name = 'AbortError';
+    return error;
+  }
+
+  private isAbortError(error: unknown): boolean {
+    return Boolean(error) && typeof error === 'object' && (error as { name?: string }).name === 'AbortError';
+  }
+
+  private resetPending(imageId: string): void {
+    const state = useImageStore.getState();
+    const findImage = (list: IndexedImage[]) => list.find((img) => img.id === imageId);
+    const currentImage = findImage(state.images) ?? findImage(state.filteredImages);
+
+    if (!currentImage || currentImage.thumbnailStatus !== 'loading') {
+      return;
+    }
+
+    state.setImageThumbnail(imageId, {
+      status: 'pending',
+      thumbnailUrl: currentImage.thumbnailUrl ?? null,
+      error: null,
+    });
+  }
+
+  private async loadThumbnail(image: IndexedImage, epoch: number, signal?: AbortSignal): Promise<void> {
     const setImageThumbnail = useImageStore.getState().setImageThumbnail;
-    setImageThumbnail(image.id, { status: 'loading' });
+    const assertValid = () => {
+      if (signal?.aborted || !this.isEpochValid(epoch)) {
+        throw this.createAbortError();
+      }
+    };
 
     try {
+      assertValid();
+      setImageThumbnail(image.id, { status: 'loading' });
+
       if (image.thumbnailUrl) {
+        assertValid();
         setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: image.thumbnailUrl });
         return;
       }
 
       const cachedBlob = await cacheManager.getCachedThumbnail(image.id);
+      assertValid();
       if (cachedBlob) {
         const url = this.updateObjectUrl(image.id, cachedBlob);
+        assertValid();
         setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: url });
         return;
       }
 
       const file = await (image.thumbnailHandle ?? image.handle).getFile();
+      assertValid();
       const blob = await generateThumbnailBlob(file);
+      assertValid();
       if (!blob) {
         throw new Error('Thumbnail generation failed');
       }
 
       await cacheManager.cacheThumbnail(image.id, blob);
+      assertValid();
       const url = this.updateObjectUrl(image.id, blob);
+      assertValid();
       setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: url });
     } catch (error) {
+      if (this.isAbortError(error)) {
+        this.resetPending(image.id);
+        return;
+      }
+
+      if (signal?.aborted || !this.isEpochValid(epoch)) {
+        this.resetPending(image.id);
+        return;
+      }
+
       const message = error instanceof Error ? error.message : 'Unknown thumbnail error';
       setImageThumbnail(image.id, { status: 'error', error: message });
     }

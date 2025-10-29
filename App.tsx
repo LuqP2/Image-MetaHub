@@ -21,6 +21,7 @@ import Pagination from './components/Pagination';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
 import cacheManager from './services/cacheManager';
+import { thumbnailManager } from './services/thumbnailManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
@@ -134,6 +135,7 @@ export default function App() {
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.9.5-rc');
+  const [pageEpoch, setPageEpoch] = useState(0);
 
   const totalPages = itemsPerPage === 'all'
     ? 1
@@ -192,6 +194,14 @@ export default function App() {
       return next;
     });
   }, [filteredImages, itemsPerPage]);
+
+  useEffect(() => {
+    setPageEpoch((previous) => previous + 1);
+  }, [currentPage]);
+
+  useEffect(() => {
+    thumbnailManager.setActiveEpoch(pageEpoch);
+  }, [pageEpoch]);
 
   useEffect(() => {
     pageWorkTokenRef.current += 1;
@@ -618,6 +628,7 @@ export default function App() {
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
                       selectedImages={selectedImages}
+                      pageEpoch={pageEpoch}
                     />
                   ) : (
                     <ImageTable
