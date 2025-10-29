@@ -148,10 +148,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     exportImage
   } = useContextMenu();
 
-  if (images.length === 0) {
-    return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
-  }
-
   const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
     if (selectedImages.size > 1) {
       return;
@@ -260,30 +256,34 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   return (
     <div className="h-full w-full p-1" style={{ minWidth: 0, minHeight: 0 }} data-area="grid" tabIndex={-1}>
-      <AutoSizer>
-        {({ height, width }) => {
-          if (width === 0 || height === 0) return null;
-          // Calculate columns based on available width and image size
-          const columnCount = Math.max(1, Math.floor(width / (imageSize + GUTTER_SIZE)));
-          const rowCount = Math.ceil(images.length / columnCount);
+      {images.length === 0 ? (
+        <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>
+      ) : (
+        <AutoSizer>
+          {({ height, width }) => {
+            if (width === 0 || height === 0) return null;
+            // Calculate columns based on available width and image size
+            const columnCount = Math.max(1, Math.floor(width / (imageSize + GUTTER_SIZE)));
+            const rowCount = Math.ceil(images.length / columnCount);
 
-          return (
-            <Grid
-              columnCount={columnCount}
-              rowCount={rowCount}
-              columnWidth={imageSize + GUTTER_SIZE}
-              rowHeight={imageSize + GUTTER_SIZE}
-              height={height}
-              width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories }}
-              overscanRowCount={4}
-              overscanColumnCount={2}
-            >
-              {GridCell}
-            </Grid>
-          );
-        }}
-      </AutoSizer>
+            return (
+              <Grid
+                columnCount={columnCount}
+                rowCount={rowCount}
+                columnWidth={imageSize + GUTTER_SIZE}
+                rowHeight={imageSize + GUTTER_SIZE}
+                height={height}
+                width={width}
+                itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories }}
+                overscanRowCount={4}
+                overscanColumnCount={2}
+              >
+                {GridCell}
+              </Grid>
+            );
+          }}
+        </AutoSizer>
+      )}
 
       {contextMenu.visible && (
         <div
