@@ -149,27 +149,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     exportImage
   } = useContextMenu();
 
-  const {
-    focusedImageId,
-    setFocusedImageId,
-    focusAdjacentImage,
-    toggleFocusedSelection,
-    clearImageSelection,
-    setSelectionFromIds,
-    imageOrder,
-    filteredImages,
-    setSelectedImage,
-  } = useImageStore((state) => ({
-    focusedImageId: state.focusedImageId,
-    setFocusedImageId: state.setFocusedImageId,
-    focusAdjacentImage: state.focusAdjacentImage,
-    toggleFocusedSelection: state.toggleFocusedSelection,
-    clearImageSelection: state.clearImageSelection,
-    setSelectionFromIds: state.setSelectionFromIds,
-    imageOrder: state.imageOrder,
-    filteredImages: state.filteredImages,
-    setSelectedImage: state.setSelectedImage,
-  }));
+  const focusedImageId = useImageStore((state) => state.focusedImageId);
+  const setFocusedImageId = useImageStore((state) => state.setFocusedImageId);
+  const focusAdjacentImage = useImageStore((state) => state.focusAdjacentImage);
+  const toggleFocusedSelection = useImageStore((state) => state.toggleFocusedSelection);
+  const clearImageSelection = useImageStore((state) => state.clearImageSelection);
+  const setSelectionFromIds = useImageStore((state) => state.setSelectionFromIds);
+  const imageOrder = useImageStore((state) => state.imageOrder);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const setSelectedImage = useImageStore((state) => state.setSelectedImage);
 
   const gridOuterRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<any>(null);
