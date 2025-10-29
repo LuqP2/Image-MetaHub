@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
-import { Directory } from './types';
+import { Directory, IndexedImage } from './types';
 import { X } from 'lucide-react';
 
 import FolderSelector from './components/FolderSelector';
@@ -27,6 +28,34 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
+
+const clampPage = (page: number, totalPages: number): number => {
+  if (!Number.isFinite(page)) {
+    return 1;
+  }
+  const total = Math.max(1, Math.trunc(totalPages));
+  const safePage = Math.trunc(page);
+  if (total <= 1) {
+    return 1;
+  }
+  return Math.min(Math.max(safePage, 1), total);
+};
+
+const getPageSlice = (
+  images: IndexedImage[],
+  itemsPerPage: number | 'all',
+  page: number,
+): IndexedImage[] => {
+  if (itemsPerPage === 'all') {
+    return images;
+  }
+  const safePage = page < 1 ? 1 : page;
+  const startIndex = (safePage - 1) * itemsPerPage;
+  if (startIndex <= 0 && itemsPerPage >= images.length) {
+    return images.slice(0, itemsPerPage);
+  }
+  return images.slice(startIndex, startIndex + itemsPerPage);
+};
 
 export default function App() {
   
@@ -96,7 +125,8 @@ export default function App() {
 
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPageState] = useState(1);
+  const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -104,6 +134,150 @@ export default function App() {
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.9.5-rc');
+
+  const totalPages = itemsPerPage === 'all'
+    ? 1
+    : Math.max(1, Math.ceil(filteredImages.length / itemsPerPage));
+
+  const totalPagesRef = useRef(totalPages);
+  useEffect(() => {
+    totalPagesRef.current = totalPages;
+  }, [totalPages]);
+
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const pendingPageRef = useRef<number | null>(null);
+  const commitScheduledRef = useRef(false);
+
+  const applyPendingPage = useCallback(() => {
+    if (!isMountedRef.current) {
+      pendingPageRef.current = null;
+      return;
+    }
+
+    const next = pendingPageRef.current;
+    if (next == null || next === currentPageRef.current) {
+      pendingPageRef.current = null;
+      return;
+    }
+
+    pendingPageRef.current = null;
+    flushSync(() => {
+      setCurrentPageState(next);
+    });
+    currentPageRef.current = next;
+  }, [setCurrentPageState]);
+
+  const schedulePendingPageCommit = useCallback(() => {
+    if (commitScheduledRef.current) {
+      return;
+    }
+
+    commitScheduledRef.current = true;
+    Promise.resolve().then(() => {
+      commitScheduledRef.current = false;
+      applyPendingPage();
+    });
+  }, [applyPendingPage]);
+
+  const requestPageChange = useCallback((page: number) => {
+    const total = totalPagesRef.current;
+    const normalized = itemsPerPage === 'all' ? 1 : clampPage(page, total);
+
+    if (normalized === currentPageRef.current) {
+      pendingPageRef.current = null;
+      return;
+    }
+
+    pendingPageRef.current = normalized;
+    schedulePendingPageCommit();
+  }, [itemsPerPage, schedulePendingPageCommit]);
+
+  const forcePageChange = useCallback((page: number) => {
+    const total = totalPagesRef.current;
+    const normalized = itemsPerPage === 'all' ? 1 : clampPage(page, total);
+
+    if (normalized === currentPageRef.current) {
+      pendingPageRef.current = null;
+      return;
+    }
+
+    pendingPageRef.current = normalized;
+    commitScheduledRef.current = false;
+    applyPendingPage();
+  }, [itemsPerPage, applyPendingPage]);
+
+  const [paginatedImages, setPaginatedImages] = useState<IndexedImage[]>(() =>
+    getPageSlice(filteredImages, itemsPerPage, currentPage),
+  );
+  const pageWorkTokenRef = useRef(0);
+  const pageFrameRef = useRef<number | null>(null);
+
+  const updatePaginatedImages = useCallback((page: number) => {
+    const next = getPageSlice(filteredImages, itemsPerPage, page);
+
+    setPaginatedImages((prev) => {
+      if (prev === next) {
+        return prev;
+      }
+
+      if (prev.length === next.length) {
+        let identical = true;
+        for (let index = 0; index < next.length; index += 1) {
+          if (prev[index]?.id !== next[index]?.id) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) {
+          return prev;
+        }
+      }
+
+      return next;
+    });
+  }, [filteredImages, itemsPerPage]);
+
+  useEffect(() => {
+    pageWorkTokenRef.current += 1;
+    const token = pageWorkTokenRef.current;
+
+    if (pageFrameRef.current != null) {
+      cancelAnimationFrame(pageFrameRef.current);
+      pageFrameRef.current = null;
+    }
+
+    if (itemsPerPage === 'all') {
+      updatePaginatedImages(currentPage);
+      return;
+    }
+
+    pageFrameRef.current = requestAnimationFrame(() => {
+      if (pageWorkTokenRef.current !== token) {
+        return;
+      }
+
+      pageFrameRef.current = null;
+      updatePaginatedImages(currentPage);
+    });
+
+    return () => {
+      if (pageFrameRef.current != null) {
+        cancelAnimationFrame(pageFrameRef.current);
+        pageFrameRef.current = null;
+      }
+    };
+  }, [itemsPerPage, currentPage, updatePaginatedImages]);
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -316,10 +490,12 @@ export default function App() {
     };
   }, [handleSelectFolder, toggleViewMode]);
 
-  // Reset page on filter change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filteredImages]);
+    if (previousSearchQueryRef.current !== searchQuery) {
+      forcePageChange(1);
+      previousSearchQueryRef.current = searchQuery;
+    }
+  }, [forcePageChange, searchQuery]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
@@ -346,10 +522,6 @@ export default function App() {
   }, [selectedImage, filteredImages]);
 
   // --- Render Logic ---
-  const paginatedImages = itemsPerPage === 'all'
-    ? filteredImages
-    : filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
   const hasDirectories = directories.length > 0;
   const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
@@ -501,7 +673,7 @@ export default function App() {
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
-                onPageChange={setCurrentPage}
+                onPageChange={requestPageChange}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
                 totalItems={filteredImages.length}
