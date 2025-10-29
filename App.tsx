@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
@@ -97,6 +97,7 @@ export default function App() {
   // --- Local UI State ---
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
+  const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -316,10 +317,12 @@ export default function App() {
     };
   }, [handleSelectFolder, toggleViewMode]);
 
-  // Reset page on filter change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filteredImages]);
+    if (previousSearchQueryRef.current !== searchQuery) {
+      setCurrentPage(1);
+      previousSearchQueryRef.current = searchQuery;
+    }
+  }, [searchQuery]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {

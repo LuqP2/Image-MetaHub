@@ -429,12 +429,42 @@ export const useImageStore = create<ImageState>((set, get) => {
             .filter(([, selected]) => selected)
             .length;
 
+        const compareById = (a: IndexedImage, b: IndexedImage) => a.id.localeCompare(b.id);
+        const compareByNameAsc = (a: IndexedImage, b: IndexedImage) => {
+            const nameComparison = (a.name || '').localeCompare(b.name || '');
+            if (nameComparison !== 0) {
+                return nameComparison;
+            }
+            return compareById(a, b);
+        };
+        const compareByNameDesc = (a: IndexedImage, b: IndexedImage) => {
+            const nameComparison = (b.name || '').localeCompare(a.name || '');
+            if (nameComparison !== 0) {
+                return nameComparison;
+            }
+            return compareById(a, b);
+        };
+        const compareByDateAsc = (a: IndexedImage, b: IndexedImage) => {
+            const dateComparison = a.lastModified - b.lastModified;
+            if (dateComparison !== 0) {
+                return dateComparison;
+            }
+            return compareByNameAsc(a, b);
+        };
+        const compareByDateDesc = (a: IndexedImage, b: IndexedImage) => {
+            const dateComparison = b.lastModified - a.lastModified;
+            if (dateComparison !== 0) {
+                return dateComparison;
+            }
+            return compareByNameAsc(a, b);
+        };
+
         const sorted = [...results].sort((a, b) => {
-            if (sortOrder === 'asc') return a.name.localeCompare(b.name);
-            if (sortOrder === 'desc') return b.name.localeCompare(a.name);
-            if (sortOrder === 'date-asc') return a.lastModified - b.lastModified;
-            if (sortOrder === 'date-desc') return b.lastModified - a.lastModified;
-            return 0;
+            if (sortOrder === 'asc') return compareByNameAsc(a, b);
+            if (sortOrder === 'desc') return compareByNameDesc(a, b);
+            if (sortOrder === 'date-asc') return compareByDateAsc(a, b);
+            if (sortOrder === 'date-desc') return compareByDateDesc(a, b);
+            return compareById(a, b);
         });
 
         return {
