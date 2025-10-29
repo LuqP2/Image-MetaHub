@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
@@ -127,6 +126,7 @@ export default function App() {
   const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPageState] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
+  const previousItemsPerPageRef = useRef(itemsPerPage);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -139,83 +139,28 @@ export default function App() {
     ? 1
     : Math.max(1, Math.ceil(filteredImages.length / itemsPerPage));
 
-  const totalPagesRef = useRef(totalPages);
-  useEffect(() => {
-    totalPagesRef.current = totalPages;
-  }, [totalPages]);
+  const setCurrentPage = useCallback((page: number) => {
+    setCurrentPageState((previous) => {
+      if (itemsPerPage === 'all') {
+        return previous === 1 ? previous : 1;
+      }
 
-  const currentPageRef = useRef(currentPage);
-  useEffect(() => {
-    currentPageRef.current = currentPage;
-  }, [currentPage]);
+      const normalized = clampPage(page, totalPages);
+      if (normalized === previous) {
+        return previous;
+      }
 
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const pendingPageRef = useRef<number | null>(null);
-  const commitScheduledRef = useRef(false);
-
-  const applyPendingPage = useCallback(() => {
-    if (!isMountedRef.current) {
-      pendingPageRef.current = null;
-      return;
-    }
-
-    const next = pendingPageRef.current;
-    if (next == null || next === currentPageRef.current) {
-      pendingPageRef.current = null;
-      return;
-    }
-
-    pendingPageRef.current = null;
-    flushSync(() => {
-      setCurrentPageState(next);
+      return normalized;
     });
-    currentPageRef.current = next;
-  }, [setCurrentPageState]);
-
-  const schedulePendingPageCommit = useCallback(() => {
-    if (commitScheduledRef.current) {
-      return;
-    }
-
-    commitScheduledRef.current = true;
-    Promise.resolve().then(() => {
-      commitScheduledRef.current = false;
-      applyPendingPage();
-    });
-  }, [applyPendingPage]);
+  }, [itemsPerPage, totalPages]);
 
   const requestPageChange = useCallback((page: number) => {
-    const total = totalPagesRef.current;
-    const normalized = itemsPerPage === 'all' ? 1 : clampPage(page, total);
-
-    if (normalized === currentPageRef.current) {
-      pendingPageRef.current = null;
-      return;
-    }
-
-    pendingPageRef.current = normalized;
-    schedulePendingPageCommit();
-  }, [itemsPerPage, schedulePendingPageCommit]);
+    setCurrentPage(page);
+  }, [setCurrentPage]);
 
   const forcePageChange = useCallback((page: number) => {
-    const total = totalPagesRef.current;
-    const normalized = itemsPerPage === 'all' ? 1 : clampPage(page, total);
-
-    if (normalized === currentPageRef.current) {
-      pendingPageRef.current = null;
-      return;
-    }
-
-    pendingPageRef.current = normalized;
-    commitScheduledRef.current = false;
-    applyPendingPage();
-  }, [itemsPerPage, applyPendingPage]);
+    setCurrentPage(page);
+  }, [setCurrentPage]);
 
   const [paginatedImages, setPaginatedImages] = useState<IndexedImage[]>(() =>
     getPageSlice(filteredImages, itemsPerPage, currentPage),
@@ -496,6 +441,19 @@ export default function App() {
       previousSearchQueryRef.current = searchQuery;
     }
   }, [forcePageChange, searchQuery]);
+
+  useEffect(() => {
+    if (previousItemsPerPageRef.current !== itemsPerPage) {
+      previousItemsPerPageRef.current = itemsPerPage;
+
+      if (itemsPerPage === 'all') {
+        setCurrentPage(1);
+        return;
+      }
+
+      setCurrentPage(currentPage);
+    }
+  }, [itemsPerPage, currentPage, setCurrentPage]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
