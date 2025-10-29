@@ -6,38 +6,20 @@ import { FileOperations } from '../services/fileOperations';
 export function useImageSelection() {
     const {
         images,
-        filteredImages,
-        selectedImage,
         selectedImages,
-        setSelectedImage,
-        toggleImageSelection,
+        handlePrimarySelection,
         clearImageSelection,
         removeImage,
         setError,
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
-        if (event.shiftKey && selectedImage) {
-            const lastSelectedIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
-            const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
-            if (lastSelectedIndex !== -1 && clickedIndex !== -1) {
-                const start = Math.min(lastSelectedIndex, clickedIndex);
-                const end = Math.max(lastSelectedIndex, clickedIndex);
-                const rangeIds = filteredImages.slice(start, end + 1).map(img => img.id);
-                const newSelection = new Set(selectedImages);
-                rangeIds.forEach(id => newSelection.add(id));
-                useImageStore.setState({ selectedImages: newSelection });
-                return;
-            }
-        }
-
-        if (event.ctrlKey || event.metaKey) {
-            toggleImageSelection(image.id);
-        } else {
-            clearImageSelection();
-            setSelectedImage(image);
-        }
-    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage]);
+        handlePrimarySelection(image, {
+            shiftKey: event.shiftKey,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+        });
+    }, [handlePrimarySelection]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
         if (selectedImages.size === 0) return;

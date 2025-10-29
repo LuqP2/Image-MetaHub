@@ -151,6 +151,10 @@ interface ImageState {
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
+  focusedImageId: string | null;
+  selectionAnchorId: string | null;
+  lastSelectedImageId: string | null;
+  imageOrder: Map<string, number>;
   scanSubfolders: boolean;
 
   // Filter & Sort State
@@ -211,6 +215,18 @@ interface ImageState {
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
+  setFocusedImageId: (imageId: string | null, options?: { updateAnchor?: boolean }) => void;
+  focusAdjacentImage: (offset: number) => void;
+  toggleFocusedSelection: () => void;
+  selectRangeTo: (imageId: string, options?: { additive?: boolean }) => void;
+  setSelectionFromIds: (
+    imageIds: string[],
+    options?: { focusId?: string | null; anchorId?: string | null; lastSelectedId?: string | null }
+  ) => void;
+  handlePrimarySelection: (
+    image: IndexedImage,
+    modifiers: { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }
+  ) => void;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -227,6 +243,73 @@ interface ImageState {
   // Reset Actions
   resetState: () => void;
 }
+
+const getImageById = (images: IndexedImage[], id?: string | null): IndexedImage | null => {
+    if (!id) {
+        return null;
+    }
+    return images.find(img => img.id === id) ?? null;
+};
+
+type PreviewSlice = Pick<
+    ImageState,
+    'images' | 'filteredImages' | 'selectedImages' | 'focusedImageId' | 'lastSelectedImageId' | 'imageOrder'
+>;
+
+const getImageFromState = (state: PreviewSlice, id?: string | null): IndexedImage | null => {
+    if (!id) {
+        return null;
+    }
+    return getImageById(state.filteredImages, id) ?? getImageById(state.images, id);
+};
+
+const computeLastSelectedId = (selection: Set<string>, order: Map<string, number>): string | null => {
+    if (selection.size === 0) {
+        return null;
+    }
+    let lastId: string | null = null;
+    let lastIndex = -1;
+    for (const id of selection) {
+        const index = order.get(id) ?? -1;
+        if (index > lastIndex) {
+            lastIndex = index;
+            lastId = id;
+        }
+    }
+    return lastId;
+};
+
+const resolvePreviewImage = (
+    state: PreviewSlice,
+    overrides?: { focusId?: string | null; lastSelectedId?: string | null }
+): IndexedImage | null => {
+    const focusId = overrides?.focusId ?? state.focusedImageId;
+    const lastSelectedId = overrides?.lastSelectedId ?? state.lastSelectedImageId;
+
+    const focused = getImageFromState(state, focusId);
+    if (focused) {
+        return focused;
+    }
+
+    if (lastSelectedId) {
+        const lastSelected = getImageFromState(state, lastSelectedId);
+        if (lastSelected) {
+            return lastSelected;
+        }
+    }
+
+    if (state.selectedImages.size > 0) {
+        const fallbackId = computeLastSelectedId(state.selectedImages, state.imageOrder);
+        if (fallbackId) {
+            const fallback = getImageFromState(state, fallbackId);
+            if (fallback) {
+                return fallback;
+            }
+        }
+    }
+
+    return null;
+};
 
 export const useImageStore = create<ImageState>((set, get) => {
     // --- Helper function for recalculating all derived state ---
@@ -467,10 +550,48 @@ export const useImageStore = create<ImageState>((set, get) => {
             return compareById(a, b);
         });
 
+        const imageOrder = new Map<string, number>();
+        const validIds = new Set<string>();
+        sorted.forEach((img, index) => {
+            imageOrder.set(img.id, index);
+            validIds.add(img.id);
+        });
+
+        const filteredSelection = new Set(Array.from(state.selectedImages).filter(id => validIds.has(id)));
+        const lastSelectedId = computeLastSelectedId(filteredSelection, imageOrder);
+
+        const focusCandidate = state.focusedImageId && getImageById(state.images, state.focusedImageId)
+            ? state.focusedImageId
+            : lastSelectedId ?? state.focusedImageId ?? null;
+
+        const anchorCandidate = state.selectionAnchorId && getImageById(state.images, state.selectionAnchorId)
+            ? state.selectionAnchorId
+            : focusCandidate;
+
+        const previewSlice: PreviewSlice = {
+            images: state.images,
+            filteredImages: sorted,
+            selectedImages: filteredSelection,
+            focusedImageId: focusCandidate ?? null,
+            lastSelectedImageId: lastSelectedId ?? null,
+            imageOrder,
+        };
+
+        const previewImage = resolvePreviewImage(previewSlice, {
+            focusId: previewSlice.focusedImageId,
+            lastSelectedId: previewSlice.lastSelectedImageId,
+        });
+
         return {
             filteredImages: sorted,
             selectionTotalImages: totalInScope,
-            selectionDirectoryCount
+            selectionDirectoryCount,
+            imageOrder,
+            selectedImages: filteredSelection,
+            lastSelectedImageId: lastSelectedId ?? null,
+            focusedImageId: previewSlice.focusedImageId,
+            selectionAnchorId: anchorCandidate ?? null,
+            previewImage,
         };
     };
 
@@ -493,6 +614,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
+        focusedImageId: null,
+        selectionAnchorId: null,
+        lastSelectedImageId: null,
+        imageOrder: new Map(),
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -758,8 +883,250 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
 
-        setPreviewImage: (image) => set({ previewImage: image }),
-        setSelectedImage: (image) => set({ selectedImage: image }),
+        setPreviewImage: (image) => set(state => {
+            if (!image) {
+                const emptySelection = new Set<string>();
+                return {
+                    previewImage: null,
+                    selectedImage: null,
+                    focusedImageId: null,
+                    selectionAnchorId: null,
+                    lastSelectedImageId: null,
+                    selectedImages: emptySelection,
+                };
+            }
+
+            const focusId = image.id;
+            const nextSelection = state.selectedImages.size === 0
+                ? new Set<string>([focusId])
+                : new Set(state.selectedImages);
+            if (!nextSelection.has(focusId)) {
+                nextSelection.add(focusId);
+            }
+
+            return {
+                previewImage: image,
+                selectedImage: image,
+                focusedImageId: focusId,
+                selectionAnchorId: focusId,
+                lastSelectedImageId: focusId,
+                selectedImages: nextSelection,
+            };
+        }),
+
+        setSelectedImage: (image) => set(state => {
+            if (!image) {
+                const previewSlice: PreviewSlice = {
+                    images: state.images,
+                    filteredImages: state.filteredImages,
+                    selectedImages: state.selectedImages,
+                    focusedImageId: null,
+                    lastSelectedImageId: state.lastSelectedImageId,
+                    imageOrder: state.imageOrder,
+                };
+                return {
+                    selectedImage: null,
+                    focusedImageId: null,
+                    selectionAnchorId: null,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId: null }),
+                };
+            }
+
+            const focusId = image.id;
+            const updatedSelection = state.selectedImages.size > 0 && state.selectedImages.has(focusId)
+                ? new Set(state.selectedImages)
+                : new Set<string>([focusId]);
+            const previewSlice: PreviewSlice = {
+                images: state.images,
+                filteredImages: state.filteredImages,
+                selectedImages: updatedSelection,
+                focusedImageId: focusId,
+                lastSelectedImageId: focusId,
+                imageOrder: state.imageOrder,
+            };
+            return {
+                selectedImage: image,
+                focusedImageId: focusId,
+                selectionAnchorId: focusId,
+                lastSelectedImageId: focusId,
+                selectedImages: updatedSelection,
+                previewImage: resolvePreviewImage(previewSlice, { focusId, lastSelectedId: focusId }),
+            };
+        }),
+
+        setFocusedImageId: (imageId, options) => {
+            set(state => {
+                const focusId = imageId ?? null;
+                const anchorId = options?.updateAnchor === false ? state.selectionAnchorId : (focusId ?? state.selectionAnchorId);
+                const previewSlice: PreviewSlice = {
+                    images: state.images,
+                    filteredImages: state.filteredImages,
+                    selectedImages: state.selectedImages,
+                    focusedImageId: focusId,
+                    lastSelectedImageId: state.lastSelectedImageId,
+                    imageOrder: state.imageOrder,
+                };
+                const previewImage = resolvePreviewImage(previewSlice, { focusId });
+                const focusedImage = getImageFromState(previewSlice, focusId);
+                return {
+                    focusedImageId: focusId,
+                    selectionAnchorId: anchorId ?? null,
+                    previewImage,
+                    selectedImage: focusedImage ?? state.selectedImage,
+                };
+            });
+        },
+
+        focusAdjacentImage: (offset) => {
+            const state = get();
+            if (state.filteredImages.length === 0) {
+                return;
+            }
+            const currentIndex = state.focusedImageId && state.imageOrder.has(state.focusedImageId)
+                ? state.imageOrder.get(state.focusedImageId) ?? 0
+                : state.lastSelectedImageId && state.imageOrder.has(state.lastSelectedImageId)
+                    ? state.imageOrder.get(state.lastSelectedImageId) ?? 0
+                    : 0;
+            let nextIndex = (currentIndex ?? 0) + offset;
+            if (nextIndex < 0) {
+                nextIndex = 0;
+            }
+            if (nextIndex >= state.filteredImages.length) {
+                nextIndex = state.filteredImages.length - 1;
+            }
+            const nextImage = state.filteredImages[nextIndex];
+            if (!nextImage) {
+                return;
+            }
+
+            set(prevState => {
+                const previewSlice: PreviewSlice = {
+                    images: prevState.images,
+                    filteredImages: prevState.filteredImages,
+                    selectedImages: prevState.selectedImages,
+                    focusedImageId: nextImage.id,
+                    lastSelectedImageId: prevState.lastSelectedImageId,
+                    imageOrder: prevState.imageOrder,
+                };
+                return {
+                    focusedImageId: nextImage.id,
+                    selectionAnchorId: prevState.selectionAnchorId ?? nextImage.id,
+                    selectedImage: nextImage,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId: nextImage.id }),
+                };
+            });
+        },
+
+        toggleFocusedSelection: () => {
+            const focusId = get().focusedImageId;
+            if (!focusId) {
+                return;
+            }
+            get().toggleImageSelection(focusId);
+        },
+
+        selectRangeTo: (imageId, options) => {
+            const state = get();
+            const anchorId = state.selectionAnchorId ?? state.focusedImageId ?? imageId;
+            const anchorIndex = anchorId ? state.imageOrder.get(anchorId) : undefined;
+            const targetIndex = state.imageOrder.get(imageId);
+            if (anchorIndex === undefined || targetIndex === undefined) {
+                return;
+            }
+            const [start, end] = anchorIndex <= targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+            const idsInRange = state.filteredImages.slice(start, end + 1).map(img => img.id);
+
+            set(prevState => {
+                const newSelection = options?.additive ? new Set(prevState.selectedImages) : new Set<string>();
+                idsInRange.forEach(id => newSelection.add(id));
+                const lastSelectedId = idsInRange[idsInRange.length - 1] ?? anchorId ?? null;
+                const previewSlice: PreviewSlice = {
+                    images: prevState.images,
+                    filteredImages: prevState.filteredImages,
+                    selectedImages: newSelection,
+                    focusedImageId: imageId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    imageOrder: prevState.imageOrder,
+                };
+                return {
+                    selectedImages: newSelection,
+                    focusedImageId: imageId,
+                    selectionAnchorId: anchorId ?? imageId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId: imageId, lastSelectedId }),
+                    selectedImage: getImageFromState(previewSlice, imageId) ?? prevState.selectedImage,
+                };
+            });
+        },
+
+        setSelectionFromIds: (imageIds, options) => {
+            set(state => {
+                const newSelection = new Set(imageIds);
+                const lastSelectedId = options?.lastSelectedId ?? computeLastSelectedId(newSelection, state.imageOrder);
+                const focusId = options?.focusId ?? state.focusedImageId ?? lastSelectedId ?? null;
+                const anchorId = options?.anchorId ?? focusId ?? lastSelectedId ?? null;
+                const previewSlice: PreviewSlice = {
+                    images: state.images,
+                    filteredImages: state.filteredImages,
+                    selectedImages: newSelection,
+                    focusedImageId: focusId ?? null,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    imageOrder: state.imageOrder,
+                };
+                return {
+                    selectedImages: newSelection,
+                    focusedImageId: focusId ?? null,
+                    selectionAnchorId: anchorId ?? null,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId: focusId ?? null, lastSelectedId }),
+                    selectedImage: getImageFromState(previewSlice, focusId ?? null) ?? state.selectedImage,
+                };
+            });
+        },
+
+        handlePrimarySelection: (image, modifiers) => {
+            if (modifiers.shiftKey) {
+                get().selectRangeTo(image.id, { additive: modifiers.ctrlKey || modifiers.metaKey });
+                return;
+            }
+
+            set(state => {
+                const additive = modifiers.ctrlKey || modifiers.metaKey;
+                let newSelection = additive ? new Set(state.selectedImages) : new Set<string>();
+                if (additive) {
+                    if (newSelection.has(image.id)) {
+                        newSelection.delete(image.id);
+                    } else {
+                        newSelection.add(image.id);
+                    }
+                } else {
+                    newSelection.add(image.id);
+                }
+
+                const lastSelectedId = newSelection.size === 0
+                    ? null
+                    : (newSelection.has(image.id) ? image.id : computeLastSelectedId(newSelection, state.imageOrder));
+
+                const focusId = image.id;
+                const previewSlice: PreviewSlice = {
+                    images: state.images,
+                    filteredImages: state.filteredImages,
+                    selectedImages: newSelection,
+                    focusedImageId: focusId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    imageOrder: state.imageOrder,
+                };
+
+                return {
+                    selectedImages: newSelection,
+                    focusedImageId: focusId,
+                    selectionAnchorId: focusId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId, lastSelectedId }),
+                    selectedImage: image,
+                };
+            });
+        },
 
         toggleImageSelection: (imageId) => {
             set(state => {
@@ -769,16 +1136,67 @@ export const useImageStore = create<ImageState>((set, get) => {
                 } else {
                     newSelection.add(imageId);
                 }
-                return { selectedImages: newSelection };
+                const lastSelectedId = newSelection.size === 0
+                    ? null
+                    : (newSelection.has(imageId) ? imageId : computeLastSelectedId(newSelection, state.imageOrder));
+                const focusId = state.focusedImageId ?? imageId;
+                const previewSlice: PreviewSlice = {
+                    images: state.images,
+                    filteredImages: state.filteredImages,
+                    selectedImages: newSelection,
+                    focusedImageId: focusId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    imageOrder: state.imageOrder,
+                };
+                return {
+                    selectedImages: newSelection,
+                    focusedImageId: focusId,
+                    selectionAnchorId: state.selectionAnchorId ?? focusId,
+                    lastSelectedImageId: lastSelectedId ?? null,
+                    previewImage: resolvePreviewImage(previewSlice, { focusId, lastSelectedId }),
+                    selectedImage: getImageFromState(previewSlice, focusId) ?? state.selectedImage,
+                };
             });
         },
 
         selectAllImages: () => set(state => {
-            const allImageIds = new Set(state.filteredImages.map(img => img.id));
-            return { selectedImages: allImageIds };
+            const allIds = state.filteredImages.map(img => img.id);
+            const newSelection = new Set(allIds);
+            const lastSelectedId = computeLastSelectedId(newSelection, state.imageOrder);
+            const focusId = state.focusedImageId ?? (allIds[0] ?? null);
+            const previewSlice: PreviewSlice = {
+                images: state.images,
+                filteredImages: state.filteredImages,
+                selectedImages: newSelection,
+                focusedImageId: focusId ?? null,
+                lastSelectedImageId: lastSelectedId ?? null,
+                imageOrder: state.imageOrder,
+            };
+            return {
+                selectedImages: newSelection,
+                focusedImageId: focusId ?? null,
+                selectionAnchorId: focusId ?? lastSelectedId ?? null,
+                lastSelectedImageId: lastSelectedId ?? null,
+                previewImage: resolvePreviewImage(previewSlice, { focusId: focusId ?? null, lastSelectedId }),
+            };
         }),
 
-        clearImageSelection: () => set({ selectedImages: new Set() }),
+        clearImageSelection: () => set(state => {
+            const emptySelection = new Set<string>();
+            const previewSlice: PreviewSlice = {
+                images: state.images,
+                filteredImages: state.filteredImages,
+                selectedImages: emptySelection,
+                focusedImageId: state.focusedImageId,
+                lastSelectedImageId: null,
+                imageOrder: state.imageOrder,
+            };
+            return {
+                selectedImages: emptySelection,
+                lastSelectedImageId: null,
+                previewImage: resolvePreviewImage(previewSlice, { focusId: state.focusedImageId, lastSelectedId: null }),
+            };
+        }),
 
         deleteSelectedImages: async () => {
             get().clearImageSelection();
@@ -790,23 +1208,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         handleNavigateNext: () => {
-            const state = get();
-            if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
-            if (currentIndex < state.filteredImages.length - 1) {
-                const nextImage = state.filteredImages[currentIndex + 1];
-                set({ selectedImage: nextImage });
-            }
+            get().focusAdjacentImage(1);
         },
 
         handleNavigatePrevious: () => {
-            const state = get();
-            if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
-            if (currentIndex > 0) {
-                const prevImage = state.filteredImages[currentIndex - 1];
-                set({ selectedImage: prevImage });
-            }
+            get().focusAdjacentImage(-1);
         },
 
         resetState: () => set({
@@ -821,7 +1227,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             error: null,
             success: null,
             selectedImage: null,
+            previewImage: null,
             selectedImages: new Set(),
+            focusedImageId: null,
+            selectionAnchorId: null,
+            lastSelectedImageId: null,
+            imageOrder: new Map(),
             searchQuery: '',
             availableModels: [],
             availableLoras: [],
