@@ -377,8 +377,22 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
+  
+  console.log('[FILE DEBUG] Processing file:', {
+    name: file.name,
+    size: file.size,
+    isPNG: view.getUint32(0) === 0x89504E47,
+    isJPEG: view.getUint16(0) === 0xFFD8
+  });
+  
   if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
-    return parsePNGMetadata(buffer);
+    const result = await parsePNGMetadata(buffer);
+    console.log('[FILE DEBUG] PNG metadata result:', {
+      name: file.name,
+      hasResult: !!result,
+      resultType: result ? Object.keys(result)[0] : 'none'
+    });
+    return result;
   }
   if (view.getUint16(0) === 0xFFD8) {
     return parseJPEGMetadata(buffer);
@@ -1155,7 +1169,9 @@ export async function processFiles(
     if (useOptimizedPath) {
       const batches = chunkArray(queue, FILE_READ_BATCH_SIZE);
       for (const batch of batches) {
-        const filePaths = batch.map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath!).filter(Boolean);
+        const filePaths = batch
+          .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+          .filter((path): path is string => typeof path === 'string' && path.length > 0);
         if (filePaths.length === 0) {
           await asyncPool(concurrencyLimit, batch, iterator);
           continue;
@@ -1186,7 +1202,10 @@ export async function processFiles(
           if (!entry.source) {
             return null;
           }
-          const filePath = (entry.source.handle as ElectronFileHandle)?._filePath!;
+          const filePath = (entry.source.handle as ElectronFileHandle)?._filePath;
+          if (!filePath) {
+            return null;
+          }
           const buffer = dataMap.get(filePath);
           const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer);
           const merged = processEnrichmentResult(entry, enriched);
