@@ -150,7 +150,13 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata;
   } else if (chunks.parameters || chunks.description) {
-    return { parameters: chunks.parameters || chunks.description };
+    const paramsValue = chunks.parameters || chunks.description;
+    console.log('[PNG DEBUG] Found parameters chunk:', {
+      length: paramsValue.length,
+      preview: paramsValue.substring(0, 150),
+      hasSuiImageParams: paramsValue.includes('sui_image_params')
+    });
+    return { parameters: paramsValue };
   } else if (chunks.invokeai_metadata) {
     return JSON.parse(chunks.invokeai_metadata);
   } else if (chunks.prompt) {
@@ -429,6 +435,15 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
+  // DEBUG: Log raw metadata for SwarmUI detection
+  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string' && 
+      rawMetadata.parameters.includes('sui_image_params')) {
+    console.log('[SwarmUI DEBUG] Found sui_image_params in parameters:', {
+      fileName: fileEntry.handle.name,
+      parametersPreview: rawMetadata.parameters.substring(0, 200)
+    });
+  }
+  
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
   if (isComfyUIMetadata(rawMetadata)) {
     const comfyMetadata = rawMetadata as ComfyUIMetadata;
@@ -465,54 +480,69 @@ if (rawMetadata) {
   else if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
     const params = rawMetadata.parameters;
     
+    // Sub-priority 2.0: Check if parameters contains SwarmUI JSON format
+    // SwarmUI can save metadata as JSON string in parameters field
+    if (params.trim().startsWith('{') && params.includes('sui_image_params')) {
+      try {
+        const parsedParams = JSON.parse(params);
+        if (parsedParams.sui_image_params) {
+          console.log('[SwarmUI PNG] Detected SwarmUI metadata in parameters field:', fileEntry.handle.name);
+          normalizedMetadata = parseSwarmUIMetadata(parsedParams as SwarmUIMetadata);
+        }
+      } catch (error) {
+        console.warn('[SwarmUI PNG] Failed to parse SwarmUI JSON:', error);
+        // Not valid SwarmUI JSON, continue with other checks
+      }
+    }
+    
     // Sub-priority 2.1: SD.Next (has "App: SD.Next" indicator)
-    if (params.includes('App: SD.Next')) {
+    if (!normalizedMetadata && params.includes('App: SD.Next')) {
       normalizedMetadata = parseSDNextMetadata(params);
     }
     
     // Sub-priority 2.2: Forge (most specific - has Model hash + Forge/Gradio)
-    else if ((params.includes('Forge') || params.includes('Gradio')) && 
+    else if (!normalizedMetadata && (params.includes('Forge') || params.includes('Gradio')) && 
         params.includes('Steps:') && params.includes('Sampler:') && params.includes('Model hash:')) {
       normalizedMetadata = parseForgeMetadata(rawMetadata);
     }
     
-    // Sub-priority 2.2: Fooocus (specific indicators but NO Model hash)
+    // Sub-priority 2.3: Fooocus (specific indicators but NO Model hash)
     // CRITICAL: Must check for absence of Model hash to avoid capturing Forge/A1111
-    else if (params.includes('Fooocus') || 
-             (params.includes('Sharpness:') && !params.includes('Model hash:'))) {
+    else if (!normalizedMetadata && (params.includes('Fooocus') || 
+             (params.includes('Sharpness:') && !params.includes('Model hash:')))) {
       normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
     }
     
-    // Sub-priority 2.3: A1111/ComfyUI hybrid (has Model hash or Version indicators)
+    // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators)
     // This catches: standard A1111, ComfyUI with A1111 format, Forge variants
-    else if (params.includes('Model hash:') || 
+    else if (!normalizedMetadata && (params.includes('Model hash:') || 
              params.includes('Version: ComfyUI') ||
              /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
              params.includes('Distilled CFG Scale') ||
-             /Module\s*\d+:/i.test(params)) {
+             /Module\s*\d+:/i.test(params))) {
       normalizedMetadata = parseA1111Metadata(params);
     }
     
-    // Sub-priority 2.4: Other parameter-based formats
-    else if (params.includes('DreamStudio') || params.includes('Stability AI')) {
+    // Sub-priority 2.5: Other parameter-based formats
+    else if (!normalizedMetadata && (params.includes('DreamStudio') || params.includes('Stability AI'))) {
       normalizedMetadata = parseDreamStudioMetadata(params);
     }
-    else if ((params.includes('iPhone') || params.includes('iPad') || params.includes('Draw Things')) &&
+    else if (!normalizedMetadata && (params.includes('iPhone') || params.includes('iPad') || params.includes('Draw Things')) &&
              !params.includes('Model hash:')) {
       const userComment = 'userComment' in rawMetadata ? String(rawMetadata.userComment) : undefined;
       normalizedMetadata = parseDrawThingsMetadata(params, userComment);
     }
-    else if (params.includes('--niji')) {
+    else if (!normalizedMetadata && params.includes('--niji')) {
       normalizedMetadata = parseNijiMetadata(params);
     }
-    else if (params.includes('--v') || params.includes('--ar') || params.includes('Midjourney')) {
+    else if (!normalizedMetadata && (params.includes('--v') || params.includes('--ar') || params.includes('Midjourney'))) {
       normalizedMetadata = parseMidjourneyMetadata(params);
     }
-    else if (params.includes('Prompt:') && params.includes('Steps:')) {
+    else if (!normalizedMetadata && params.includes('Prompt:') && params.includes('Steps:')) {
       // Generic SD-like format - try Easy Diffusion
       normalizedMetadata = parseEasyDiffusionMetadata(params);
     }
-    else {
+    else if (!normalizedMetadata) {
       // Fallback: Try A1111 parser for any other parameter string
       normalizedMetadata = parseA1111Metadata(params);
     }
