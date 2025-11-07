@@ -503,7 +503,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedSchedulers: [],
         sortOrder: 'date-desc',
         advancedFilters: {},
-        scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') === 'true',
+        scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
 
         // --- ACTIONS ---
 

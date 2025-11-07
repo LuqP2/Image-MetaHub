@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Plus, GalleryHorizontal, Bug, HelpCircle } from 'lucide-react';
+import { Settings, Plus, Bug, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -14,8 +14,8 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, onShowChan
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <GalleryHorizontal className="h-8 w-8 text-accent" />
-          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.5-rc</h1>
+          <img src="/logo1.svg" alt="Image MetaHub" className="h-8 w-8" />
+          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.5</h1>
         </div>
         <div className="flex items-center gap-4">
           <button

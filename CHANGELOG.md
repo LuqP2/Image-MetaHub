@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2025-11-07
+
 ### Fixed
 
 - Resolved folder selection inconsistencies that hid images when expanding directories by introducing tri-state hierarchy rules and persistent IndexedDB-backed folder selection state.
+
+### Added
+
+- **Custom Logo and Icon**: Updated application icon and branding with custom logo (logo1.svg) and icon (icon.ico).
+- **Default Subfolder Scanning**: Subfolder scanning is now enabled by default for a better out-of-box experience.
+
+### Changed
+
+- **Version Display**: Updated version number to 0.9.5 across all UI elements (Header, Window Title, About dialog, Status Bar, Folder Selector).
+- **Simplified UI**: Removed "Scan Subfolders" checkbox from the initial folder selector (now always enabled by default).
 
 ## [0.9.4] - 2025-10-20
 

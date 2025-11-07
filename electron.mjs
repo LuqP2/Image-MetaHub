@@ -411,6 +411,7 @@ function createWindow(startupDirectory = null) {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -431,7 +432,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.9.5-rc');
+    mainWindow.setTitle('Image MetaHub v0.9.5');
   }
 
   // Load the app
