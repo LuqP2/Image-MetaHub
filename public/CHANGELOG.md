@@ -12,10 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Configurable Indexing Concurrency**: Added "Parallel workers" control in Settings to allow users to tune metadata enrichment throughput. Auto-detects optimal default based on CPU cores (up to 8, configurable to 16).
+- **Refined Folder Tree**: Implemented tri-state folder checkboxes with inherited selection rules, making it easy to combine root folders with individual subfolders.
+- **Persistent Folder Visibility**: Folder inclusion state now survives restarts through IndexedDB-backed storage, ensuring directory preferences stick between sessions.
+- **Updated Branding**: Replaced the stock assets with the new `logo1.svg` splash illustration and matching application icon for Windows builds.
+
+### Changed
+
+- **Default Subfolder Scanning**: Recursive scanning is now enabled by default and enforced on first-run to provide a complete library immediately.
+- **Simplified Folder Selector**: Removed the initial "Scan Subfolders" toggle—subfolder indexing is always on and folder visibility is now managed directly from the sidebar tree.
+- **Unified Version Display**: Updated all visible version strings (header, welcome screen, Electron window title, CLI, and status bar) to `0.9.5`.
 
 ### Fixed
 
 - Resolved folder selection inconsistencies that hid images when expanding directories by introducing tri-state hierarchy rules and persistent IndexedDB-backed folder selection state.
+- Addressed directory selection regressions where newly expanded subfolders could hide their images until the view was refreshed.
 
 ### Performance Improvements
 
@@ -25,22 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Skip unnecessary Easy Diffusion sidecar reads when metadata is already detected from PNG chunks.
   - Muted verbose debug logs (`[PNG DEBUG]`, `[FILE DEBUG]`, `[SwarmUI DEBUG]`) in production builds to reduce console overhead.
   - These optimizations reduce Phase B overhead without affecting processing logic or making phase B optional.
-
-### Added
-
-- **Refined Folder Tree**: Implemented tri-state folder checkboxes with inherited selection rules, making it easy to combine root folders with individual subfolders.
-- **Persistent Folder Visibility**: Folder inclusion state now survives restarts through IndexedDB-backed storage, ensuring directory preferences stick between sessions.
-- **Updated Branding**: Replaced the stock assets with the new `logo1.svg` splash illustration and matching application icon for Windows builds.
-
-### Changed
-
-- **Default Subfolder Scanning**: Recursive scanning is now enabled by default and enforced on first-run to provide a complete library immediately.
-- **Simplified Folder Selector**: Removed the initial “Scan Subfolders” toggle—subfolder indexing is always on and folder visibility is now managed directly from the sidebar tree.
-- **Unified Version Display**: Updated all visible version strings (header, welcome screen, Electron window title, CLI, and status bar) to `0.9.5`.
-
-### Fixed
-
-- Addressed directory selection regressions where newly expanded subfolders could hide their images until the view was refreshed.
 
 ## [0.9.4] - 2025-10-20
 

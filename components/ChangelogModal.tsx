@@ -126,22 +126,19 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
               <div className="mb-6 p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-700/30 rounded-lg">
                 <div className="prose prose-invert prose-sm max-w-none">
                   <p className="text-gray-300 text-sm leading-relaxed mb-3">
-                    <strong className="text-purple-300">Hey, I'm Lucas</strong> — the guy behind Image MetaHub.
+                    <strong className="text-purple-300">Hey — Lucas here</strong>, the guy building Image MetaHub.
                   </p>
                   <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    I'm not a career coder. I've spent the last 17 years growing my company — a tourism operator I started from scratch. 
-                    It was doing well until early 2025, when it shut its doors. I lost everything, except the stubborn will to build again.
+                    Quick update and a proper thank-you. The Ko-fi support has been clutch — it literally paid for the unsexy work: bug-fix weeks, packaging hell, test VMs, and time to iterate instead of firefighting. Special thanks to Taruvi for relentless feedback and shaping the app into what I actually envisioned — UX pressure, edge-case hunts, and reality checks that made this better.
                   </p>
                   <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Image MetaHub was born from that chaos. I wanted a tool that could bring order to the avalanche of AI images — 
-                    something fast, offline, and respectful of user privacy.
+                    Traction's been solid. People are using it daily, and that's the bar. The app stays what it's meant to be: fast, local, privacy-first — no cloud bullshit. Support keeps going wider and deeper (Midjourney, Forge, Fooocus, SwarmUI, SD.Next, EasyDiffusion, NijiJourney), with ComfyUI improving and video metadata on the roadmap.
                   </p>
                   <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Seeing this app being downloaded, used, and genuinely helping people has meant the world to me. 
-                    But to be honest, things are tough. I'm rebuilding from zero, living week to week, fully committed to keeping this project alive.
+                    If IMH saves you time or brings order to your mess of generations, you can help in a few concrete ways: buy a coffee on Ko-fi, star the repo, report bugs with sample files, or share the project with someone who needs it. That's how this gets better week over week.
                   </p>
                   <p className="text-gray-400 text-xs leading-relaxed mb-3">
-                    Every small donation or coffee helps me stay afloat and keep improving the app. It really does make a difference.
+                    Thanks for being part of it. Back to shipping.
                   </p>
                   <div className="flex flex-wrap gap-2 mt-3">
                     <a
@@ -150,7 +147,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs bg-purple-600/80 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg transition-colors"
                     >
-                      ☕ Support on Ko-fi
+                      ☕ Ko-fi
                     </a>
                     <a
                       href="https://github.com/LuqP2/Image-MetaHub"
@@ -158,11 +155,11 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs bg-gray-700/80 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded-lg transition-colors"
                     >
-                      🔧 Contribute on GitHub
+                      🔧 GitHub
                     </a>
                   </div>
                   <p className="text-gray-500 text-xs mt-3 italic">
-                    Thank you for being part of this reconstruction. The best is still ahead. — Lucas
+                    — Lucas
                   </p>
                 </div>
               </div>
