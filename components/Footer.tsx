@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface FooterProps {
   currentPage: number;
@@ -81,7 +81,7 @@ const Footer: React.FC<FooterProps> = ({
           </Token>
         )}
         {directoryCount !== undefined && directoryCount > 0 && (
-          <Token title="Number of folders"><span>{directoryCount}</span> {folderText}</Token>
+          <Token title="Number of folders"><span>{directoryCount}</span> {' '}{folderText}</Token>
         )}
         {hasJob && (
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs animate-fade-in">
@@ -111,6 +111,9 @@ const Footer: React.FC<FooterProps> = ({
           <>
             <span className="text-gray-600">•</span>
             <div className="flex items-center gap-1">
+              <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1 hover:bg-gray-800 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="First page">
+                <ChevronsLeft className="w-3.5 h-3.5 text-gray-400" />
+              </button>
               <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1 hover:bg-gray-800 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Previous page">
                 <ChevronLeft className="w-3.5 h-3.5 text-gray-400" />
               </button>
@@ -125,6 +128,9 @@ const Footer: React.FC<FooterProps> = ({
               )}
               <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1 hover:bg-gray-800 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Next page">
                 <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+              </button>
+              <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1 hover:bg-gray-800 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Last page">
+                <ChevronsRight className="w-3.5 h-3.5 text-gray-400" />
               </button>
             </div>
           </>

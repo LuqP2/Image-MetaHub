@@ -424,7 +424,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         }
 
-        const totalInScope = selectionFiltered.length;
+        const totalInScope = images.length; // Total absoluto de imagens indexadas
         const selectionDirectoryCount = Array.from(rootCoverage.entries())
             .filter(([, selected]) => selected)
             .length;
