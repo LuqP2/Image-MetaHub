@@ -8,17 +8,23 @@ export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'copy-changelog',
+      name: 'copy-assets',
       closeBundle() {
-        // Copy CHANGELOG.md to dist folder after build
+        // Copy CHANGELOG.md and logo to dist folder after build
         try {
           copyFileSync(
             resolve(__dirname, 'CHANGELOG.md'),
             resolve(__dirname, 'dist/CHANGELOG.md')
           )
           console.log('✅ CHANGELOG.md copied to dist/')
+          
+          copyFileSync(
+            resolve(__dirname, 'public/logo1.png'),
+            resolve(__dirname, 'dist/logo1.png')
+          )
+          console.log('✅ logo1.png copied to dist/')
         } catch (error) {
-          console.warn('⚠️ Failed to copy CHANGELOG.md:', error)
+          console.warn('⚠️ Failed to copy assets:', error)
         }
       }
     }
