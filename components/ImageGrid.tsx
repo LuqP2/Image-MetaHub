@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FixedSizeGrid as Grid } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -8,20 +6,20 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 
-// --- ImageCard Component (with slight modifications) ---
+// --- ImageCard Component ---
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   isSelected: boolean;
   isFocused?: boolean;
-  style: React.CSSProperties; // Added for react-virtualized
-  onImageLoad: () => void; // Added to notify parent of image load
+  onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
-  directoryPath?: string;
+  baseWidth: number;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, style, onImageLoad, onContextMenu, directoryPath }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
 
@@ -77,8 +75,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
 
   return (
     <div
-      style={style}
-      className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative masonry-cell ${
+      className={`mb-2 break-inside-avoid bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative ${
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       } ${
         isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
@@ -105,9 +102,8 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         <img
           src={imageUrl}
           alt={image.name}
-          className="w-full h-auto object-cover"
+          className="w-full h-auto block"
           loading="lazy"
-          onLoad={onImageLoad}
         />
       ) : (
         <div className="w-full h-48 animate-pulse bg-gray-700"></div>
@@ -130,8 +126,6 @@ interface ImageGridProps {
   onPageChange: (page: number) => void;
 }
 
-const GUTTER_SIZE = 8; // Space between images
-
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
@@ -140,6 +134,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const gridRef = useRef<HTMLDivElement>(null);
+  const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
+
+  const handleImageLoad = (id: string, aspectRatio: number) => {
+    setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
+  };
 
   const {
     contextMenu,
@@ -249,36 +248,36 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   return (
     <div 
       ref={gridRef}
-      className="h-full w-full p-1 outline-none" 
+      className="h-full w-full p-1 outline-none overflow-auto" 
       style={{ minWidth: 0, minHeight: 0 }} 
       data-area="grid" 
       tabIndex={0}
       onClick={() => gridRef.current?.focus()}
     >
-      <AutoSizer>
-        {({ height, width }) => {
-          if (width === 0 || height === 0) return null;
-          // Calculate columns based on available width and image size
-          const columnCount = Math.max(1, Math.floor(width / (imageSize + GUTTER_SIZE)));
-          const rowCount = Math.ceil(images.length / columnCount);
-
-          return (
-            <Grid
-              columnCount={columnCount}
-              rowCount={rowCount}
-              columnWidth={imageSize + GUTTER_SIZE}
-              rowHeight={imageSize + GUTTER_SIZE}
-              height={height}
-              width={width}
-              itemData={{ images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, directories, focusedImageIndex }}
-              overscanRowCount={4}
-              overscanColumnCount={2}
-            >
-              {GridCell}
-            </Grid>
-          );
+      <div 
+        className="columns-1 gap-2"
+        style={{
+          columnWidth: `${imageSize}px`,
+          columnCount: 'auto',
         }}
-      </AutoSizer>
+      >
+        {images.map((image, index) => {
+          const isFocused = focusedImageIndex === index;
+          
+          return (
+            <ImageCard
+              key={image.id}
+              image={image}
+              onImageClick={onImageClick}
+              isSelected={selectedImages.has(image.id)}
+              isFocused={isFocused}
+              onImageLoad={handleImageLoad}
+              onContextMenu={handleContextMenu}
+              baseWidth={imageSize}
+            />
+          );
+        })}
+      </div>
 
       {contextMenu.visible && (
         <div
@@ -347,32 +346,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           </button>
         </div>
       )}
-    </div>
-  );
-};
-
-// Cell renderer for react-window grid
-const GridCell = ({ columnIndex, rowIndex, style, data }: any) => {
-  const { images, onImageClick, selectedImages, imageSize, columnCount, handleContextMenu, focusedImageIndex } = data;
-  const index = rowIndex * columnCount + columnIndex;
-  const image = images[index];
-  if (!image) return null;
-
-  const isFocused = focusedImageIndex === index;
-  const directoryPath = data.directories?.find((d: any) => d.id === image.directoryId)?.path;
-
-  return (
-    <div style={{ ...style, padding: GUTTER_SIZE / 2 }}>
-      <ImageCard
-        image={image}
-        onImageClick={onImageClick}
-        isSelected={selectedImages.has(image.id)}
-        isFocused={isFocused}
-        style={{ width: '100%' }}
-        onImageLoad={() => {}}
-        onContextMenu={handleContextMenu}
-        directoryPath={directoryPath}
-      />
     </div>
   );
 };

@@ -404,12 +404,12 @@ export default function App() {
       
       <ImagePreviewSidebar />
 
-      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${previewImage ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onOpenSettings={() => setIsSettingsModalOpen(true)}
         />
 
-        <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
+        <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
           {error && (
             <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
               <span>{error}</span>
