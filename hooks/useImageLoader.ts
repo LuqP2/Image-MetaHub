@@ -730,12 +730,13 @@ export function useImageLoader() {
 
                     setLoading(false);
                     const hydrateInBackground = async () => {
+                        // Update allowed paths BEFORE loading from cache to avoid security violations
+                        const allPaths = useImageStore.getState().directories.map(d => d.path);
+                        await window.electronAPI.updateAllowedPaths(allPaths);
+
                         for (const dir of directoriesToLoad) {
                             await loadDirectoryFromCache(dir);
                         }
-
-                        const allPaths = useImageStore.getState().directories.map(d => d.path);
-                        await window.electronAPI.updateAllowedPaths(allPaths);
 
                         const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
                         setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
