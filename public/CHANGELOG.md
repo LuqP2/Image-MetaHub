@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.5] - 2024-11-07
+## [0.9.5] - 2025-11-08
+
+### Added
+
+- **Configurable Indexing Concurrency**: Added "Parallel workers" control in Settings to allow users to tune metadata enrichment throughput. Auto-detects optimal default based on CPU cores (up to 8, configurable to 16).
+
+### Fixed
+
+- Resolved folder selection inconsistencies that hid images when expanding directories by introducing tri-state hierarchy rules and persistent IndexedDB-backed folder selection state.
+
+### Performance Improvements
+
+- **Optimized Indexing Phase B**: 
+  - Propagated file size, type, and birthtime details from Electron's directory listing through the entire indexing pipeline to eliminate per-file IPC calls for stat information during enrichment phase.
+  - Increased enrichment batch size from 128 to 256 to reduce cache flushes while maintaining UI responsiveness.
+  - Skip unnecessary Easy Diffusion sidecar reads when metadata is already detected from PNG chunks.
+  - Muted verbose debug logs (`[PNG DEBUG]`, `[FILE DEBUG]`, `[SwarmUI DEBUG]`) in production builds to reduce console overhead.
+  - These optimizations reduce Phase B overhead without affecting processing logic or making phase B optional.
 
 ### Added
 
