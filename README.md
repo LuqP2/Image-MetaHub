@@ -36,8 +36,10 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 - **Resizable Grid:** Adjust thumbnail sizes for optimal viewing on any display
 - **Command-Line Support:** Launch with a specified directory for automation workflows
 - **Developer Mode:** Access development server from local network devices
-- **Configurable Directory Scanning:** Choose whether to scan subfolders recursively or limit to selected folder only
+- **Persistent Directory Visibility:** Control which roots and subfolders contribute to the gallery using tri-state checkboxes
 - **Multi-Selection:** Use `Ctrl+Click` to select multiple images for bulk operations
+- **Tri-State Folder Selection:** Combine root folders with specific subfolders using inherited checkbox states that persist between sessions
+- **New Branding:** Refreshed welcome screen artwork and desktop icon for a more polished first impression
 
 **Performance & Large Collections**
 - **Optimized for Scale:** Efficiently handles 18,000+ images without performance issues
@@ -97,7 +99,7 @@ The dev server automatically binds to `0.0.0.0`, making it accessible from other
 
 ## Quick Start
 1. Launch the application and click "Change Folder" to select your AI-generated images directory
-2. Choose whether to scan subfolders recursively or limit to the selected folder only
+2. Subfolders are indexed automatically on first run; adjust directory visibility later from the folder sidebar if needed
 3. Wait for initial indexing (may take a few minutes for large collections)
 4. Hover over any thumbnail to see instant preview with metadata in the right sidebar
 5. Use the left sidebar to search and filter your images by metadata, models, or generation parameters
