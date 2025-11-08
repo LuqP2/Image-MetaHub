@@ -75,11 +75,12 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
 
   return (
     <div
-      className={`mb-2 break-inside-avoid bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative ${
+      className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
         isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
       } ${
         isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
       }`}
+      style={{ width: `${baseWidth}px`, height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
       onClick={(e) => onImageClick(image, e)}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
     >
@@ -102,11 +103,11 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         <img
           src={imageUrl}
           alt={image.name}
-          className="w-full h-auto block"
+          className="max-w-full max-h-full object-contain"
           loading="lazy"
         />
       ) : (
-        <div className="w-full h-48 animate-pulse bg-gray-700"></div>
+        <div className="w-full h-full animate-pulse bg-gray-700"></div>
       )}
       <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
         <p className="text-white text-xs truncate">{image.name}</p>
@@ -255,10 +256,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       onClick={() => gridRef.current?.focus()}
     >
       <div 
-        className="columns-1 gap-2"
+        className="flex flex-wrap gap-2"
         style={{
-          columnWidth: `${imageSize}px`,
-          columnCount: 'auto',
+          alignContent: 'flex-start',
         }}
       >
         {images.map((image, index) => {

@@ -231,22 +231,21 @@ interface ImageState {
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
-    // --- Helper function for recalculating all derived state ---
-    const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+    // --- Helper function to recalculate available filters from visible images ---
+    const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
         const models = new Set<string>();
         const loras = new Set<string>();
         const schedulers = new Set<string>();
         const dimensions = new Set<string>();
 
-        for (const image of newImages) {
+        for (const image of visibleImages) {
             image.models?.forEach(model => { if(model) models.add(model) });
             image.loras?.forEach(lora => { if(lora) loras.add(lora) });
             if (image.scheduler) schedulers.add(image.scheduler);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
 
-        const newState: Partial<ImageState> = {
-            images: newImages,
+        return {
             availableModels: Array.from(models).sort(),
             availableLoras: Array.from(loras).sort(),
             availableSchedulers: Array.from(schedulers).sort(),
@@ -257,10 +256,27 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return (aWidth * aHeight) - (bWidth * bHeight);
             }),
         };
+    };
+
+    // --- Helper function for recalculating all derived state ---
+    const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        const newState: Partial<ImageState> = {
+            images: newImages,
+        };
 
         const combinedState = { ...currentState, ...newState };
 
-        return { ...combinedState, ...filterAndSort(combinedState) };
+        // First, get filtered images based on folder selection
+        const filteredResult = filterAndSort(combinedState);
+        
+        // Then, recalculate available filters based on the filtered images (after folder selection)
+        const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
+
+        return {
+            ...combinedState,
+            ...filteredResult,
+            ...availableFilters,
+        };
     };
 
     // --- Helper function for basic filtering and sorting ---
@@ -579,12 +595,16 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 const newState = { ...state, folderSelection: selection };
                 const resultState = { ...newState, ...filterAndSort(newState) };
+                
+                // Recalculate available filters based on the new filtered images
+                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
+                const finalState = { ...resultState, ...availableFilters };
 
                 saveFolderSelection(mapToRecord(selection)).catch((error) => {
                     console.error('Failed to persist folder selection state', error);
                 });
 
-                return resultState;
+                return finalState;
             });
         },
 
