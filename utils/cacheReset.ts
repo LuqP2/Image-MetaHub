@@ -12,13 +12,13 @@ export async function resetAllCaches(): Promise<void> {
   console.log('🧹 Starting complete cache reset...');
 
   try {
-    // 1. Clear file-based caches in main process (NEW SYSTEM)
-    console.log('📁 Clearing file-based caches (metadata & thumbnails)...');
+    // 1. Clear Electron disk-based caches (metadata & thumbnails)
+    console.log('📁 Clearing Electron disk-based caches...');
     
     if (window.electronAPI) {
       // Clear metadata cache (JSON files)
       try {
-        const metadataResult = await window.electronAPI.clearMetadataCache?.();
+        const metadataResult = await window.electronAPI.clearMetadataCache();
         if (metadataResult?.success) {
           console.log('✅ Metadata cache cleared from disk');
         } else {
@@ -30,7 +30,7 @@ export async function resetAllCaches(): Promise<void> {
 
       // Clear thumbnail cache (webp files)
       try {
-        const thumbnailResult = await window.electronAPI.clearThumbnailCache?.();
+        const thumbnailResult = await window.electronAPI.clearThumbnailCache();
         if (thumbnailResult?.success) {
           console.log('✅ Thumbnail cache cleared from disk');
         } else {
@@ -40,11 +40,11 @@ export async function resetAllCaches(): Promise<void> {
         console.error('❌ Error clearing thumbnail cache:', error);
       }
     } else {
-      console.warn('⚠️ Electron API not available - skipping file cache cleanup');
+      console.warn('⚠️ Electron API not available - skipping disk cache cleanup');
     }
 
   } catch (error) {
-    console.error('❌ Error clearing file-based caches:', error);
+    console.error('❌ Error clearing disk-based caches:', error);
   }
 
   try {
