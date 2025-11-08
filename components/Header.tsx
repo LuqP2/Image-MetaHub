@@ -1,15 +1,11 @@
 import React from 'react';
-import { Settings, Plus, Bug, HelpCircle } from 'lucide-react';
+import { Settings, Bug } from 'lucide-react';
 
 interface HeaderProps {
-  onAddFolder: () => void;
   onOpenSettings: () => void;
-  onShowChangelog?: () => void;
-  isIndexing?: boolean;
-  isIndexingPaused?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, onShowChangelog, isIndexing = false, isIndexingPaused = false }) => {
+const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between gap-4">
@@ -18,19 +14,6 @@ const Header: React.FC<HeaderProps> = ({ onAddFolder, onOpenSettings, onShowChan
           <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.5</h1>
         </div>
         <div className="flex items-center gap-4">
-          <button
-            onClick={onAddFolder}
-            disabled={isIndexing || isIndexingPaused}
-            className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
-              isIndexing || isIndexingPaused
-                ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
-                : 'bg-accent hover:bg-blue-700 text-white hover:shadow-lg hover:shadow-accent/30'
-            }`}
-            title={isIndexing || isIndexingPaused ? "Cannot add folder during indexing" : "Add a folder to scan"}
-          >
-            <Plus size={18} />
-            Add Folder
-          </button>
           <a
             href="https://github.com/LuqP2/Image-MetaHub/issues/new"
             target="_blank"

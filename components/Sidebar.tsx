@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import SearchBar, { SearchField } from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
-import { ChevronLeft, ChevronRight, X, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronDown, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SidebarProps {
@@ -26,6 +26,8 @@ interface SidebarProps {
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onAddFolder?: () => void;
+  isIndexing?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -49,7 +51,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onClearAdvancedFilters,
   children,
   isCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  onAddFolder,
+  isIndexing = false
 }) => {
 
   const [expandedSections, setExpandedSections] = useState({
@@ -154,6 +158,25 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
+        {/* Add Folder Button - Subtle and discrete */}
+        {onAddFolder && (
+          <div className="px-3 py-2 border-b border-gray-700">
+            <button
+              onClick={onAddFolder}
+              disabled={isIndexing}
+              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                isIndexing
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed' 
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-white hover:shadow-md hover:shadow-accent/20'
+              }`}
+              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+            >
+              <Plus size={14} />
+              <span>Add Folder</span>
+            </button>
+          </div>
+        )}
+
         {/* Render children, which will be the DirectoryList */}
         {children}
 

@@ -384,6 +384,8 @@ export default function App() {
           onAdvancedFiltersChange={setAdvancedFilters}
           onClearAdvancedFilters={() => setAdvancedFilters({})}
           availableDimensions={availableDimensions}
+          onAddFolder={handleSelectFolder}
+          isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
         >
           <DirectoryList
             directories={directories}
@@ -403,10 +405,7 @@ export default function App() {
 
       <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : ''} ${previewImage ? 'mr-96' : ''} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
-          onAddFolder={handleSelectFolder}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
-          isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
-          isIndexingPaused={indexingState === 'paused'}
         />
 
         <main className="container mx-auto p-4 flex-1 flex flex-col min-h-0">
