@@ -7,10 +7,12 @@
   "files": [
     "dist/**/*",
     "electron.mjs",
-    "preload.js"
+    "preload.js",
+    "public/icon.ico",
+    "public/logo1.png"
   ],
   "win": {
-    "icon": "icon.ico",
+    "icon": "public/icon.ico",
     "target": [
       "nsis",
       "zip"
@@ -18,7 +20,7 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
   },
   "mac": {
-    "icon": "logo1.svg",
+    "icon": "public/logo1.png",
     "target": [
       {
         "target": "dmg",
@@ -33,7 +35,7 @@
     "identity": null
   },
   "linux": {
-    "icon": "logo1.svg",
+    "icon": "public/logo1.png",
     "target": [
       {
         "target": "AppImage",

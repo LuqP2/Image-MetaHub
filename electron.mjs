@@ -16,6 +16,16 @@ const __dirname = path.dirname(__filename);
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Get platform-specific icon
+function getIconPath() {
+  if (process.platform === 'win32') {
+    return path.join(__dirname, 'public', 'icon.ico');
+  } else {
+    // macOS and Linux prefer PNG
+    return path.join(__dirname, 'public', 'logo1.png');
+  }
+}
+
 let mainWindow;
 let skippedVersions = new Set();
 
@@ -411,7 +421,7 @@ function createWindow(startupDirectory = null) {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    icon: path.join(__dirname, 'icon.ico'),
+    icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
