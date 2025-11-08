@@ -128,19 +128,26 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 
 ## Roadmap
 
-**Short-Term**
-- Advanced range filters for Steps and CFG Scale
-- Virtual scrolling for extremely large collections
-- Configurable subfolder scanning
+**Completed ✅**
+- Advanced range filters for Steps, CFG Scale, Dimensions, and Creation Date
+- Virtual scrolling for large collections with ImageTable component
+- Configurable subfolder scanning with user preference persistence
+- Right Sidebar image preview with metadata display
+- Multi-Selection support with Ctrl+Click
+- Comprehensive hotkey system and keyboard navigation
+- Metadata export to JSON and readable TXT formats
+- Fullscreen image viewer with keyboard controls
+- File operations (Show in Folder, Delete, Rename in Desktop app)
 
 **Medium-Term**
-- Custom tagging system
-- Image comparison view
+- Custom tagging system for image organization
+- Image comparison view for side-by-side analysis
+- Batch operations on selected images
 
 **Long-Term**
 - Plugin architecture for extensibility
-- Image similarity search
-- Optional cloud sync for settings
+- Image similarity search powered by AI embeddings
+- Optional cloud sync for tags and collections
 
 ## License
 
