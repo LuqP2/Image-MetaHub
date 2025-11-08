@@ -304,6 +304,14 @@ export default function App() {
     }
   }, [searchQuery]);
 
+  // Reset page if current page exceeds available pages after filtering
+  useEffect(() => {
+    const totalPages = itemsPerPage === 'all' ? 1 : Math.ceil(filteredImages.length / itemsPerPage);
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [filteredImages.length, itemsPerPage, currentPage]);
+
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
     if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
