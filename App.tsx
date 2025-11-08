@@ -14,12 +14,11 @@ import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
-import ActionToolbar from './components/ActionToolbar';
 import { SearchField } from './components/SearchBar';
-import Pagination from './components/Pagination';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
+import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
@@ -435,22 +434,6 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              <div className="mb-4">
-                <ActionToolbar
-                  sortOrder={sortOrder}
-                  onSortOrderChange={imageStoreSetSortOrder}
-                  selectedCount={selectedImages.size}
-                  onClearSelection={clearSelection}
-                  onDeleteSelected={handleDeleteSelectedImages}
-                  viewMode={viewMode}
-                  onViewModeChange={toggleViewMode}
-                  filteredCount={filteredImages.length}
-                  totalCount={selectionTotalImages}
-                  directoryCount={selectionDirectoryCount}
-                  enrichmentProgress={enrichmentProgress}
-                />
-              </div>
-
               <div className="flex-1 min-h-0">
                 {viewMode === 'grid' ? (
                     <ImageGrid
@@ -467,13 +450,24 @@ export default function App() {
                 )}
               </div>
 
-              <Pagination
+              <Footer
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
                 totalItems={filteredImages.length}
+                sortOrder={sortOrder}
+                onSortOrderChange={imageStoreSetSortOrder}
+                selectedCount={selectedImages.size}
+                onClearSelection={clearSelection}
+                onDeleteSelected={handleDeleteSelectedImages}
+                viewMode={viewMode}
+                onViewModeChange={toggleViewMode}
+                filteredCount={filteredImages.length}
+                totalCount={selectionTotalImages}
+                directoryCount={selectionDirectoryCount}
+                enrichmentProgress={enrichmentProgress}
               />
             </>
           )}
