@@ -125,11 +125,14 @@ interface ImageGridProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
 }
 
 const GUTTER_SIZE = 8; // Space between images
 
-const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages }) => {
+const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -161,6 +164,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
   }, [previewImage, images, focusedImageIndex, setFocusedImageIndex]);
 
+  // Adjust focusedImageIndex when changing pages via arrow keys
+  useEffect(() => {
+    if (focusedImageIndex === -1 && images.length > 0) {
+      // Quando volta de página, vai para última imagem
+      setFocusedImageIndex(images.length - 1);
+      setPreviewImage(images[images.length - 1]);
+    }
+  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage]);
+
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -176,6 +188,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         if (nextIndex < images.length) {
           setFocusedImageIndex(nextIndex);
           setPreviewImage(images[nextIndex]);
+        } else if (currentPage < totalPages) {
+          // Chegou no final da página, vai pra próxima
+          onPageChange(currentPage + 1);
+          setFocusedImageIndex(0);
         }
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -183,7 +199,31 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         if (prevIndex >= 0) {
           setFocusedImageIndex(prevIndex);
           setPreviewImage(images[prevIndex]);
+        } else if (currentPage > 1) {
+          // Chegou no início da página, vai pra anterior
+          onPageChange(currentPage - 1);
+          setFocusedImageIndex(-1); // Será ajustado quando as imagens mudarem
         }
+      } else if (e.key === 'PageDown') {
+        e.preventDefault();
+        if (currentPage < totalPages) {
+          onPageChange(currentPage + 1);
+          setFocusedImageIndex(0);
+        }
+      } else if (e.key === 'PageUp') {
+        e.preventDefault();
+        if (currentPage > 1) {
+          onPageChange(currentPage - 1);
+          setFocusedImageIndex(0);
+        }
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        onPageChange(1);
+        setFocusedImageIndex(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        onPageChange(totalPages);
+        setFocusedImageIndex(0);
       } else if (e.key === 'Enter' && currentIndex >= 0 && currentIndex < images.length) {
         e.preventDefault();
         onImageClick(images[currentIndex], e as any);
@@ -192,7 +232,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick]);
+  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
 
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;

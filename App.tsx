@@ -442,6 +442,9 @@ export default function App() {
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
                       selectedImages={selectedImages}
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
                     />
                   ) : (
                     <ImageTable
