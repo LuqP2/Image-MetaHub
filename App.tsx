@@ -14,10 +14,10 @@ import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
-import StatusBar from './components/StatusBar';
 import ActionToolbar from './components/ActionToolbar';
 import { SearchField } from './components/SearchBar';
 import Pagination from './components/Pagination';
+import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
 import cacheManager from './services/cacheManager';
@@ -31,7 +31,7 @@ import ImageTable from './components/ImageTable'; // Verify this file exists or 
 export default function App() {
   
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, cancelIndexing } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State ---
@@ -61,6 +61,7 @@ export default function App() {
     advancedFilters,
     folderSelection,
     isFolderSelectionLoaded,
+    enrichmentProgress,
     setSearchQuery,
     setSelectedFilters,
     setAdvancedFilters,
@@ -72,9 +73,6 @@ export default function App() {
     getFolderSelectionState,
     initializeFolderSelection,
     resetState,
-    setIndexingState,
-    setLoading,
-    setProgress,
     setSuccess,
     setError,
     handleNavigateNext,
@@ -131,23 +129,6 @@ export default function App() {
       initializeFolderSelection();
     }
   }, [initializeFolderSelection, isFolderSelectionLoaded]);
-
-  // --- Indexing Control Functions ---
-  const handlePauseIndexing = useCallback(() => {
-    setIndexingState('paused');
-  }, [setIndexingState]);
-
-  const handleResumeIndexing = useCallback(() => {
-    setIndexingState('indexing');
-  }, [setIndexingState]);
-
-  const handleCancelIndexing = useCallback(() => {
-    // Abort any ongoing indexing operation
-    cancelIndexing();
-    setIndexingState('idle');
-    setLoading(false);
-    setProgress(null);
-  }, [cancelIndexing, setIndexingState, setLoading, setProgress]);
 
   // --- Effects ---
   useEffect(() => {
@@ -441,17 +422,13 @@ export default function App() {
               </button>
             </div>
           )}
+          
+          {/* Toast Notification */}
           {success && (
-            <div className="bg-green-900/50 text-green-300 p-3 rounded-lg my-4 flex items-center justify-between">
-              <span>{success}</span>
-              <button
-                onClick={() => setSuccess(null)}
-                className="ml-4 p-1 hover:bg-green-800/50 rounded transition-colors"
-                title="Dismiss message"
-              >
-                <X size={16} />
-              </button>
-            </div>
+            <Toast 
+              message={success} 
+              onDismiss={() => setSuccess(null)}
+            />
           )}
 
           {isLoading && progress && progress.total === 0 && <Loader progress={progress} />}
@@ -459,32 +436,21 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              {/* Show StatusBar only during indexing operations */}
-              {(indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed') && (
-                <StatusBar
+              <div className="mb-4">
+                <ActionToolbar
+                  sortOrder={sortOrder}
+                  onSortOrderChange={imageStoreSetSortOrder}
+                  selectedCount={selectedImages.size}
+                  onClearSelection={clearSelection}
+                  onDeleteSelected={handleDeleteSelectedImages}
+                  viewMode={viewMode}
+                  onViewModeChange={toggleViewMode}
                   filteredCount={filteredImages.length}
                   totalCount={selectionTotalImages}
                   directoryCount={selectionDirectoryCount}
-                  indexingState={indexingState}
-                  progress={progress}
-                  onPauseIndexing={handlePauseIndexing}
-                  onResumeIndexing={handleResumeIndexing}
-                  onCancelIndexing={handleCancelIndexing}
+                  enrichmentProgress={enrichmentProgress}
                 />
-              )}
-
-              <ActionToolbar
-                sortOrder={sortOrder}
-                onSortOrderChange={imageStoreSetSortOrder}
-                selectedCount={selectedImages.size}
-                onClearSelection={clearSelection}
-                onDeleteSelected={handleDeleteSelectedImages}
-                viewMode={viewMode}
-                onViewModeChange={toggleViewMode}
-                filteredCount={filteredImages.length}
-                totalCount={selectionTotalImages}
-                directoryCount={selectionDirectoryCount}
-              />
+              </div>
 
               <div className="flex-1 min-h-0">
                 {viewMode === 'grid' ? (
