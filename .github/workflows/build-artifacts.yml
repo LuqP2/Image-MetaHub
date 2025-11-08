@@ -1,0 +1,124 @@
+name: Build Artifacts (No Release)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'linux'
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
+          - all
+
+jobs:
+  build-linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.platform == 'linux' || github.event.inputs.platform == 'all' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux AppImage
+        run: |
+          echo "Building Linux AppImage..."
+          npm run build
+          npx electron-builder --linux --publish=never
+          echo "Linux build completed!"
+          ls -la dist-electron/
+
+      - name: Upload AppImage as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: |
+            dist-electron/*.AppImage
+            dist-electron/latest-linux.yml
+          retention-days: 30
+
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    if: ${{ github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'all' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer
+        shell: bash
+        run: |
+          echo "Building Windows installer..."
+          npm run build
+          npx electron-builder --win --publish=never
+          echo "Windows build completed!"
+          ls -la dist-electron/
+
+      - name: Upload Windows installer as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.exe.blockmap
+            dist-electron/latest.yml
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+    if: ${{ github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'all' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS App
+        run: |
+          echo "Building macOS app..."
+          npm run build
+          npx electron-builder --mac --publish=never
+          echo "macOS build completed!"
+          ls -la dist-electron/
+
+      - name: Upload macOS app as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.dmg.blockmap
+            dist-electron/latest-mac.yml
+          retention-days: 30
