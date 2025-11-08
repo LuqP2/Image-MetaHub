@@ -151,6 +151,7 @@ interface ImageState {
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
+  focusedImageIndex: number | null;
   scanSubfolders: boolean;
 
   // Filter & Sort State
@@ -216,6 +217,7 @@ interface ImageState {
   clearImageSelection: () => void;
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
+  setFocusedImageIndex: (index: number | null) => void;
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -493,6 +495,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
+        focusedImageIndex: null,
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -760,6 +763,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
+        setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
 
         toggleImageSelection: (imageId) => {
             set(state => {

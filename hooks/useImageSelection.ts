@@ -14,9 +14,16 @@ export function useImageSelection() {
         clearImageSelection,
         removeImage,
         setError,
+        setFocusedImageIndex,
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+        // Update focused index
+        const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
+        if (clickedIndex !== -1) {
+            setFocusedImageIndex(clickedIndex);
+        }
+
         if (event.shiftKey && selectedImage) {
             const lastSelectedIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
             const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
@@ -37,7 +44,7 @@ export function useImageSelection() {
             clearImageSelection();
             setSelectedImage(image);
         }
-    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage]);
+    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage, setFocusedImageIndex]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
         if (selectedImages.size === 0) return;
