@@ -385,6 +385,8 @@ export default function App() {
           availableDimensions={availableDimensions}
           onAddFolder={handleSelectFolder}
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
+          sortOrder={sortOrder}
+          onSortOrderChange={imageStoreSetSortOrder}
         >
           <DirectoryList
             directories={directories}
@@ -456,9 +458,6 @@ export default function App() {
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
-                totalItems={filteredImages.length}
-                sortOrder={sortOrder}
-                onSortOrderChange={imageStoreSetSortOrder}
                 selectedCount={selectedImages.size}
                 onClearSelection={clearSelection}
                 onDeleteSelected={handleDeleteSelectedImages}
