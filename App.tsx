@@ -397,6 +397,7 @@ export default function App() {
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
             setSelectedFilters({ models: [], loras: [], schedulers: [] });
+            setAdvancedFilters({});
           }}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
