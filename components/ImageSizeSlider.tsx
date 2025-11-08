@@ -9,6 +9,13 @@ const ImageSizeSlider: React.FC = () => {
     setImageSize(Number(event.target.value));
   };
 
+  const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -10 : 10; // Scroll down = zoom out, scroll up = zoom in
+    const newSize = Math.max(80, Math.min(320, imageSize + delta));
+    setImageSize(newSize);
+  };
+
   const handleZoomOut = () => {
     const newSize = Math.max(80, imageSize - 10);
     setImageSize(newSize);
@@ -35,7 +42,9 @@ const ImageSizeSlider: React.FC = () => {
         step="10"
         value={imageSize}
         onChange={handleSizeChange}
+        onWheel={handleWheel}
         className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+        title="Scroll to adjust zoom"
       />
       <button 
         onClick={handleZoomIn}

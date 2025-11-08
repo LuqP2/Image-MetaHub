@@ -162,6 +162,22 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
+        {/* Sort Order - Moved from footer for semantic consistency with filters */}
+        <div className="px-4 py-3 border-b border-gray-700">
+          <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
+          <select
+            id="sidebar-sort"
+            value={sortOrder}
+            onChange={(e) => onSortOrderChange(e.target.value)}
+            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="asc">A-Z</option>
+            <option value="desc">Z-A</option>
+          </select>
+        </div>
+
         {/* Add Folder Button - Subtle and discrete */}
         {onAddFolder && (
           <div className="px-3 py-2 border-b border-gray-700">
@@ -180,22 +196,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         )}
-
-        {/* Sort Order - Moved from footer for semantic consistency with filters */}
-        <div className="px-4 py-3 border-b border-gray-700">
-          <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
-          <select
-            id="sidebar-sort"
-            value={sortOrder}
-            onChange={(e) => onSortOrderChange(e.target.value)}
-            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="date-desc">Newest First</option>
-            <option value="date-asc">Oldest First</option>
-            <option value="asc">A-Z</option>
-            <option value="desc">Z-A</option>
-          </select>
-        </div>
 
         {/* Render children, which will be the DirectoryList */}
         {children}

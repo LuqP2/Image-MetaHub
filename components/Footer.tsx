@@ -66,13 +66,6 @@ const Footer: React.FC<FooterProps> = ({
     onItemsPerPageChange(value === 'all' ? 'all' : parseInt(value, 10));
   };
 
-  const formatNumber = (num: number): string => {
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}k`;
-    }
-    return num.toString();
-  };
-
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
   const showPageControls = totalPages > 1;
   const hasJob = enrichmentProgress && enrichmentProgress.total > 0;
@@ -82,16 +75,16 @@ const Footer: React.FC<FooterProps> = ({
       <div className="min-w-0 flex-1 flex items-center gap-2 text-xs">
         {filteredCount !== undefined && totalCount !== undefined && (
           <Token title="Images in current view / Total images">
-            <span className="font-semibold">{formatNumber(filteredCount)}</span>
+            <span className="font-semibold">{filteredCount.toLocaleString()}</span>
             <span className="text-gray-500 mx-0.5">/</span>
-            <span>{formatNumber(totalCount)}</span>
+            <span>{totalCount.toLocaleString()}</span>
           </Token>
         )}
         {directoryCount !== undefined && directoryCount > 0 && (
           <Token title="Number of folders"><span>{directoryCount}</span> {folderText}</Token>
         )}
         {hasJob && (
-          <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs">
+          <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs animate-fade-in">
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               <span className="font-medium">{enrichmentProgress.processed}/{enrichmentProgress.total}</span>
@@ -146,7 +139,7 @@ const Footer: React.FC<FooterProps> = ({
         {selectedCount > 0 && (
           <>
             <span className="text-gray-600">•</span>
-            <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30">
+            <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 animate-fade-in">
               <span className="text-blue-400 text-xs font-medium">{selectedCount} selected</span>
               <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300 text-xs underline-offset-2 hover:underline transition-colors">Clear</button>
               <button onClick={onDeleteSelected} className="text-red-400 hover:text-red-300 text-xs underline-offset-2 hover:underline transition-colors">Delete</button>
