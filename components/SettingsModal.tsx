@@ -18,9 +18,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const autoUpdate = useSettingsStore((state) => state.autoUpdate);
   const setCachePath = useSettingsStore((state) => state.setCachePath);
   const toggleAutoUpdate = useSettingsStore((state) => state.toggleAutoUpdate);
+  const indexingConcurrency = useSettingsStore((state) => state.indexingConcurrency);
+  const setIndexingConcurrency = useSettingsStore((state) => state.setIndexingConcurrency);
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
+  const hardwareConcurrency = typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
+    ? navigator.hardwareConcurrency
+    : null;
+  const maxConcurrency = hardwareConcurrency ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency))) : 16;
 
   useEffect(() => {
     if (isOpen) {
@@ -164,6 +170,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
+            </div>
+          </div>
+
+          {/* Indexing Concurrency */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Metadata Indexing</h3>
+            <div className="bg-gray-900 p-3 rounded-md space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm">Parallel workers</p>
+                  <p className="text-xs text-gray-400">
+                    Increase to speed up metadata enrichment on faster machines. Reduce if the UI becomes unresponsive.
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxConcurrency}
+                  value={indexingConcurrency}
+                  onChange={(event) => setIndexingConcurrency(Number(event.target.value) || 1)}
+                  className="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-right"
+                />
+              </div>
+              {hardwareConcurrency && (
+                <p className="text-xs text-gray-500">
+                  Detected {hardwareConcurrency} logical cores. The default is capped at 8 to stay responsive.
+                </p>
+              )}
             </div>
           </div>
 

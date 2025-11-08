@@ -34,7 +34,7 @@ export interface CacheEntry {
 }
 
 export interface CacheDiff {
-  newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string }[];
+  newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[];
   deletedFileIds: string[];
   cachedImages: IndexedImage[];
   needsFullRefresh: boolean;
@@ -336,7 +336,7 @@ class CacheManager {
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,
-    currentFiles: { name: string; lastModified: number; size?: number; type?: string }[],
+    currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[],
     scanSubfolders: boolean
   ): Promise<CacheDiff> {
     const cached = await this.getCachedData(directoryPath, scanSubfolders);
@@ -352,7 +352,7 @@ class CacheManager {
     }
     
     const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
-    const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string }[] = [];
+    const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
 
@@ -367,6 +367,7 @@ class CacheManager {
           lastModified: file.lastModified,
           size: file.size,
           type: file.type,
+          birthtimeMs: file.birthtimeMs,
         });
       // File has been modified since last scan
       } else if (cachedFile.lastModified < file.lastModified) {
@@ -375,6 +376,7 @@ class CacheManager {
           lastModified: file.lastModified,
           size: file.size,
           type: file.type,
+          birthtimeMs: file.birthtimeMs,
         });
       // File is unchanged, add it to the list of images to be loaded from cache
       } else {

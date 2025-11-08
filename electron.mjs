@@ -554,7 +554,8 @@ async function getFilesRecursively(directory, baseDirectory) {
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
                         lastModified: stats.birthtimeMs,
                         size: stats.size,
-                        type: fileType
+                        type: fileType,
+                        birthtimeMs: stats.birthtimeMs,
                     });
                 }
             }
@@ -1053,7 +1054,8 @@ function setupFileOperationHandlers() {
                 name: file.name, // name is already relative for top-level
                 lastModified: stats.birthtimeMs,
                 size: stats.size,
-                type: fileType
+                type: fileType,
+                birthtimeMs: stats.birthtimeMs,
               });
             }
           }

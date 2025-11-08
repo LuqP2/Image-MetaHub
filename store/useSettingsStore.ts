@@ -26,6 +26,18 @@ const electronStorage: StateStorage = {
 
 import { Keymap } from '../types';
 
+const detectDefaultIndexingConcurrency = (): number => {
+  if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
+    const cores = navigator.hardwareConcurrency;
+    if (Number.isFinite(cores) && cores > 0) {
+      return Math.max(1, Math.min(8, Math.floor(cores)));
+    }
+  }
+  return 4;
+};
+
+const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
+
 // Define the state shape
 interface SettingsState {
   // App settings
@@ -78,7 +90,7 @@ export const useSettingsStore = create<SettingsState>()(
       theme: 'system', // Default to system theme
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
-      indexingConcurrency: 4,
+      indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
 
       // Actions
@@ -91,7 +103,12 @@ export const useSettingsStore = create<SettingsState>()(
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
       setTheme: (theme) => set({ theme }),
       setLastViewedVersion: (version) => set({ lastViewedVersion: version }),
-      setIndexingConcurrency: (value) => set({ indexingConcurrency: Math.max(1, Math.floor(value)) }),
+      setIndexingConcurrency: (value) =>
+        set({
+          indexingConcurrency: Number.isFinite(value)
+            ? Math.max(1, Math.floor(value))
+            : 1,
+        }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
@@ -115,7 +132,7 @@ export const useSettingsStore = create<SettingsState>()(
         theme: 'system',
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
-        indexingConcurrency: 4,
+        indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
       }),
     }),

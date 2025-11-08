@@ -8,7 +8,7 @@ export interface ElectronAPI {
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
-    files?: { name: string; lastModified: number; size: number; type: string }[];
+    files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[];
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
