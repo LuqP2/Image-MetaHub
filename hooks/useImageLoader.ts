@@ -47,14 +47,14 @@ function clearFileDataCache() {
 }
 
 // Helper for getting files recursively in the browser
-async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number; size: number; type: string }[]> {
+async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[]> {
     const files = [];
     for await (const entry of (directoryHandle as any).values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
             if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
                 const file = await entry.getFile();
-                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image' });
+                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified });
             }
         } else if (entry.kind === 'directory') {
             try {
@@ -68,7 +68,7 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
     return files;
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number; size: number; type: string }[]> {
+async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[]> {
     if (getIsElectron()) {
         const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
         if (result.success && result.files) {
@@ -83,7 +83,7 @@ async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, dir
             for await (const entry of (directoryHandle as any).values()) {
                 if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
                     const file = await entry.getFile();
-                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image' });
+                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified });
                 }
             }
             return files;
@@ -123,9 +123,9 @@ async function getHandleFromPath(rootHandle: FileSystemDirectoryHandle, path: st
 async function getFileHandles(
     directoryHandle: FileSystemDirectoryHandle,
     directoryPath: string,
-    files: { name: string; lastModified: number; size?: number; type?: string }[]
-): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string}[]> {
-    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string}[] = [];
+    files: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[]
+): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number}[]> {
+    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number}[] = [];
 
     if (getIsElectron()) {
         // Process paths in smaller chunks to avoid overwhelming IPC
@@ -168,14 +168,14 @@ async function getFileHandles(
                     throw new Error(`Failed to read file: ${filePath}`);
                 }
             };
-            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type });
+            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs });
         }
     } else {
         // Browser implementation needs to handle sub-paths
         for (const file of files) {
             const handle = await getHandleFromPath(directoryHandle, file.name);
             if (handle) {
-                handles.push({ handle, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type });
+                handles.push({ handle, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs });
             }
         }
     }
@@ -479,7 +479,13 @@ export function useImageLoader() {
             // - Unchanged files (loaded from cache - super fast!)
             
             const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
-            const fileStatsMap = new Map(allCurrentFiles.map(file => [file.name, { size: file.size, type: file.type }]));
+            const fileStatsMap = new Map(
+                allCurrentFiles.map(file => [file.name, {
+                    size: file.size,
+                    type: file.type,
+                    birthtimeMs: file.birthtimeMs ?? file.lastModified,
+                }])
+            );
             const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
 
             let cacheWriter: IncrementalCacheWriter | null = null;
@@ -550,8 +556,9 @@ export function useImageLoader() {
 
             const sortedFilesWithStats = sortedFiles.map(file => ({
                 ...file,
-                size: fileStatsMap.get(file.name)?.size,
-                type: fileStatsMap.get(file.name)?.type,
+                size: fileStatsMap.get(file.name)?.size ?? file.size,
+                type: fileStatsMap.get(file.name)?.type ?? file.type,
+                birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
             }));
 
             const fileHandles = sortedFilesWithStats.length > 0

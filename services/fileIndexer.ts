@@ -13,6 +13,15 @@ import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 interface ElectronFileHandle extends FileSystemFileHandle {
   _filePath?: string;
 }
+
+interface CatalogFileEntry {
+  handle: FileSystemFileHandle;
+  path: string;
+  lastModified: number;
+  size?: number;
+  type?: string;
+  birthtimeMs?: number;
+}
 import { parseEasyDiffusionMetadata, parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 import { parseMidjourneyMetadata } from './parsers/midjourneyParser';
 import { parseNijiMetadata } from './parsers/nijiParser';
@@ -31,6 +40,10 @@ function sanitizeJson(jsonString: string): string {
 
 // Electron detection for optimized batch reading
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+const isProduction = Boolean(
+  (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.NODE_ENV === 'production') ||
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.PROD)
+);
 
 // Helper function to chunk array into smaller arrays
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -378,20 +391,24 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
   
-  console.log('[FILE DEBUG] Processing file:', {
-    name: file.name,
-    size: file.size,
-    isPNG: view.getUint32(0) === 0x89504E47,
-    isJPEG: view.getUint16(0) === 0xFFD8
-  });
+  if (!isProduction) {
+    console.log('[FILE DEBUG] Processing file:', {
+      name: file.name,
+      size: file.size,
+      isPNG: view.getUint32(0) === 0x89504E47,
+      isJPEG: view.getUint16(0) === 0xFFD8,
+    });
+  }
   
   if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
     const result = await parsePNGMetadata(buffer);
-    console.log('[FILE DEBUG] PNG metadata result:', {
-      name: file.name,
-      hasResult: !!result,
-      resultType: result ? Object.keys(result)[0] : 'none'
-    });
+    if (!isProduction) {
+      console.log('[FILE DEBUG] PNG metadata result:', {
+        name: file.name,
+        hasResult: !!result,
+        resultType: result ? Object.keys(result)[0] : 'none',
+      });
+    }
     return result;
   }
   if (view.getUint16(0) === 0xFFD8) {
@@ -405,7 +422,7 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
  * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
  */
 async function processSingleFileOptimized(
-  fileEntry: { handle: FileSystemFileHandle, path: string },
+  fileEntry: CatalogFileEntry,
   directoryId: string,
   fileData?: ArrayBuffer
 ): Promise<IndexedImage | null> {
@@ -434,7 +451,7 @@ async function processSingleFileOptimized(
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
-    if (!rawMetadata || (!isEasyDiffusionMetadata(rawMetadata) && !isEasyDiffusionJson(rawMetadata))) {
+    if (!rawMetadata) {
       const sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path);
       if (sidecarJson) {
         rawMetadata = sidecarJson;
@@ -450,12 +467,14 @@ async function processSingleFileOptimized(
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
   // DEBUG: Log raw metadata for SwarmUI detection
-  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string' && 
+  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string' &&
       rawMetadata.parameters.includes('sui_image_params')) {
-    console.log('[SwarmUI DEBUG] Found sui_image_params in parameters:', {
-      fileName: fileEntry.handle.name,
-      parametersPreview: rawMetadata.parameters.substring(0, 200)
-    });
+    if (!isProduction) {
+      console.log('[SwarmUI DEBUG] Found sui_image_params in parameters:', {
+        fileName: fileEntry.handle.name,
+        parametersPreview: rawMetadata.parameters.substring(0, 200),
+      });
+    }
   }
   
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
@@ -500,11 +519,15 @@ if (rawMetadata) {
       try {
         const parsedParams = JSON.parse(params);
         if (parsedParams.sui_image_params) {
-          console.log('[SwarmUI PNG] Detected SwarmUI metadata in parameters field:', fileEntry.handle.name);
+          if (!isProduction) {
+            console.log('[SwarmUI PNG] Detected SwarmUI metadata in parameters field:', fileEntry.handle.name);
+          }
           normalizedMetadata = parseSwarmUIMetadata(parsedParams as SwarmUIMetadata);
         }
       } catch (error) {
-        console.warn('[SwarmUI PNG] Failed to parse SwarmUI JSON:', error);
+        if (!isProduction) {
+          console.warn('[SwarmUI PNG] Failed to parse SwarmUI JSON:', error);
+        }
         // Not valid SwarmUI JSON, continue with other checks
       }
     }
@@ -597,6 +620,10 @@ if (rawMetadata) {
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
 // deve permanecer como está
 // ==============================================================================
+    const fallbackType = fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const normalizedFileType = fileEntry.type ?? (file.type || fallbackType);
+    const normalizedFileSize = fileEntry.size ?? file.size;
+
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {
       try {
@@ -622,23 +649,7 @@ if (rawMetadata) {
     }
 
     // Determine the best date for sorting (generation date vs file date)
-    let sortDate = file.lastModified;
-
-    // For Electron files, try to get creation date
-    if (isElectron && (fileEntry.handle as ElectronFileHandle)._filePath) {
-      try {
-        const filePath = (fileEntry.handle as ElectronFileHandle)._filePath!;
-        const stats = await (window as any).electronAPI.getFileStats(filePath);
-        if (stats && stats.success && stats.stats && stats.stats.birthtimeMs) {
-          // Use creation date for all files - this is more accurate for sorting
-          // AI-generated images should be sorted by when they were created, not modified
-          sortDate = stats.stats.birthtimeMs;
-        }
-      } catch (error) {
-        // Fall back to lastModified if we can't get creation date
-        console.warn('Could not get file creation date, using lastModified:', error);
-      }
-    }
+    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? file.lastModified;
 
     return {
       id: `${directoryId}::${fileEntry.path}`,
@@ -660,6 +671,8 @@ if (rawMetadata) {
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      fileSize: normalizedFileSize,
+      fileType: normalizedFileType,
     } as IndexedImage;
   } catch (error) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
@@ -672,14 +685,6 @@ if (rawMetadata) {
  * Invokes a callback with each batch of processed images.
  * OPTIMIZED: Uses batch file reading in Electron to reduce IPC overhead.
  */
-interface CatalogFileEntry {
-  handle: FileSystemFileHandle;
-  path: string;
-  lastModified: number;
-  size?: number;
-  type?: string;
-}
-
 interface CatalogEntryState {
   image: IndexedImage;
   chunkIndex: number;
@@ -701,7 +706,7 @@ interface ProcessFilesOptions {
   concurrency?: number;
   flushChunkSize?: number;
   preloadedImages?: IndexedImage[];
-  fileStats?: Map<string, { size?: number; type?: string }>;
+  fileStats?: Map<string, { size?: number; type?: string; birthtimeMs?: number }>;
   onEnrichmentBatch?: (batch: IndexedImage[]) => void;
   enrichmentBatchSize?: number;
   onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
@@ -753,8 +758,8 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
-  const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string }>();
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 256;
+  const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
 
   const phaseAStats: PhaseTelemetry = {
     startTime: performance.now(),
@@ -897,18 +902,19 @@ export async function processFiles(
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
     const inferredType = entry.type ?? stat?.type ?? (entry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
     const catalogMetadata = {
       phase: 'catalog',
       fileSize,
       fileType: inferredType,
-      lastModified: entry.lastModified,
+      lastModified: sortDate,
     } as any;
 
     const metadataString = JSON.stringify({
       phase: 'catalog',
       fileSize,
       fileType: inferredType,
-      lastModified: entry.lastModified,
+      lastModified: sortDate,
     });
 
     return {
@@ -921,7 +927,7 @@ export async function processFiles(
       directoryName,
       metadata: catalogMetadata,
       metadataString,
-      lastModified: entry.lastModified,
+      lastModified: sortDate,
       models: [],
       loras: [],
       scheduler: '',
