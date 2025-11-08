@@ -7,21 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.5] - 2025-11-07
-
-### Fixed
-
-- Resolved folder selection inconsistencies that hid images when expanding directories by introducing tri-state hierarchy rules and persistent IndexedDB-backed folder selection state.
+## [0.9.5] - 2024-11-07
 
 ### Added
 
-- **Custom Logo and Icon**: Updated application icon and branding with custom logo (logo1.svg) and icon (icon.ico).
-- **Default Subfolder Scanning**: Subfolder scanning is now enabled by default for a better out-of-box experience.
+- **Refined Folder Tree**: Implemented tri-state folder checkboxes with inherited selection rules, making it easy to combine root folders with individual subfolders.
+- **Persistent Folder Visibility**: Folder inclusion state now survives restarts through IndexedDB-backed storage, ensuring directory preferences stick between sessions.
+- **Updated Branding**: Replaced the stock assets with the new `logo1.svg` splash illustration and matching application icon for Windows builds.
 
 ### Changed
 
-- **Version Display**: Updated version number to 0.9.5 across all UI elements (Header, Window Title, About dialog, Status Bar, Folder Selector).
-- **Simplified UI**: Removed "Scan Subfolders" checkbox from the initial folder selector (now always enabled by default).
+- **Default Subfolder Scanning**: Recursive scanning is now enabled by default and enforced on first-run to provide a complete library immediately.
+- **Simplified Folder Selector**: Removed the initial “Scan Subfolders” toggle—subfolder indexing is always on and folder visibility is now managed directly from the sidebar tree.
+- **Unified Version Display**: Updated all visible version strings (header, welcome screen, Electron window title, CLI, and status bar) to `0.9.5`.
+
+### Fixed
+
+- Addressed directory selection regressions where newly expanded subfolders could hide their images until the view was refreshed.
 
 ## [0.9.4] - 2025-10-20
 
