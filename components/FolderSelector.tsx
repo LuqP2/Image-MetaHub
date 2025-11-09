@@ -20,7 +20,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
   <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub v0.9.5</h2>
   <p className="text-xs text-gray-500 mb-4">v0.9.5</p>
       <p className="text-gray-400 max-w-md mb-6">
-        To get started, please select the root folder where your AI generated images are stored. The application will scan for images and their metadata locally.
+        Select a folder to get started. The app will automatically scan <strong className="text-gray-200">all subfolders</strong> and display images from the entire directory tree.
       </p>
       {/* Hidden checkbox - always enabled for scanning subfolders by default */}
       <div className="hidden">
@@ -39,7 +39,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
         Select Image Folder
       </button>
        <p className="text-xs text-gray-500 mt-6 max-w-md">
-        Note: All processing happens entirely within your browser. Your images and data never leave your computer. This requires a modern browser (like Chrome or Edge) that supports the File System Access API.
+        All processing happens locally in your browser. Your images never leave your computer.
       </p>
     </div>
   );

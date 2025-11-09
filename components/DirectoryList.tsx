@@ -59,6 +59,7 @@ export default function DirectoryList({
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [autoMarkedNodes, setAutoMarkedNodes] = useState<Set<string>>(new Set());
   const [isExpanded, setIsExpanded] = useState(true);
+  const [autoExpandedDirs, setAutoExpandedDirs] = useState<Set<string>>(new Set());
 
   const loadSubfolders = useCallback(async (
     nodeKey: string,
@@ -125,6 +126,26 @@ export default function DirectoryList({
       });
     }
   }, [autoMarkedNodes, getSelectionState, onUpdateSelection, scanSubfolders]);
+
+  // Auto-expand and load subfolders for newly added directories
+  useEffect(() => {
+    if (!scanSubfolders || !directories.length) return;
+
+    directories.forEach(dir => {
+      const rootKey = makeNodeKey(dir.id, '');
+      
+      // Only auto-expand if not already expanded/loading and not previously auto-expanded
+      if (!expandedNodes.has(rootKey) && !loadingNodes.has(rootKey) && !autoExpandedDirs.has(dir.id)) {
+        setAutoExpandedDirs(prev => new Set(prev).add(dir.id));
+        setExpandedNodes(prev => new Set(prev).add(rootKey));
+        
+        // Load subfolders if not already cached
+        if (!subfolderCache.has(rootKey)) {
+          void loadSubfolders(rootKey, dir.path, dir);
+        }
+      }
+    });
+  }, [directories, scanSubfolders, expandedNodes, loadingNodes, subfolderCache, autoExpandedDirs, loadSubfolders]);
 
   const handleToggleNode = useCallback((nodeKey: string, nodePath: string, rootDirectory: Directory) => {
     let shouldLoad = false;

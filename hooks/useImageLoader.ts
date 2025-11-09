@@ -647,6 +647,34 @@ export function useImageLoader() {
     }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
 
 
+    // Helper function to detect if a path is a root disk
+    const isRootDisk = (path: string): boolean => {
+        // Windows root: C:\, D:\, E:\, etc.
+        if (/^[A-Z]:\\?$/i.test(path)) return true;
+        
+        // Unix/Linux root: /
+        if (path === '/' || path === '') return true;
+        
+        // macOS volumes: /Volumes, /System, /Library, /Users at root level
+        if (/^\/(Volumes|System|Library|Users|Applications)$/i.test(path)) return true;
+        
+        return false;
+    };
+
+    // Show confirmation dialog for root disk scanning
+    const confirmRootDiskScan = async (path: string): Promise<boolean> => {
+        const message = `⚠️ WARNING: Root Disk Detected\n\n` +
+            `You are attempting to scan "${path}" which appears to be a root disk or system directory.\n\n` +
+            `This could:\n` +
+            `• Take hours or days to complete\n` +
+            `• Freeze or crash the application\n` +
+            `• Index thousands of unrelated files\n` +
+            `• Use significant system resources\n\n` +
+            `Are you absolutely sure you want to continue?`;
+        
+        return window.confirm(message);
+    };
+
     const handleSelectFolder = useCallback(async () => {
         try {
             let handle: FileSystemDirectoryHandle;
@@ -663,6 +691,14 @@ export function useImageLoader() {
                 handle = await window.showDirectoryPicker();
                 path = handle.name; // Path is just the name in the browser version for simplicity
                 name = handle.name;
+            }
+
+            // Check if user is trying to scan a root disk
+            if (isRootDisk(path)) {
+                const confirmed = await confirmRootDiskScan(path);
+                if (!confirmed) {
+                    return; // User cancelled the dangerous operation
+                }
             }
 
             const directoryId = path; // Use path as a unique ID
