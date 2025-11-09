@@ -95,7 +95,14 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
-      setItemsPerPage: (count) => set({ itemsPerPage: count }),
+      setItemsPerPage: (count) => {
+        // Migrate old values: 500 or 'all' -> 100
+        let validCount = count;
+        if (count === 'all' || count === 500) {
+          validCount = 100;
+        }
+        set({ itemsPerPage: validCount });
+      },
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
       setImageSize: (size) => set({ imageSize: size }),
       setCachePath: (path) => set({ cachePath: path }),
@@ -139,6 +146,12 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: 'image-metahub-settings',
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
+      onRehydrateStorage: () => (state) => {
+        // Migration: Fix invalid itemsPerPage values from older versions
+        if (state && (state.itemsPerPage === 'all' || state.itemsPerPage === 500)) {
+          state.itemsPerPage = 100;
+        }
+      },
     }
   )
 );
