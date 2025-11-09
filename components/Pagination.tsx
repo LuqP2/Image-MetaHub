@@ -5,8 +5,8 @@ interface PaginationProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
-  itemsPerPage: number | 'all';
-  onItemsPerPageChange: (items: number | 'all') => void;
+  itemsPerPage: number;
+  onItemsPerPageChange: (items: number) => void;
   totalItems: number;
 }
 
@@ -37,7 +37,7 @@ const Pagination: React.FC<PaginationProps> = ({
 
   const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    onItemsPerPageChange(value === 'all' ? 'all' : parseInt(value, 10));
+    onItemsPerPageChange(parseInt(value, 10));
   };
 
   const showPageControls = totalPages > 1;

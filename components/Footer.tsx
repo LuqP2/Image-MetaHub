@@ -6,8 +6,8 @@ interface FooterProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
-  itemsPerPage: number | 'all';
-  onItemsPerPageChange: (items: number | 'all') => void;
+  itemsPerPage: number;
+  onItemsPerPageChange: (items: number) => void;
   selectedCount: number;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
@@ -63,7 +63,7 @@ const Footer: React.FC<FooterProps> = ({
 
   const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    onItemsPerPageChange(value === 'all' ? 'all' : parseInt(value, 10));
+    onItemsPerPageChange(parseInt(value, 10));
   };
 
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
@@ -103,8 +103,6 @@ const Footer: React.FC<FooterProps> = ({
             <option value={20}>20</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
-            <option value={500}>500</option>
-            <option value="all">All</option>
           </select>
         </div>
         {showPageControls && (

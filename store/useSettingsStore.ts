@@ -42,7 +42,7 @@ const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
 interface SettingsState {
   // App settings
   sortOrder: 'asc' | 'desc';
-  itemsPerPage: number | 'all';
+  itemsPerPage: number;
   scanSubfolders: boolean;
   imageSize: number;
   cachePath: string | null;
@@ -56,7 +56,7 @@ interface SettingsState {
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
-  setItemsPerPage: (count: number | 'all') => void;
+  setItemsPerPage: (count: number) => void;
   toggleScanSubfolders: () => void;
   setImageSize: (size: number) => void;
   setCachePath: (path: string) => void;
@@ -96,11 +96,8 @@ export const useSettingsStore = create<SettingsState>()(
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
       setItemsPerPage: (count) => {
-        // Migrate old values: 500 or 'all' -> 100
-        let validCount = count;
-        if (count === 'all' || count === 500) {
-          validCount = 100;
-        }
+        // Ensure valid number, default to 100 for invalid values
+        const validCount = Number.isFinite(count) && count > 0 ? count : 100;
         set({ itemsPerPage: validCount });
       },
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
@@ -148,7 +145,7 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
       onRehydrateStorage: () => (state) => {
         // Migration: Fix invalid itemsPerPage values from older versions
-        if (state && (state.itemsPerPage === 'all' || state.itemsPerPage === 500)) {
+        if (state && (typeof state.itemsPerPage !== 'number' || state.itemsPerPage <= 0 || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
         }
       },
