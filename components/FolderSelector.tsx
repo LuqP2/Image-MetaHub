@@ -16,7 +16,7 @@ const FolderSelector: React.FC<FolderSelectorProps> = ({ onSelectFolder }) => {
 
   return (
     <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 border-2 border-dashed border-gray-700 rounded-xl bg-gray-800/50">
-      <img src="/logo1.png" alt="Image MetaHub Logo" className="h-64 w-64 mb-4 rounded-lg shadow-lg" />
+      <img src="logo1.png" alt="Image MetaHub Logo" className="h-64 w-64 mb-4 rounded-lg shadow-lg" />
   <h2 className="text-2xl font-semibold mb-2 text-gray-100">Welcome to Image MetaHub v0.9.5</h2>
   <p className="text-xs text-gray-500 mb-4">v0.9.5</p>
       <p className="text-gray-400 max-w-md mb-6">
