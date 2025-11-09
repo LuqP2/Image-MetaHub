@@ -130,7 +130,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value === '') {
-                        // If both are empty, remove the filter
                         if (!localFilters.steps?.max) {
                           updateFilter('steps', null);
                         } else {
@@ -138,8 +137,22 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         }
                       } else {
                         const min = parseInt(value);
+                        if (isNaN(min) || min < 0) return;
                         const max = localFilters.steps?.max ?? 100;
-                        updateFilter('steps', { min: Math.max(0, min), max: Math.max(min + 1, max) });
+                        updateFilter('steps', { min, max: Math.max(min, max) });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value < 0) {
+                        e.target.value = '0';
+                        const max = localFilters.steps?.max ?? 100;
+                        updateFilter('steps', { min: 0, max });
                       }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
@@ -153,7 +166,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value === '') {
-                        // If both are empty, remove the filter
                         if (!localFilters.steps?.min) {
                           updateFilter('steps', null);
                         } else {
@@ -161,8 +173,22 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         }
                       } else {
                         const max = parseInt(value);
+                        if (isNaN(max) || max < 0) return;
                         const min = localFilters.steps?.min ?? 0;
-                        updateFilter('steps', { min: Math.min(min, max - 1), max: Math.min(100, max) });
+                        updateFilter('steps', { min: Math.min(min, max), max });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value < 0) {
+                        e.target.value = '0';
+                        const min = localFilters.steps?.min ?? 0;
+                        updateFilter('steps', { min, max: 0 });
                       }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
@@ -186,7 +212,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value === '') {
-                        // If both are empty, remove the filter
                         if (!localFilters.cfg?.max) {
                           updateFilter('cfg', null);
                         } else {
@@ -194,8 +219,22 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         }
                       } else {
                         const min = parseFloat(value);
+                        if (isNaN(min) || min < 0) return;
                         const max = localFilters.cfg?.max ?? 20;
-                        updateFilter('cfg', { min: Math.max(0, min), max: Math.max(min + 0.1, max) });
+                        updateFilter('cfg', { min, max: Math.max(min, max) });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (!isNaN(value) && value < 0) {
+                        e.target.value = '0';
+                        const max = localFilters.cfg?.max ?? 20;
+                        updateFilter('cfg', { min: 0, max });
                       }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
@@ -210,7 +249,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     onChange={(e) => {
                       const value = e.target.value;
                       if (value === '') {
-                        // If both are empty, remove the filter
                         if (!localFilters.cfg?.min) {
                           updateFilter('cfg', null);
                         } else {
@@ -218,8 +256,22 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         }
                       } else {
                         const max = parseFloat(value);
+                        if (isNaN(max) || max < 0) return;
                         const min = localFilters.cfg?.min ?? 0;
-                        updateFilter('cfg', { min: Math.min(min, max - 0.1), max: Math.min(20, max) });
+                        updateFilter('cfg', { min: Math.min(min, max), max });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (!isNaN(value) && value < 0) {
+                        e.target.value = '0';
+                        const min = localFilters.cfg?.min ?? 0;
+                        updateFilter('cfg', { min, max: 0 });
                       }
                     }}
                     className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
