@@ -153,6 +153,6 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MPL 2.0](LICENSE).
 
 This is an independent project and is not affiliated with Invoke AI, Inc.
