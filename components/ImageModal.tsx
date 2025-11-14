@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC } from 'react';
+import React, { useEffect, useState, FC, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
@@ -68,7 +68,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isElectronFullscreen, setIsElectronFullscreen] = useState(false);
-  const [isImageFullscreen, setIsImageFullscreen] = useState(shouldStartFullscreen);
+  const [isImageViewerFullscreen, setIsImageViewerFullscreen] = useState(shouldStartFullscreen); // Image covers entire screen
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
@@ -402,8 +402,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         event.stopPropagation();
 
         if (event.altKey) {
-          // Alt+Enter = Toggle image fullscreen (hide/show metadata panel)
-          setIsImageFullscreen(prev => !prev);
+          // Alt+Enter = Toggle image viewer fullscreen (image covers entire screen)
+          setIsImageViewerFullscreen(prev => !prev);
         } else {
           // Regular Enter = Close modal and return to grid
           onClose();
@@ -412,9 +412,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       if (event.key === 'Escape') {
-        // If in image fullscreen mode, exit it first
-        if (isImageFullscreen) {
-          setIsImageFullscreen(false);
+        // If in image viewer fullscreen mode, exit it first
+        if (isImageViewerFullscreen) {
+          setIsImageViewerFullscreen(false);
         } else if (isFullscreen) {
           exitFullscreen();
         } else if (isElectronFullscreen && window.electronAPI?.toggleFullscreen) {
@@ -475,6 +475,64 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
+  // Image Viewer Fullscreen Mode - Image covers entire screen
+  if (isImageViewerFullscreen) {
+    return (
+      <div
+        className="fixed inset-0 bg-black z-[100] flex items-center justify-center"
+        onClick={() => setIsImageViewerFullscreen(false)}
+      >
+        <div className="relative w-full h-full flex items-center justify-center group">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={image.name}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div className="w-full h-full animate-pulse bg-gray-800"></div>
+          )}
+
+          {/* Navigation Buttons */}
+          {onNavigatePrevious && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onNavigatePrevious(); }}
+              className="absolute left-6 top-1/2 transform -translate-y-1/2 bg-black/70 hover:bg-black/90 text-white rounded-full p-4 opacity-0 group-hover:opacity-100 transition-opacity text-2xl"
+            >
+              ←
+            </button>
+          )}
+          {onNavigateNext && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onNavigateNext(); }}
+              className="absolute right-6 top-1/2 transform -translate-y-1/2 bg-black/70 hover:bg-black/90 text-white rounded-full p-4 opacity-0 group-hover:opacity-100 transition-opacity text-2xl"
+            >
+              →
+            </button>
+          )}
+
+          {/* Info and Controls */}
+          <div className="absolute top-6 left-6 bg-black/70 text-white px-4 py-2 rounded-lg text-base font-medium backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+            {currentIndex + 1} / {totalImages}
+          </div>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); setIsImageViewerFullscreen(false); }}
+            className="absolute top-6 right-6 bg-black/70 hover:bg-black/90 text-white rounded-lg px-4 py-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            Exit Fullscreen (Esc)
+          </button>
+
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+            {image.name}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal Modal Mode
   return (
     <div
       role="dialog"
@@ -502,8 +560,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{(isFullscreen || isElectronFullscreen) ? 'Exit' : 'Fullscreen'}</button>
         </div>
 
-        {/* Metadata Panel - Hidden in image fullscreen mode */}
-        <div className={`w-full ${isImageFullscreen || (isFullscreen && !isElectronFullscreen) ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        {/* Metadata Panel */}
+        <div className={`w-full ${(isFullscreen && !isElectronFullscreen) ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
           <div>
             {isRenaming ? (
               <div className="flex gap-2">

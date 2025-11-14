@@ -30,8 +30,8 @@ These shortcuts work when browsing the image grid:
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `Arrow Keys` | Navigate Images | Move focus between images |
-| `Enter` | Open Image Modal | Open focused image in modal with metadata panel |
-| `Alt+Enter` | Open Image Fullscreen | Open focused image with metadata panel hidden (fullscreen view) |
+| `Enter` | Open Image Modal | Open focused image in modal view |
+| `Alt+Enter` | Open Image Fullscreen | Open focused image in fullscreen viewer (image covers entire screen) |
 | `PageDown` | Next Page | Go to next page of results |
 | `PageUp` | Previous Page | Go to previous page |
 | `Home` | First Page | Jump to first page |
@@ -45,11 +45,11 @@ These shortcuts work when viewing an image in the modal:
 |----------|--------|-------------|
 | `←/→` | Previous/Next Image | Navigate through images |
 | `Enter` | Close Modal | Close modal and return to grid |
-| `Alt+Enter` | Toggle Image Fullscreen | Hide/show metadata panel for fullscreen image viewing |
-| `Esc` | Exit or Close | Exit image fullscreen mode or close modal |
+| `Alt+Enter` | Toggle Image Viewer | Switch between modal view and fullscreen image viewer |
+| `Esc` | Exit or Close | Exit fullscreen viewer or close modal |
 | `Ctrl/Cmd+C` | Copy Image | Copy image to clipboard |
 
-**Note**: "Fullscreen" in this context means viewing the image without the metadata panel, not system fullscreen (F11).
+**Note**: The fullscreen image viewer displays the image covering the entire screen (like a lightbox), not system fullscreen (F11).
 
 ## Command Palette
 
