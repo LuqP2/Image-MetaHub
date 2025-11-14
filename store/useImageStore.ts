@@ -116,10 +116,10 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
         segments.push(image.negativePrompt.toLowerCase());
     }
     if (image.models?.length) {
-        segments.push(image.models.map(model => model.toLowerCase()).join(' '));
+        segments.push(image.models.filter(model => typeof model === 'string').map(model => model.toLowerCase()).join(' '));
     }
     if (image.loras?.length) {
-        segments.push(image.loras.map(lora => lora.toLowerCase()).join(' '));
+        segments.push(image.loras.filter(lora => typeof lora === 'string').map(lora => lora.toLowerCase()).join(' '));
     }
     if (image.scheduler) {
         segments.push(image.scheduler.toLowerCase());
@@ -239,8 +239,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         const dimensions = new Set<string>();
 
         for (const image of visibleImages) {
-            image.models?.forEach(model => { if(model) models.add(model) });
-            image.loras?.forEach(lora => { if(lora) loras.add(lora) });
+            image.models?.forEach(model => { if(typeof model === 'string' && model) models.add(model) });
+            image.loras?.forEach(lora => { if(typeof lora === 'string' && lora) loras.add(lora) });
             if (image.scheduler) schedulers.add(image.scheduler);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
@@ -375,13 +375,13 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         if (selectedModels.length > 0) {
             results = results.filter(image =>
-                selectedModels.some(sm => image.models.includes(sm))
+                image.models?.length > 0 && selectedModels.some(sm => image.models.includes(sm))
             );
         }
 
         if (selectedLoras.length > 0) {
             results = results.filter(image =>
-                selectedLoras.some(sl => image.loras.includes(sl))
+                image.loras?.length > 0 && selectedLoras.some(sl => image.loras.includes(sl))
             );
         }
 
