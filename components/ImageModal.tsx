@@ -382,6 +382,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (isRenaming) return;
+
+      // Handle Alt+Enter to close modal when entering fullscreen (Issue #26)
+      if (event.key === 'Enter' && event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        // Close the modal - fullscreen will be handled by Electron or browser
+        onClose();
+        return;
+      }
+
       if (event.key === 'Escape') {
         if (isFullscreen) {
           exitFullscreen();
@@ -445,6 +455,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
       onClick={onClose}
     >

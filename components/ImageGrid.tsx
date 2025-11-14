@@ -176,8 +176,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!gridRef.current?.contains(document.activeElement)) {
+      // Check if we're in a modal, command palette, or text input
+      const target = e.target as HTMLElement;
+      const isInModal = document.querySelector('[role="dialog"]') !== null;
+      const isInCommandPalette = document.querySelector('.command-palette, [data-command-palette]') !== null;
+      const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // Block navigation if in modal/command palette or typing (except for Enter which should still work)
+      if (isInModal || isInCommandPalette) {
         return;
+      }
+
+      // For arrow keys and page navigation, require grid focus
+      const needsFocus = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key);
+      if (needsFocus && !gridRef.current?.contains(document.activeElement)) {
+        return;
+      }
+
+      // Enter key works globally when an image is focused (fixes Issue #21)
+      if (e.key === 'Enter' && !isTyping) {
+        const currentIndex = focusedImageIndex ?? -1;
+        if (currentIndex >= 0 && currentIndex < images.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          onImageClick(images[currentIndex], e as any);
+          return;
+        }
       }
 
       const currentIndex = focusedImageIndex ?? -1;
@@ -224,9 +248,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         e.preventDefault();
         onPageChange(totalPages);
         setFocusedImageIndex(0);
-      } else if (e.key === 'Enter' && currentIndex >= 0 && currentIndex < images.length) {
-        e.preventDefault();
-        onImageClick(images[currentIndex], e as any);
       }
     };
 
