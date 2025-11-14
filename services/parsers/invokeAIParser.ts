@@ -76,7 +76,11 @@ export function extractModelsFromInvokeAI(metadata: InvokeAIMetadata): string[] 
     if (modelName) models.add(modelName);
   }
 
-  const metadataStr = JSON.stringify(metadata).toLowerCase();
+  // FIX: Create a copy of metadata WITHOUT loras field to avoid picking up LoRA .safetensors files
+  const metadataWithoutLoras = { ...metadata };
+  delete metadataWithoutLoras.loras;
+
+  const metadataStr = JSON.stringify(metadataWithoutLoras).toLowerCase();
   const modelMatches = metadataStr.match(/['"]\s*([^'"]*\.(safetensors|ckpt|pt))\s*['"]/g);
   if (modelMatches) {
     modelMatches.forEach(match => {
