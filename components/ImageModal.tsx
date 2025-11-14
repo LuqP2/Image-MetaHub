@@ -383,12 +383,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (isRenaming) return;
 
-      // Handle Alt+Enter to close modal when entering fullscreen (Issue #26)
-      if (event.key === 'Enter' && event.altKey) {
+      // Handle Enter key
+      if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
-        // Close the modal - fullscreen will be handled by Electron or browser
-        onClose();
+
+        if (event.altKey) {
+          // Alt+Enter = Toggle fullscreen mode
+          await toggleFullscreen();
+        } else {
+          // Regular Enter = Close modal and return to grid
+          onClose();
+        }
         return;
       }
 

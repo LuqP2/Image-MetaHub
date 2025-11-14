@@ -199,7 +199,23 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         if (currentIndex >= 0 && currentIndex < images.length) {
           e.preventDefault();
           e.stopPropagation();
-          onImageClick(images[currentIndex], e as any);
+
+          // Alt+Enter = Open image and immediately enter fullscreen
+          if (e.altKey) {
+            onImageClick(images[currentIndex], e as any);
+            // Give the modal time to open, then trigger fullscreen
+            setTimeout(() => {
+              if (window.electronAPI?.toggleFullscreen) {
+                window.electronAPI.toggleFullscreen().catch(console.error);
+              } else {
+                // Trigger browser fullscreen
+                document.documentElement.requestFullscreen?.().catch(console.error);
+              }
+            }, 100);
+          } else {
+            // Regular Enter = Open modal normally
+            onImageClick(images[currentIndex], e as any);
+          }
           return;
         }
       }

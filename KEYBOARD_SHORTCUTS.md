@@ -30,7 +30,8 @@ These shortcuts work when browsing the image grid:
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `Arrow Keys` | Navigate Images | Move focus between images |
-| `Enter` | Open Image | Open focused image in fullscreen modal (Issue #21 fixed) |
+| `Enter` | Open Image Modal | Open focused image in modal view |
+| `Alt+Enter` | Open Image Fullscreen | Open focused image directly in fullscreen mode |
 | `PageDown` | Next Page | Go to next page of results |
 | `PageUp` | Previous Page | Go to previous page |
 | `Home` | First Page | Jump to first page |
@@ -38,13 +39,14 @@ These shortcuts work when browsing the image grid:
 
 ## Image Modal / Fullscreen
 
-These shortcuts work when viewing an image in fullscreen:
+These shortcuts work when viewing an image in modal or fullscreen:
 
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `←/→` | Previous/Next Image | Navigate through images |
+| `Enter` | Close Modal | Close modal and return to grid |
+| `Alt+Enter` | Toggle Fullscreen | Enter/exit fullscreen mode within modal |
 | `Esc` | Exit Fullscreen or Close | Exit fullscreen or close modal |
-| `Alt+Enter` | Toggle Fullscreen | Toggle native fullscreen mode (closes modal - Issue #26 fixed) |
 | `Ctrl/Cmd+C` | Copy Image | Copy image to clipboard |
 
 ## Command Palette
