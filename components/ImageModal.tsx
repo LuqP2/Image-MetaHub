@@ -15,6 +15,7 @@ interface ImageModalProps {
   onNavigatePrevious?: () => void;
   directoryPath?: string;
   isIndexing?: boolean;
+  startInImageFullscreen?: boolean; // Start with metadata panel hidden
 }
 
 // Helper component for consistently rendering metadata items
@@ -55,16 +56,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onNavigateNext,
   onNavigatePrevious,
   directoryPath,
-  isIndexing = false
+  isIndexing = false,
+  startInImageFullscreen = false
 }) => {
+  // Check sessionStorage for fullscreen flag set by ImageGrid
+  const shouldStartFullscreen = startInImageFullscreen || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('openImageFullscreen') === 'true');
+
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isElectronFullscreen, setIsElectronFullscreen] = useState(false);
+  const [isImageFullscreen, setIsImageFullscreen] = useState(shouldStartFullscreen);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+
+  // Clear the sessionStorage flag after reading
+  useEffect(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('openImageFullscreen');
+    }
+  }, []);
 
   // Full screen browser API functions
   const enterFullscreen = async () => {
@@ -389,8 +402,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         event.stopPropagation();
 
         if (event.altKey) {
-          // Alt+Enter = Toggle fullscreen mode
-          await toggleFullscreen();
+          // Alt+Enter = Toggle image fullscreen (hide/show metadata panel)
+          setIsImageFullscreen(prev => !prev);
         } else {
           // Regular Enter = Close modal and return to grid
           onClose();
@@ -399,7 +412,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       if (event.key === 'Escape') {
-        if (isFullscreen) {
+        // If in image fullscreen mode, exit it first
+        if (isImageFullscreen) {
+          setIsImageFullscreen(false);
+        } else if (isFullscreen) {
           exitFullscreen();
         } else if (isElectronFullscreen && window.electronAPI?.toggleFullscreen) {
           // Exit Electron fullscreen
@@ -486,8 +502,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{(isFullscreen || isElectronFullscreen) ? 'Exit' : 'Fullscreen'}</button>
         </div>
 
-        {/* Metadata Panel - Hidden only in browser fullscreen, visible in Electron fullscreen */}
-        <div className={`w-full ${isFullscreen && !isElectronFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        {/* Metadata Panel - Hidden in image fullscreen mode */}
+        <div className={`w-full ${isImageFullscreen || (isFullscreen && !isElectronFullscreen) ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
           <div>
             {isRenaming ? (
               <div className="flex gap-2">

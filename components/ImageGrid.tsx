@@ -200,20 +200,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           e.preventDefault();
           e.stopPropagation();
 
-          // Alt+Enter = Open image and immediately enter fullscreen
+          // Alt+Enter = Open image in fullscreen mode (hide metadata panel)
           if (e.altKey) {
+            sessionStorage.setItem('openImageFullscreen', 'true');
             onImageClick(images[currentIndex], e as any);
-            // Give the modal time to open, then trigger fullscreen
-            setTimeout(() => {
-              if (window.electronAPI?.toggleFullscreen) {
-                window.electronAPI.toggleFullscreen().catch(console.error);
-              } else {
-                // Trigger browser fullscreen
-                document.documentElement.requestFullscreen?.().catch(console.error);
-              }
-            }, 100);
           } else {
             // Regular Enter = Open modal normally
+            sessionStorage.removeItem('openImageFullscreen');
             onImageClick(images[currentIndex], e as any);
           }
           return;
