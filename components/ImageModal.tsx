@@ -447,7 +447,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, isElectronFullscreen, onNavigatePrevious, onNavigateNext]);
+  }, [image.handle, onClose, isRenaming, isFullscreen, isElectronFullscreen, isImageViewerFullscreen, onNavigatePrevious, onNavigateNext]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
