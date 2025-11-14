@@ -489,6 +489,19 @@ function createWindow(startupDirectory = null) {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Track fullscreen state changes and notify renderer
+  mainWindow.on('enter-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
+    }
+  });
+
+  mainWindow.on('leave-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', { isFullscreen: false });
+    }
+  });
 }
 
 // App event handlers
@@ -1128,6 +1141,15 @@ function setupFileOperationHandlers() {
       return { success: true };
     }
     return { success: false, error: 'Version not provided' };
+  });
+
+  // Handle toggling fullscreen
+  ipcMain.handle('toggle-fullscreen', () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
   });
 
   // Handle reading multiple files in a batch

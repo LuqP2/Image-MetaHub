@@ -62,6 +62,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isElectronFullscreen, setIsElectronFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
@@ -88,22 +89,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  const toggleFullscreen = () => {
-    if (isFullscreen) {
-      exitFullscreen();
+  const toggleFullscreen = async () => {
+    // In Electron, prefer using Electron's fullscreen API
+    if (window.electronAPI?.toggleFullscreen) {
+      try {
+        await window.electronAPI.toggleFullscreen();
+      } catch (error) {
+        console.error('Failed to toggle Electron fullscreen:', error);
+      }
     } else {
-      enterFullscreen();
+      // Fallback to browser fullscreen API (for web version)
+      if (isFullscreen) {
+        exitFullscreen();
+      } else {
+        enterFullscreen();
+      }
     }
   };
 
-  // Listen for fullscreen changes (ESC key, etc.)
+  // Listen for fullscreen changes (ESC key, browser API, and Electron events)
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+
+    // Listen for Electron fullscreen events
+    let cleanupElectronListener: (() => void) | undefined;
+    if (window.electronAPI?.onFullscreenChanged) {
+      cleanupElectronListener = window.electronAPI.onFullscreenChanged(({ isFullscreen: electronFullscreen }: { isFullscreen: boolean }) => {
+        setIsElectronFullscreen(electronFullscreen);
+      });
+    }
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      if (cleanupElectronListener) {
+        cleanupElectronListener();
+      }
+    };
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -343,11 +368,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     loadImage();
 
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
       if (isRenaming) return;
       if (event.key === 'Escape') {
-        if (isFullscreen) exitFullscreen();
-        else onClose();
+        if (isFullscreen) {
+          exitFullscreen();
+        } else if (isElectronFullscreen && window.electronAPI?.toggleFullscreen) {
+          // Exit Electron fullscreen
+          try {
+            await window.electronAPI.toggleFullscreen();
+          } catch (error) {
+            console.error('Failed to exit Electron fullscreen:', error);
+          }
+        } else {
+          onClose();
+        }
       }
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
       if (event.key === 'ArrowRight') onNavigateNext?.();
@@ -368,7 +403,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext]);
+  }, [image.handle, onClose, isRenaming, isFullscreen, isElectronFullscreen, onNavigatePrevious, onNavigateNext]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
@@ -418,11 +453,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
-          <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{isFullscreen ? 'Exit' : 'Fullscreen'}</button>
+          <button onClick={toggleFullscreen} className="absolute top-4 right-4 bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">{(isFullscreen || isElectronFullscreen) ? 'Exit' : 'Fullscreen'}</button>
         </div>
 
-        {/* Metadata Panel */}
-        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        {/* Metadata Panel - Hidden only in browser fullscreen, visible in Electron fullscreen */}
+        <div className={`w-full ${isFullscreen && !isElectronFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
           <div>
             {isRenaming ? (
               <div className="flex gap-2">

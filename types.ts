@@ -43,6 +43,8 @@ export interface ElectronAPI {
   testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
+  toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
 }
 
 declare global {
