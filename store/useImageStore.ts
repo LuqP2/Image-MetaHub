@@ -245,10 +245,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
 
+        // Case-insensitive alphabetical comparator
+        const caseInsensitiveSort = (a: string, b: string) => {
+            return a.toLowerCase().localeCompare(b.toLowerCase());
+        };
+
         return {
-            availableModels: Array.from(models).sort(),
-            availableLoras: Array.from(loras).sort(),
-            availableSchedulers: Array.from(schedulers).sort(),
+            availableModels: Array.from(models).sort(caseInsensitiveSort),
+            availableLoras: Array.from(loras).sort(caseInsensitiveSort),
+            availableSchedulers: Array.from(schedulers).sort(caseInsensitiveSort),
             availableDimensions: Array.from(dimensions).sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
                 const [aWidth, aHeight] = a.split('x').map(Number);
