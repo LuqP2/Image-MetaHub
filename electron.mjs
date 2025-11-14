@@ -491,6 +491,7 @@ function createWindow(startupDirectory = null) {
   });
 
   // Track fullscreen state changes and notify renderer
+  // These events work on macOS, Windows, and Linux
   mainWindow.on('enter-full-screen', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
@@ -500,6 +501,20 @@ function createWindow(startupDirectory = null) {
   mainWindow.on('leave-full-screen', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('fullscreen-changed', { isFullscreen: false });
+    }
+  });
+
+  // Additional event for Windows/Linux compatibility
+  // Some window managers may not fire enter/leave-full-screen consistently
+  let lastKnownFullscreenState = false;
+  mainWindow.on('resize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentFullscreenState = mainWindow.isFullScreen();
+      // Only send if the state actually changed to avoid excessive updates
+      if (currentFullscreenState !== lastKnownFullscreenState) {
+        lastKnownFullscreenState = currentFullscreenState;
+        mainWindow.webContents.send('fullscreen-state-check', { isFullscreen: currentFullscreenState });
+      }
     }
   });
 }

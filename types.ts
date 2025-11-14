@@ -45,6 +45,7 @@ export interface ElectronAPI {
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
+  onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
 }
 
 declare global {

@@ -94,6 +94,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onFullscreenStateCheck: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('fullscreen-state-check', handler);
+    return () => {
+      ipcRenderer.removeListener('fullscreen-state-check', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),

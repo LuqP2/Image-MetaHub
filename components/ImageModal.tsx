@@ -117,8 +117,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     // Listen for Electron fullscreen events
     let cleanupElectronListener: (() => void) | undefined;
+    let cleanupStateCheckListener: (() => void) | undefined;
+
     if (window.electronAPI?.onFullscreenChanged) {
       cleanupElectronListener = window.electronAPI.onFullscreenChanged(({ isFullscreen: electronFullscreen }: { isFullscreen: boolean }) => {
+        setIsElectronFullscreen(electronFullscreen);
+      });
+    }
+
+    // Additional listener for cross-platform compatibility (Windows/Linux)
+    if (window.electronAPI?.onFullscreenStateCheck) {
+      cleanupStateCheckListener = window.electronAPI.onFullscreenStateCheck(({ isFullscreen: electronFullscreen }: { isFullscreen: boolean }) => {
         setIsElectronFullscreen(electronFullscreen);
       });
     }
@@ -127,6 +136,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       if (cleanupElectronListener) {
         cleanupElectronListener();
+      }
+      if (cleanupStateCheckListener) {
+        cleanupStateCheckListener();
       }
     };
   }, []);
