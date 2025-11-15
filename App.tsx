@@ -24,6 +24,7 @@ import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
+import Analytics from './components/Analytics';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
@@ -101,6 +102,7 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.9.5');
 
   // --- Hotkeys Hook ---
@@ -413,6 +415,7 @@ export default function App() {
       <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${previewImage ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -500,6 +503,11 @@ export default function App() {
           isOpen={isChangelogModalOpen}
           onClose={() => setIsChangelogModalOpen(false)}
           currentVersion={currentVersion}
+        />
+
+        <Analytics
+          isOpen={isAnalyticsOpen}
+          onClose={() => setIsAnalyticsOpen(false)}
         />
       </div>
     </div>
