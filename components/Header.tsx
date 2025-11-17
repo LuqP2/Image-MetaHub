@@ -3,7 +3,7 @@ import { Settings, Bug, BarChart3 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenSettings: () => void;
-  onOpenAnalytics?: () => void;
+  onOpenAnalytics: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
@@ -26,15 +26,13 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
             Feedback & Bugs
           </a>
           <div className="border-l border-gray-600 h-8 mx-2"></div>
-          {onOpenAnalytics && (
-            <button
-              onClick={onOpenAnalytics}
-              className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-blue-400/30"
-              title="Open Analytics"
-            >
-              <BarChart3 size={20} />
-            </button>
-          )}
+          <button
+            onClick={onOpenAnalytics}
+            className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-blue-400/30"
+            title="Open Analytics"
+          >
+            <BarChart3 size={20} />
+          </button>
           <button
             onClick={onOpenSettings}
             className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-accent/30"
