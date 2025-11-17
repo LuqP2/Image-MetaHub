@@ -1,11 +1,12 @@
 import React from 'react';
-import { Settings, Bug } from 'lucide-react';
+import { Settings, Bug, BarChart3 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenSettings: () => void;
+  onOpenAnalytics: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
+const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
       <div className="container mx-auto flex items-center justify-between gap-4">
@@ -25,6 +26,13 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings }) => {
             Feedback & Bugs
           </a>
           <div className="border-l border-gray-600 h-8 mx-2"></div>
+          <button
+            onClick={onOpenAnalytics}
+            className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-blue-400/30"
+            title="Open Analytics"
+          >
+            <BarChart3 size={20} />
+          </button>
           <button
             onClick={onOpenSettings}
             className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-accent/30"
