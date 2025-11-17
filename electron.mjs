@@ -442,7 +442,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.9.5');
+    mainWindow.setTitle('Image MetaHub v0.9.6rc');
   }
 
   // Load the app
@@ -1021,8 +1021,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.9.5-rc',
-      releaseNotes: `## [0.9.5-rc] - Release Candidate
+  version: '0.9.6-rc',
+      releaseNotes: `## [0.9.6-rc] - Release Candidate
 
 ### Added
 - Multiple Directory Support: Add and manage multiple image directories simultaneously

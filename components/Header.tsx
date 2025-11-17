@@ -12,7 +12,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
       <div className="container mx-auto flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-14 w-14 rounded-md" />
-          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.5</h1>
+          <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.9.6rc</h1>
         </div>
         <div className="flex items-center gap-4">
           <a
