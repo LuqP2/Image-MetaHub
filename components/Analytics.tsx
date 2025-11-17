@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { X, TrendingUp, Calendar, Package, Layers, Clock } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import {
@@ -19,6 +19,7 @@ import {
   AreaChart,
 } from 'recharts';
 import InsightsBox from './InsightsBox';
+import PeriodSelector, { PeriodPreset } from './PeriodSelector';
 import {
   calculatePeriodStats,
   getUniquePeriodCount,
@@ -30,6 +31,9 @@ import {
   formatDuration,
   formatVariation,
   truncateName,
+  periodPresetToDays,
+  filterImagesByPeriod,
+  getPeriodLabel,
 } from '../utils/analyticsUtils';
 
 interface AnalyticsProps {
@@ -39,19 +43,37 @@ interface AnalyticsProps {
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#6366f1', '#f43f5e'];
 
+const EmptyChart: React.FC<{ message?: string }> = ({ message = 'No data available for this period' }) => (
+  <div className="w-full h-[300px] flex items-center justify-center">
+    <p className="text-gray-500 text-sm">{message}</p>
+  </div>
+);
+
 const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
-  const images = useImageStore((state) => state.images);
+  const allImages = useImageStore((state) => state.images);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('30days');
 
   const analytics = useMemo(() => {
-    if (!images || images.length === 0) {
+    if (!allImages || allImages.length === 0) {
       return null;
     }
 
-    // ========== PERIOD STATS (30 days) ==========
-    const periodStats = calculatePeriodStats(images, 30);
-    const uniqueModels30d = getUniquePeriodCount(images, 'models', 30);
-    const uniqueLoras30d = getUniquePeriodCount(images, 'loras', 30);
-    const avgSessionGap = calculateAverageSessionGap(images);
+    // ========== FILTER IMAGES BY PERIOD ==========
+    const daysBack = periodPresetToDays(selectedPeriod);
+    const images = filterImagesByPeriod(allImages, daysBack);
+    const periodLabel = getPeriodLabel(selectedPeriod);
+
+    // ========== PERIOD STATS ==========
+    const periodStats = daysBack ? calculatePeriodStats(allImages, daysBack) : {
+      current: images.length,
+      previous: 0,
+      variation: 0,
+      variationAbsolute: 0,
+    };
+
+    const uniqueModels = daysBack ? getUniquePeriodCount(allImages, 'models', daysBack) : new Set(images.flatMap(img => img.models || [])).size;
+    const uniqueLoras = daysBack ? getUniquePeriodCount(allImages, 'loras', daysBack) : new Set(images.flatMap(img => img.loras || [])).size;
+    const avgSessionGap = daysBack ? calculateAverageSessionGap(images) : calculateAverageSessionGap(allImages);
 
     // ========== GENERATOR DISTRIBUTION ==========
     const generatorCounts = new Map<string, number>();
@@ -64,7 +86,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
-    // ========== TOP MODELS / LORAS / SAMPLERS (with keeper rate) ==========
+    // ========== TOP MODELS / LORAS / SAMPLERS (from filtered images) ==========
     const topModels = calculateTopItems(images, 'models', 10);
     const topLoras = calculateTopItems(images, 'loras', 10);
     const topSamplers = calculateTopItems(images, 'scheduler', 10);
@@ -85,13 +107,13 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     const topResolution = resolutionData.length > 0 ? resolutionData[0].name : undefined;
 
     // ========== TIMELINE WITH PERIOD COMPARISON ==========
-    const timelineData = generateTimelineComparison(images, 30, 'day');
+    const timelineData = daysBack ? generateTimelineComparison(allImages, daysBack, 'day') : [];
 
     // ========== CREATION HABITS ==========
     const habits = analyzeCreationHabits(images);
 
     // ========== AUTO INSIGHTS ==========
-    const insights = generateInsights(images, periodStats, topModels, topResolution);
+    const insights = generateInsights(allImages, periodStats, topModels, topResolution, periodLabel, images.length);
 
     // ========== FIRST/LAST IMAGE DATES ==========
     let firstImageDate = Infinity;
@@ -106,9 +128,10 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     return {
       // Period stats
       periodStats,
-      uniqueModels30d,
-      uniqueLoras30d,
+      uniqueModels,
+      uniqueLoras,
       avgSessionGap,
+      periodLabel,
       // Charts
       generatorData,
       topModels,
@@ -122,12 +145,13 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
       firstImageDate: firstImageDate !== Infinity ? new Date(firstImageDate).toLocaleDateString() : 'N/A',
       lastImageDate: lastImageDate !== 0 ? new Date(lastImageDate).toLocaleDateString() : 'N/A',
       totalImages: images.length,
+      allImagesCount: allImages.length,
     };
-  }, [images]);
+  }, [allImages, selectedPeriod]);
 
   if (!isOpen) return null;
 
-  if (!analytics || analytics.totalImages === 0) {
+  if (!analytics || analytics.allImagesCount === 0) {
     return (
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
         <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
@@ -147,13 +171,15 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     );
   }
 
+  const hasData = analytics.totalImages > 0;
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto">
       <div className="min-h-screen p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 mb-6 sticky top-4 z-10 shadow-lg border border-gray-700">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4 mb-4">
               <div className="flex items-center gap-3">
                 <TrendingUp size={32} className="text-blue-400" />
                 <div>
@@ -169,338 +195,391 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                 <X size={24} />
               </button>
             </div>
-          </div>
 
-          {/* Insights Box */}
-          <div className="mb-6">
-            <InsightsBox insights={analytics.insights} />
-          </div>
-
-          {/* Overview Cards - 30 Day Focus */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center gap-3 mb-2">
-                <Calendar className="text-blue-400" size={24} />
-                <h3 className="text-gray-400 text-sm font-medium">Last 30 Days</h3>
-              </div>
-              <p className="text-3xl font-bold text-gray-200">{analytics.periodStats.current.toLocaleString()}</p>
-              <p className={`text-sm mt-2 flex items-center gap-1 ${
-                analytics.periodStats.variation > 0 ? 'text-green-400' :
-                analytics.periodStats.variation < 0 ? 'text-red-400' : 'text-gray-400'
-              }`}>
-                {formatVariation(analytics.periodStats.variation)} vs previous 30 days
-              </p>
-            </div>
-
-            <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center gap-3 mb-2">
-                <Package className="text-purple-400" size={24} />
-                <h3 className="text-gray-400 text-sm font-medium">Unique Models</h3>
-              </div>
-              <p className="text-3xl font-bold text-gray-200">{analytics.uniqueModels30d}</p>
-              <p className="text-sm text-gray-400 mt-2">Used in last 30 days</p>
-            </div>
-
-            <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center gap-3 mb-2">
-                <Layers className="text-pink-400" size={24} />
-                <h3 className="text-gray-400 text-sm font-medium">Unique LoRAs</h3>
-              </div>
-              <p className="text-3xl font-bold text-gray-200">{analytics.uniqueLoras30d}</p>
-              <p className="text-sm text-gray-400 mt-2">Used in last 30 days</p>
-            </div>
-
-            <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-              <div className="flex items-center gap-3 mb-2">
-                <Clock className="text-orange-400" size={24} />
-                <h3 className="text-gray-400 text-sm font-medium">Avg Session Gap</h3>
-              </div>
-              <p className="text-3xl font-bold text-gray-200">
-                {analytics.avgSessionGap > 0 ? formatDuration(analytics.avgSessionGap) : 'N/A'}
-              </p>
-              <p className="text-sm text-gray-400 mt-2">Time between sessions</p>
+            {/* Period Selector */}
+            <div className="flex items-center justify-between pt-4 border-t border-gray-700">
+              <PeriodSelector selectedPeriod={selectedPeriod} onChange={setSelectedPeriod} />
+              {!hasData && (
+                <p className="text-sm text-orange-400">No images in selected period</p>
+              )}
             </div>
           </div>
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Timeline with Period Comparison */}
-            {analytics.timelineData.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700 lg:col-span-2">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">30-Day Activity (vs Previous 30 Days)</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={analytics.timelineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="period"
-                      stroke="#9ca3af"
-                      tick={{ fontSize: 12 }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                    />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                    />
-                    <Legend />
-                    <Area
-                      type="monotone"
-                      dataKey="current"
-                      stroke="#06b6d4"
-                      fill="#06b6d4"
-                      fillOpacity={0.6}
-                      name="Current Period"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="previous"
-                      stroke="#9ca3af"
-                      fill="#9ca3af"
-                      fillOpacity={0.3}
-                      strokeDasharray="5 5"
-                      name="Previous Period"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Generator Distribution */}
-            {analytics.generatorData.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Images by Generator</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={analytics.generatorData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="name"
-                      stroke="#9ca3af"
-                      tick={{ fontSize: 11 }}
-                      angle={-45}
-                      textAnchor="end"
-                      height={100}
-                    />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                    />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Top Models (PRO version with tooltips) */}
-            {analytics.topModels.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Models</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={analytics.topModels.map(m => ({
-                      ...m,
-                      shortName: truncateName(m.name, 20)
-                    }))}
-                    layout="horizontal"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      type="number"
-                      stroke="#9ca3af"
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="shortName"
-                      stroke="#9ca3af"
-                      width={150}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                      formatter={(value, name, props) => {
-                        if (name === 'total') {
-                          return [value, props.payload.name];
-                        }
-                        return [value, name];
-                      }}
-                    />
-                    <Bar dataKey="total" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Top LoRAs (PRO version) */}
-            {analytics.topLoras.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 LoRAs</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={analytics.topLoras.map(l => ({
-                      ...l,
-                      shortName: truncateName(l.name, 20)
-                    }))}
-                    layout="horizontal"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      type="number"
-                      stroke="#9ca3af"
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="shortName"
-                      stroke="#9ca3af"
-                      width={150}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                      formatter={(value, name, props) => {
-                        if (name === 'total') {
-                          return [value, props.payload.name];
-                        }
-                        return [value, name];
-                      }}
-                    />
-                    <Bar dataKey="total" fill="#ec4899" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Top Samplers (PRO version) */}
-            {analytics.topSamplers.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Samplers</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={analytics.topSamplers.map(s => ({
-                      ...s,
-                      shortName: truncateName(s.name, 20)
-                    }))}
-                    layout="horizontal"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      type="number"
-                      stroke="#9ca3af"
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="shortName"
-                      stroke="#9ca3af"
-                      width={150}
-                      tick={{ fontSize: 11 }}
-                    />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                      formatter={(value, name, props) => {
-                        if (name === 'total') {
-                          return [value, props.payload.name];
-                        }
-                        return [value, name];
-                      }}
-                    />
-                    <Bar dataKey="total" fill="#10b981" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Resolution Distribution */}
-            {analytics.resolutionData.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Resolution Distribution</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={analytics.resolutionData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                      outerRadius={90}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {analytics.resolutionData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Weekday Distribution */}
-            {analytics.habits.weekdayDistribution.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Day of Week</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={analytics.habits.weekdayDistribution}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="day" stroke="#9ca3af" />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                    />
-                    <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {/* Hourly Distribution */}
-            {analytics.habits.hourlyDistribution.length > 0 && (
-              <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
-                <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Hour of Day</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={analytics.habits.hourlyDistribution}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis
-                      dataKey="hour"
-                      stroke="#9ca3af"
-                      tickFormatter={(hour) => `${hour}:00`}
-                    />
-                    <YAxis stroke="#9ca3af" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                      labelStyle={{ color: '#e5e7eb' }}
-                      labelFormatter={(hour) => `${hour}:00`}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="count"
-                      stroke="#06b6d4"
-                      strokeWidth={2}
-                      dot={{ fill: '#06b6d4', r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-
-          {/* Footer Stats */}
-          <div className="mt-6 bg-gray-800/80 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
-            <div className="flex items-center justify-between text-sm text-gray-400">
-              <span>Library: {analytics.totalImages.toLocaleString()} images</span>
-              <span>First: {analytics.firstImageDate}</span>
-              <span>Latest: {analytics.lastImageDate}</span>
+          {!hasData ? (
+            <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-12 border border-gray-700 text-center">
+              <p className="text-gray-400 text-lg">No images found in the selected period.</p>
+              <p className="text-gray-500 text-sm mt-2">Try selecting a different time range.</p>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Insights Box */}
+              <div className="mb-6">
+                <InsightsBox insights={analytics.insights} />
+              </div>
+
+              {/* Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Calendar className="text-blue-400" size={24} />
+                    <h3 className="text-gray-400 text-sm font-medium">Period Activity</h3>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-200">{analytics.periodStats.current.toLocaleString()}</p>
+                  <p className={`text-sm mt-2 flex items-center gap-1 ${
+                    analytics.periodStats.variation > 0 ? 'text-green-400' :
+                    analytics.periodStats.variation < 0 ? 'text-red-400' : 'text-gray-400'
+                  }`}>
+                    {formatVariation(analytics.periodStats.variation)} vs previous period
+                  </p>
+                </div>
+
+                <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Package className="text-purple-400" size={24} />
+                    <h3 className="text-gray-400 text-sm font-medium">Unique Models</h3>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-200">{analytics.uniqueModels}</p>
+                  <p className="text-sm text-gray-400 mt-2">Used in {analytics.periodLabel}</p>
+                </div>
+
+                <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Layers className="text-pink-400" size={24} />
+                    <h3 className="text-gray-400 text-sm font-medium">Unique LoRAs</h3>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-200">{analytics.uniqueLoras}</p>
+                  <p className="text-sm text-gray-400 mt-2">Used in {analytics.periodLabel}</p>
+                </div>
+
+                <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Clock className="text-orange-400" size={24} />
+                    <h3 className="text-gray-400 text-sm font-medium">Avg Session Gap</h3>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-200">
+                    {analytics.avgSessionGap > 0 ? formatDuration(analytics.avgSessionGap) : 'N/A'}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-2">Time between sessions</p>
+                </div>
+              </div>
+
+              {/* Charts Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Timeline with Period Comparison */}
+                {analytics.timelineData.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700 lg:col-span-2">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Activity Timeline (vs Previous Period)</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={analytics.timelineData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          dataKey="period"
+                          stroke="#9ca3af"
+                          tick={{ fontSize: 12 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                        />
+                        <YAxis stroke="#9ca3af" />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                        />
+                        <Legend />
+                        <Area
+                          type="monotone"
+                          dataKey="current"
+                          stroke="#06b6d4"
+                          fill="#06b6d4"
+                          fillOpacity={0.6}
+                          name="Current Period"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="previous"
+                          stroke="#9ca3af"
+                          fill="#9ca3af"
+                          fillOpacity={0.3}
+                          strokeDasharray="5 5"
+                          name="Previous Period"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : null}
+
+                {/* Generator Distribution */}
+                {analytics.generatorData.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Images by Generator</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={analytics.generatorData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          dataKey="name"
+                          stroke="#9ca3af"
+                          tick={{ fontSize: 11 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
+                        />
+                        <YAxis stroke="#9ca3af" />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                        />
+                        <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Images by Generator</h3>
+                    <EmptyChart />
+                  </div>
+                )}
+
+                {/* Top Models */}
+                {analytics.topModels.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Models</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={analytics.topModels.map(m => ({
+                          ...m,
+                          shortName: truncateName(m.name, 20)
+                        }))}
+                        layout="horizontal"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          type="number"
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="shortName"
+                          stroke="#9ca3af"
+                          width={150}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                          formatter={(value, name, props) => {
+                            if (name === 'total') {
+                              return [value, props.payload.name];
+                            }
+                            return [value, name];
+                          }}
+                        />
+                        <Bar dataKey="total" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Models</h3>
+                    <EmptyChart message="No models found in this period" />
+                  </div>
+                )}
+
+                {/* Top LoRAs */}
+                {analytics.topLoras.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 LoRAs</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={analytics.topLoras.map(l => ({
+                          ...l,
+                          shortName: truncateName(l.name, 20)
+                        }))}
+                        layout="horizontal"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          type="number"
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="shortName"
+                          stroke="#9ca3af"
+                          width={150}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                          formatter={(value, name, props) => {
+                            if (name === 'total') {
+                              return [value, props.payload.name];
+                            }
+                            return [value, name];
+                          }}
+                        />
+                        <Bar dataKey="total" fill="#ec4899" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 LoRAs</h3>
+                    <EmptyChart message="No LoRAs found in this period" />
+                  </div>
+                )}
+
+                {/* Top Samplers */}
+                {analytics.topSamplers.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Samplers</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={analytics.topSamplers.map(s => ({
+                          ...s,
+                          shortName: truncateName(s.name, 20)
+                        }))}
+                        layout="horizontal"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          type="number"
+                          stroke="#9ca3af"
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="shortName"
+                          stroke="#9ca3af"
+                          width={150}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                          formatter={(value, name, props) => {
+                            if (name === 'total') {
+                              return [value, props.payload.name];
+                            }
+                            return [value, name];
+                          }}
+                        />
+                        <Bar dataKey="total" fill="#10b981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Top 10 Samplers</h3>
+                    <EmptyChart message="No samplers found in this period" />
+                  </div>
+                )}
+
+                {/* Resolution Distribution */}
+                {analytics.resolutionData.length > 0 ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Resolution Distribution</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={analytics.resolutionData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                          outerRadius={90}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {analytics.resolutionData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Resolution Distribution</h3>
+                    <EmptyChart message="No resolutions found in this period" />
+                  </div>
+                )}
+
+                {/* Weekday Distribution */}
+                {analytics.habits.weekdayDistribution.some(d => d.count > 0) ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Day of Week</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={analytics.habits.weekdayDistribution}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis dataKey="day" stroke="#9ca3af" />
+                        <YAxis stroke="#9ca3af" />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                        />
+                        <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Day of Week</h3>
+                    <EmptyChart />
+                  </div>
+                )}
+
+                {/* Hourly Distribution */}
+                {analytics.habits.hourlyDistribution.some(h => h.count > 0) ? (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Hour of Day</h3>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={analytics.habits.hourlyDistribution}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                        <XAxis
+                          dataKey="hour"
+                          stroke="#9ca3af"
+                          tickFormatter={(hour) => `${hour}:00`}
+                        />
+                        <YAxis stroke="#9ca3af" />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                          labelStyle={{ color: '#e5e7eb' }}
+                          labelFormatter={(hour) => `${hour}:00`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="count"
+                          stroke="#06b6d4"
+                          strokeWidth={2}
+                          dot={{ fill: '#06b6d4', r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
+                    <h3 className="text-xl font-bold text-gray-200 mb-4">Creation by Hour of Day</h3>
+                    <EmptyChart />
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Stats */}
+              <div className="mt-6 bg-gray-800/80 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
+                <div className="flex items-center justify-between text-sm text-gray-400 flex-wrap gap-2">
+                  <span>Showing: {analytics.totalImages.toLocaleString()} images</span>
+                  <span>Library total: {analytics.allImagesCount.toLocaleString()} images</span>
+                  <span>First: {analytics.firstImageDate}</span>
+                  <span>Latest: {analytics.lastImageDate}</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,7 @@
 import { IndexedImage } from '../types';
 
+export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
+
 export interface PeriodStats {
   current: number;
   previous: number;
@@ -23,6 +25,66 @@ export interface TopItemStats {
 export interface CreationHabits {
   weekdayDistribution: { day: string; count: number }[];
   hourlyDistribution: { hour: number; count: number }[];
+}
+
+/**
+ * Convert period preset to days back number
+ */
+export function periodPresetToDays(preset: PeriodPreset): number | null {
+  switch (preset) {
+    case '7days':
+      return 7;
+    case '30days':
+      return 30;
+    case '90days':
+      return 90;
+    case 'thisMonth':
+      // Calculate days from start of current month
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return Math.ceil((now.getTime() - startOfMonth.getTime()) / (24 * 60 * 60 * 1000));
+    case 'all':
+      return null; // null means no filter
+    default:
+      return 30;
+  }
+}
+
+/**
+ * Filter images by period
+ */
+export function filterImagesByPeriod(
+  images: IndexedImage[],
+  daysBack: number | null
+): IndexedImage[] {
+  if (daysBack === null) {
+    return images; // Return all images
+  }
+
+  const now = Date.now();
+  const periodStart = now - daysBack * 24 * 60 * 60 * 1000;
+
+  return images.filter((img) => img.lastModified >= periodStart);
+}
+
+/**
+ * Get period label for display
+ */
+export function getPeriodLabel(preset: PeriodPreset): string {
+  switch (preset) {
+    case '7days':
+      return 'last 7 days';
+    case '30days':
+      return 'last 30 days';
+    case '90days':
+      return 'last 90 days';
+    case 'thisMonth':
+      return 'this month';
+    case 'all':
+      return 'all time';
+    default:
+      return 'selected period';
+  }
 }
 
 /**
@@ -256,7 +318,9 @@ export function generateInsights(
   images: IndexedImage[],
   periodStats: PeriodStats,
   topModels: TopItemStats[],
-  topResolution?: string
+  topResolution?: string,
+  periodLabel: string = 'last 30 days',
+  totalImages: number = 0
 ): AutoInsight[] {
   const insights: AutoInsight[] = [];
 
@@ -273,7 +337,7 @@ export function generateInsights(
 
     insights.push({
       icon: '📊',
-      text: `Created ${periodStats.current} images in the last 30 days (${changeText} from previous period)`,
+      text: `Created ${periodStats.current} images in the ${periodLabel} (${changeText} from previous period)`,
       trend,
     });
   }
@@ -281,10 +345,10 @@ export function generateInsights(
   // Insight 2: Most used model
   if (topModels.length > 0) {
     const topModel = topModels[0];
-    const percentage = ((topModel.total / images.length) * 100).toFixed(0);
+    const percentage = totalImages > 0 ? ((topModel.total / totalImages) * 100).toFixed(0) : '0';
     insights.push({
       icon: '🎨',
-      text: `${truncateName(topModel.name, 30)} is your go-to model (${percentage}% of all images)`,
+      text: `${truncateName(topModel.name, 30)} is your go-to model (${percentage}% of period images)`,
     });
   }
 
@@ -306,11 +370,18 @@ export function generateInsights(
     });
   }
 
-  // Insight 5: Total library size
-  insights.push({
-    icon: '🗂️',
-    text: `Your library contains ${images.length.toLocaleString()} total images`,
-  });
+  // Insight 5: Total library size (only if period is filtered)
+  if (totalImages < images.length) {
+    insights.push({
+      icon: '🗂️',
+      text: `Showing ${totalImages.toLocaleString()} of ${images.length.toLocaleString()} total images`,
+    });
+  } else {
+    insights.push({
+      icon: '🗂️',
+      text: `Your library contains ${images.length.toLocaleString()} total images`,
+    });
+  }
 
   return insights;
 }
