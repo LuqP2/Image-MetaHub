@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC } from 'react';
+import React, { useEffect, useState, useMemo, FC } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
@@ -64,6 +64,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+
+  // Stabilize image reference to prevent unnecessary reloads during metadata indexing
+  // Only change when critical properties (id, handle, name) actually change
+  const stableImage = useMemo(() => image, [
+    image.id,
+    image.handle,
+    image.thumbnailHandle,
+    image.name,
+    image.lastModified
+  ]);
 
   // Full screen browser API functions
   const enterFullscreen = async () => {
@@ -280,7 +290,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       try {
         // Primary method: Use thumbnail if available, otherwise full image
-        const fileHandle = image.thumbnailHandle || image.handle;
+        const fileHandle = stableImage.thumbnailHandle || stableImage.handle;
         
         if (fileHandle && typeof fileHandle.getFile === 'function') {
           const file = await fileHandle.getFile();
@@ -296,7 +306,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
         if (isMounted && window.electronAPI && directoryPath) {
           try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
+            const pathResult = await window.electronAPI.joinPaths(directoryPath, stableImage.name);
             if (!pathResult.success || !pathResult.path) {
               throw new Error(pathResult.error || 'Failed to construct image path.');
             }
@@ -306,7 +316,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               let dataUrl: string;
               if (typeof fileResult.data === 'string') {
                 // Assume base64 string
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const ext = stableImage.name.toLowerCase().endsWith('.jpg') || stableImage.name.toLowerCase().endsWith('.jpeg')
                   ? 'jpeg'
                   : 'png';
                 dataUrl = `data:image/${ext};base64,${fileResult.data}`;
@@ -314,7 +324,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 // Convert Uint8Array to base64
                 const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                 const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const ext = stableImage.name.toLowerCase().endsWith('.jpg') || stableImage.name.toLowerCase().endsWith('.jpeg')
                   ? 'jpeg'
                   : 'png';
                 dataUrl = `data:image/${ext};base64,${base64}`;
@@ -368,7 +378,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext]);
+  }, [stableImage, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
