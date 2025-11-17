@@ -1,20 +1,31 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ZoomIn, ZoomOut } from 'lucide-react';
 
 const ImageSizeSlider: React.FC = () => {
   const { imageSize, setImageSize } = useSettingsStore();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setImageSize(Number(event.target.value));
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
+  const handleWheel = (event: WheelEvent) => {
     event.preventDefault();
     const delta = event.deltaY > 0 ? -10 : 10; // Scroll down = zoom out, scroll up = zoom in
     const newSize = Math.max(80, Math.min(320, imageSize + delta));
     setImageSize(newSize);
   };
+
+  useEffect(() => {
+    const inputElement = inputRef.current;
+    if (inputElement) {
+      inputElement.addEventListener('wheel', handleWheel, { passive: false });
+      return () => {
+        inputElement.removeEventListener('wheel', handleWheel);
+      };
+    }
+  }, [imageSize]);
 
   const handleZoomOut = () => {
     const newSize = Math.max(80, imageSize - 10);
@@ -36,13 +47,13 @@ const ImageSizeSlider: React.FC = () => {
         <ZoomOut className="h-5 w-5 text-gray-400" />
       </button>
       <input
+        ref={inputRef}
         type="range"
         min="80"
         max="320"
         step="10"
         value={imageSize}
         onChange={handleSizeChange}
-        onWheel={handleWheel}
         className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
         title="Scroll to adjust zoom"
       />
