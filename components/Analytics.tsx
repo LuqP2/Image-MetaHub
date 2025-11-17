@@ -347,22 +347,19 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                       <BarChart
                         data={analytics.topModels.map(m => ({
                           ...m,
-                          shortName: truncateName(m.name, 20)
+                          shortName: truncateName(m.name, 15)
                         }))}
-                        layout="horizontal"
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                         <XAxis
-                          type="number"
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          type="category"
                           dataKey="shortName"
                           stroke="#9ca3af"
-                          width={150}
                           tick={{ fontSize: 11 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
                         />
+                        <YAxis stroke="#9ca3af" />
                         <Tooltip
                           contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
                           labelStyle={{ color: '#e5e7eb' }}
@@ -373,7 +370,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                             return [value, name];
                           }}
                         />
-                        <Bar dataKey="total" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="total" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -392,22 +389,19 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                       <BarChart
                         data={analytics.topLoras.map(l => ({
                           ...l,
-                          shortName: truncateName(l.name, 20)
+                          shortName: truncateName(l.name, 15)
                         }))}
-                        layout="horizontal"
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                         <XAxis
-                          type="number"
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          type="category"
                           dataKey="shortName"
                           stroke="#9ca3af"
-                          width={150}
                           tick={{ fontSize: 11 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
                         />
+                        <YAxis stroke="#9ca3af" />
                         <Tooltip
                           contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
                           labelStyle={{ color: '#e5e7eb' }}
@@ -418,7 +412,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                             return [value, name];
                           }}
                         />
-                        <Bar dataKey="total" fill="#ec4899" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="total" fill="#ec4899" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -437,22 +431,19 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                       <BarChart
                         data={analytics.topSamplers.map(s => ({
                           ...s,
-                          shortName: truncateName(s.name, 20)
+                          shortName: truncateName(s.name, 15)
                         }))}
-                        layout="horizontal"
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                         <XAxis
-                          type="number"
-                          stroke="#9ca3af"
-                        />
-                        <YAxis
-                          type="category"
                           dataKey="shortName"
                           stroke="#9ca3af"
-                          width={150}
                           tick={{ fontSize: 11 }}
+                          angle={-45}
+                          textAnchor="end"
+                          height={100}
                         />
+                        <YAxis stroke="#9ca3af" />
                         <Tooltip
                           contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
                           labelStyle={{ color: '#e5e7eb' }}
@@ -463,7 +454,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                             return [value, name];
                           }}
                         />
-                        <Bar dataKey="total" fill="#10b981" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="total" fill="#10b981" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -478,28 +469,62 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
                 {analytics.resolutionData.length > 0 ? (
                   <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
                     <h3 className="text-xl font-bold text-gray-200 mb-4">Resolution Distribution</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={analytics.resolutionData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                          outerRadius={90}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {analytics.resolutionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
-                          labelStyle={{ color: '#e5e7eb' }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="flex flex-col lg:flex-row items-center gap-6">
+                      {/* Pie Chart */}
+                      <div className="flex-shrink-0">
+                        <ResponsiveContainer width={280} height={280}>
+                          <PieChart>
+                            <Pie
+                              data={analytics.resolutionData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              outerRadius={90}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {analytics.resolutionData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem' }}
+                              labelStyle={{ color: '#e5e7eb' }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Percentage List */}
+                      <div className="flex-1 w-full">
+                        <div className="space-y-2">
+                          {analytics.resolutionData.map((item, index) => {
+                            const total = analytics.resolutionData.reduce((sum, d) => sum + d.value, 0);
+                            const percentage = ((item.value / total) * 100).toFixed(1);
+                            return (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between p-2 bg-gray-700/30 rounded hover:bg-gray-700/50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className="w-4 h-4 rounded-sm flex-shrink-0"
+                                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                  />
+                                  <span className="text-gray-300 text-sm font-medium">{item.name}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-400 text-sm">{item.value} images</span>
+                                  <span className="text-gray-200 text-sm font-bold min-w-[3rem] text-right">
+                                    {percentage}%
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-gray-800/80 backdrop-blur-sm rounded-lg p-6 border border-gray-700">
