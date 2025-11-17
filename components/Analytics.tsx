@@ -45,8 +45,8 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     let lastImageDate = 0;
 
     images.forEach((img) => {
-      // Extract generator from metadata
-      const generator = (img.metadata as any)?.generator || 'Unknown';
+      // Extract generator from metadata.normalizedMetadata
+      const generator = (img.metadata as any)?.normalizedMetadata?.generator || 'Unknown';
       generators.add(generator);
 
       // Count models
@@ -87,7 +87,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     // Generator distribution
     const generatorCounts = new Map<string, number>();
     images.forEach((img) => {
-      const generator = (img.metadata as any)?.generator || 'Unknown';
+      const generator = (img.metadata as any)?.normalizedMetadata?.generator || 'Unknown';
       generatorCounts.set(generator, (generatorCounts.get(generator) || 0) + 1);
     });
 
