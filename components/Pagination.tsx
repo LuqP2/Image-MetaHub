@@ -25,16 +25,6 @@ const Pagination: React.FC<PaginationProps> = ({
     setPageInput(currentPage.toString());
   }, [currentPage]);
 
-  const handlePageInputSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    let newPage = parseInt(pageInput, 10);
-    if (!isNaN(newPage)) {
-      newPage = Math.max(1, Math.min(newPage, totalPages));
-      onPageChange(newPage);
-    }
-    setIsEditingPage(false);
-  };
-
   const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     onItemsPerPageChange(parseInt(value, 10));
@@ -85,16 +75,28 @@ const Pagination: React.FC<PaginationProps> = ({
         </button>
 
         {isEditingPage ? (
-          <form onSubmit={handlePageInputSubmit}>
+          <div>
             <input
               type="number"
               value={pageInput}
               onChange={(e) => setPageInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  let newPage = parseInt(pageInput, 10);
+                  if (!isNaN(newPage)) {
+                    newPage = Math.max(1, Math.min(newPage, totalPages));
+                    onPageChange(newPage);
+                  }
+                  setIsEditingPage(false);
+                } else if (e.key === 'Escape') {
+                  setIsEditingPage(false);
+                }
+              }}
               onBlur={() => setIsEditingPage(false)}
               autoFocus
               className="w-16 text-center bg-gray-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </form>
+          </div>
         ) : (
           <span
             className="cursor-pointer hover:text-white"

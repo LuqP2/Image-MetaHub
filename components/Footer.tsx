@@ -51,16 +51,6 @@ const Footer: React.FC<FooterProps> = ({
     setPageInput(currentPage.toString());
   }, [currentPage]);
 
-  const handlePageInputSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    let newPage = parseInt(pageInput, 10);
-    if (!isNaN(newPage)) {
-      newPage = Math.max(1, Math.min(newPage, totalPages));
-      onPageChange(newPage);
-    }
-    setIsEditingPage(false);
-  };
-
   const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     onItemsPerPageChange(parseInt(value, 10));
@@ -116,11 +106,35 @@ const Footer: React.FC<FooterProps> = ({
                 <ChevronLeft className="w-3.5 h-3.5 text-gray-400" />
               </button>
               {isEditingPage ? (
-                <form onSubmit={handlePageInputSubmit}>
-                  <input type="number" value={pageInput} onChange={(e) => setPageInput(e.target.value)} onBlur={() => setIsEditingPage(false)} autoFocus className="w-12 text-center bg-gray-800 border border-gray-700/50 rounded px-1 py-0.5 text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </form>
+                <input
+                  type="number"
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      let newPage = parseInt(pageInput, 10);
+                      if (!isNaN(newPage)) {
+                        newPage = Math.max(1, Math.min(newPage, totalPages));
+                        onPageChange(newPage);
+                      }
+                      setIsEditingPage(false);
+                    } else if (e.key === 'Escape') {
+                      setIsEditingPage(false);
+                    }
+                  }}
+                  onBlur={() => setIsEditingPage(false)}
+                  autoFocus
+                  min="1"
+                  max={totalPages}
+                  className="w-12 text-center bg-gray-800 border border-gray-700/50 rounded px-1 py-0.5 text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
               ) : (
-                <button onClick={() => setIsEditingPage(true)} className="px-2 py-0.5 text-gray-400 hover:text-gray-300 hover:bg-gray-800/50 rounded transition-colors" title="Click to edit page number">
+                <button
+                  onClick={() => setIsEditingPage(true)}
+                  className="px-2 py-0.5 text-gray-400 hover:text-gray-300 hover:bg-gray-800/50 rounded transition-colors"
+                  title="Click to edit page number"
+                >
                   <span className="font-medium">{currentPage}</span><span className="text-gray-600 mx-0.5">/</span><span>{totalPages}</span>
                 </button>
               )}
