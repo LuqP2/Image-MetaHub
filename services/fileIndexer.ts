@@ -9,6 +9,26 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
+// Simple throttle utility to avoid excessive progress updates
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastCall = 0;
+
+  return ((...args: any[]) => {
+    const now = Date.now();
+    if (now - lastCall >= delay) {
+      lastCall = now;
+      func(...args);
+    } else {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        lastCall = Date.now();
+        func(...args);
+      }, delay - (now - lastCall));
+    }
+  }) as T;
+}
+
 // Extended FileSystemFileHandle interface for Electron compatibility
 interface ElectronFileHandle extends FileSystemFileHandle {
   _filePath?: string;
@@ -1094,12 +1114,22 @@ export async function processFiles(
   const nextPhaseBLogInitial = 5000;
   let nextPhaseBLog = nextPhaseBLogInitial;
 
+  // Throttle progress updates to every 300ms to avoid excessive re-renders
+  const throttledEnrichmentProgress = throttle(
+    (progress: { processed: number; total: number } | null) => {
+      options.onEnrichmentProgress?.(progress);
+    },
+    300
+  );
+
   const runEnrichmentPhase = async () => {
+    console.log(`[indexing] Starting Phase B with ${totalEnrichment} images to enrich`);
     phaseBStats.startTime = performance.now();
     performance.mark('indexing:phaseB:start');
 
     const queue = [...needsEnrichment];
-    options.onEnrichmentProgress?.({ processed: 0, total: totalEnrichment });
+    throttledEnrichmentProgress({ processed: 0, total: totalEnrichment });
+    console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
 
@@ -1147,7 +1177,7 @@ export async function processFiles(
           touchedChunks.add(loc.chunkIndex);
         }
         phaseBStats.processed += 1;
-        options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+        throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
         const elapsed = performance.now() - phaseBStats.startTime;
         if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
           const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1223,7 +1253,7 @@ export async function processFiles(
               touchedChunks.add(loc.chunkIndex);
             }
             phaseBStats.processed += 1;
-            options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+            throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
             const elapsed = performance.now() - phaseBStats.startTime;
             if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
               const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1255,11 +1285,13 @@ export async function processFiles(
 
     await commitBatch();
 
+    const elapsedMs = performance.now() - phaseBStats.startTime;
     performance.mark('indexing:phaseB:complete', {
-      detail: { elapsedMs: performance.now() - phaseBStats.startTime, files: phaseBStats.processed }
+      detail: { elapsedMs, files: phaseBStats.processed }
     });
 
-    options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+    console.log(`[indexing] Phase B complete: ${phaseBStats.processed}/${totalEnrichment} images enriched in ${(elapsedMs / 1000).toFixed(2)}s`);
+    throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
   };
 
   return { phaseB: runEnrichmentPhase() };

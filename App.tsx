@@ -10,7 +10,6 @@ import { X } from 'lucide-react';
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
-import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
@@ -440,7 +439,6 @@ export default function App() {
             />
           )}
 
-          {isLoading && progress && progress.total === 0 && <Loader progress={progress} />}
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
           {hasDirectories && (
