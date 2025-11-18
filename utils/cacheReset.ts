@@ -132,17 +132,45 @@ export async function resetAllCaches(): Promise<void> {
   try {
     // 5. Reset Zustand stores
     console.log('🔄 Resetting application state...');
-    
+
     // Reset ImageStore (images, directories, filters, etc.)
     useImageStore.getState().resetState();
     console.log('✅ Image store reset');
-    
+
     // Reset SettingsStore (preferences, cache path, auto-update)
     useSettingsStore.getState().resetState();
     console.log('✅ Settings store reset');
 
   } catch (error) {
     console.error('❌ Error resetting stores:', error);
+  }
+
+  try {
+    // 6. Clear Zustand persistence (the stored state data)
+    console.log('💾 Clearing Zustand persistence...');
+
+    // Get persistence storage keys and clear them
+    const storageName1 = 'image-metahub-settings';
+    const storageName2 = 'invokeai-image-store';
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(storageName1);
+      localStorage.removeItem(storageName2);
+      console.log('✅ Zustand persistence cleared from localStorage');
+    }
+
+    // Also clear through Electron API if available
+    if (window.electronAPI) {
+      try {
+        await window.electronAPI.saveSettings({});
+        console.log('✅ Electron settings cleared');
+      } catch (err) {
+        console.warn('⚠️ Could not clear Electron settings:', err);
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error clearing Zustand persistence:', error);
   }
 
   console.log('🎉 All caches and app state cleared successfully!');

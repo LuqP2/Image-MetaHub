@@ -844,6 +844,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectionTotalImages: 0,
             selectionDirectoryCount: 0,
             directories: [],
+            folderSelection: new Map(),
+            isFolderSelectionLoaded: false,
             isLoading: false,
             progress: { current: 0, total: 0 },
             enrichmentProgress: null,
@@ -860,6 +862,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedLoras: [],
             selectedSchedulers: [],
             advancedFilters: {},
+            indexingState: 'idle',
+            previewImage: null,
+            scanSubfolders: true,
+            sortOrder: 'desc',
         }),
 
         cleanupInvalidImages: () => {
