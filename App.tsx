@@ -337,6 +337,19 @@ export default function App() {
     return filteredImages.findIndex(img => img.id === selectedImage.id);
   }, [selectedImage, filteredImages]);
 
+  // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
+  const handleCloseImageModal = useCallback(() => {
+    setSelectedImage(null);
+  }, [setSelectedImage]);
+
+  const handleImageModalNavigateNext = useCallback(() => {
+    handleNavigateNext();
+  }, [handleNavigateNext]);
+
+  const handleImageModalNavigatePrevious = useCallback(() => {
+    handleNavigatePrevious();
+  }, [handleNavigatePrevious]);
+
   // --- Render Logic ---
   const paginatedImages = filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
@@ -485,13 +498,13 @@ export default function App() {
         {selectedImage && directoryPath && (
           <ImageModal
             image={selectedImage}
-            onClose={() => setSelectedImage(null)}
+            onClose={handleCloseImageModal}
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
             totalImages={filteredImages.length}
-            onNavigateNext={handleNavigateNext}
-            onNavigatePrevious={handleNavigatePrevious}
+            onNavigateNext={handleImageModalNavigateNext}
+            onNavigatePrevious={handleImageModalNavigatePrevious}
             directoryPath={directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           />

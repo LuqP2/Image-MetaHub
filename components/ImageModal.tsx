@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, FC } from 'react';
+import React, { useEffect, useState, FC } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
@@ -64,16 +64,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
-
-  // Stabilize image reference to prevent unnecessary reloads during metadata indexing
-  // Only change when critical properties (id, handle, name) actually change
-  const stableImage = useMemo(() => image, [
-    image.id,
-    image.handle,
-    image.thumbnailHandle,
-    image.name,
-    image.lastModified
-  ]);
 
   // Full screen browser API functions
   const enterFullscreen = async () => {
@@ -290,8 +280,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       try {
         // Primary method: Use thumbnail if available, otherwise full image
-        const fileHandle = stableImage.thumbnailHandle || stableImage.handle;
-        
+        const fileHandle = image.thumbnailHandle || image.handle;
+
         if (fileHandle && typeof fileHandle.getFile === 'function') {
           const file = await fileHandle.getFile();
           if (isMounted) {
@@ -306,7 +296,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
         if (isMounted && window.electronAPI && directoryPath) {
           try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, stableImage.name);
+            const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
             if (!pathResult.success || !pathResult.path) {
               throw new Error(pathResult.error || 'Failed to construct image path.');
             }
@@ -316,7 +306,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               let dataUrl: string;
               if (typeof fileResult.data === 'string') {
                 // Assume base64 string
-                const ext = stableImage.name.toLowerCase().endsWith('.jpg') || stableImage.name.toLowerCase().endsWith('.jpeg')
+                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
                   ? 'jpeg'
                   : 'png';
                 dataUrl = `data:image/${ext};base64,${fileResult.data}`;
@@ -324,7 +314,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 // Convert Uint8Array to base64
                 const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                 const base64 = btoa(binary);
-                const ext = stableImage.name.toLowerCase().endsWith('.jpg') || stableImage.name.toLowerCase().endsWith('.jpeg')
+                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
                   ? 'jpeg'
                   : 'png';
                 dataUrl = `data:image/${ext};base64,${base64}`;
@@ -378,7 +368,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [stableImage, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath]);
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
@@ -606,4 +596,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-export default ImageModal;
+// Wrap with React.memo to prevent re-renders during Phase B metadata updates
+// Custom comparator: only compare image.id, onClose, and isIndexing
+// This prevents flickering when the image object reference changes but the ID stays the same
+export default React.memo(ImageModal, (prevProps, nextProps) => {
+  // Return true if props are EQUAL (skip re-render)
+  // Return false if props are DIFFERENT (re-render)
+
+  const propsEqual =
+    prevProps.image.id === nextProps.image.id &&
+    prevProps.onClose === nextProps.onClose &&
+    prevProps.onImageDeleted === nextProps.onImageDeleted &&
+    prevProps.onImageRenamed === nextProps.onImageRenamed &&
+    prevProps.currentIndex === nextProps.currentIndex &&
+    prevProps.totalImages === nextProps.totalImages &&
+    prevProps.onNavigateNext === nextProps.onNavigateNext &&
+    prevProps.onNavigatePrevious === nextProps.onNavigatePrevious &&
+    prevProps.directoryPath === nextProps.directoryPath &&
+    prevProps.isIndexing === nextProps.isIndexing;
+
+  return propsEqual; // true = skip re-render, false = re-render
+});
