@@ -30,10 +30,10 @@ const detectDefaultIndexingConcurrency = (): number => {
   if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
     const cores = navigator.hardwareConcurrency;
     if (Number.isFinite(cores) && cores > 0) {
-      return Math.max(1, Math.min(8, Math.floor(cores)));
+      return Math.max(1, Math.min(16, Math.floor(cores)));
     }
   }
-  return 4;
+  return 8;
 };
 
 const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
