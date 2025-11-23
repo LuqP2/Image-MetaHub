@@ -147,7 +147,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   CLIPTextEncode: {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: { clip: { type: 'CLIP' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
-    param_mapping: { prompt: { source: 'widget', key: 'text' }, negativePrompt: { source: 'widget', key: 'text' }, },
+    param_mapping: { prompt: { source: 'widget', key: 'text' } },
     widget_order: ['text']
   },
   'ControlNetApply': {
@@ -641,6 +641,21 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       prompt: { source: 'trace', input: 'guider' },
       cfg: { source: 'trace', input: 'guider' }
     }
+  },
+
+  BasicGuider: {
+    category: 'CONDITIONING', roles: ['TRANSFORM'],
+    inputs: {
+      model: { type: 'MODEL' },
+      conditioning: { type: 'CONDITIONING' }
+    },
+    outputs: { GUIDER: { type: 'GUIDER' } },
+    param_mapping: {
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'conditioning' },
+      negativePrompt: { source: 'trace', input: 'conditioning' }
+    },
+    widget_order: []
   },
 
   CFGGuider: {

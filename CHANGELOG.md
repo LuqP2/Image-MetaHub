@@ -5,8 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
 ## [0.9.6-rc] - 2025-11-23
 
 ### Fixed
@@ -17,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in useImageStore.
 - **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
 - **Pagination Input**: Fixed pagination input field not responding to Enter key press.
-- **App Version Format**: Fixed app version format error ("0.9.6rc" → "0.9.6-rc") to comply with semantic versioning.
+
 
 ### Added
 
