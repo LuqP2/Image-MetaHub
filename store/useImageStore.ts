@@ -737,16 +737,40 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setImageThumbnail: (imageId, data) => {
             set(state => {
+                const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
+                const currentImage = findImage(state.images) || findImage(state.filteredImages);
+
+                if (!currentImage) {
+                    return state;
+                }
+
+                const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
+                const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
+                const nextThumbnailStatus = data.status;
+                const nextThumbnailError = data.error ?? (data.status === 'error'
+                    ? (data.error ?? 'Failed to load thumbnail')
+                    : null);
+
+                // Avoid unnecessary updates that can trigger render loops
+                if (
+                    currentImage.thumbnailUrl === nextThumbnailUrl &&
+                    currentImage.thumbnailHandle === nextThumbnailHandle &&
+                    currentImage.thumbnailStatus === nextThumbnailStatus &&
+                    currentImage.thumbnailError === nextThumbnailError
+                ) {
+                    return state;
+                }
+
                 const updateList = (list: IndexedImage[]) => list.map(img => {
                     if (img.id !== imageId) {
                         return img;
                     }
                     return {
                         ...img,
-                        thumbnailUrl: data.thumbnailUrl ?? img.thumbnailUrl,
-                        thumbnailHandle: data.thumbnailHandle ?? img.thumbnailHandle,
-                        thumbnailStatus: data.status,
-                        thumbnailError: data.error ?? (data.status === 'error' ? (data.error ?? 'Failed to load thumbnail') : null),
+                        thumbnailUrl: nextThumbnailUrl,
+                        thumbnailHandle: nextThumbnailHandle,
+                        thumbnailStatus: nextThumbnailStatus,
+                        thumbnailError: nextThumbnailError,
                     };
                 });
 
