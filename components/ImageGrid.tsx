@@ -22,6 +22,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
+  const showFilenames = useSettingsStore((state) => state.showFilenames);
 
   useThumbnail(image);
 
@@ -74,44 +75,53 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
   };
 
   return (
-    <div
-      className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
-        isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
-      } ${
-        isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
-      }`}
-      style={{ width: `${baseWidth}px`, height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
-      onClick={(e) => onImageClick(image, e)}
-      onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
-    >
-      {isSelected && (
-        <div className="absolute top-2 right-2 z-10">
-          <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-            <Check className="w-4 h-4 text-white" />
+    <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
+      <div
+        className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
+          isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
+        } ${
+          isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
+        }`}
+        style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
+        onClick={(e) => onImageClick(image, e)}
+        onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
+      >
+        {isSelected && (
+          <div className="absolute top-2 right-2 z-10">
+            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+              <Check className="w-4 h-4 text-white" />
+            </div>
           </div>
+        )}
+        <button
+          onClick={handlePreviewClick}
+          className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
+          title="Show details"
+        >
+          <Info className="h-4 w-4" />
+        </button>
+
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={image.name}
+            className="max-w-full max-h-full object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full animate-pulse bg-gray-700"></div>
+        )}
+        {!showFilenames && (
+          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <p className="text-white text-xs truncate">{image.name}</p>
+          </div>
+        )}
+      </div>
+      {showFilenames && (
+        <div className="mt-2 w-full px-1">
+          <p className="text-[11px] text-gray-400 text-center truncate">{image.name}</p>
         </div>
       )}
-      <button
-        onClick={handlePreviewClick}
-        className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
-        title="Show details"
-      >
-        <Info className="h-4 w-4" />
-      </button>
-
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={image.name}
-          className="max-w-full max-h-full object-contain"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-full h-full animate-pulse bg-gray-700"></div>
-      )}
-      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        <p className="text-white text-xs truncate">{image.name}</p>
-      </div>
     </div>
   );
 };

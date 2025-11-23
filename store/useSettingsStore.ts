@@ -53,6 +53,7 @@ interface SettingsState {
   lastViewedVersion: string | null;
   indexingConcurrency: number;
   disableThumbnails: boolean;
+  showFilenames: boolean;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -68,6 +69,7 @@ interface SettingsState {
   setLastViewedVersion: (version: string) => void;
   setIndexingConcurrency: (value: number) => void;
   setDisableThumbnails: (value: boolean) => void;
+  setShowFilenames: (value: boolean) => void;
   resetState: () => void;
 }
 
@@ -92,6 +94,7 @@ export const useSettingsStore = create<SettingsState>()(
       lastViewedVersion: null,
       indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
+      showFilenames: false,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -114,6 +117,7 @@ export const useSettingsStore = create<SettingsState>()(
             : 1,
         }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
+      setShowFilenames: (value) => set({ showFilenames: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -138,6 +142,7 @@ export const useSettingsStore = create<SettingsState>()(
         lastViewedVersion: null,
         indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
+        showFilenames: false,
       }),
     }),
     {
@@ -147,6 +152,10 @@ export const useSettingsStore = create<SettingsState>()(
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || state.itemsPerPage <= 0 || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
+        }
+
+        if (state && typeof state.showFilenames !== 'boolean') {
+          state.showFilenames = false;
         }
       },
     }
