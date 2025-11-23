@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6-rc] - 2025-11-23
+
+### Fixed
+
+- **Critical Search Crash**: Fixed application crash when searching with multiple folders due to non-string values in models/loras arrays. Added comprehensive type guards in search, filter, and enrichment logic to handle all edge cases robustly.
+- **LoRA Categorization (Issue #45)**: Fixed LoRAs appearing incorrectly in the Models dropdown filter. InvokeAI parser now properly excludes LoRA fields during model detection, ensuring clean separation between Models and LoRAs.
+- **Image Flickering During Indexing**: Fixed images reloading/flickering when viewing in modal during Phase B metadata enrichment. Implemented React.memo with custom prop comparator and memoized callbacks to prevent unnecessary component re-renders when other images are being indexed.
+- **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in useImageStore.
+- **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
+- **Pagination Input**: Fixed pagination input field not responding to Enter key press.
+- **App Version Format**: Fixed app version format error ("0.9.6rc" → "0.9.6-rc") to comply with semantic versioning.
+
+### Added
+
+- **Analytics Dashboard Redesign**:
+  - Vertical bar charts for Models, LoRAs, and Samplers with angled labels for better readability
+  - Resolution distribution with side-by-side pie chart and percentage list with color indicators
+  - Mobile-responsive design with stacked charts on small screens
+- **Filenames in Grid**: New option in display settings to show filenames below thumbnails in grid view.
+- **Cache Reset Functionality**: Comprehensive cache and storage reset tool that clears:
+  - Electron disk caches (metadata, thumbnails)
+  - IndexedDB databases
+  - localStorage and sessionStorage
+  - Zustand store state and persistence
+  - Useful for troubleshooting and resetting application state
+
+### Improved
+
+- **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.
+- **Phase B Progress Visibility**: Enhanced Phase B progress bar display with throttled updates (1000ms) and 2-second visibility after completion.
+- **Indexing Concurrency**: Increased default Phase B concurrency from 4-8 to 8 workers with configurable maximum of 16 (previously 8) for faster metadata enrichment.
+
 ## [0.9.5] - 2025-11-08
 
 ### Added
