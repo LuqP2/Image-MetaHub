@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export type SearchField = 'any' | 'prompt' | 'model' | 'lora' | 'seed' | 'settings';
+export type SearchField = 'any' | 'prompt' | 'negativePrompt' | 'seed';
 
 interface SearchBarProps {
   value: string;
@@ -17,12 +17,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onSearchFieldChange
 }) => {
   const searchOptions = [
-    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search by prompt, model, etc...' },
-    { value: 'prompt' as SearchField, label: 'Prompt', placeholder: 'Search in prompts...' },
-    { value: 'model' as SearchField, label: 'Model', placeholder: 'Search in models...' },
-    { value: 'lora' as SearchField, label: 'LoRA', placeholder: 'Search in LoRAs...' },
-    { value: 'seed' as SearchField, label: 'Seed', placeholder: 'Search by seed...' },
-    { value: 'settings' as SearchField, label: 'Settings', placeholder: 'Search in CFG, steps, scheduler...' },
+    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search...' },
+    { value: 'prompt' as SearchField, label: 'Prompt', placeholder: 'Search prompts...' },
+    { value: 'negativePrompt' as SearchField, label: 'Negative Prompt', placeholder: 'Search negative prompts...' },
+    { value: 'seed' as SearchField, label: 'Seed', placeholder: 'Search seeds...' },
   ];
 
   const currentOption = searchOptions.find(option => option.value === searchField);
