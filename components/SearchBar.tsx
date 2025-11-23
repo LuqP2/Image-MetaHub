@@ -17,7 +17,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onSearchFieldChange
 }) => {
   const searchOptions = [
-    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search...' },
+    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search images...' },
     { value: 'prompt' as SearchField, label: 'Prompt', placeholder: 'Search prompts...' },
     { value: 'negativePrompt' as SearchField, label: 'Negative Prompt', placeholder: 'Search negative prompts...' },
     { value: 'seed' as SearchField, label: 'Seed', placeholder: 'Search seeds...' },
@@ -29,12 +29,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
     <div className="relative w-full">
       <div className="flex gap-2">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[200px]">
           <input
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={currentOption?.placeholder || 'Search...'}
+            placeholder={currentOption?.placeholder || 'Search images...'}
             className="w-full bg-gray-700 text-gray-200 placeholder-gray-400 py-2 pl-10 pr-4 rounded-lg border-2 border-transparent focus:outline-none focus:border-blue-500 transition-colors"
             data-testid="search-input"
           />
