@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-export type SearchField = 'any' | 'prompt' | 'model' | 'lora' | 'seed' | 'settings';
+export type SearchField = 'any' | 'prompt' | 'negativePrompt' | 'seed';
 
 interface SearchBarProps {
   value: string;
@@ -17,26 +17,24 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onSearchFieldChange
 }) => {
   const searchOptions = [
-    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search by prompt, model, etc...' },
-    { value: 'prompt' as SearchField, label: 'Prompt', placeholder: 'Search in prompts...' },
-    { value: 'model' as SearchField, label: 'Model', placeholder: 'Search in models...' },
-    { value: 'lora' as SearchField, label: 'LoRA', placeholder: 'Search in LoRAs...' },
-    { value: 'seed' as SearchField, label: 'Seed', placeholder: 'Search by seed...' },
-    { value: 'settings' as SearchField, label: 'Settings', placeholder: 'Search in CFG, steps, scheduler...' },
+    { value: 'any' as SearchField, label: 'Any Field', placeholder: 'Search images...' },
+    { value: 'prompt' as SearchField, label: 'Prompt', placeholder: 'Search prompts...' },
+    { value: 'negativePrompt' as SearchField, label: 'Negative Prompt', placeholder: 'Search negative prompts...' },
+    { value: 'seed' as SearchField, label: 'Seed', placeholder: 'Search seeds...' },
   ];
 
   const currentOption = searchOptions.find(option => option.value === searchField);
 
   return (
     <div className="relative w-full">
-      <div className="flex gap-2">
+      <div className="flex gap-2 w-full items-stretch">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[160px]">
           <input
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={currentOption?.placeholder || 'Search...'}
+            placeholder={currentOption?.placeholder || 'Search images...'}
             className="w-full bg-gray-700 text-gray-200 placeholder-gray-400 py-2 pl-10 pr-4 rounded-lg border-2 border-transparent focus:outline-none focus:border-blue-500 transition-colors"
             data-testid="search-input"
           />
