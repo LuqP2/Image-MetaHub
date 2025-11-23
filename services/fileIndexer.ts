@@ -64,6 +64,10 @@ const isProduction = Boolean(
   (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.NODE_ENV === 'production') ||
   (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.PROD)
 );
+const shouldLogPngDebug = Boolean(
+  (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.PNG_DEBUG === 'true') ||
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_PNG_DEBUG)
+);
 
 // Helper function to chunk array into smaller arrays
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -184,11 +188,13 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return comfyMetadata;
   } else if (chunks.parameters || chunks.description) {
     const paramsValue = chunks.parameters || chunks.description;
-    console.log('[PNG DEBUG] Found parameters chunk:', {
-      length: paramsValue.length,
-      preview: paramsValue.substring(0, 150),
-      hasSuiImageParams: paramsValue.includes('sui_image_params')
-    });
+    if (shouldLogPngDebug) {
+      console.log('[PNG DEBUG] Found parameters chunk:', {
+        length: paramsValue.length,
+        preview: paramsValue.substring(0, 150),
+        hasSuiImageParams: paramsValue.includes('sui_image_params')
+      });
+    }
     return { parameters: paramsValue };
   } else if (chunks.invokeai_metadata) {
     return JSON.parse(chunks.invokeai_metadata);
