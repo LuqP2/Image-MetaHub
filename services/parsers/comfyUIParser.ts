@@ -398,15 +398,22 @@ function createNodeMap(workflow: any, prompt: any): Graph {
 /**
  * Encontra o nó terminal do grafo, que serve como ponto de partida para a travessia.
  * Prioriza nós de geração (KSampler) sobre pós-processamento (UltimateSDUpscale).
+ * Ignora nós silenciados (muted).
  */
 function findTerminalNode(graph: Graph): ParserNode | null {
     let terminalNode: ParserNode | null = null;
     let kSamplerNode: ParserNode | null = null;
-    
+
     for (const nodeId in graph) {
         const node = graph[nodeId];
+
+        // Skip muted nodes (mode 2 or 4)
+        if (node.mode === 2 || node.mode === 4) {
+            continue;
+        }
+
         const nodeDef = NodeRegistry[node.class_type];
-        
+
         if (nodeDef?.roles.includes('SINK')) {
             // Prioritize KSampler variants and workflow sampler nodes (main generation nodes)
             if (node.class_type.includes('KSampler') || node.class_type.includes('Sampler')) {
@@ -416,7 +423,7 @@ function findTerminalNode(graph: Graph): ParserNode | null {
             }
         }
     }
-    
+
     // Return KSampler if found, otherwise return any SINK node
     const result = kSamplerNode || terminalNode;
     return result;

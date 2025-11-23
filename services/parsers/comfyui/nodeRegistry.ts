@@ -973,10 +973,10 @@ String: {
 'CR LoRA Stack': {
   category: 'LOADING',
   roles: ['TRANSFORM'],
-  inputs: { 
-    lora_stack: { type: 'LORA_STACK' } 
+  inputs: {
+    lora_stack: { type: 'LORA_STACK' }
   },
-  outputs: { 
+  outputs: {
     LORA_STACK: { type: 'LORA_STACK' },
     show_help: { type: 'STRING' }
   },
@@ -985,32 +985,39 @@ String: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
         const loras: string[] = [];
-        const inputs = node.inputs || {};
-        
-        // CR LoRA Stack usa triplas: switch_N, lora_name_N, model_weight_N, clip_weight_N
-        for (let i = 1; i <= 10; i++) {  // Suporta até 10 LoRAs
-          const switchKey = `switch_${i}`;
-          const loraKey = `lora_name_${i}`;
-          
-          const switchValue = inputs[switchKey];
-          const loraValue = inputs[loraKey];
-          
+        const widgets = node.widgets_values || [];
+
+        // CR LoRA Stack widget_order: [switch_1, lora_name_1, model_weight_1, clip_weight_1, switch_2, ...]
+        // Each LoRA is a group of 4 widgets: switch, name, model_weight, clip_weight
+        const lorasPerGroup = 4;
+        const maxLoras = Math.floor(widgets.length / lorasPerGroup);
+
+        for (let i = 0; i < maxLoras; i++) {
+          const switchIdx = i * lorasPerGroup;
+          const loraNameIdx = i * lorasPerGroup + 1;
+
+          const switchValue = widgets[switchIdx];
+          const loraValue = widgets[loraNameIdx];
+
           // Verifica se o switch está "On" e há um LoRA válido
           if (switchValue === 'On' && loraValue && loraValue !== 'None') {
             let loraPath = String(loraValue);
-            
-            // Remove prefixos comuns (flux\\, Flux\\, etc.)
-            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/]+/i, '');
-            
-            // Remove extensão
+
+            // Remove prefixos comuns (Flux\\, flux\\, etc.)
+            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/\-\s]+/i, '');
+
+            // Remove extensão .safetensors
             loraPath = loraPath.replace(/\.safetensors$/i, '');
-            
+
+            // Limpa espaços extras
+            loraPath = loraPath.trim();
+
             if (loraPath) {
               loras.push(loraPath);
             }
           }
         }
-        
+
         return loras;
       }
     }
@@ -1021,6 +1028,5 @@ String: {
     'switch_3', 'lora_name_3', 'model_weight_3', 'clip_weight_3'
   ],
   pass_through_rules: []
-
-  
-}}
+}
+};
