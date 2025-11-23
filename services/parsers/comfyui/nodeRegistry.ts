@@ -146,8 +146,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   // --- TRANSFORM & PASS-THROUGH NODES ---
   CLIPTextEncode: {
     category: 'LOADING', roles: ['SOURCE'],
-    inputs: { clip: { type: 'CLIP' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
-    param_mapping: { prompt: { source: 'widget', key: 'text' } },
+    inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          // If text comes from a link (like String Literal), trace it
+          const textLink = node.inputs?.text;
+          if (textLink && Array.isArray(textLink)) {
+            return traverse(textLink as any, { ...state, targetParam: 'prompt' }, graph, []);
+          }
+          // Otherwise use widget value at index 0
+          if (node.widgets_values?.[0]) {
+            return node.widgets_values[0];
+          }
+          return null;
+        }
+      }
+    },
     widget_order: ['text']
   },
   'ControlNetApply': {
@@ -639,7 +655,8 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       scheduler: { source: 'trace', input: 'sigmas' },
       steps: { source: 'trace', input: 'sigmas' },
       prompt: { source: 'trace', input: 'guider' },
-      cfg: { source: 'trace', input: 'guider' }
+      cfg: { source: 'trace', input: 'guider' },
+      model: { source: 'trace', input: 'guider' }
     }
   },
 

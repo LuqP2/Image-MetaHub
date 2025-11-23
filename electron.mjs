@@ -16,6 +16,10 @@ const __dirname = path.dirname(__filename);
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Parser version - increment when parser logic changes
+// This ensures cache is invalidated when parsing rules change
+const PARSER_VERSION = 3; // v3: Improved CLIPTextEncode to trace String Literal links, added model to SamplerCustomAdvanced
+
 // Get platform-specific icon
 function getIconPath() {
   if (process.platform === 'win32') {
@@ -749,7 +753,15 @@ function setupFileOperationHandlers() {
     const filePath = getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+
+      // Check parser version - if mismatch, invalidate cache
+      if (parsed.parserVersion !== PARSER_VERSION) {
+        console.log(`⚠️ Cache version mismatch for ${cacheId}: stored=${parsed.parserVersion}, current=${PARSER_VERSION}. Invalidating cache to force re-parse.`);
+        return { success: true, data: null }; // Return null to force re-parse with new parser
+      }
+
+      return { success: true, data: parsed };
     } catch (error) {
       if (error.code === 'ENOENT') {
         return { success: true, data: null }; // File not found is not an error
@@ -787,9 +799,10 @@ function setupFileOperationHandlers() {
       await fs.writeFile(chunkPath, JSON.stringify(chunk));
     }
 
-    // Write main cache record (without metadata)
+    // Write main cache record (without metadata) with parser version
     const mainCachePath = getCacheFilePath(cacheId);
     cacheRecord.chunkCount = chunkCount;
+    cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
     return { success: true };
@@ -838,7 +851,9 @@ function setupFileOperationHandlers() {
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
     try {
       const mainCachePath = getCacheFilePath(cacheId);
-      await fs.writeFile(mainCachePath, JSON.stringify(record, null, 2));
+      // Add parser version to cache record
+      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
+      await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
