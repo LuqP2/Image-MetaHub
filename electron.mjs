@@ -29,6 +29,74 @@ function getIconPath() {
 let mainWindow;
 let skippedVersions = new Set();
 
+// --- Zoom Management ---
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+
+function getSafeWebContents() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow.webContents;
+  }
+  return null;
+}
+
+function setZoomFactor(factor) {
+  const contents = getSafeWebContents();
+  if (!contents) return;
+
+  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, factor));
+  contents.setZoomFactor(clamped);
+}
+
+function resetZoom() {
+  setZoomFactor(1);
+}
+
+function adjustZoom(delta) {
+  const contents = getSafeWebContents();
+  if (!contents) return;
+
+  const currentZoom = contents.getZoomFactor();
+  setZoomFactor(currentZoom + delta);
+}
+
+const zoomMenuItems = [
+  {
+    label: 'Reset Zoom',
+    accelerator: 'CmdOrCtrl+0',
+    click: resetZoom
+  },
+  {
+    label: 'Zoom In',
+    accelerator: 'CmdOrCtrl+=',
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom In (+)',
+    accelerator: 'CmdOrCtrl+Plus',
+    visible: false,
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom In (Numpad)',
+    accelerator: 'CmdOrCtrl+numadd',
+    visible: false,
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom Out',
+    accelerator: 'CmdOrCtrl+-',
+    click: () => adjustZoom(-ZOOM_STEP)
+  },
+  {
+    label: 'Zoom Out (Numpad)',
+    accelerator: 'CmdOrCtrl+numsub',
+    visible: false,
+    click: () => adjustZoom(-ZOOM_STEP)
+  }
+];
+
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
@@ -115,9 +183,7 @@ function createApplicationMenu() {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        ...zoomMenuItems,
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]
@@ -126,7 +192,8 @@ function createApplicationMenu() {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'zoom' },
+        { type: 'separator' },
+        ...zoomMenuItems,
         ...(process.platform === 'darwin' ? [
           { type: 'separator' },
           { role: 'front' },
@@ -436,6 +503,9 @@ function createWindow(startupDirectory = null) {
   // Create application menu
   createApplicationMenu();
 
+  // Ensure zoom starts at the default level
+  resetZoom();
+
   // Set window title to include version (keeps it accurate across builds)
   try {
     const appVersion = app.getVersion();
@@ -483,6 +553,29 @@ function createWindow(startupDirectory = null) {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const isZoomModifier = input.control || input.meta;
+    if (!isZoomModifier) return;
+
+    const key = input.key?.toLowerCase();
+    if (key === '0' || input.code === 'Digit0' || input.code === 'Numpad0') {
+      event.preventDefault();
+      resetZoom();
+      return;
+    }
+
+    if (key === '+' || key === '=' || input.code === 'NumpadAdd') {
+      event.preventDefault();
+      adjustZoom(ZOOM_STEP);
+      return;
+    }
+
+    if (key === '-' || input.code === 'NumpadSubtract') {
+      event.preventDefault();
+      adjustZoom(-ZOOM_STEP);
+    }
   });
 
   // Handle window closed

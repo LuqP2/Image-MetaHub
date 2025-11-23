@@ -17,6 +17,9 @@ These shortcuts work anywhere in the application:
 | `Ctrl/Cmd+F` | Focus Search | Jump to search input |
 | `/` | Quick Search | Alternative search activation |
 | `Ctrl/Cmd+Shift+F` | Toggle Advanced Filters | Show/hide advanced filtering |
+| `Ctrl/Cmd+=` or `Ctrl/Cmd++` | Zoom In | Increase interface zoom (also works with numpad `+`) |
+| `Ctrl/Cmd+-` | Zoom Out | Decrease interface zoom (also works with numpad `-`) |
+| `Ctrl/Cmd+0` | Reset Zoom | Restore default zoom level |
 | `Ctrl/Cmd+A` | Select All | Select all visible images |
 | `Delete` | Delete Selected | Move selected images to trash |
 | `Space` | Toggle Quick Preview | Show/hide preview pane |
