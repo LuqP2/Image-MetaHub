@@ -27,7 +27,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
   return (
     <div className="relative w-full">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 sm:flex-nowrap">
         {/* Search Input */}
         <div className="relative flex-1 min-w-[200px]">
           <input
@@ -46,7 +46,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         </div>
 
         {/* Search Field Dropdown */}
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <select
             value={searchField}
             onChange={(e) => onSearchFieldChange(e.target.value as SearchField)}
