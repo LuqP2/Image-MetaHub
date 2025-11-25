@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC } from 'react';
+import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -65,60 +65,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
-  // Full screen functions - prioritizes Electron API, falls back to Browser API
-  const enterFullscreen = async () => {
-    try {
-      if (window.electronAPI?.toggleFullscreen) {
-        // Use Electron API (native fullscreen, better integration)
-        const result = await window.electronAPI.toggleFullscreen();
-        if (result.success) {
-          setIsFullscreen(true);
-        }
-      } else if (document.documentElement.requestFullscreen) {
-        // Fallback to Browser API
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
+  // Full screen toggle - calls Electron API for actual fullscreen
+  const toggleFullscreen = useCallback(async () => {
+    if (window.electronAPI?.toggleFullscreen) {
+      const result = await window.electronAPI.toggleFullscreen();
+      if (result.success) {
+        setIsFullscreen(result.isFullscreen);
       }
-    } catch (error) {
-      console.error('Failed to enter fullscreen:', error);
     }
-  };
+  }, []);
 
-  const exitFullscreen = async () => {
-    try {
-      if (window.electronAPI?.toggleFullscreen) {
-        // Use Electron API
-        const result = await window.electronAPI.toggleFullscreen();
-        if (result.success) {
-          setIsFullscreen(false);
-        }
-      } else if (document.exitFullscreen) {
-        // Fallback to Browser API
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (error) {
-      console.error('Failed to exit fullscreen:', error);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    if (isFullscreen) {
-      exitFullscreen();
-    } else {
-      enterFullscreen();
-    }
-  };
-
-  // Listen for fullscreen changes (ESC key, etc.)
+  // Listen for fullscreen changes from Electron
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      const isNowFullscreen = !!document.fullscreenElement;
-      setIsFullscreen(isNowFullscreen);
-    };
+    // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
+    const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
+      setIsFullscreen(data.isFullscreen);
+    });
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    // Listen for fullscreen-state-check events (periodic check for state changes)
+    const unsubscribeFullscreenStateCheck = window.electronAPI?.onFullscreenStateCheck?.((data) => {
+      setIsFullscreen(data.isFullscreen);
+    });
+
+    return () => {
+      unsubscribeFullscreenChanged?.();
+      unsubscribeFullscreenStateCheck?.();
+    };
   }, []);
 
   // Initialize fullscreen mode from sessionStorage (backward compatibility)
@@ -127,7 +99,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (shouldStartFullscreen) {
       sessionStorage.removeItem('openImageFullscreen');
       setTimeout(() => {
-        enterFullscreen();
+        if (window.electronAPI?.toggleFullscreen) {
+          window.electronAPI.toggleFullscreen().then((result) => {
+            if (result?.success) {
+              setIsFullscreen(result.isFullscreen);
+            }
+          });
+        }
       }, 100);
     }
   }, []);
@@ -383,7 +361,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
       // Escape = Exit fullscreen first, then close modal
       if (event.key === 'Escape') {
         if (isFullscreen) {
-          exitFullscreen();
+          // Call toggleFullscreen to actually exit Electron fullscreen
+          toggleFullscreen();
         } else {
           onClose();
         }
@@ -409,7 +388,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen, exitFullscreen]);
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
