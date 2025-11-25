@@ -1067,6 +1067,23 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Handle open cache location (without security restrictions since it's app's internal cache)
+  ipcMain.handle('open-cache-location', async (event, cachePath) => {
+    try {
+      const normalizedCachePath = path.normalize(cachePath);
+      const parentPath = path.dirname(normalizedCachePath);
+      console.log('📂 Opening cache parent directory:', parentPath);
+
+      shell.showItemInFolder(parentPath);
+      console.log('✅ shell.showItemInFolder called for:', parentPath);
+
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error opening cache location:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('list-subfolders', async (event, folderPath) => {
     try {
       if (!isPathAllowed(folderPath)) {

@@ -57,6 +57,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     setCurrentCachePath(defaultCachePath);
   };
 
+  const handleOpenCacheLocation = async () => {
+    if (currentCachePath) {
+      await window.electronAPI?.openCacheLocation(currentCachePath);
+    }
+  };
+
   const handleClearCache = async () => {
     const confirmed = window.confirm(
       '⚠️ CLEAR ALL CACHE & RESET APP ⚠️\n\n' +
@@ -139,6 +145,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium"
               >
                 Change Location
+              </button>
+              <button
+                onClick={handleOpenCacheLocation}
+                className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium"
+              >
+                Open Location
               </button>
               <button
                 onClick={handleResetCacheDirectory}

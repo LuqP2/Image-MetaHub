@@ -153,6 +153,7 @@ interface ImageState {
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
   scanSubfolders: boolean;
+  isFullscreenMode: boolean;
 
   // Filter & Sort State
   searchQuery: string;
@@ -218,6 +219,7 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
+  setFullscreenMode: (isFullscreen: boolean) => void;
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -528,6 +530,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         sortOrder: 'date-desc',
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
+        isFullscreenMode: false,
 
         // --- ACTIONS ---
 
@@ -813,6 +816,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
+        setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
         toggleImageSelection: (imageId) => {
             set(state => {
@@ -888,8 +892,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             advancedFilters: {},
             indexingState: 'idle',
             previewImage: null,
+            focusedImageIndex: null,
             scanSubfolders: true,
             sortOrder: 'desc',
+            isFullscreenMode: false,
         }),
 
         cleanupInvalidImages: () => {

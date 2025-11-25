@@ -450,24 +450,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   
   const terminalNode = findTerminalNode(graph);
 
-  if (!terminalNode) {
-    console.error("[ComfyUI Parser] ❌ Não foi possível encontrar um nó terminal (SINK) no grafo.");
-    console.error("[ComfyUI Parser] Available nodes:", Object.entries(graph).map(([id, n]) => `${id}:${n.class_type}`));
-    telemetry.warnings.push('No terminal node found');
-    
-    // Try regex fallback on workflow text
-    const workflowText = JSON.stringify(workflow) + JSON.stringify(prompt);
-    const regexParams = extractParamsWithRegex(workflowText);
-    
-    if (Object.keys(regexParams).length > 1) {
-      console.log("[ComfyUI Parser] ✅ Used regex fallback to extract parameters");
-      telemetry.detection_method = 'regex_fallback';
-      return { ...regexParams, _telemetry: telemetry };
-    }
-    
-    return { _telemetry: telemetry };
-  }
-  
+
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
   const results = resolveAll({
     startNode: terminalNode,
@@ -590,10 +573,6 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     results.comfyui_version = comfyVersion;
   }
   
-  // Add telemetry data to results for debugging
-  if (telemetry.unknown_nodes_count > 0 || telemetry.warnings.length > 0) {
-    console.log('[ComfyUI Parser] Telemetry:', telemetry);
-  }
 
   results.generator = 'ComfyUI';
   

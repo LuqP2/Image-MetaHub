@@ -1,7 +1,7 @@
 import React, { useEffect, useState, FC } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 
 interface ImageModalProps {
@@ -65,10 +65,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
-  // Full screen browser API functions
+  // Full screen functions - prioritizes Electron API, falls back to Browser API
   const enterFullscreen = async () => {
     try {
-      if (document.documentElement.requestFullscreen) {
+      if (window.electronAPI?.toggleFullscreen) {
+        // Use Electron API (native fullscreen, better integration)
+        const result = await window.electronAPI.toggleFullscreen();
+        if (result.success) {
+          setIsFullscreen(true);
+        }
+      } else if (document.documentElement.requestFullscreen) {
+        // Fallback to Browser API
         await document.documentElement.requestFullscreen();
         setIsFullscreen(true);
       }
@@ -79,7 +86,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const exitFullscreen = async () => {
     try {
-      if (document.exitFullscreen) {
+      if (window.electronAPI?.toggleFullscreen) {
+        // Use Electron API
+        const result = await window.electronAPI.toggleFullscreen();
+        if (result.success) {
+          setIsFullscreen(false);
+        }
+      } else if (document.exitFullscreen) {
+        // Fallback to Browser API
         await document.exitFullscreen();
         setIsFullscreen(false);
       }
@@ -99,11 +113,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // Listen for fullscreen changes (ESC key, etc.)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // Initialize fullscreen mode from sessionStorage (backward compatibility)
+  useEffect(() => {
+    const shouldStartFullscreen = sessionStorage.getItem('openImageFullscreen') === 'true';
+    if (shouldStartFullscreen) {
+      sessionStorage.removeItem('openImageFullscreen');
+      setTimeout(() => {
+        enterFullscreen();
+      }, 100);
+    }
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -345,10 +371,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isRenaming) return;
-      if (event.key === 'Escape') {
-        if (isFullscreen) exitFullscreen();
-        else onClose();
+
+      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
+      if (event.key === 'Enter' && event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFullscreen();
+        return;
       }
+
+      // Escape = Exit fullscreen first, then close modal
+      if (event.key === 'Escape') {
+        if (isFullscreen) {
+          exitFullscreen();
+        } else {
+          onClose();
+        }
+        return;
+      }
+
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
       if (event.key === 'ArrowRight') onNavigateNext?.();
     };
@@ -368,7 +409,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath]);
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen, exitFullscreen]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {

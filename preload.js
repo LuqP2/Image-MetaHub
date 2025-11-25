@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
+  openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),

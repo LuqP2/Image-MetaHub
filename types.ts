@@ -5,6 +5,7 @@ export interface ElectronAPI {
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
