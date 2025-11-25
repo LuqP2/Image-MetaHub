@@ -35,6 +35,7 @@ export interface ElectronAPI {
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
+  deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
 
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
   onMenuAddFolder: (callback: () => void) => () => void;

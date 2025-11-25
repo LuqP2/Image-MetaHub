@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),
   clearMetadataCache: () => ipcRenderer.invoke('clear-metadata-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
+  deleteCacheFolder: () => ipcRenderer.invoke('delete-cache-folder'),
 
 
   // TEST ONLY: Simulate update dialog

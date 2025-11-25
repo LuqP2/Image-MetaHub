@@ -11,36 +11,26 @@ import { useSettingsStore } from '../store/useSettingsStore';
 export async function resetAllCaches(): Promise<void> {
   console.log('🧹 Starting complete cache reset...');
 
-  try {
-    // 1. Clear Electron disk-based caches (metadata & thumbnails)
-    console.log('📁 Clearing Electron disk-based caches...');
-    
-    if (window.electronAPI) {
-      // Clear metadata cache (JSON files)
-      try {
-        const metadataResult = await window.electronAPI.clearMetadataCache();
-        if (metadataResult?.success) {
-          console.log('✅ Metadata cache cleared from disk');
-        } else {
-          console.warn('⚠️ Could not clear metadata cache:', metadataResult?.error);
-        }
-      } catch (error) {
-        console.error('❌ Error clearing metadata cache:', error);
-      }
+  let needsRestart = false;
 
-      // Clear thumbnail cache (webp files)
+  try {
+    // 1. Delete all cache files/folders from AppData/Roaming
+    console.log('📁 Deleting cache files from AppData/Roaming...');
+
+    if (window.electronAPI) {
       try {
-        const thumbnailResult = await window.electronAPI.clearThumbnailCache();
-        if (thumbnailResult?.success) {
-          console.log('✅ Thumbnail cache cleared from disk');
+        const deleteResult = await window.electronAPI.deleteCacheFolder();
+        if (deleteResult?.success) {
+          console.log('✅ Cache files deleted successfully');
+          needsRestart = deleteResult.needsRestart || false;
         } else {
-          console.warn('⚠️ Could not clear thumbnail cache:', thumbnailResult?.error);
+          console.warn('⚠️ Could not delete cache folder:', deleteResult?.error);
         }
       } catch (error) {
-        console.error('❌ Error clearing thumbnail cache:', error);
+        console.error('❌ Error deleting cache folder:', error);
       }
     } else {
-      console.warn('⚠️ Electron API not available - skipping disk cache cleanup');
+      console.warn('⚠️ Electron API not available - skipping folder deletion');
     }
 
   } catch (error) {
@@ -175,6 +165,14 @@ export async function resetAllCaches(): Promise<void> {
 
   console.log('🎉 All caches and app state cleared successfully!');
   console.log('🔄 App will reload to complete the reset.');
+
+  // After all clearing operations, reload the app
+  if (needsRestart) {
+    console.log('🔄 Restarting application in 500ms...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  }
 }
 
 /**

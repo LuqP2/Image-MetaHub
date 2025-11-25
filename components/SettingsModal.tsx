@@ -84,12 +84,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
     if (confirmed) {
       try {
+        console.log('Starting cache reset...');
         await resetAllCaches();
+        // resetAllCaches() will handle the reload automatically
+        // The alert will show briefly before the reload
         alert('✅ Cache cleared successfully!\n\nThe app will now reload to complete the reset.');
         onClose();
-        
-        // Force a complete page reload to reset the app state
-        window.location.reload();
       } catch (error) {
         console.error('Failed to clear cache:', error);
         alert('❌ Failed to clear cache. Check console for details.');

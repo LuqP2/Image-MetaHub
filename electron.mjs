@@ -953,6 +953,34 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Delete all cache files and folders (but not userData itself, as app is using it)
+  ipcMain.handle('delete-cache-folder', async () => {
+    try {
+      const userDataDir = app.getPath('userData');
+      if (fs.existsSync(userDataDir)) {
+        const files = await fs.promises.readdir(userDataDir);
+
+        // Delete each file/folder inside userData
+        for (const file of files) {
+          const filePath = path.join(userDataDir, file);
+          const stat = await fs.promises.stat(filePath);
+
+          if (stat.isDirectory()) {
+            // Recursively delete directories
+            await fs.promises.rm(filePath, { recursive: true, force: true });
+          } else {
+            // Delete files
+            await fs.promises.unlink(filePath);
+          }
+        }
+      }
+      return { success: true, needsRestart: true };
+    } catch (error) {
+      return { success: false, error: error.message, needsRestart: false };
+    }
+  });
+
   // --- End Thumbnail Cache IPC Handlers ---
   // --- End Cache IPC Handlers ---
 
