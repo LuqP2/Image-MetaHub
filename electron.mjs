@@ -958,25 +958,31 @@ function setupFileOperationHandlers() {
   ipcMain.handle('delete-cache-folder', async () => {
     try {
       const userDataDir = app.getPath('userData');
-      if (fs.existsSync(userDataDir)) {
-        const files = await fs.promises.readdir(userDataDir);
+      try {
+        const files = await fs.readdir(userDataDir);
 
         // Delete each file/folder inside userData
         for (const file of files) {
           const filePath = path.join(userDataDir, file);
-          const stat = await fs.promises.stat(filePath);
+          const stat = await fs.stat(filePath);
 
           if (stat.isDirectory()) {
             // Recursively delete directories
-            await fs.promises.rm(filePath, { recursive: true, force: true });
+            await fs.rm(filePath, { recursive: true, force: true });
           } else {
             // Delete files
-            await fs.promises.unlink(filePath);
+            await fs.unlink(filePath);
           }
+        }
+      } catch (error) {
+        // If userData doesn't exist or can't be read, that's fine (already clean)
+        if (error.code !== 'ENOENT') {
+          throw error;
         }
       }
       return { success: true, needsRestart: true };
     } catch (error) {
+      console.error('Error deleting cache folder:', error);
       return { success: false, error: error.message, needsRestart: false };
     }
   });

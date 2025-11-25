@@ -4,25 +4,69 @@ import { Automatic1111Metadata, BaseMetadata } from '../../types';
 
 export function extractModelsFromAutomatic1111(metadata: Automatic1111Metadata): string[] {
   const params = metadata.parameters;
+
+  // Try to extract model from Civitai resources JSON first
+  const civitaiMatch = params.match(/Civitai resources:\s*(\[[\s\S]*?\])/);
+  if (civitaiMatch) {
+    try {
+      const resources = JSON.parse(civitaiMatch[1]);
+      if (Array.isArray(resources)) {
+        for (const resource of resources) {
+          if (resource.type === 'checkpoint' && resource.modelName) {
+            return [resource.modelName];
+          }
+        }
+      }
+    } catch (e) {
+      // If JSON parsing fails, fall back to regex pattern
+    }
+  }
+
+  // Fall back to standard Model: pattern
   const modelMatch = params.match(/Model:\s*([^,]+)/i);
   if (modelMatch && modelMatch[1]) {
     return [modelMatch[1].trim()];
   }
+
+  // Last resort: try Model hash
   const hashMatch = params.match(/Model hash:\s*([a-f0-9]+)/i);
   if (hashMatch && hashMatch[1]) {
     return [`Model hash: ${hashMatch[1]}`];
   }
+
   return [];
 }
 
 export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): string[] {
   const loras: Set<string> = new Set();
   const params = metadata.parameters;
-  const loraPatterns = /<lora:([^:>]+):[^>]*>/gi;
-  let match;
-  while ((match = loraPatterns.exec(params)) !== null) {
-    if (match[1]) loras.add(match[1].trim());
+
+  // Try to extract LoRAs from Civitai resources JSON first
+  const civitaiMatch = params.match(/Civitai resources:\s*(\[[\s\S]*?\])/);
+  if (civitaiMatch) {
+    try {
+      const resources = JSON.parse(civitaiMatch[1]);
+      if (Array.isArray(resources)) {
+        resources.forEach((resource: any) => {
+          if (resource.type === 'lora' && resource.modelName) {
+            loras.add(resource.modelName);
+          }
+        });
+      }
+    } catch (e) {
+      // If JSON parsing fails, fall back to regex pattern
+    }
   }
+
+  // Fall back to standard <lora:...> pattern if no Civitai resources found
+  if (loras.size === 0) {
+    const loraPatterns = /<lora:([^:>]+):[^>]*>/gi;
+    let match;
+    while ((match = loraPatterns.exec(params)) !== null) {
+      if (match[1]) loras.add(match[1].trim());
+    }
+  }
+
   return Array.from(loras);
 }
 
@@ -113,51 +157,21 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
     result.height = parseInt(sizeMatch[2], 10);
   }
 
-  // Extract model - prioritize actual model name over hash
-  // Try Model: field first (can appear anywhere in the line)
-  const modelMatch = parameters.match(/Model:\s*([^,\n]+)/);
-  if (modelMatch && modelMatch[1]) {
-    const modelName = modelMatch[1].trim();
-    // Only use it if it's not a hash (hashes are typically 10+ hex chars)
-    if (!/^[a-f0-9]{10,}$/i.test(modelName)) {
-      result.model = modelName;
-    }
-  }
-  
-  // If no model name found, try Model hash: pattern as fallback
-  if (!result.model) {
-    const hashMatch = parameters.match(/Model hash:\s*([a-f0-9]+)/i);
-    if (hashMatch && hashMatch[1]) {
-      result.model = hashMatch[1];
-    }
-  }
-  
-  // Last resort: try to extract from Hashes JSON (for ComfyUI/other)
-  if (!result.model) {
-    const hashesMatch = parameters.match(/Hashes:\s*(\{[^}]+\})/);
-    if (hashesMatch) {
-      try {
-        const hashes = JSON.parse(hashesMatch[1]);
-        
-        // Try to find actual model name first, avoid hash values
-        result.model = hashes['checkpoint'] || 
-                      hashes['Checkpoint'] ||
-                      // Look for keys containing 'model' but not the hash itself
-                      Object.keys(hashes)
-                        .filter(key => key.toLowerCase().includes('model') && 
-                                      !key.toLowerCase().includes('hash'))
-                        .map(key => hashes[key])
-                        .find(val => typeof val === 'string' && val.trim() && 
-                                    !/^[a-f0-9]{10,}$/i.test(val)); // Avoid hash-like strings
-        
-      } catch {
-        // JSON parse error - continue without model info
-      }
-    }
+  // Extract Clip skip
+  const clipSkipMatch = parameters.match(/Clip skip: (\d+)/i);
+  if (clipSkipMatch) {
+    result.clip_skip = parseInt(clipSkipMatch[1], 10);
   }
 
-  result.models = result.model ? [result.model] : [];
+  // Extract models and LoRAs using dedicated extraction functions
+  // These functions handle Civitai resources JSON, Model: patterns, and fallback extraction
+  result.models = extractModelsFromAutomatic1111({ parameters });
   result.loras = extractLorasFromAutomatic1111({ parameters });
+
+  // Set model to first one from models array
+  if (result.models.length > 0) {
+    result.model = result.models[0];
+  }
   
   // Detecta o gerador usando a função melhorada
   result.generator = detectGenerator(parameters);

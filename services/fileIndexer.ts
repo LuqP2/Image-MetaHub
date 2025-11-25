@@ -576,13 +576,14 @@ if (rawMetadata) {
       normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
     }
     
-    // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators)
-    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants
-    else if (!normalizedMetadata && (params.includes('Model hash:') || 
+    // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators, or Civitai resources)
+    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants, and A1111 with Civitai resources
+    else if (!normalizedMetadata && (params.includes('Model hash:') ||
              params.includes('Version: ComfyUI') ||
              /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
              params.includes('Distilled CFG Scale') ||
-             /Module\s*\d+:/i.test(params))) {
+             /Module\s*\d+:/i.test(params) ||
+             params.includes('Civitai resources:'))) {
       normalizedMetadata = parseA1111Metadata(params);
     }
     
