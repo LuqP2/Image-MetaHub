@@ -354,7 +354,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (event.key === 'Enter' && event.altKey) {
         event.preventDefault();
         event.stopPropagation();
-        toggleFullscreen();
+        toggleFullscreen(); // Toggle fullscreen ON/OFF
         return;
       }
 
