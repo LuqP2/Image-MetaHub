@@ -18,7 +18,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 3; // v3: Improved CLIPTextEncode to trace String Literal links, added model to SamplerCustomAdvanced
+const PARSER_VERSION = 4; // v4: Added Eff. Loader SDXL, DF_Text_Box, and Unpack SDXL Tuple nodes for better SDXL workflow support
 
 // Get platform-specific icon
 function getIconPath() {

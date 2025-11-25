@@ -1045,5 +1045,78 @@ String: {
     'switch_3', 'lora_name_3', 'model_weight_3', 'clip_weight_3'
   ],
   pass_through_rules: []
+},
+// --- TEXT AND PROMPT NODES ---
+'DF_Text_Box': {
+  category: 'CONDITIONING',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: { STRING: { type: 'STRING' } },
+  param_mapping: {
+    prompt: { source: 'widget', key: 'Text' }
+  },
+  widget_order: ['Text']
+},
+// --- SDXL LOADER NODE ---
+'Eff. Loader SDXL': {
+  category: 'LOADING',
+  roles: ['SOURCE', 'TRANSFORM'],
+  inputs: {
+    lora_stack: { type: 'LORA_STACK' },
+    positive: { type: 'STRING' },
+    negative: { type: 'STRING' },
+    empty_latent_width: { type: 'INT' },
+    empty_latent_height: { type: 'INT' },
+    batch_size: { type: 'INT' }
+  },
+  outputs: {
+    SDXL_TUPLE: { type: 'SDXL_TUPLE' },
+    LATENT: { type: 'LATENT' },
+    VAE: { type: 'VAE' },
+    DEPENDENCIES: { type: 'ANY' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' },
+    model: { source: 'widget', key: 'base_ckpt_name' },
+    vae: { source: 'widget', key: 'vae_name' },
+    lora: { source: 'trace', input: 'lora_stack' }
+  },
+  widget_order: [
+    'base_ckpt_name', 'base_clip_skip', 'refiner_ckpt_name', 'refiner_clip_skip',
+    'positive_ascore', 'negative_ascore', 'vae_name', 'positive', 'negative',
+    'token_normalization', 'weight_interpretation', 'empty_latent_width',
+    'empty_latent_height', 'batch_size'
+  ]
+},
+// --- SDXL UNPACKER NODE ---
+'Unpack SDXL Tuple': {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    sdxl_tuple: { type: 'SDXL_TUPLE' }
+  },
+  outputs: {
+    BASE_MODEL: { type: 'MODEL' },
+    BASE_CLIP: { type: 'CLIP' },
+    'BASE_CONDITIONING+': { type: 'CONDITIONING' },
+    'BASE_CONDITIONING-': { type: 'CONDITIONING' },
+    REFINER_MODEL: { type: 'MODEL' },
+    REFINER_CLIP: { type: 'CLIP' },
+    'REFINER_CONDITIONING+': { type: 'CONDITIONING' },
+    'REFINER_CONDITIONING-': { type: 'CONDITIONING' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'sdxl_tuple' },
+    negativePrompt: { source: 'trace', input: 'sdxl_tuple' },
+    model: { source: 'trace', input: 'sdxl_tuple' },
+    vae: { source: 'trace', input: 'sdxl_tuple' }
+  },
+  pass_through_rules: [
+    { from_input: 'sdxl_tuple', to_output: 'BASE_MODEL' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CLIP' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING+' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING-' }
+  ]
 }
 };
