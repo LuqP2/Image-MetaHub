@@ -13,9 +13,11 @@ This document provides comprehensive guidance for developing and maintaining the
 1. [Architecture Overview](#architecture-overview)
 2. [Node Registry Reference](#node-registry-reference)
 3. [Widget Order Specifications](#widget-order-specifications)
-4. [Testing & Validation](#testing--validation)
-5. [Common Issues & Solutions](#common-issues--solutions)
-6. [Future Enhancements](#future-enhancements)
+4. [How to Reverse-Engineer widget_order](#how-to-reverse-engineer-widget_order)
+5. [Node Roles Clarification](#node-roles-clarification)
+6. [Testing & Validation](#testing--validation)
+7. [Common Issues & Solutions](#common-issues--solutions)
+8. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -159,6 +161,179 @@ widget_order: [
 
 ---
 
+## How to Reverse-Engineer widget_order
+
+**Problem**: The node definition requires `widget_order` array, but this isn't always documented. You need to extract it without reading Python source code.
+
+### Method 1: Export Workflow as JSON (Recommended - 2 minutes)
+
+**Step 1**: Open your workflow in ComfyUI UI
+**Step 2**: Save the workflow and locate the JSON file (or right-click → "Save workflow as JSON")
+**Step 3**: Open the JSON in a text editor and find your node:
+
+```json
+{
+  "1": {
+    "class_type": "UltimateSDUpscale",
+    "inputs": {
+      "image": [15, 0],
+      "model": [3, 0],
+      "seed": 12345,
+      "denoise": 1.0
+    },
+    "widgets_values": [4, 12345, 1.0]
+  }
+}
+```
+
+**Step 4**: In the ComfyUI UI, click on the node and note the order of widgets displayed:
+- 1st widget: `upscale_by` (value: 4)
+- 2nd widget: `seed` (value: 12345)
+- 3rd widget: `denoise` (value: 1.0)
+
+**Step 5**: Map the indices to widget names:
+```typescript
+widget_order: ['upscale_by', 'seed', 'denoise']
+```
+
+### Method 2: Browser DevTools (For Debugging - 3 minutes)
+
+**Step 1**: Open ComfyUI in browser, press `F12` to open DevTools
+**Step 2**: Go to Console tab
+**Step 3**: Click on your node to select it
+**Step 4**: Paste this command:
+```javascript
+// Find the currently selected node in the canvas
+const node = app.canvas.selected_nodes[0];
+if (node && node.widgets) {
+  console.table(node.widgets.map((w, i) => ({ index: i, name: w.name, value: w.value })));
+}
+```
+
+**Step 5**: Copy the output mapping directly
+
+### Method 3: Inspect ComfyUI Python Definitions
+
+If the node is from a custom pack, check the GitHub repo:
+- Look for `node.py` or `__init__.py`
+- Search for the class definition and `RETURN_TYPES` or `INPUT_TYPES`
+- The order in `INPUT_TYPES['required']` or `INPUT_TYPES['optional']` → widgets order (skipping inputs that connect to other nodes)
+
+**Example**: ComfyUI-Manager nodes are documented in: https://github.com/ltdrdata/ComfyUI-Manager
+
+### ⚠️ Common Pitfalls
+
+**Pitfall 1**: Confusing widgets with node inputs
+- **Widgets** = UI controls in the node (sliders, dropdowns, text boxes) → appear in `widgets_values`
+- **Inputs** = connections to other nodes → appear in `inputs` object
+- Example: `UltimateSDUpscale` has widget `seed` but also **connects** `model` from another node
+
+**Pitfall 2**: Not accounting for `__unknown__` placeholders
+- Some nodes have gaps in their widget array (deprecated or hidden widgets)
+- Use `__unknown__` to mark skipped indices
+- Example: If you see `widgets_values: [1, null, 2, 3]`, the middle element might need `__unknown__`
+
+**Pitfall 3**: Assuming visual order = widget_order
+- The UI might display widgets in a different order than `widgets_values`
+- **Always verify** against the JSON export, not the visual UI
+
+---
+
+## Node Roles Clarification
+
+The roles in node definitions can be confusing. This section clarifies the differences and provides decision trees.
+
+### Role Definitions
+
+| Role | Purpose | Example |
+|------|---------|---------|
+| **SOURCE** | Generates or loads data from nothing | `CheckpointLoader`, `CLIPTextEncode` |
+| **SINK** | Terminal node, final output consumer | `SaveImage`, `Preview` |
+| **TRANSFORM** | Modifies data and **DOES NOT pass original forward** | `KSampler`, `ImageScale`, `UltimateSDUpscale` |
+| **PASS_THROUGH** | Routes/selects data **WITHOUT modification**, OR modifies one aspect while passing others through | `Mux`, `Switch`, `LoraLoader` (passes model forward) |
+| **ROUTING** | Conditional logic to select between multiple paths | `If` node, `Switch` nodes |
+
+### Decision Tree: TRANSFORM vs PASS_THROUGH
+
+Use this flowchart to decide the correct role:
+
+```
+Does the node modify its PRIMARY output?
+├─ YES → Could be TRANSFORM or PASS_THROUGH (continue below)
+├─ NO → It's PASS_THROUGH or ROUTING
+└─ DEPENDS ON CONTEXT → See "Hybrid Nodes" section
+
+Does the node PASS THROUGH another input without modification?
+├─ YES → It's PASS_THROUGH
+│   Example: LoraLoader passes MODEL forward unchanged
+│   Example: KSampler Efficient passes CONDITIONING forward unchanged
+├─ NO → It's TRANSFORM
+│   Example: UltimateSDUpscale modifies IMAGE but doesn't pass original
+└─ BOTH → See "Hybrid Nodes"
+```
+
+### Examples by Category
+
+#### Pure TRANSFORM Nodes
+```typescript
+// KSampler - Takes LATENT, outputs modified LATENT
+// Does NOT pass original inputs forward
+'KSampler': {
+  category: 'SAMPLING',
+  roles: ['TRANSFORM'],
+  inputs: { latent: { type: 'LATENT' }, model: { type: 'MODEL' } },
+  outputs: { LATENT: { type: 'LATENT' } },
+  // No pass_through rules
+}
+
+// UltimateSDUpscale - Takes IMAGE, outputs new upscaled IMAGE
+// Modifies but doesn't pass original forward
+'UltimateSDUpscale': {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: { image: { type: 'IMAGE' }, model: { type: 'MODEL' } },
+  outputs: { image: { type: 'IMAGE' } },
+  // No pass_through rules
+}
+```
+
+#### Pure PASS_THROUGH Nodes
+```typescript
+// LoraLoader - Loads LoRA metadata but passes MODEL through unchanged
+'LoraLoader': {
+  category: 'LOADING',
+  roles: ['PASS_THROUGH'],
+  inputs: { model: { type: 'MODEL' } },
+  outputs: { MODEL: { type: 'MODEL' } },
+  pass_through: [
+    { from_input: 'model', to_output: 'MODEL' }  // Same model passes through
+  ]
+}
+```
+
+#### Hybrid Nodes (PASS_THROUGH + widget modification)
+```typescript
+// KSampler (Efficient) - Modifies LATENT but passes CONDITIONING forward
+// This is still TRANSFORM because primary output (LATENT) is modified
+'KSampler (Efficient)': {
+  category: 'SAMPLING',
+  roles: ['TRANSFORM'],  // Primary output is modified
+  inputs: {
+    latent: { type: 'LATENT' },
+    positive: { type: 'CONDITIONING' }
+  },
+  outputs: { LATENT: { type: 'LATENT' } },
+  // CONDITIONING is not passed through - it's consumed
+}
+```
+
+### Rule of Thumb
+
+- **TRANSFORM**: The PRIMARY data transformation is the node's purpose
+- **PASS_THROUGH**: The node's purpose is to SELECT/ROUTE/LOAD metadata that affects OTHER nodes
+
+---
+
 ## Testing & Validation
 
 ### Test Strategy (Target: 95%+ Accuracy)
@@ -222,6 +397,71 @@ if (!nodeDef) {
   // Continue traversal to parent nodes
   return state.targetParam === 'lora' ? accumulator : null;
 }
+```
+
+### Issue 3: Adding a New Node - UltimateSDUpscale Example
+
+**Scenario**: You need to add `UltimateSDUpscale` support to the parser. You have:
+- A workflow with this node loaded
+- No access to Python source code initially
+- Widgets: `upscale_by`, `seed`, `denoise`
+- Inputs: `image`, `model`
+
+**Step 1: Extract widget_order**
+- Export workflow as JSON
+- Find the node's `widgets_values: [4, 12345, 1.0]`
+- Visually verify in UI: index 0=upscale_by(4), index 1=seed(12345), index 2=denoise(1.0)
+
+**Step 2: Determine role**
+- Does it modify the primary output (image)? YES
+- Does it pass through the original image? NO
+- Decision: **TRANSFORM** (not PASS_THROUGH)
+
+**Step 3: Define param_mapping**
+```typescript
+param_mapping: {
+  upscale_factor: { source: 'widget', key: 'upscale_by' },
+  seed: { source: 'widget', key: 'seed' },
+  denoise: { source: 'widget', key: 'denoise' },
+  model: { source: 'trace', input: 'model' }  // Follow to source
+}
+```
+
+**Step 4: Complete definition**
+```typescript
+'UltimateSDUpscale': {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    image: { type: 'IMAGE' },
+    model: { type: 'MODEL' },
+    upscaler: { type: 'UPSCALER' },  // Optional, may not apply here
+  },
+  outputs: {
+    image: { type: 'IMAGE' }
+  },
+  param_mapping: {
+    upscale_factor: { source: 'widget', key: 'upscale_by' },
+    seed: { source: 'widget', key: 'seed' },
+    denoise: { source: 'widget', key: 'denoise' },
+  },
+  widget_order: ['upscale_by', 'seed', 'denoise']
+}
+```
+
+**Step 5: Test**
+```javascript
+// In your test file
+test('UltimateSDUpscale extracts upscale_factor correctly', () => {
+  const node = {
+    id: '8',
+    class_type: 'UltimateSDUpscale',
+    widgets_values: [4, 12345, 1.0]
+  };
+
+  const result = extractValue(node, { source: 'widget', key: 'upscale_by' });
+  expect(result).toBe(4);
+});
 ```
 
 ---
