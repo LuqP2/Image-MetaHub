@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Copy Prompt Button**: Added quick copy prompt button to image grid for faster workflow copying.
+- **Copy Seed Button**: Added hover-activated copy button to Seed field in ImageModal for quick seed copying.
 - **Open Cache Directory**: New option in Settings to open cache directory in system file explorer for manual cache inspection.
 - **Analytics Dashboard Redesign**:
   - Vertical bar charts for Models, LoRAs, and Samplers with angled labels for better readability
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **Simplified Search**: Removed search field dropdown - search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
 - **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.
 - **Phase B Progress Visibility**: Enhanced Phase B progress bar display with throttled updates (1000ms) and 2-second visibility after completion.
 - **Indexing Concurrency**: Increased default Phase B concurrency from 4-8 to 8 workers with configurable maximum of 16 (previously 8) for faster metadata enrichment.

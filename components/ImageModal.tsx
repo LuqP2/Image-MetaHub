@@ -503,7 +503,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />
                       <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
-                      <MetadataItem label="Seed" value={nMeta.seed} />
+                      <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
                       <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />

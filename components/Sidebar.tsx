@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import SearchBar, { SearchField } from './SearchBar';
+import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import { ChevronLeft, ChevronRight, X, ChevronDown, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,8 +7,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  searchField: SearchField;
-  onSearchFieldChange: (field: SearchField) => void;
   availableModels: string[];
   availableLoras: string[];
   availableSchedulers: string[];
@@ -35,8 +33,6 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({
   searchQuery,
   onSearchChange,
-  searchField,
-  onSearchFieldChange,
   availableModels,
   availableLoras,
   availableSchedulers,
@@ -155,8 +151,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         <SearchBar
           value={searchQuery}
           onChange={onSearchChange}
-          searchField={searchField}
-          onSearchFieldChange={onSearchFieldChange}
         />
       </div>
 

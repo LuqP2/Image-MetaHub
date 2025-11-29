@@ -13,7 +13,6 @@ import ImageModal from './components/ImageModal';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
-import { SearchField } from './components/SearchBar';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
@@ -92,7 +91,6 @@ export default function App() {
   } = useSettingsStore();
 
   // --- Local UI State ---
-  const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -384,8 +382,6 @@ export default function App() {
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          searchField={searchField}
-          onSearchFieldChange={setSearchField}
           availableModels={availableModels}
           availableLoras={availableLoras}
           availableSchedulers={availableSchedulers}
