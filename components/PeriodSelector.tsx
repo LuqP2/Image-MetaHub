@@ -6,14 +6,15 @@ export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
 interface PeriodOption {
   value: PeriodPreset;
   label: string;
+  disabled?: boolean;
 }
 
 const PERIOD_OPTIONS: PeriodOption[] = [
   { value: '7days', label: 'Last 7 Days' },
-  { value: '30days', label: 'Last 30 Days' },
-  { value: '90days', label: 'Last 90 Days' },
-  { value: 'thisMonth', label: 'This Month' },
-  { value: 'all', label: 'All Time' },
+  { value: '30days', label: 'Last 30 Days', disabled: true },
+  { value: '90days', label: 'Last 90 Days', disabled: true },
+  { value: 'thisMonth', label: 'This Month', disabled: true },
+  { value: 'all', label: 'All Time', disabled: true },
 ];
 
 interface PeriodSelectorProps {
@@ -34,7 +35,12 @@ const PeriodSelector: React.FC<PeriodSelectorProps> = ({ selectedPeriod, onChang
         className="bg-gray-700 text-gray-200 border border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 hover:bg-gray-600 transition-colors cursor-pointer"
       >
         {PERIOD_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+            className={option.disabled ? 'text-gray-500' : ''}
+          >
             {option.label}
           </option>
         ))}

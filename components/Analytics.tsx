@@ -51,7 +51,7 @@ const EmptyChart: React.FC<{ message?: string }> = ({ message = 'No data availab
 
 const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
   const allImages = useImageStore((state) => state.images);
-  const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('30days');
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('7days');
 
   const analytics = useMemo(() => {
     if (!allImages || allImages.length === 0) {
