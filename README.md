@@ -1,7 +1,5 @@
 # Image MetaHub
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lucaspierri)
-
 This project was renamed from `local-image-browser-for-invokeai` to `Image MetaHub`. All links and references have been updated.
 
 A desktop application for browsing, searching, and organizing AI-generated images locally. Designed for performance with large collections, focusing on powerful metadata filtering and complete privacy.
@@ -37,12 +35,10 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 - **Command-Line Support:** Launch with a specified directory for automation workflows
 - **Developer Mode:** Access development server from local network devices
 - **Persistent Directory Visibility:** Control which roots and subfolders contribute to the gallery using tri-state checkboxes
-- **Multi-Selection:** Use `Ctrl+Click` to select multiple images for bulk operations
 - **Tri-State Folder Selection:** Combine root folders with specific subfolders using inherited checkbox states that persist between sessions
-- **New Branding:** Refreshed welcome screen artwork and desktop icon for a more polished first impression
 
 **Performance & Large Collections**
-- **Optimized for Scale:** Efficiently handles 18,000+ images without performance issues
+- **Optimized for Scale:** Efficiently handles 30,000+ images without performance issues
 - **Smart Caching:** Subsequent folder loads take seconds instead of minutes by processing only new files
 - **Memory Efficient:** Lazy loading and background processing ensure responsive performance
 
