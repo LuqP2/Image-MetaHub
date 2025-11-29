@@ -5,20 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.6-rc] - 2025-11-23
+## [0.9.6-rc] - 2025-11-29
 
 ### Fixed
 
 - **Critical Search Crash**: Fixed application crash when searching with multiple folders due to non-string values in models/loras arrays. Added comprehensive type guards in search, filter, and enrichment logic to handle all edge cases robustly.
 - **LoRA Categorization (Issue #45)**: Fixed LoRAs appearing incorrectly in the Models dropdown filter. InvokeAI parser now properly excludes LoRA fields during model detection, ensuring clean separation between Models and LoRAs.
 - **Image Flickering During Indexing**: Fixed images reloading/flickering when viewing in modal during Phase B metadata enrichment. Implemented React.memo with custom prop comparator and memoized callbacks to prevent unnecessary component re-renders when other images are being indexed.
+- **Cache Reset Crash**: Fixed blank screen with ERR_CACHE_READ_FAILURE after clearing cache. Now performs complete app restart using app.relaunch() instead of window.reload(), ensuring clean state recovery.
 - **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in useImageStore.
 - **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
 - **Pagination Input**: Fixed pagination input field not responding to Enter key press.
 
-
 ### Added
 
+- **Copy Prompt Button**: Added quick copy prompt button to image grid for faster workflow copying.
+- **Copy Seed Button**: Added hover-activated copy button to Seed field in ImageModal for quick seed copying.
+- **Open Cache Directory**: New option in Settings to open cache directory in system file explorer for manual cache inspection.
 - **Analytics Dashboard Redesign**:
   - Vertical bar charts for Models, LoRAs, and Samplers with angled labels for better readability
   - Resolution distribution with side-by-side pie chart and percentage list with color indicators
@@ -29,13 +32,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - IndexedDB databases
   - localStorage and sessionStorage
   - Zustand store state and persistence
-  - Useful for troubleshooting and resetting application state
+  - Now triggers complete app restart for clean recovery
+- **ComfyUI Parser Enhancements**:
+  - Added support for SDXL Loader and Unpacker nodes
+  - Parser now skips muted nodes in terminal node search
+  - Improved LoRA stack widget handling
 
 ### Improved
 
+- **Simplified Search**: Removed search field dropdown - search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
 - **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.
 - **Phase B Progress Visibility**: Enhanced Phase B progress bar display with throttled updates (1000ms) and 2-second visibility after completion.
 - **Indexing Concurrency**: Increased default Phase B concurrency from 4-8 to 8 workers with configurable maximum of 16 (previously 8) for faster metadata enrichment.
+- **Fullscreen Handling**: Refactored fullscreen toggle functionality in ImageModal for better Electron integration and streamlined event listeners.
+
+### Changed
+
+- **Dependencies Cleanup**: Removed unused dependencies (cbor-web, react-masonry-css, cross-env, react-virtualized) reducing bundle size.
 
 ## [0.9.5] - 2025-11-08
 
