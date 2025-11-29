@@ -116,10 +116,10 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
         segments.push(image.negativePrompt.toLowerCase());
     }
     if (image.models?.length) {
-        segments.push(image.models.map(model => model.toLowerCase()).join(' '));
+        segments.push(image.models.filter(model => typeof model === 'string').map(model => model.toLowerCase()).join(' '));
     }
     if (image.loras?.length) {
-        segments.push(image.loras.map(lora => lora.toLowerCase()).join(' '));
+        segments.push(image.loras.filter(lora => typeof lora === 'string').map(lora => lora.toLowerCase()).join(' '));
     }
     if (image.scheduler) {
         segments.push(image.scheduler.toLowerCase());
@@ -153,6 +153,7 @@ interface ImageState {
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
   scanSubfolders: boolean;
+  isFullscreenMode: boolean;
 
   // Filter & Sort State
   searchQuery: string;
@@ -218,6 +219,7 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
+  setFullscreenMode: (isFullscreen: boolean) => void;
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -239,16 +241,21 @@ export const useImageStore = create<ImageState>((set, get) => {
         const dimensions = new Set<string>();
 
         for (const image of visibleImages) {
-            image.models?.forEach(model => { if(model) models.add(model) });
-            image.loras?.forEach(lora => { if(lora) loras.add(lora) });
+            image.models?.forEach(model => { if(typeof model === 'string' && model) models.add(model) });
+            image.loras?.forEach(lora => { if(typeof lora === 'string' && lora) loras.add(lora) });
             if (image.scheduler) schedulers.add(image.scheduler);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
 
+        // Case-insensitive alphabetical comparator
+        const caseInsensitiveSort = (a: string, b: string) => {
+            return a.toLowerCase().localeCompare(b.toLowerCase());
+        };
+
         return {
-            availableModels: Array.from(models).sort(),
-            availableLoras: Array.from(loras).sort(),
-            availableSchedulers: Array.from(schedulers).sort(),
+            availableModels: Array.from(models).sort(caseInsensitiveSort),
+            availableLoras: Array.from(loras).sort(caseInsensitiveSort),
+            availableSchedulers: Array.from(schedulers).sort(caseInsensitiveSort),
             availableDimensions: Array.from(dimensions).sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
                 const [aWidth, aHeight] = a.split('x').map(Number);
@@ -375,13 +382,13 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         if (selectedModels.length > 0) {
             results = results.filter(image =>
-                selectedModels.some(sm => image.models.includes(sm))
+                image.models?.length > 0 && selectedModels.some(sm => image.models.includes(sm))
             );
         }
 
         if (selectedLoras.length > 0) {
             results = results.filter(image =>
-                selectedLoras.some(sl => image.loras.includes(sl))
+                image.loras?.length > 0 && selectedLoras.some(sl => image.loras.includes(sl))
             );
         }
 
@@ -523,6 +530,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         sortOrder: 'date-desc',
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
+        isFullscreenMode: false,
 
         // --- ACTIONS ---
 
@@ -732,16 +740,40 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setImageThumbnail: (imageId, data) => {
             set(state => {
+                const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
+                const currentImage = findImage(state.images) || findImage(state.filteredImages);
+
+                if (!currentImage) {
+                    return state;
+                }
+
+                const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
+                const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
+                const nextThumbnailStatus = data.status;
+                const nextThumbnailError = data.error ?? (data.status === 'error'
+                    ? (data.error ?? 'Failed to load thumbnail')
+                    : null);
+
+                // Avoid unnecessary updates that can trigger render loops
+                if (
+                    currentImage.thumbnailUrl === nextThumbnailUrl &&
+                    currentImage.thumbnailHandle === nextThumbnailHandle &&
+                    currentImage.thumbnailStatus === nextThumbnailStatus &&
+                    currentImage.thumbnailError === nextThumbnailError
+                ) {
+                    return state;
+                }
+
                 const updateList = (list: IndexedImage[]) => list.map(img => {
                     if (img.id !== imageId) {
                         return img;
                     }
                     return {
                         ...img,
-                        thumbnailUrl: data.thumbnailUrl ?? img.thumbnailUrl,
-                        thumbnailHandle: data.thumbnailHandle ?? img.thumbnailHandle,
-                        thumbnailStatus: data.status,
-                        thumbnailError: data.error ?? (data.status === 'error' ? (data.error ?? 'Failed to load thumbnail') : null),
+                        thumbnailUrl: nextThumbnailUrl,
+                        thumbnailHandle: nextThumbnailHandle,
+                        thumbnailStatus: nextThumbnailStatus,
+                        thumbnailError: nextThumbnailError,
                     };
                 });
 
@@ -784,6 +816,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
+        setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
         toggleImageSelection: (imageId) => {
             set(state => {
@@ -839,6 +872,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectionTotalImages: 0,
             selectionDirectoryCount: 0,
             directories: [],
+            folderSelection: new Map(),
+            isFolderSelectionLoaded: false,
             isLoading: false,
             progress: { current: 0, total: 0 },
             enrichmentProgress: null,
@@ -855,6 +890,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedLoras: [],
             selectedSchedulers: [],
             advancedFilters: {},
+            indexingState: 'idle',
+            previewImage: null,
+            focusedImageIndex: null,
+            scanSubfolders: true,
+            sortOrder: 'desc',
+            isFullscreenMode: false,
         }),
 
         cleanupInvalidImages: () => {

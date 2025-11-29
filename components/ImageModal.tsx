@@ -1,7 +1,7 @@
-import React, { useEffect, useState, FC } from 'react';
+import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
 
 interface ImageModalProps {
@@ -65,45 +65,49 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
 
-  // Full screen browser API functions
-  const enterFullscreen = async () => {
-    try {
-      if (document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-        setIsFullscreen(true);
+  // Full screen toggle - calls Electron API for actual fullscreen
+  const toggleFullscreen = useCallback(async () => {
+    if (window.electronAPI?.toggleFullscreen) {
+      const result = await window.electronAPI.toggleFullscreen();
+      if (result.success) {
+        setIsFullscreen(result.isFullscreen);
       }
-    } catch (error) {
-      console.error('Failed to enter fullscreen:', error);
     }
-  };
+  }, []);
 
-  const exitFullscreen = async () => {
-    try {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (error) {
-      console.error('Failed to exit fullscreen:', error);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    if (isFullscreen) {
-      exitFullscreen();
-    } else {
-      enterFullscreen();
-    }
-  };
-
-  // Listen for fullscreen changes (ESC key, etc.)
+  // Listen for fullscreen changes from Electron
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
+    const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
+      setIsFullscreen(data.isFullscreen);
+    });
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    // Listen for fullscreen-state-check events (periodic check for state changes)
+    const unsubscribeFullscreenStateCheck = window.electronAPI?.onFullscreenStateCheck?.((data) => {
+      setIsFullscreen(data.isFullscreen);
+    });
+
+    return () => {
+      unsubscribeFullscreenChanged?.();
+      unsubscribeFullscreenStateCheck?.();
+    };
+  }, []);
+
+  // Initialize fullscreen mode from sessionStorage (backward compatibility)
+  useEffect(() => {
+    const shouldStartFullscreen = sessionStorage.getItem('openImageFullscreen') === 'true';
+    if (shouldStartFullscreen) {
+      sessionStorage.removeItem('openImageFullscreen');
+      setTimeout(() => {
+        if (window.electronAPI?.toggleFullscreen) {
+          window.electronAPI.toggleFullscreen().then((result) => {
+            if (result?.success) {
+              setIsFullscreen(result.isFullscreen);
+            }
+          });
+        }
+      }, 100);
+    }
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -281,7 +285,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       try {
         // Primary method: Use thumbnail if available, otherwise full image
         const fileHandle = image.thumbnailHandle || image.handle;
-        
+
         if (fileHandle && typeof fileHandle.getFile === 'function') {
           const file = await fileHandle.getFile();
           if (isMounted) {
@@ -345,10 +349,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isRenaming) return;
-      if (event.key === 'Escape') {
-        if (isFullscreen) exitFullscreen();
-        else onClose();
+
+      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
+      if (event.key === 'Enter' && event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFullscreen(); // Toggle fullscreen ON/OFF
+        return;
       }
+
+      // Escape = Exit fullscreen first, then close modal
+      if (event.key === 'Escape') {
+        if (isFullscreen) {
+          // Call toggleFullscreen to actually exit Electron fullscreen
+          toggleFullscreen();
+        } else {
+          onClose();
+        }
+        return;
+      }
+
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
       if (event.key === 'ArrowRight') onNavigateNext?.();
     };
@@ -368,7 +388,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
       isMounted = false;
     };
-  }, [image.handle, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext]);
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
@@ -483,7 +503,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />
                       <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
-                      <MetadataItem label="Seed" value={nMeta.seed} />
+                      <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
                       <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
@@ -596,4 +616,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-export default ImageModal;
+// Wrap with React.memo to prevent re-renders during Phase B metadata updates
+// Custom comparator: only compare image.id, onClose, and isIndexing
+// This prevents flickering when the image object reference changes but the ID stays the same
+export default React.memo(ImageModal, (prevProps, nextProps) => {
+  // Return true if props are EQUAL (skip re-render)
+  // Return false if props are DIFFERENT (re-render)
+
+  const propsEqual =
+    prevProps.image.id === nextProps.image.id &&
+    prevProps.onClose === nextProps.onClose &&
+    prevProps.onImageDeleted === nextProps.onImageDeleted &&
+    prevProps.onImageRenamed === nextProps.onImageRenamed &&
+    prevProps.currentIndex === nextProps.currentIndex &&
+    prevProps.totalImages === nextProps.totalImages &&
+    prevProps.onNavigateNext === nextProps.onNavigateNext &&
+    prevProps.onNavigatePrevious === nextProps.onNavigatePrevious &&
+    prevProps.directoryPath === nextProps.directoryPath &&
+    prevProps.isIndexing === nextProps.isIndexing;
+
+  return propsEqual; // true = skip re-render, false = re-render
+});

@@ -1,5 +1,11 @@
 import { type IndexedImage } from '../types';
 
+/**
+ * Parser version - increment when parser logic changes significantly
+ * This ensures cache is invalidated when parsing rules change
+ */
+export const PARSER_VERSION = 3; // v3: Improved CLIPTextEncode to trace String Literal links, added model to SamplerCustomAdvanced
+
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
   id: string;
@@ -31,6 +37,7 @@ export interface CacheEntry {
   imageCount: number;
   metadata: CacheImageMetadata[];
   chunkCount?: number;
+  parserVersion?: number; // Track which parser version created this cache
 }
 
 export interface CacheDiff {

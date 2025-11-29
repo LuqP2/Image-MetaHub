@@ -8,6 +8,17 @@ interface RegisteredAction {
   callback: KeyHandler;
 }
 
+// Configure hotkeys-js to work with numpad and allow shortcuts in input fields when needed
+// This fixes Issue #48 (numpad keys not working on Linux)
+hotkeys.filter = function(event) {
+  const target = (event.target || event.srcElement) as HTMLElement;
+  const tagName = target.tagName;
+
+  // Allow hotkeys in most contexts, including when inputs are focused
+  // We'll handle input-specific blocking at the action level
+  return true;
+};
+
 // A map to store the actions that the application supports.
 const registeredActions = new Map<string, RegisteredAction>();
 
@@ -38,8 +49,18 @@ const bindAllActions = () => {
     const platformKey = key.replace('ctrl', 'cmd');
     const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
 
-    hotkeys(keysToRegister, { scope: action.scope }, (event, handler) => {
-      event.preventDefault();
+    hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
+      // Don't block keys in text inputs for typing operations
+      const target = event.target as HTMLElement;
+      const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // For navigation/action keys, prevent default even in inputs
+      const isActionKey = ['delete', 'enter', 'escape', 'f1'].some(k => key.includes(k));
+
+      if (isActionKey || !isTypingContext) {
+        event.preventDefault();
+      }
+
       action.callback(event, handler);
     });
   });

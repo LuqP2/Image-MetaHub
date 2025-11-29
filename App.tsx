@@ -10,11 +10,9 @@ import { X } from 'lucide-react';
 import FolderSelector from './components/FolderSelector';
 import ImageGrid from './components/ImageGrid';
 import ImageModal from './components/ImageModal';
-import Loader from './components/Loader';
 import Sidebar from './components/Sidebar';
 import BrowserCompatibilityWarning from './components/BrowserCompatibilityWarning';
 import Header from './components/Header';
-import { SearchField } from './components/SearchBar';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
@@ -24,6 +22,7 @@ import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
+import Analytics from './components/Analytics';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
@@ -92,7 +91,6 @@ export default function App() {
   } = useSettingsStore();
 
   // --- Local UI State ---
-  const [searchField, setSearchField] = useState<SearchField>('any');
   const [currentPage, setCurrentPage] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -101,7 +99,8 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState<string>('0.9.5');
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState<string>('0.9.6-rc');
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -243,9 +242,9 @@ export default function App() {
     const checkForNewVersion = async () => {
       // Wait for Zustand persistence to rehydrate
       await useSettingsStore.persist.rehydrate();
-      
-      let version = '0.9.5'; // Default fallback version
-      
+
+      let version = '0.9.6-rc'; // Default fallback version
+
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
           version = await window.electronAPI.getAppVersion();
@@ -253,19 +252,19 @@ export default function App() {
           console.warn('Failed to get app version from Electron, using fallback:', error);
         }
       }
-      
+
       setCurrentVersion(version);
-      
+
       // Get the current lastViewedVersion from the store after rehydration
       const currentLastViewed = useSettingsStore.getState().lastViewedVersion;
-      
+
       // Check if this is a new version since last view (or first run)
       if (currentLastViewed !== version) {
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
       }
     };
-    
+
     checkForNewVersion();
   }, []); // Run only once on mount
 
@@ -336,6 +335,19 @@ export default function App() {
     return filteredImages.findIndex(img => img.id === selectedImage.id);
   }, [selectedImage, filteredImages]);
 
+  // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
+  const handleCloseImageModal = useCallback(() => {
+    setSelectedImage(null);
+  }, [setSelectedImage]);
+
+  const handleImageModalNavigateNext = useCallback(() => {
+    handleNavigateNext();
+  }, [handleNavigateNext]);
+
+  const handleImageModalNavigatePrevious = useCallback(() => {
+    handleNavigatePrevious();
+  }, [handleNavigatePrevious]);
+
   // --- Render Logic ---
   const paginatedImages = filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
@@ -370,8 +382,6 @@ export default function App() {
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          searchField={searchField}
-          onSearchFieldChange={setSearchField}
           availableModels={availableModels}
           availableLoras={availableLoras}
           availableSchedulers={availableSchedulers}
@@ -413,6 +423,7 @@ export default function App() {
       <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${previewImage ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -437,7 +448,6 @@ export default function App() {
             />
           )}
 
-          {isLoading && progress && progress.total === 0 && <Loader progress={progress} />}
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
 
           {hasDirectories && (
@@ -484,13 +494,13 @@ export default function App() {
         {selectedImage && directoryPath && (
           <ImageModal
             image={selectedImage}
-            onClose={() => setSelectedImage(null)}
+            onClose={handleCloseImageModal}
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
             totalImages={filteredImages.length}
-            onNavigateNext={handleNavigateNext}
-            onNavigatePrevious={handleNavigatePrevious}
+            onNavigateNext={handleImageModalNavigateNext}
+            onNavigatePrevious={handleImageModalNavigatePrevious}
             directoryPath={directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
           />
@@ -500,6 +510,11 @@ export default function App() {
           isOpen={isChangelogModalOpen}
           onClose={() => setIsChangelogModalOpen(false)}
           currentVersion={currentVersion}
+        />
+
+        <Analytics
+          isOpen={isAnalyticsOpen}
+          onClose={() => setIsAnalyticsOpen(false)}
         />
       </div>
     </div>

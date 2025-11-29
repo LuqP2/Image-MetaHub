@@ -156,13 +156,18 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     if ('prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata)) {
         return { parse: (data: EasyDiffusionJson) => parseEasyDiffusionJson(data), generator: 'Easy Diffusion' };
     }
-    if ('parameters' in metadata && 
-        typeof metadata.parameters === 'string' && 
-        (metadata.parameters.includes('Midjourney') || 
-         metadata.parameters.includes('--v') || 
-         metadata.parameters.includes('--ar') ||
-         metadata.parameters.includes('--q') ||
-         metadata.parameters.includes('--s'))) {
+
+    // Check for Civitai resources format (A1111 + Civitai metadata) - BEFORE Midjourney to avoid false positives
+    if ('parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
+        metadata.parameters.includes('Civitai resources:')) {
+        return { parse: (data: Automatic1111Metadata) => parseA1111Metadata(data.parameters), generator: 'Automatic1111' };
+    }
+
+    if ('parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
+        (metadata.parameters.includes('Midjourney') ||
+         /\s--v\s|\s--ar\s|\s--niji|\s--q\s|\s--s\s|\s--c\s|\s--iw\s/.test(metadata.parameters))) {
         return { parse: (data: MidjourneyMetadata) => parseMidjourneyMetadata(data.parameters), generator: 'Midjourney' };
     }
     if ('parameters' in metadata && 

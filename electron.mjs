@@ -16,6 +16,10 @@ const __dirname = path.dirname(__filename);
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Parser version - increment when parser logic changes
+// This ensures cache is invalidated when parsing rules change
+const PARSER_VERSION = 4; // v4: Added Eff. Loader SDXL, DF_Text_Box, and Unpack SDXL Tuple nodes for better SDXL workflow support
+
 // Get platform-specific icon
 function getIconPath() {
   if (process.platform === 'win32') {
@@ -28,6 +32,74 @@ function getIconPath() {
 
 let mainWindow;
 let skippedVersions = new Set();
+
+// --- Zoom Management ---
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+
+function getSafeWebContents() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow.webContents;
+  }
+  return null;
+}
+
+function setZoomFactor(factor) {
+  const contents = getSafeWebContents();
+  if (!contents) return;
+
+  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, factor));
+  contents.setZoomFactor(clamped);
+}
+
+function resetZoom() {
+  setZoomFactor(1);
+}
+
+function adjustZoom(delta) {
+  const contents = getSafeWebContents();
+  if (!contents) return;
+
+  const currentZoom = contents.getZoomFactor();
+  setZoomFactor(currentZoom + delta);
+}
+
+const zoomMenuItems = [
+  {
+    label: 'Reset Zoom',
+    accelerator: 'CmdOrCtrl+0',
+    click: resetZoom
+  },
+  {
+    label: 'Zoom In',
+    accelerator: 'CmdOrCtrl+=',
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom In (+)',
+    accelerator: 'CmdOrCtrl+Plus',
+    visible: false,
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom In (Numpad)',
+    accelerator: 'CmdOrCtrl+numadd',
+    visible: false,
+    click: () => adjustZoom(ZOOM_STEP)
+  },
+  {
+    label: 'Zoom Out',
+    accelerator: 'CmdOrCtrl+-',
+    click: () => adjustZoom(-ZOOM_STEP)
+  },
+  {
+    label: 'Zoom Out (Numpad)',
+    accelerator: 'CmdOrCtrl+numsub',
+    visible: false,
+    click: () => adjustZoom(-ZOOM_STEP)
+  }
+];
 
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
@@ -115,9 +187,7 @@ function createApplicationMenu() {
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        ...zoomMenuItems,
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]
@@ -126,7 +196,8 @@ function createApplicationMenu() {
       label: 'Window',
       submenu: [
         { role: 'minimize' },
-        { role: 'zoom' },
+        { type: 'separator' },
+        ...zoomMenuItems,
         ...(process.platform === 'darwin' ? [
           { type: 'separator' },
           { role: 'front' },
@@ -436,13 +507,16 @@ function createWindow(startupDirectory = null) {
   // Create application menu
   createApplicationMenu();
 
+  // Ensure zoom starts at the default level
+  resetZoom();
+
   // Set window title to include version (keeps it accurate across builds)
   try {
     const appVersion = app.getVersion();
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.9.5');
+    mainWindow.setTitle('Image MetaHub v0.9.6-rc');
   }
 
   // Load the app
@@ -485,9 +559,60 @@ function createWindow(startupDirectory = null) {
     return { action: 'deny' };
   });
 
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const isZoomModifier = input.control || input.meta;
+    if (!isZoomModifier) return;
+
+    const key = input.key?.toLowerCase();
+    if (key === '0' || input.code === 'Digit0' || input.code === 'Numpad0') {
+      event.preventDefault();
+      resetZoom();
+      return;
+    }
+
+    if (key === '+' || key === '=' || input.code === 'NumpadAdd') {
+      event.preventDefault();
+      adjustZoom(ZOOM_STEP);
+      return;
+    }
+
+    if (key === '-' || input.code === 'NumpadSubtract') {
+      event.preventDefault();
+      adjustZoom(-ZOOM_STEP);
+    }
+  });
+
   // Handle window closed
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Track fullscreen state changes and notify renderer
+  // These events work on macOS, Windows, and Linux
+  mainWindow.on('enter-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', { isFullscreen: true });
+    }
+  });
+
+  mainWindow.on('leave-full-screen', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fullscreen-changed', { isFullscreen: false });
+    }
+  });
+
+  // Additional event for Windows/Linux compatibility
+  // Some window managers may not fire enter/leave-full-screen consistently
+  let lastKnownFullscreenState = false;
+  mainWindow.on('resize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const currentFullscreenState = mainWindow.isFullScreen();
+      // Only send if the state actually changed to avoid excessive updates
+      if (currentFullscreenState !== lastKnownFullscreenState) {
+        lastKnownFullscreenState = currentFullscreenState;
+        mainWindow.webContents.send('fullscreen-state-check', { isFullscreen: currentFullscreenState });
+      }
+    }
   });
 }
 
@@ -628,7 +753,15 @@ function setupFileOperationHandlers() {
     const filePath = getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const parsed = JSON.parse(data);
+
+      // Check parser version - if mismatch, invalidate cache
+      if (parsed.parserVersion !== PARSER_VERSION) {
+        console.log(`⚠️ Cache version mismatch for ${cacheId}: stored=${parsed.parserVersion}, current=${PARSER_VERSION}. Invalidating cache to force re-parse.`);
+        return { success: true, data: null }; // Return null to force re-parse with new parser
+      }
+
+      return { success: true, data: parsed };
     } catch (error) {
       if (error.code === 'ENOENT') {
         return { success: true, data: null }; // File not found is not an error
@@ -666,9 +799,10 @@ function setupFileOperationHandlers() {
       await fs.writeFile(chunkPath, JSON.stringify(chunk));
     }
 
-    // Write main cache record (without metadata)
+    // Write main cache record (without metadata) with parser version
     const mainCachePath = getCacheFilePath(cacheId);
     cacheRecord.chunkCount = chunkCount;
+    cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
 
     return { success: true };
@@ -717,7 +851,9 @@ function setupFileOperationHandlers() {
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
     try {
       const mainCachePath = getCacheFilePath(cacheId);
-      await fs.writeFile(mainCachePath, JSON.stringify(record, null, 2));
+      // Add parser version to cache record
+      const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
+      await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
       return { success: true };
     } catch (error) {
       return { success: false, error: error.message };
@@ -817,6 +953,53 @@ function setupFileOperationHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // Delete all cache files and folders (but not userData itself, as app is using it)
+  ipcMain.handle('delete-cache-folder', async () => {
+    try {
+      const userDataDir = app.getPath('userData');
+      try {
+        const files = await fs.readdir(userDataDir);
+
+        // Delete each file/folder inside userData
+        for (const file of files) {
+          const filePath = path.join(userDataDir, file);
+          const stat = await fs.stat(filePath);
+
+          if (stat.isDirectory()) {
+            // Recursively delete directories
+            await fs.rm(filePath, { recursive: true, force: true });
+          } else {
+            // Delete files
+            await fs.unlink(filePath);
+          }
+        }
+      } catch (error) {
+        // If userData doesn't exist or can't be read, that's fine (already clean)
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+      return { success: true, needsRestart: true };
+    } catch (error) {
+      console.error('Error deleting cache folder:', error);
+      return { success: false, error: error.message, needsRestart: false };
+    }
+  });
+
+  // Restart the application (used after cache reset)
+  ipcMain.handle('restart-app', async () => {
+    try {
+      console.log('🔄 Restarting application...');
+      app.relaunch();
+      app.quit();
+      return { success: true };
+    } catch (error) {
+      console.error('Error restarting app:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // --- End Thumbnail Cache IPC Handlers ---
   // --- End Cache IPC Handlers ---
 
@@ -931,6 +1114,23 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Handle open cache location (without security restrictions since it's app's internal cache)
+  ipcMain.handle('open-cache-location', async (event, cachePath) => {
+    try {
+      const normalizedCachePath = path.normalize(cachePath);
+      const parentPath = path.dirname(normalizedCachePath);
+      console.log('📂 Opening cache parent directory:', parentPath);
+
+      shell.showItemInFolder(parentPath);
+      console.log('✅ shell.showItemInFolder called for:', parentPath);
+
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error opening cache location:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('list-subfolders', async (event, folderPath) => {
     try {
       if (!isPathAllowed(folderPath)) {
@@ -993,8 +1193,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.9.5-rc',
-      releaseNotes: `## [0.9.5-rc] - Release Candidate
+  version: '0.9.6-rc',
+      releaseNotes: `## [0.9.6-rc] - Release Candidate
 
 ### Added
 - Multiple Directory Support: Add and manage multiple image directories simultaneously
@@ -1128,6 +1328,15 @@ function setupFileOperationHandlers() {
       return { success: true };
     }
     return { success: false, error: 'Version not provided' };
+  });
+
+  // Handle toggling fullscreen
+  ipcMain.handle('toggle-fullscreen', () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
   });
 
   // Handle reading multiple files in a batch

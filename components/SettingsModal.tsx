@@ -20,6 +20,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const toggleAutoUpdate = useSettingsStore((state) => state.toggleAutoUpdate);
   const indexingConcurrency = useSettingsStore((state) => state.indexingConcurrency);
   const setIndexingConcurrency = useSettingsStore((state) => state.setIndexingConcurrency);
+  const showFilenames = useSettingsStore((state) => state.showFilenames);
+  const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
@@ -55,6 +57,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     setCurrentCachePath(defaultCachePath);
   };
 
+  const handleOpenCacheLocation = async () => {
+    if (currentCachePath) {
+      await window.electronAPI?.openCacheLocation(currentCachePath);
+    }
+  };
+
   const handleClearCache = async () => {
     const confirmed = window.confirm(
       '⚠️ CLEAR ALL CACHE & RESET APP ⚠️\n\n' +
@@ -76,12 +84,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
     if (confirmed) {
       try {
+        console.log('Starting cache reset...');
         await resetAllCaches();
+        // resetAllCaches() will handle the reload automatically
+        // The alert will show briefly before the reload
         alert('✅ Cache cleared successfully!\n\nThe app will now reload to complete the reset.');
         onClose();
-        
-        // Force a complete page reload to reset the app state
-        window.location.reload();
       } catch (error) {
         console.error('Failed to clear cache:', error);
         alert('❌ Failed to clear cache. Check console for details.');
@@ -139,6 +147,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 Change Location
               </button>
               <button
+                onClick={handleOpenCacheLocation}
+                className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-md text-sm font-medium"
+              >
+                Open Location
+              </button>
+              <button
                 onClick={handleResetCacheDirectory}
                 disabled={currentCachePath === defaultCachePath}
                 className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
@@ -166,6 +180,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   type="checkbox"
                   checked={autoUpdate}
                   onChange={toggleAutoUpdate}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* Display */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Display</h3>
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+              <div>
+                <p className="text-sm">Show filenames under thumbnails</p>
+                <p className="text-xs text-gray-400">
+                  Always display file names below each thumbnail in the grid.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showFilenames}
+                  onChange={(event) => setShowFilenames(event.target.checked)}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

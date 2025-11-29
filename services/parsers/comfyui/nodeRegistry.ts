@@ -26,7 +26,7 @@ export interface ParserNode {
 export type ComfyNodeDataType =
   | 'MODEL' | 'CONDITIONING' | 'LATENT' | 'IMAGE' | 'VAE' | 'CLIP' | 'INT'
   | 'FLOAT' | 'STRING' | 'CONTROL_NET' | 'GUIDER' | 'SAMPLER' | 'SCHEDULER'
-  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY' | 'LORA_STACK';
+  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY' | 'LORA_STACK' | 'SDXL_TUPLE';
 
 export type ComfyTraversableParam =
   | 'prompt' | 'negativePrompt' | 'seed' | 'steps' | 'cfg' | 'width' | 'height'
@@ -146,8 +146,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   // --- TRANSFORM & PASS-THROUGH NODES ---
   CLIPTextEncode: {
     category: 'LOADING', roles: ['SOURCE'],
-    inputs: { clip: { type: 'CLIP' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
-    param_mapping: { prompt: { source: 'widget', key: 'text' }, negativePrompt: { source: 'widget', key: 'text' }, },
+    inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          // If text comes from a link (like String Literal), trace it
+          const textLink = node.inputs?.text;
+          if (textLink && Array.isArray(textLink)) {
+            return traverse(textLink as any, { ...state, targetParam: 'prompt' }, graph, []);
+          }
+          // Otherwise use widget value at index 0
+          if (node.widgets_values?.[0]) {
+            return node.widgets_values[0];
+          }
+          return null;
+        }
+      }
+    },
     widget_order: ['text']
   },
   'ControlNetApply': {
@@ -639,8 +655,24 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       scheduler: { source: 'trace', input: 'sigmas' },
       steps: { source: 'trace', input: 'sigmas' },
       prompt: { source: 'trace', input: 'guider' },
-      cfg: { source: 'trace', input: 'guider' }
+      cfg: { source: 'trace', input: 'guider' },
+      model: { source: 'trace', input: 'guider' }
     }
+  },
+
+  BasicGuider: {
+    category: 'CONDITIONING', roles: ['TRANSFORM'],
+    inputs: {
+      model: { type: 'MODEL' },
+      conditioning: { type: 'CONDITIONING' }
+    },
+    outputs: { GUIDER: { type: 'GUIDER' } },
+    param_mapping: {
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'conditioning' },
+      negativePrompt: { source: 'trace', input: 'conditioning' }
+    },
+    widget_order: []
   },
 
   CFGGuider: {
@@ -958,10 +990,10 @@ String: {
 'CR LoRA Stack': {
   category: 'LOADING',
   roles: ['TRANSFORM'],
-  inputs: { 
-    lora_stack: { type: 'LORA_STACK' } 
+  inputs: {
+    lora_stack: { type: 'LORA_STACK' }
   },
-  outputs: { 
+  outputs: {
     LORA_STACK: { type: 'LORA_STACK' },
     show_help: { type: 'STRING' }
   },
@@ -970,32 +1002,39 @@ String: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
         const loras: string[] = [];
-        const inputs = node.inputs || {};
-        
-        // CR LoRA Stack usa triplas: switch_N, lora_name_N, model_weight_N, clip_weight_N
-        for (let i = 1; i <= 10; i++) {  // Suporta até 10 LoRAs
-          const switchKey = `switch_${i}`;
-          const loraKey = `lora_name_${i}`;
-          
-          const switchValue = inputs[switchKey];
-          const loraValue = inputs[loraKey];
-          
+        const widgets = node.widgets_values || [];
+
+        // CR LoRA Stack widget_order: [switch_1, lora_name_1, model_weight_1, clip_weight_1, switch_2, ...]
+        // Each LoRA is a group of 4 widgets: switch, name, model_weight, clip_weight
+        const lorasPerGroup = 4;
+        const maxLoras = Math.floor(widgets.length / lorasPerGroup);
+
+        for (let i = 0; i < maxLoras; i++) {
+          const switchIdx = i * lorasPerGroup;
+          const loraNameIdx = i * lorasPerGroup + 1;
+
+          const switchValue = widgets[switchIdx];
+          const loraValue = widgets[loraNameIdx];
+
           // Verifica se o switch está "On" e há um LoRA válido
           if (switchValue === 'On' && loraValue && loraValue !== 'None') {
             let loraPath = String(loraValue);
-            
-            // Remove prefixos comuns (flux\\, Flux\\, etc.)
-            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/]+/i, '');
-            
-            // Remove extensão
+
+            // Remove prefixos comuns (Flux\\, flux\\, etc.)
+            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/\-\s]+/i, '');
+
+            // Remove extensão .safetensors
             loraPath = loraPath.replace(/\.safetensors$/i, '');
-            
+
+            // Limpa espaços extras
+            loraPath = loraPath.trim();
+
             if (loraPath) {
               loras.push(loraPath);
             }
           }
         }
-        
+
         return loras;
       }
     }
@@ -1006,6 +1045,78 @@ String: {
     'switch_3', 'lora_name_3', 'model_weight_3', 'clip_weight_3'
   ],
   pass_through_rules: []
-
-  
-}}
+},
+// --- TEXT AND PROMPT NODES ---
+'DF_Text_Box': {
+  category: 'CONDITIONING',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: { STRING: { type: 'STRING' } },
+  param_mapping: {
+    prompt: { source: 'widget', key: 'Text' }
+  },
+  widget_order: ['Text']
+},
+// --- SDXL LOADER NODE ---
+'Eff. Loader SDXL': {
+  category: 'LOADING',
+  roles: ['SOURCE', 'TRANSFORM'],
+  inputs: {
+    lora_stack: { type: 'LORA_STACK' },
+    positive: { type: 'STRING' },
+    negative: { type: 'STRING' },
+    empty_latent_width: { type: 'INT' },
+    empty_latent_height: { type: 'INT' },
+    batch_size: { type: 'INT' }
+  },
+  outputs: {
+    SDXL_TUPLE: { type: 'SDXL_TUPLE' },
+    LATENT: { type: 'LATENT' },
+    VAE: { type: 'VAE' },
+    DEPENDENCIES: { type: 'ANY' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' },
+    model: { source: 'widget', key: 'base_ckpt_name' },
+    vae: { source: 'widget', key: 'vae_name' },
+    lora: { source: 'trace', input: 'lora_stack' }
+  },
+  widget_order: [
+    'base_ckpt_name', 'base_clip_skip', 'refiner_ckpt_name', 'refiner_clip_skip',
+    'positive_ascore', 'negative_ascore', 'vae_name', 'positive', 'negative',
+    'token_normalization', 'weight_interpretation', 'empty_latent_width',
+    'empty_latent_height', 'batch_size'
+  ]
+},
+// --- SDXL UNPACKER NODE ---
+'Unpack SDXL Tuple': {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    sdxl_tuple: { type: 'SDXL_TUPLE' }
+  },
+  outputs: {
+    BASE_MODEL: { type: 'MODEL' },
+    BASE_CLIP: { type: 'CLIP' },
+    'BASE_CONDITIONING+': { type: 'CONDITIONING' },
+    'BASE_CONDITIONING-': { type: 'CONDITIONING' },
+    REFINER_MODEL: { type: 'MODEL' },
+    REFINER_CLIP: { type: 'CLIP' },
+    'REFINER_CONDITIONING+': { type: 'CONDITIONING' },
+    'REFINER_CONDITIONING-': { type: 'CONDITIONING' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'sdxl_tuple' },
+    negativePrompt: { source: 'trace', input: 'sdxl_tuple' },
+    model: { source: 'trace', input: 'sdxl_tuple' },
+    vae: { source: 'trace', input: 'sdxl_tuple' }
+  },
+  pass_through_rules: [
+    { from_input: 'sdxl_tuple', to_output: 'BASE_MODEL' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CLIP' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING+' },
+    { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING-' }
+  ]
+}
+};

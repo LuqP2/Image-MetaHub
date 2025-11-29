@@ -618,11 +618,13 @@ export function useImageLoader() {
 
                 phaseB
                     .then(() => {
-                        setTimeout(() => setEnrichmentProgress(null), 750);
+                        // Keep the progress bar visible for 2 seconds after completion
+                        setTimeout(() => setEnrichmentProgress(null), 2000);
                     })
                     .catch(err => {
                         console.error('Phase B enrichment failed', err);
-                        setEnrichmentProgress(null);
+                        // Keep error visible for 2 seconds
+                        setTimeout(() => setEnrichmentProgress(null), 2000);
                     });
 
                 if (!shouldCancelIndexing()) {

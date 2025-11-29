@@ -9,6 +9,26 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
+// Simple throttle utility to avoid excessive progress updates
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastCall = 0;
+
+  return ((...args: any[]) => {
+    const now = Date.now();
+    if (now - lastCall >= delay) {
+      lastCall = now;
+      func(...args);
+    } else {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        lastCall = Date.now();
+        func(...args);
+      }, delay - (now - lastCall));
+    }
+  }) as T;
+}
+
 // Extended FileSystemFileHandle interface for Electron compatibility
 interface ElectronFileHandle extends FileSystemFileHandle {
   _filePath?: string;
@@ -43,6 +63,10 @@ const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
 const isProduction = Boolean(
   (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.NODE_ENV === 'production') ||
   (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.PROD)
+);
+const shouldLogPngDebug = Boolean(
+  (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.PNG_DEBUG === 'true') ||
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_PNG_DEBUG)
 );
 
 // Helper function to chunk array into smaller arrays
@@ -164,11 +188,13 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return comfyMetadata;
   } else if (chunks.parameters || chunks.description) {
     const paramsValue = chunks.parameters || chunks.description;
-    console.log('[PNG DEBUG] Found parameters chunk:', {
-      length: paramsValue.length,
-      preview: paramsValue.substring(0, 150),
-      hasSuiImageParams: paramsValue.includes('sui_image_params')
-    });
+    if (shouldLogPngDebug) {
+      console.log('[PNG DEBUG] Found parameters chunk:', {
+        length: paramsValue.length,
+        preview: paramsValue.substring(0, 150),
+        hasSuiImageParams: paramsValue.includes('sui_image_params')
+      });
+    }
     return { parameters: paramsValue };
   } else if (chunks.invokeai_metadata) {
     return JSON.parse(chunks.invokeai_metadata);
@@ -550,13 +576,14 @@ if (rawMetadata) {
       normalizedMetadata = parseFooocusMetadata(rawMetadata as FooocusMetadata);
     }
     
-    // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators)
-    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants
-    else if (!normalizedMetadata && (params.includes('Model hash:') || 
+    // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators, or Civitai resources)
+    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants, and A1111 with Civitai resources
+    else if (!normalizedMetadata && (params.includes('Model hash:') ||
              params.includes('Version: ComfyUI') ||
              /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
              params.includes('Distilled CFG Scale') ||
-             /Module\s*\d+:/i.test(params))) {
+             /Module\s*\d+:/i.test(params) ||
+             params.includes('Civitai resources:'))) {
       normalizedMetadata = parseA1111Metadata(params);
     }
     
@@ -1094,12 +1121,22 @@ export async function processFiles(
   const nextPhaseBLogInitial = 5000;
   let nextPhaseBLog = nextPhaseBLogInitial;
 
+  // Throttle progress updates to every 300ms to avoid excessive re-renders
+  const throttledEnrichmentProgress = throttle(
+    (progress: { processed: number; total: number } | null) => {
+      options.onEnrichmentProgress?.(progress);
+    },
+    300
+  );
+
   const runEnrichmentPhase = async () => {
+    console.log(`[indexing] Starting Phase B with ${totalEnrichment} images to enrich`);
     phaseBStats.startTime = performance.now();
     performance.mark('indexing:phaseB:start');
 
     const queue = [...needsEnrichment];
-    options.onEnrichmentProgress?.({ processed: 0, total: totalEnrichment });
+    throttledEnrichmentProgress({ processed: 0, total: totalEnrichment });
+    console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
 
@@ -1147,7 +1184,7 @@ export async function processFiles(
           touchedChunks.add(loc.chunkIndex);
         }
         phaseBStats.processed += 1;
-        options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+        throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
         const elapsed = performance.now() - phaseBStats.startTime;
         if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
           const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1223,7 +1260,7 @@ export async function processFiles(
               touchedChunks.add(loc.chunkIndex);
             }
             phaseBStats.processed += 1;
-            options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+            throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
             const elapsed = performance.now() - phaseBStats.startTime;
             if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
               const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
@@ -1255,11 +1292,13 @@ export async function processFiles(
 
     await commitBatch();
 
+    const elapsedMs = performance.now() - phaseBStats.startTime;
     performance.mark('indexing:phaseB:complete', {
-      detail: { elapsedMs: performance.now() - phaseBStats.startTime, files: phaseBStats.processed }
+      detail: { elapsedMs, files: phaseBStats.processed }
     });
 
-    options.onEnrichmentProgress?.({ processed: phaseBStats.processed, total: totalEnrichment });
+    console.log(`[indexing] Phase B complete: ${phaseBStats.processed}/${totalEnrichment} images enriched in ${(elapsedMs / 1000).toFixed(2)}s`);
+    throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
   };
 
   return { phaseB: runEnrichmentPhase() };

@@ -58,12 +58,14 @@ jobs:
             gh release create v$VERSION \
               --title "Image MetaHub v$VERSION" \
               --notes-file "$RELEASE_NOTES_FILE" \
+              --prerelease=false \
               --draft
           else
             echo "Release notes file not found, creating basic release..."
             gh release create v$VERSION \
               --title "Image MetaHub v$VERSION" \
               --generate-notes \
+              --prerelease=false \
               --draft
           fi
         env:

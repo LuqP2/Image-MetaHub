@@ -7,6 +7,14 @@ const electronStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     if (window.electronAPI) {
       const settings = await window.electronAPI.getSettings();
+
+      // If settings is empty (e.g., after cache reset), return null
+      // This forces Zustand to use default values instead of merging with {}
+      if (!settings || Object.keys(settings).length === 0) {
+        console.log('📋 Settings file is empty or missing, using defaults');
+        return null;
+      }
+
       return JSON.stringify({ state: settings });
     }
     return null;
@@ -30,10 +38,10 @@ const detectDefaultIndexingConcurrency = (): number => {
   if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
     const cores = navigator.hardwareConcurrency;
     if (Number.isFinite(cores) && cores > 0) {
-      return Math.max(1, Math.min(8, Math.floor(cores)));
+      return Math.max(1, Math.min(16, Math.floor(cores)));
     }
   }
-  return 4;
+  return 8;
 };
 
 const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
@@ -53,6 +61,7 @@ interface SettingsState {
   lastViewedVersion: string | null;
   indexingConcurrency: number;
   disableThumbnails: boolean;
+  showFilenames: boolean;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -68,6 +77,7 @@ interface SettingsState {
   setLastViewedVersion: (version: string) => void;
   setIndexingConcurrency: (value: number) => void;
   setDisableThumbnails: (value: boolean) => void;
+  setShowFilenames: (value: boolean) => void;
   resetState: () => void;
 }
 
@@ -92,6 +102,7 @@ export const useSettingsStore = create<SettingsState>()(
       lastViewedVersion: null,
       indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
+      showFilenames: false,
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -114,6 +125,7 @@ export const useSettingsStore = create<SettingsState>()(
             : 1,
         }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
+      setShowFilenames: (value) => set({ showFilenames: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -138,6 +150,7 @@ export const useSettingsStore = create<SettingsState>()(
         lastViewedVersion: null,
         indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
+        showFilenames: false,
       }),
     }),
     {
@@ -147,6 +160,10 @@ export const useSettingsStore = create<SettingsState>()(
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || state.itemsPerPage <= 0 || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
+        }
+
+        if (state && typeof state.showFilenames !== 'boolean') {
+          state.showFilenames = false;
         }
       },
     }

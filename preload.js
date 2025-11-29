@@ -86,6 +86,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onFullscreenChanged: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('fullscreen-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('fullscreen-changed', handler);
+    };
+  },
+
+  onFullscreenStateCheck: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('fullscreen-state-check', handler);
+    return () => {
+      ipcRenderer.removeListener('fullscreen-state-check', handler);
+    };
+  },
+
   // --- Invokable renderer-to-main functions ---
   getTheme: () => ipcRenderer.invoke('get-theme'),
   trashFile: (filePath) => ipcRenderer.invoke('trash-file', filePath),
@@ -94,6 +110,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
+  openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
@@ -105,6 +122,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+  toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
 
   // --- Caching ---
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
@@ -119,6 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),
   clearMetadataCache: () => ipcRenderer.invoke('clear-metadata-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
+  deleteCacheFolder: () => ipcRenderer.invoke('delete-cache-folder'),
+  restartApp: () => ipcRenderer.invoke('restart-app'),
 
 
   // TEST ONLY: Simulate update dialog

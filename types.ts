@@ -5,6 +5,7 @@ export interface ElectronAPI {
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
@@ -34,6 +35,8 @@ export interface ElectronAPI {
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
+  deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
+  restartApp: () => Promise<{ success: boolean; error?: string }>;
 
   onLoadDirectoryFromCLI: (callback: (dirPath: string) => void) => () => void;
   onMenuAddFolder: (callback: () => void) => () => void;
@@ -43,6 +46,9 @@ export interface ElectronAPI {
   testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
+  toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
+  onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
 }
 
 declare global {
