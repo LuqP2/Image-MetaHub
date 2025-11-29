@@ -242,18 +242,14 @@ export default function App() {
   // Get app version and check if we should show changelog
   useEffect(() => {
     const checkForNewVersion = async () => {
-      console.log('📋 Checking if changelog should be shown...');
-
       // Wait for Zustand persistence to rehydrate
       await useSettingsStore.persist.rehydrate();
-      console.log('📋 Zustand persistence rehydrated');
 
       let version = '0.9.6-rc'; // Default fallback version
 
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
           version = await window.electronAPI.getAppVersion();
-          console.log('📋 App version from Electron:', version);
         } catch (error) {
           console.warn('Failed to get app version from Electron, using fallback:', error);
         }
@@ -263,21 +259,11 @@ export default function App() {
 
       // Get the current lastViewedVersion from the store after rehydration
       const currentLastViewed = useSettingsStore.getState().lastViewedVersion;
-      console.log('📋 Last viewed version from settings:', currentLastViewed);
 
       // Check if this is a new version since last view (or first run)
       if (currentLastViewed !== version) {
-        console.log('🎉 Changelog condition MET! Showing changelog modal...');
-        console.log(`   → Last viewed: ${currentLastViewed}`);
-        console.log(`   → Current version: ${version}`);
-        console.log(`   → Comparison: ${currentLastViewed} !== ${version} = true`);
         setIsChangelogModalOpen(true);
         setLastViewedVersion(version);
-        console.log('📋 Updated lastViewedVersion to:', version);
-      } else {
-        console.log('ℹ️ Changelog condition NOT met (already seen this version)');
-        console.log(`   → Last viewed: ${currentLastViewed}`);
-        console.log(`   → Current version: ${version}`);
       }
     };
 
