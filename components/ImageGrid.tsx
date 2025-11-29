@@ -5,6 +5,7 @@ import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import Toast from './Toast';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -23,6 +24,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
+  const [showToast, setShowToast] = useState(false);
 
   useThumbnail(image);
 
@@ -74,8 +76,17 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     setPreviewImage(image);
   };
 
+  const handleCopyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (image.prompt) {
+      navigator.clipboard.writeText(image.prompt);
+      setShowToast(true);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
+      {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
           isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
@@ -87,7 +98,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
       >
         {isSelected && (
-          <div className="absolute top-2 right-2 z-10">
+          <div className="absolute top-2 right-2 z-20">
             <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
               <Check className="w-4 h-4 text-white" />
             </div>
@@ -100,6 +111,17 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         >
           <Info className="h-4 w-4" />
         </button>
+
+        {!isSelected && (
+        <button
+          onClick={handleCopyClick}
+          className="absolute top-2 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
+          title="Copy Prompt"
+          disabled={!image.prompt}
+        >
+          <Copy className="h-4 w-4" />
+        </button>
+        )}
 
         {imageUrl ? (
           <img
