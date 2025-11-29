@@ -179,8 +179,8 @@ export async function resetAllCaches(): Promise<void> {
   console.log('   ✅ sessionStorage cleared');
   console.log('   ✅ Zustand stores reset');
   console.log('');
-  console.log('🔄 App will reload to complete the reset.');
-  console.log('📋 After reload:');
+  console.log('🔄 App will RESTART to complete the reset.');
+  console.log('📋 After restart:');
   console.log('   → Zustand will read settings.json (now deleted)');
   console.log('   → electronStorage will return NULL');
   console.log('   → Zustand will use default values');
@@ -188,12 +188,25 @@ export async function resetAllCaches(): Promise<void> {
   console.log('   → Changelog modal WILL appear!');
   console.log('');
 
-  // ALWAYS reload after clearing cache, not just when needsRestart is true
-  // The cache deletion requires a reload to take effect
-  console.log('🔄 Reloading application in 1 second...');
-  setTimeout(() => {
-    window.location.reload();
-  }, 1000);
+  // RESTART the app (not just reload) to ensure clean state
+  // This prevents ERR_CACHE_READ_FAILURE and corrupted Electron state
+  if (window.electronAPI?.restartApp) {
+    console.log('🔄 Restarting application in 1 second...');
+    setTimeout(async () => {
+      try {
+        await window.electronAPI.restartApp();
+      } catch (error) {
+        console.error('❌ Failed to restart app, falling back to reload:', error);
+        window.location.reload();
+      }
+    }, 1000);
+  } else {
+    // Fallback for browser mode
+    console.log('🔄 Reloading page in 1 second (browser mode)...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  }
 }
 
 /**
