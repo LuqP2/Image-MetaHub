@@ -987,6 +987,19 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Restart the application (used after cache reset)
+  ipcMain.handle('restart-app', async () => {
+    try {
+      console.log('🔄 Restarting application...');
+      app.relaunch();
+      app.quit();
+      return { success: true };
+    } catch (error) {
+      console.error('Error restarting app:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // --- End Thumbnail Cache IPC Handlers ---
   // --- End Cache IPC Handlers ---
 

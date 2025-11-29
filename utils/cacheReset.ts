@@ -9,19 +9,30 @@ import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 export async function resetAllCaches(): Promise<void> {
-  console.log('🧹 Starting complete cache reset...');
+  console.log('🧹 ========================================');
+  console.log('🧹 COMPLETE CACHE RESET STARTED');
+  console.log('🧹 ========================================');
+  console.log('📅 Timestamp:', new Date().toISOString());
+  console.log('🔧 This will delete ALL app data and force a fresh start');
 
   let needsRestart = false;
 
   try {
     // 1. Delete all cache files/folders from AppData/Roaming
-    console.log('📁 Deleting cache files from AppData/Roaming...');
+    // This includes: json_cache/, thumbnails/, settings.json, and ALL other files
+    console.log('\n📁 Step 1: Deleting ALL cache files from AppData/Roaming...');
+    console.log('   → This will delete:');
+    console.log('     • json_cache/ (metadata)');
+    console.log('     • thumbnails/ (cached thumbnails)');
+    console.log('     • settings.json (app settings including lastViewedVersion)');
+    console.log('     • All other files in userData');
 
     if (window.electronAPI) {
       try {
         const deleteResult = await window.electronAPI.deleteCacheFolder();
         if (deleteResult?.success) {
-          console.log('✅ Cache files deleted successfully');
+          console.log('✅ Cache files deleted successfully from disk');
+          console.log('   → settings.json is now DELETED (will use defaults on reload)');
           needsRestart = deleteResult.needsRestart || false;
         } else {
           console.warn('⚠️ Could not delete cache folder:', deleteResult?.error);
@@ -39,11 +50,11 @@ export async function resetAllCaches(): Promise<void> {
 
   try {
     // 2. Clear ALL IndexedDB databases (legacy/fallback)
-    console.log('📦 Clearing ALL IndexedDB databases...');
-    
+    console.log('\n📦 Step 2: Clearing ALL IndexedDB databases...');
+
     // Get all database names
     const databases = await indexedDB.databases();
-    console.log(`Found ${databases.length} IndexedDB databases to delete`);
+    console.log(`   → Found ${databases.length} IndexedDB database(s) to delete`);
     
     // Delete each database
     for (const db of databases) {
@@ -75,7 +86,7 @@ export async function resetAllCaches(): Promise<void> {
 
   try {
     // 3. Clear localStorage items
-    console.log('💾 Clearing localStorage...');
+    console.log('\n💾 Step 3: Clearing localStorage...');
     const keysToRemove = [
       'image-metahub-sort-order',
       'image-metahub-items-per-page',
@@ -111,7 +122,7 @@ export async function resetAllCaches(): Promise<void> {
 
   try {
     // 4. Clear sessionStorage if any
-    console.log('🔄 Clearing sessionStorage...');
+    console.log('\n🔄 Step 4: Clearing sessionStorage...');
     sessionStorage.clear();
     console.log('✅ sessionStorage cleared');
 
@@ -120,8 +131,8 @@ export async function resetAllCaches(): Promise<void> {
   }
 
   try {
-    // 5. Reset Zustand stores
-    console.log('🔄 Resetting application state...');
+    // 5. Reset Zustand stores (in-memory only, will be gone after reload)
+    console.log('\n🔄 Step 5: Resetting application state (in-memory)...');
 
     // Reset ImageStore (images, directories, filters, etc.)
     useImageStore.getState().resetState();
@@ -136,8 +147,8 @@ export async function resetAllCaches(): Promise<void> {
   }
 
   try {
-    // 6. Clear Zustand persistence (the stored state data)
-    console.log('💾 Clearing Zustand persistence...');
+    // 6. Clear Zustand persistence from localStorage (browser fallback)
+    console.log('\n💾 Step 6: Clearing Zustand persistence from localStorage...');
 
     // Get persistence storage keys and clear them
     const storageName1 = 'image-metahub-settings';
@@ -149,29 +160,52 @@ export async function resetAllCaches(): Promise<void> {
       console.log('✅ Zustand persistence cleared from localStorage');
     }
 
-    // Also clear through Electron API if available
-    if (window.electronAPI) {
-      try {
-        await window.electronAPI.saveSettings({});
-        console.log('✅ Electron settings cleared');
-      } catch (err) {
-        console.warn('⚠️ Could not clear Electron settings:', err);
-      }
-    }
+    // DO NOT recreate settings.json here!
+    // The deleteCacheFolder() already deleted it.
+    // When the app reloads, Zustand will initialize with default values (lastViewedVersion: null)
+    // This ensures the changelog modal appears on next load.
 
   } catch (error) {
     console.error('❌ Error clearing Zustand persistence:', error);
   }
 
-  console.log('🎉 All caches and app state cleared successfully!');
-  console.log('🔄 App will reload to complete the reset.');
+  console.log('\n🎉 ========================================');
+  console.log('🎉 ALL CACHES CLEARED SUCCESSFULLY!');
+  console.log('🎉 ========================================');
+  console.log('📋 Summary:');
+  console.log('   ✅ Disk cache deleted (settings.json, metadata, thumbnails)');
+  console.log('   ✅ IndexedDB cleared');
+  console.log('   ✅ localStorage cleared');
+  console.log('   ✅ sessionStorage cleared');
+  console.log('   ✅ Zustand stores reset');
+  console.log('');
+  console.log('🔄 App will RESTART to complete the reset.');
+  console.log('📋 After restart:');
+  console.log('   → Zustand will read settings.json (now deleted)');
+  console.log('   → electronStorage will return NULL');
+  console.log('   → Zustand will use default values');
+  console.log('   → lastViewedVersion will be NULL');
+  console.log('   → Changelog modal WILL appear!');
+  console.log('');
 
-  // After all clearing operations, reload the app
-  if (needsRestart) {
-    console.log('🔄 Restarting application in 500ms...');
+  // RESTART the app (not just reload) to ensure clean state
+  // This prevents ERR_CACHE_READ_FAILURE and corrupted Electron state
+  if (window.electronAPI?.restartApp) {
+    console.log('🔄 Restarting application in 1 second...');
+    setTimeout(async () => {
+      try {
+        await window.electronAPI.restartApp();
+      } catch (error) {
+        console.error('❌ Failed to restart app, falling back to reload:', error);
+        window.location.reload();
+      }
+    }, 1000);
+  } else {
+    // Fallback for browser mode
+    console.log('🔄 Reloading page in 1 second (browser mode)...');
     setTimeout(() => {
       window.location.reload();
-    }, 500);
+    }, 1000);
   }
 }
 

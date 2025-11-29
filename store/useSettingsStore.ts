@@ -7,6 +7,14 @@ const electronStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
     if (window.electronAPI) {
       const settings = await window.electronAPI.getSettings();
+
+      // If settings is empty (e.g., after cache reset), return null
+      // This forces Zustand to use default values instead of merging with {}
+      if (!settings || Object.keys(settings).length === 0) {
+        console.log('📋 Settings file is empty or missing, using defaults');
+        return null;
+      }
+
       return JSON.stringify({ state: settings });
     }
     return null;
