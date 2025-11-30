@@ -63,6 +63,11 @@ interface SettingsState {
   disableThumbnails: boolean;
   showFilenames: boolean;
 
+  // A1111 Integration settings
+  a1111ServerUrl: string;
+  a1111AutoStart: boolean;
+  a1111LastConnectionStatus: 'unknown' | 'connected' | 'error';
+
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
   setItemsPerPage: (count: number) => void;
@@ -78,6 +83,9 @@ interface SettingsState {
   setIndexingConcurrency: (value: number) => void;
   setDisableThumbnails: (value: boolean) => void;
   setShowFilenames: (value: boolean) => void;
+  setA1111ServerUrl: (url: string) => void;
+  toggleA1111AutoStart: () => void;
+  setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   resetState: () => void;
 }
 
@@ -103,6 +111,11 @@ export const useSettingsStore = create<SettingsState>()(
       indexingConcurrency: defaultIndexingConcurrency,
       disableThumbnails: false,
       showFilenames: false,
+
+      // A1111 Integration initial state
+      a1111ServerUrl: 'http://127.0.0.1:7860',
+      a1111AutoStart: false,
+      a1111LastConnectionStatus: 'unknown',
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -137,6 +150,12 @@ export const useSettingsStore = create<SettingsState>()(
           },
         })),
       resetKeymap: () => set({ keymap: getDefaultKeymap() }),
+
+      // A1111 Integration actions
+      setA1111ServerUrl: (url) => set({ a1111ServerUrl: url }),
+      toggleA1111AutoStart: () => set((state) => ({ a1111AutoStart: !state.a1111AutoStart })),
+      setA1111ConnectionStatus: (status) => set({ a1111LastConnectionStatus: status }),
+
       resetState: () => set({
         sortOrder: 'desc',
         itemsPerPage: 20,
@@ -151,6 +170,9 @@ export const useSettingsStore = create<SettingsState>()(
         indexingConcurrency: defaultIndexingConcurrency,
         disableThumbnails: false,
         showFilenames: false,
+        a1111ServerUrl: 'http://127.0.0.1:7860',
+        a1111AutoStart: false,
+        a1111LastConnectionStatus: 'unknown',
       }),
     }),
     {

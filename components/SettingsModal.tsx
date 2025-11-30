@@ -23,8 +23,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
 
+  // A1111 Integration settings
+  const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
+  const a1111AutoStart = useSettingsStore((state) => state.a1111AutoStart);
+  const a1111LastConnectionStatus = useSettingsStore((state) => state.a1111LastConnectionStatus);
+  const setA1111ServerUrl = useSettingsStore((state) => state.setA1111ServerUrl);
+  const toggleA1111AutoStart = useSettingsStore((state) => state.toggleA1111AutoStart);
+  const setA1111ConnectionStatus = useSettingsStore((state) => state.setA1111ConnectionStatus);
+
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const hardwareConcurrency = typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
     ? navigator.hardwareConcurrency
     : null;
@@ -60,6 +69,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const handleOpenCacheLocation = async () => {
     if (currentCachePath) {
       await window.electronAPI?.openCacheLocation(currentCachePath);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!a1111ServerUrl) {
+      alert('Please enter a server URL');
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setA1111ConnectionStatus('unknown');
+
+    try {
+      const { A1111ApiClient } = await import('../services/a1111ApiClient');
+      const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
+      const result = await client.testConnection();
+
+      if (result.success) {
+        setA1111ConnectionStatus('connected');
+      } else {
+        setA1111ConnectionStatus('error');
+        alert(`Connection failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      setA1111ConnectionStatus('error');
+      alert(`Error testing connection: ${error.message}`);
+    } finally {
+      setIsTestingConnection(false);
     }
   };
 
@@ -202,6 +239,62 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   type="checkbox"
                   checked={showFilenames}
                   onChange={(event) => setShowFilenames(event.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* A1111 Integration */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Automatic1111 Integration</h3>
+            <p className="text-sm text-gray-400 mb-3">
+              Configure connection to your local Automatic1111 instance. Make sure A1111 is running with the --api flag.
+            </p>
+
+            {/* Server URL Input */}
+            <div className="space-y-2 mb-3">
+              <label className="text-sm text-gray-300">Server URL</label>
+              <input
+                type="text"
+                value={a1111ServerUrl}
+                onChange={(e) => setA1111ServerUrl(e.target.value)}
+                placeholder="http://127.0.0.1:7860"
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* Test Connection Button */}
+            <div className="flex items-center space-x-2 mb-3">
+              <button
+                onClick={handleTestConnection}
+                disabled={isTestingConnection}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {isTestingConnection ? 'Testing...' : 'Test Connection'}
+              </button>
+              {a1111LastConnectionStatus === 'connected' && (
+                <span className="text-green-400 text-sm">✓ Connected</span>
+              )}
+              {a1111LastConnectionStatus === 'error' && (
+                <span className="text-red-400 text-sm">✗ Connection failed</span>
+              )}
+            </div>
+
+            {/* Auto-start Toggle */}
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+              <div>
+                <p className="text-sm">Auto-start generation</p>
+                <p className="text-xs text-gray-400">
+                  Automatically start generating when sending parameters to A1111
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={a1111AutoStart}
+                  onChange={toggleA1111AutoStart}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

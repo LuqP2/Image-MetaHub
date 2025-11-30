@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { A1111ApiClient } from '../services/a1111ApiClient';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface ContextMenuState {
   x: number;
@@ -181,9 +183,46 @@ export const useContextMenu = () => {
       // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Export error:', error);
       alert(`An unexpected error occurred during export: ${error.message}`);
+    }
+  };
+
+  const sendToA1111 = async () => {
+    if (!contextMenu.image) return;
+
+    const metadata = contextMenu.image.metadata?.normalizedMetadata;
+    if (!metadata || !metadata.prompt) {
+      alert('No metadata available for this image');
+      hideContextMenu();
+      return;
+    }
+
+    // Get settings from store
+    const { a1111ServerUrl, a1111AutoStart } = useSettingsStore.getState();
+
+    if (!a1111ServerUrl) {
+      alert('A1111 server URL not configured. Please check Settings.');
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+
+    try {
+      const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
+      const result = await client.sendToTxt2Img(metadata, {
+        autoStart: a1111AutoStart
+      });
+
+      if (result.success) {
+        showNotification(result.message || 'Sent to A1111 successfully!');
+      } else {
+        alert(result.error || 'Failed to send to A1111');
+      }
+    } catch (error: any) {
+      alert(`Error: ${error.message}`);
     }
   };
 
@@ -197,6 +236,7 @@ export const useContextMenu = () => {
     copyImage,
     copyModel,
     showInFolder,
-    exportImage
+    exportImage,
+    sendToA1111
   };
 };
