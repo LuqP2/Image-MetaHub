@@ -3,6 +3,7 @@ import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 
 interface ContextMenuState {
   x: number;
@@ -189,7 +190,35 @@ export const useContextMenu = () => {
     }
   };
 
-  const sendToA1111 = async () => {
+  const copyMetadataToA1111 = async () => {
+    if (!contextMenu.image) return;
+
+    const metadata = contextMenu.image.metadata?.normalizedMetadata;
+    if (!metadata || !metadata.prompt) {
+      alert('No metadata available for this image');
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+
+    try {
+      // Format metadata to A1111 string
+      const formattedText = formatMetadataForA1111(metadata);
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(formattedText);
+
+      showNotification('Copied! Paste into A1111 prompt box and click the Blue Arrow.');
+    } catch (error: any) {
+      const errorMessage = error.message?.includes('clipboard')
+        ? 'Clipboard access denied. Please use HTTPS or localhost.'
+        : `Error: ${error.message}`;
+      alert(errorMessage);
+    }
+  };
+
+  const quickGenerateInA1111 = async () => {
     if (!contextMenu.image) return;
 
     const metadata = contextMenu.image.metadata?.normalizedMetadata;
@@ -200,7 +229,7 @@ export const useContextMenu = () => {
     }
 
     // Get settings from store
-    const { a1111ServerUrl, a1111AutoStart } = useSettingsStore.getState();
+    const { a1111ServerUrl } = useSettingsStore.getState();
 
     if (!a1111ServerUrl) {
       alert('A1111 server URL not configured. Please check Settings.');
@@ -212,14 +241,15 @@ export const useContextMenu = () => {
 
     try {
       const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
+      // ALWAYS start generation (autoStart: true)
       const result = await client.sendToTxt2Img(metadata, {
-        autoStart: a1111AutoStart
+        autoStart: true
       });
 
       if (result.success) {
-        showNotification(result.message || 'Sent to A1111 successfully!');
+        showNotification('Generated successfully!');
       } else {
-        alert(result.error || 'Failed to send to A1111');
+        alert(result.error || 'Generation failed');
       }
     } catch (error: any) {
       alert(`Error: ${error.message}`);
@@ -237,6 +267,7 @@ export const useContextMenu = () => {
     copyModel,
     showInFolder,
     exportImage,
-    sendToA1111
+    copyMetadataToA1111,
+    quickGenerateInA1111
   };
 };

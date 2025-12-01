@@ -1,8 +1,9 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Send } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
-import { useSendToA1111 } from '../hooks/useSendToA1111';
+import { useCopyToA1111 } from '../hooks/useCopyToA1111';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -38,7 +39,10 @@ const ImagePreviewSidebar: React.FC = () => {
     directories
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const { sendToA1111, isSending, sendStatus } = useSendToA1111();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
+  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
 
   useEffect(() => {
     let isMounted = true;
@@ -186,37 +190,79 @@ const ImagePreviewSidebar: React.FC = () => {
                </>
             )}
 
-            {/* Send to A1111 Button */}
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => sendToA1111(previewImage)}
-                disabled={isSending || !nMeta.prompt}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200"
-              >
-                {isSending ? (
-                  <>
-                    {/* Spinner Animation */}
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Sending...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Send to A1111</span>
-                  </>
-                )}
-              </button>
+            {/* A1111 Actions - Split Button */}
+            <div className="mt-4 space-y-2 relative">
+              <div className="flex gap-1">
+                {/* Primary action: Copy to A1111 */}
+                <button
+                  onClick={() => copyToA1111(previewImage)}
+                  disabled={isCopying || !nMeta.prompt}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-l-md text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200"
+                >
+                  {isCopying ? (
+                    <>
+                      {/* Spinner Animation */}
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Copying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard className="w-4 h-4" />
+                      <span>Copy to A1111</span>
+                    </>
+                  )}
+                </button>
 
-              {sendStatus && (
+                {/* Dropdown trigger */}
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  disabled={!nMeta.prompt}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-2 rounded-r-md transition-all duration-200 border-l border-blue-500"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Dropdown menu */}
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                  <button
+                    onClick={() => {
+                      generateWithA1111(previewImage);
+                      setIsDropdownOpen(false);
+                    }}
+                    disabled={isGenerating || !nMeta.prompt}
+                    className="w-full px-4 py-2 text-sm font-medium text-left hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed flex items-center gap-2 rounded-md transition-colors"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Quick Generate</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Status messages */}
+              {(copyStatus || generateStatus) && (
                 <div className={`p-2 rounded text-xs ${
-                  sendStatus.success
+                  (copyStatus?.success || generateStatus?.success)
                     ? 'bg-green-900/50 border border-green-700 text-green-300'
                     : 'bg-red-900/50 border border-red-700 text-red-300'
                 }`}>
-                  {sendStatus.message}
+                  {copyStatus?.message || generateStatus?.message}
                 </div>
               )}
             </div>

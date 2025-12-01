@@ -3,7 +3,7 @@ import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Send } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import Toast from './Toast';
 
@@ -184,7 +184,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyModel,
     showInFolder,
     exportImage,
-    sendToA1111
+    copyMetadataToA1111,
+    quickGenerateInA1111
   } = useContextMenu();
 
   // Sync focusedImageIndex when previewImage changes
@@ -411,12 +412,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <div className="border-t border-gray-600 my-1"></div>
 
           <button
-            onClick={sendToA1111}
+            onClick={copyMetadataToA1111}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
           >
-            <Send className="w-4 h-4" />
-            Send to A1111
+            <Clipboard className="w-4 h-4" />
+            Copy to A1111
+          </button>
+
+          <button
+            onClick={quickGenerateInA1111}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
+          >
+            <Sparkles className="w-4 h-4" />
+            Quick Generate
           </button>
         </div>
       )}
