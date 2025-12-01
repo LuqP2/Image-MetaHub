@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { type IndexedImage } from '../types';
+import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { A1111GenerateModal } from './A1111GenerateModal';
 import Toast from './Toast';
 
 // --- ImageCard Component ---
@@ -168,10 +170,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const previewImage = useImageStore((state) => state.previewImage);
   const gridRef = useRef<HTMLDivElement>(null);
   const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
   };
+
+  const { generateWithA1111, isGenerating } = useGenerateWithA1111();
 
   const {
     contextMenu,
@@ -184,9 +190,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyModel,
     showInFolder,
     exportImage,
-    copyMetadataToA1111,
-    quickGenerateInA1111
+    copyMetadataToA1111
   } = useContextMenu();
+
+  const openGenerateModal = () => {
+    if (contextMenu.image) {
+      setSelectedImageForGeneration(contextMenu.image);
+      setIsGenerateModalOpen(true);
+      hideContextMenu();
+    }
+  };
 
   // Sync focusedImageIndex when previewImage changes
   useEffect(() => {
@@ -421,14 +434,39 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           </button>
 
           <button
-            onClick={quickGenerateInA1111}
+            onClick={openGenerateModal}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
           >
             <Sparkles className="w-4 h-4" />
-            Quick Generate
+            Generate Variation
           </button>
         </div>
+      )}
+
+      {/* Generate Variation Modal */}
+      {isGenerateModalOpen && selectedImageForGeneration && (
+        <A1111GenerateModal
+          isOpen={isGenerateModalOpen}
+          onClose={() => {
+            setIsGenerateModalOpen(false);
+            setSelectedImageForGeneration(null);
+          }}
+          image={selectedImageForGeneration}
+          onGenerate={async (params) => {
+            const customMetadata: Partial<BaseMetadata> = {
+              prompt: params.prompt,
+              negativePrompt: params.negativePrompt,
+              cfg_scale: params.cfgScale,
+              steps: params.steps,
+              seed: params.randomSeed ? -1 : params.seed,
+            };
+            await generateWithA1111(selectedImageForGeneration, customMetadata);
+            setIsGenerateModalOpen(false);
+            setSelectedImageForGeneration(null);
+          }}
+          isGenerating={isGenerating}
+        />
       )}
     </div>
   );
