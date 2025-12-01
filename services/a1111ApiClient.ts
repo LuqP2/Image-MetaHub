@@ -176,7 +176,7 @@ export class A1111ApiClient {
    */
   async sendToTxt2Img(
     metadata: BaseMetadata,
-    options: { autoStart: boolean } = { autoStart: false }
+    options: { autoStart: boolean; numberOfImages?: number } = { autoStart: false, numberOfImages: 1 }
   ): Promise<A1111Response> {
     try {
       const params = await this.metadataToA1111Params(metadata);
@@ -190,6 +190,7 @@ export class A1111ApiClient {
         width: params.width,
         height: params.height,
         seed: params.seed,
+        n_iter: options.numberOfImages || 1,
         save_images: options.autoStart,
         send_images: options.autoStart,
       };

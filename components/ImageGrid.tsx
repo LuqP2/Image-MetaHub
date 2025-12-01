@@ -461,7 +461,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               steps: params.steps,
               seed: params.randomSeed ? -1 : params.seed,
             };
-            await generateWithA1111(selectedImageForGeneration, customMetadata);
+            await generateWithA1111(selectedImageForGeneration, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);
             setSelectedImageForGeneration(null);
           }}

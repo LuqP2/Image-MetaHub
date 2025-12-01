@@ -544,7 +544,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Hero Button: Generate Variation */}
               <button
                 onClick={() => setIsGenerateModalOpen(true)}
-                disabled={isGenerating || !nMeta.prompt}
+                disabled={!nMeta.prompt}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 {isGenerating ? (
@@ -610,7 +610,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
                     };
-                    await generateWithA1111(image, customMetadata);
+                    await generateWithA1111(image, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}

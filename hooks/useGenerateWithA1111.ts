@@ -15,7 +15,7 @@ export function useGenerateWithA1111() {
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
 
   const generateWithA1111 = useCallback(
-    async (image: IndexedImage, customParams?: Partial<BaseMetadata>) => {
+    async (image: IndexedImage, customParams?: Partial<BaseMetadata>, numberOfImages?: number) => {
       // Merge custom params with original metadata if provided
       const metadata = customParams
         ? { ...image.metadata?.normalizedMetadata, ...customParams }
@@ -48,6 +48,7 @@ export function useGenerateWithA1111() {
         // ALWAYS start generation (autoStart: true)
         const result = await client.sendToTxt2Img(metadata, {
           autoStart: true,
+          numberOfImages: numberOfImages || 1,
         });
 
         setGenerateStatus({

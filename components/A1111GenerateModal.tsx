@@ -17,6 +17,7 @@ export interface GenerationParams {
   steps: number;
   seed: number;
   randomSeed: boolean;
+  numberOfImages: number;
 }
 
 export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
@@ -33,6 +34,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     steps: 20,
     seed: -1,
     randomSeed: false,
+    numberOfImages: 1,
   });
 
   const [validationError, setValidationError] = useState<string>('');
@@ -48,6 +50,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         steps: meta.steps || 20,
         seed: meta.seed !== undefined ? meta.seed : -1,
         randomSeed: false,
+        numberOfImages: 1,
       });
       setValidationError('');
     }
@@ -70,6 +73,11 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
       return;
     }
 
+    if (params.numberOfImages <= 0 || params.numberOfImages > 10) {
+      setValidationError('Number of images must be between 1 and 10');
+      return;
+    }
+
     setValidationError('');
 
     // Call parent handler
@@ -77,13 +85,8 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   };
 
   const handleClose = () => {
-    if (isGenerating) {
-      if (window.confirm('Generation in progress. Are you sure you want to close?')) {
-        onClose();
-      }
-    } else {
-      onClose();
-    }
+    // Allow closing even during generation (non-blocking)
+    onClose();
   };
 
   if (!isOpen) {
@@ -128,7 +131,6 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           <button
             onClick={handleClose}
             className="p-1 rounded-full hover:bg-gray-700 transition-colors"
-            disabled={isGenerating}
           >
             <X size={24} />
           </button>
@@ -198,28 +200,45 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               </div>
             </div>
 
-            {/* Seed */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Seed
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  value={params.randomSeed ? -1 : params.seed}
-                  onChange={(e) => setParams(prev => ({ ...prev, seed: parseInt(e.target.value) || -1 }))}
-                  disabled={params.randomSeed}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+            {/* Seed and Number of Images - Side by side */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Seed
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={params.randomSeed ? -1 : params.seed}
+                    onChange={(e) => setParams(prev => ({ ...prev, seed: parseInt(e.target.value) || -1 }))}
+                    disabled={params.randomSeed}
+                    className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={params.randomSeed}
                     onChange={(e) => setParams(prev => ({ ...prev, randomSeed: e.target.checked }))}
                     className="cursor-pointer"
                   />
-                  Random
+                  Random seed
                 </label>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Number of Images
+                </label>
+                <input
+                  type="number"
+                  value={params.numberOfImages}
+                  onChange={(e) => setParams(prev => ({ ...prev, numberOfImages: parseInt(e.target.value) || 1 }))}
+                  min="1"
+                  max="10"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500">Max: 10 images</p>
               </div>
             </div>
           </div>
@@ -236,15 +255,13 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
           <button
             onClick={handleClose}
-            disabled={isGenerating}
-            className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium transition-colors"
+            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleGenerate}
-            disabled={isGenerating}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
           >
             {isGenerating ? (
               <>
