@@ -181,6 +181,8 @@ export class A1111ApiClient {
     try {
       const params = await this.metadataToA1111Params(metadata);
 
+      console.log('[A1111] Converted metadata to params:', params);
+
       const requestBody: any = {
         prompt: params.prompt,
         negative_prompt: params.negative_prompt,
@@ -201,6 +203,9 @@ export class A1111ApiClient {
         };
       }
 
+      console.log('[A1111] Sending request body:', requestBody);
+      console.log('[A1111] autoStart:', options.autoStart);
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for generation
 
@@ -215,8 +220,11 @@ export class A1111ApiClient {
 
       clearTimeout(timeoutId);
 
+      console.log('[A1111] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('[A1111] Error response:', errorText);
         return {
           success: false,
           error: `API error: ${response.status} - ${errorText}`,
@@ -224,6 +232,11 @@ export class A1111ApiClient {
       }
 
       const result = await response.json();
+      console.log('[A1111] Response result:', {
+        hasImages: !!result.images,
+        imageCount: result.images?.length || 0,
+        info: result.info
+      });
 
       return {
         success: true,
@@ -233,6 +246,7 @@ export class A1111ApiClient {
         images: result.images,
       };
     } catch (error: any) {
+      console.error('[A1111] Error:', error);
       if (error.name === 'AbortError') {
         return {
           success: false,
