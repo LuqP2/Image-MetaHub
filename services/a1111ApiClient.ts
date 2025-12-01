@@ -202,7 +202,8 @@ export class A1111ApiClient {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for generation
+      // 3 minute timeout for generation (some models/steps can take longer)
+      const timeoutId = setTimeout(() => controller.abort(), 180000);
 
       const response = await fetch(`${this.config.serverUrl}/sdapi/v1/txt2img`, {
         method: 'POST',
