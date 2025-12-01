@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { IndexedImage } from '../types';
+import { IndexedImage, BaseMetadata } from '../types';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -15,8 +15,11 @@ export function useGenerateWithA1111() {
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
 
   const generateWithA1111 = useCallback(
-    async (image: IndexedImage) => {
-      const metadata = image.metadata?.normalizedMetadata;
+    async (image: IndexedImage, customParams?: Partial<BaseMetadata>) => {
+      // Merge custom params with original metadata if provided
+      const metadata = customParams
+        ? { ...image.metadata?.normalizedMetadata, ...customParams }
+        : image.metadata?.normalizedMetadata;
 
       if (!metadata || !metadata.prompt) {
         setGenerateStatus({

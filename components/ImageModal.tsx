@@ -5,6 +5,7 @@ import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { A1111GenerateModal } from './A1111GenerateModal';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -67,6 +68,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
   const [isA1111DropdownOpen, setIsA1111DropdownOpen] = useState(false);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
@@ -578,26 +580,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <div className="absolute left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
                   <button
                     onClick={() => {
-                      generateWithA1111(image);
+                      setIsGenerateModalOpen(true);
                       setIsA1111DropdownOpen(false);
                     }}
-                    disabled={isGenerating || !nMeta.prompt}
+                    disabled={!nMeta.prompt}
                     className="w-full px-3 py-2 text-xs font-medium text-left hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed flex items-center gap-2 rounded-lg transition-colors"
                   >
-                    {isGenerating ? (
-                      <>
-                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3 h-3" />
-                        <span>Quick Generate</span>
-                      </>
-                    )}
+                    <Sparkles className="w-3 h-3" />
+                    <span>Generate Variation</span>
                   </button>
                 </div>
               )}
@@ -611,6 +601,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }`}>
                   {copyStatus?.message || generateStatus?.message}
                 </div>
+              )}
+
+              {/* Generate Variation Modal */}
+              {isGenerateModalOpen && nMeta && (
+                <A1111GenerateModal
+                  isOpen={isGenerateModalOpen}
+                  onClose={() => setIsGenerateModalOpen(false)}
+                  image={image}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithA1111(image, customMetadata);
+                    setIsGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGenerating}
+                />
               )}
             </div>
           )}

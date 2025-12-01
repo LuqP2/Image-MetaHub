@@ -4,6 +4,7 @@ import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { A1111GenerateModal } from './A1111GenerateModal';
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -40,6 +41,7 @@ const ImagePreviewSidebar: React.FC = () => {
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -231,26 +233,14 @@ const ImagePreviewSidebar: React.FC = () => {
                 <div className="absolute right-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
                   <button
                     onClick={() => {
-                      generateWithA1111(previewImage);
+                      setIsGenerateModalOpen(true);
                       setIsDropdownOpen(false);
                     }}
-                    disabled={isGenerating || !nMeta.prompt}
+                    disabled={!nMeta.prompt}
                     className="w-full px-4 py-2 text-sm font-medium text-left hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed flex items-center gap-2 rounded-md transition-colors"
                   >
-                    {isGenerating ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>Quick Generate</span>
-                      </>
-                    )}
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Variation</span>
                   </button>
                 </div>
               )}
@@ -264,6 +254,27 @@ const ImagePreviewSidebar: React.FC = () => {
                 }`}>
                   {copyStatus?.message || generateStatus?.message}
                 </div>
+              )}
+
+              {/* Generate Variation Modal */}
+              {isGenerateModalOpen && nMeta && (
+                <A1111GenerateModal
+                  isOpen={isGenerateModalOpen}
+                  onClose={() => setIsGenerateModalOpen(false)}
+                  image={previewImage}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithA1111(previewImage, customMetadata);
+                    setIsGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGenerating}
+                />
               )}
             </div>
           </>
