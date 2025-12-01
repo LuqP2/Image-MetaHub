@@ -53,6 +53,26 @@
 - **Preload Bridge (`preload.js`)** exposes a sandboxed `electronAPI` with directory listing, file stats, and shell helpers used by the directory tree.
 - **CLI (`cli.ts`)** provides command-line indexing utilities with the same version stamp (`0.9.5-rc`) displayed in the desktop UI.
 
+### A1111 Integration
+The application provides bidirectional workflow with Automatic1111 WebUI, enabling users to send image metadata back to A1111 for editing or quick regeneration.
+
+**Architecture:**
+- **API Client (`services/a1111ApiClient.ts`)** handles REST communication with A1111's `/sdapi/v1` endpoints (options, samplers, txt2img)
+- **Formatter (`utils/a1111Formatter.ts`)** converts normalized metadata to A1111's three-line format compatible with "Read generation parameters" feature
+- **React Hooks** provide two workflows:
+  - `useCopyToA1111.ts`: Clipboard-based workflow for manual editing
+  - `useGenerateWithA1111.ts`: Direct API generation (always autoStart)
+
+**UI Surface:**
+- Split button in `ImagePreviewSidebar.tsx` and `ImageModal.tsx` (Copy primary, Generate in dropdown)
+- Context menu items in `ImageGrid.tsx` via `useContextMenu.ts`
+- Settings panel in `SettingsModal.tsx` for server URL configuration and connection testing
+
+**Configuration:**
+- Settings stored in `useSettingsStore.ts`: server URL (default: `http://127.0.0.1:7860`), connection status
+- User must launch A1111 with `--api` and `--cors-allow-origins` flags
+- 3-minute timeout for generation requests to accommodate slower models
+
 ### Project Structure
 ```
 .

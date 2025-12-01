@@ -166,11 +166,102 @@ Metadata sources:
 
 ## Key Features to Maintain
 
-1. **Privacy**: All processing is local, no external connections (except auto-updater)
+1. **Privacy**: All processing is local, no external connections (except auto-updater and A1111 integration)
 2. **Performance**: Optimized for 18,000+ images with smart caching
 3. **Metadata Search**: Full-text search across all metadata fields
 4. **Multi-Format Support**: Handle various AI generator formats
 5. **File Operations**: Rename, delete, export metadata (desktop only)
+6. **A1111 Integration**: Send images back to Automatic1111 for editing or regeneration
+
+## A1111 Integration
+
+The application includes bidirectional workflow with Automatic1111 WebUI, allowing users to send image metadata back to A1111 for editing or regeneration.
+
+**Location:** `services/a1111ApiClient.ts`, `hooks/useCopyToA1111.ts`, `hooks/useGenerateWithA1111.ts`, `utils/a1111Formatter.ts`
+
+**Key Components:**
+
+1. **A1111 API Client** (`services/a1111ApiClient.ts`)
+   - REST API client for A1111 WebUI
+   - Connection testing (`/sdapi/v1/options`)
+   - Sampler list fetching with 5-minute cache
+   - Fuzzy sampler matching (case-insensitive, removes underscores/spaces)
+   - Image generation endpoint (`/sdapi/v1/txt2img`)
+   - 3-minute timeout for longer generations
+
+2. **Metadata Formatter** (`utils/a1111Formatter.ts`)
+   - Converts `BaseMetadata` to A1111 parseable format
+   - Three-line format:
+     - Line 1: Positive prompt
+     - Line 2: `Negative prompt: [text]` (if exists)
+     - Line 3: Comma-separated parameters (Steps, Sampler, CFG, Seed, Size, Model)
+   - Compatible with A1111's "Read generation parameters" feature (blue arrow button)
+
+3. **Copy to Clipboard Hook** (`hooks/useCopyToA1111.ts`)
+   - Formats metadata and copies to clipboard
+   - Toast notification: "Copied! Paste into A1111 prompt box and click the Blue Arrow."
+   - Error handling for clipboard API failures
+   - Primary workflow for manual parameter editing
+
+4. **Background Generation Hook** (`hooks/useGenerateWithA1111.ts`)
+   - Sends metadata directly to A1111 API
+   - Always starts generation (`autoStart: true`)
+   - Toast notifications for success/failure
+   - Secondary workflow for quick image variations
+
+**UI Integration:**
+
+- **ImagePreviewSidebar**: Split button (Copy primary, Generate in dropdown)
+- **ImageModal**: Split button (same design)
+- **Context Menu**: Two separate items (Copy to A1111, Quick Generate)
+
+**User Workflows:**
+
+1. **Copy for Manual Editing** (Primary):
+   - Click "Copy to A1111"
+   - Paste (Ctrl+V) into A1111 prompt box
+   - Click blue arrow icon ("Read generation parameters")
+   - All fields populate automatically
+   - User edits parameters before generating
+
+2. **Quick Generate** (Secondary):
+   - Click dropdown → "Quick Generate"
+   - Image generates immediately in background
+   - No UI interaction required on A1111 side
+
+**Configuration:**
+
+Settings in `store/useSettingsStore.ts`:
+- `a1111ServerUrl`: Default `http://127.0.0.1:7860`
+- `a1111LastConnectionStatus`: Connection state tracking
+- Connection test button in Settings modal
+
+**A1111 Setup Requirements:**
+
+User must start A1111 with API flags:
+```bash
+--api --cors-allow-origins=http://localhost:5173
+```
+
+**Common Issues:**
+
+- **CORS errors**: Missing `--cors-allow-origins` flag
+- **Connection timeout**: A1111 not running or wrong port
+- **Generation timeout**: Increase timeout in `a1111ApiClient.ts` if using slow models
+- **Sampler mismatch**: Fuzzy matching handles most cases, but custom samplers may not match
+
+**Testing A1111 Integration:**
+
+```bash
+# Start A1111 with API enabled
+webui.bat --api --cors-allow-origins=http://localhost:5173
+
+# In app:
+# 1. Settings → A1111 Integration → Test Connection
+# 2. Open image → Click "Copy to A1111"
+# 3. Paste in A1111 → Click blue arrow
+# 4. Verify all fields populated correctly
+```
 
 ## Common Tasks
 
