@@ -23,10 +23,12 @@ import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
+import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
+  const { progressState: a1111Progress } = useA1111ProgressContext();
   
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
@@ -486,6 +488,7 @@ export default function App() {
                 totalCount={selectionTotalImages}
                 directoryCount={selectionDirectoryCount}
                 enrichmentProgress={enrichmentProgress}
+                a1111Progress={a1111Progress}
               />
             </>
           )}
