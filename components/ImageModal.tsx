@@ -2,7 +2,9 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
+import { useCopyToA1111 } from '../hooks/useCopyToA1111';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -64,6 +66,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+  const [isA1111DropdownOpen, setIsA1111DropdownOpen] = useState(false);
+
+  // A1111 integration hooks
+  const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
+  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -529,6 +536,84 @@ const ImageModal: React.FC<ImageModalProps> = ({
               await showInExplorer(`${directoryPath}/${image.name}`);
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
           </div>
+
+          {/* A1111 Integration - Split Button */}
+          {nMeta && (
+            <div className="mt-3 relative">
+              <div className="flex gap-1">
+                {/* Primary action: Copy to A1111 */}
+                <button
+                  onClick={() => copyToA1111(image)}
+                  disabled={isCopying || !nMeta.prompt}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-l-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
+                >
+                  {isCopying ? (
+                    <>
+                      <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Copying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard className="w-3 h-3" />
+                      <span>Copy to A1111</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Dropdown trigger */}
+                <button
+                  onClick={() => setIsA1111DropdownOpen(!isA1111DropdownOpen)}
+                  disabled={!nMeta.prompt}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-2 rounded-r-lg transition-all duration-200 border-l border-blue-500"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Dropdown menu */}
+              {isA1111DropdownOpen && (
+                <div className="absolute left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
+                  <button
+                    onClick={() => {
+                      generateWithA1111(image);
+                      setIsA1111DropdownOpen(false);
+                    }}
+                    disabled={isGenerating || !nMeta.prompt}
+                    className="w-full px-3 py-2 text-xs font-medium text-left hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed flex items-center gap-2 rounded-lg transition-colors"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        <span>Quick Generate</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Status messages */}
+              {(copyStatus || generateStatus) && (
+                <div className={`mt-2 p-2 rounded text-xs ${
+                  (copyStatus?.success || generateStatus?.success)
+                    ? 'bg-green-900/50 border border-green-700 text-green-300'
+                    : 'bg-red-900/50 border border-red-700 text-red-300'
+                }`}>
+                  {copyStatus?.message || generateStatus?.message}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <button onClick={() => setShowRawMetadata(!showRawMetadata)} className="text-gray-400 text-sm w-full text-left mt-4 py-1 border-t border-gray-700 flex items-center gap-1">
