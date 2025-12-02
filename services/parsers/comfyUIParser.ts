@@ -148,7 +148,12 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
  * - Hex: "seed": "0xabc123"
  * - Derived: "derived_seed": {...} → approximateSeed flag
  */
-function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
+function extractAdvancedSeed(node: ParserNode | null, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
+  // Handle null node
+  if (!node) {
+    return { seed: null };
+  }
+
   // Try numeric seed first (standard path)
   if (typeof node.inputs?.seed === 'number') {
     return { seed: node.inputs.seed };
@@ -193,7 +198,12 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
  * - Extracts model name from CheckpointLoader, LoraLoader nodes
  * - Maps model hashes to "unknown (hash: xxxx)" format
  */
-function extractAdvancedModel(node: ParserNode, graph: Graph): string | null {
+function extractAdvancedModel(node: ParserNode | null, graph: Graph): string | null {
+  // Handle null node
+  if (!node) {
+    return null;
+  }
+
   // Try model_name from inputs
   if (typeof node.inputs?.model_name === 'string') {
     return node.inputs.model_name;
@@ -450,6 +460,10 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   
   const terminalNode = findTerminalNode(graph);
 
+  // Check if terminal node was found
+  if (!terminalNode) {
+    telemetry.warnings.push('No terminal node found');
+  }
 
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
   const results = resolveAll({
