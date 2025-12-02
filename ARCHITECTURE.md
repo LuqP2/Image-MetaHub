@@ -48,6 +48,27 @@
 - **Caching (`services/cacheManager.ts`)** persists intermediate results so subsequent launches only process new or changed files.
 - **Enrichment (`hooks/useImageLoader.ts`)** coordinates indexing jobs, respects user-controlled concurrency, and updates progress indicators exposed through `useImageStore`.
 
+### ComfyUI Parser Architecture (Recent Refactoring)
+The ComfyUI parser (`services/parsers/comfyui/`) underwent major architectural improvements to separate data extraction from presentation logic:
+
+**Core Components:**
+- **traversalEngine.ts**: Graph traversal with generic accumulation system
+  - `resolveFacts()`: Returns type-safe `WorkflowFacts` object with structured metadata
+  - `checkIfParamNeedsAccumulation()`: Generic accumulation detection based on `accumulate: boolean` flag
+  - Replaced hardcoded LoRA collection with declarative parameter rules
+- **nodeRegistry.ts**: Declarative node definitions with enhanced parameter mapping
+  - `WorkflowFacts` interface: Structured type for prompts, model, loras, sampling params, dimensions
+  - `accumulate` flag: Mark parameters for multi-node collection (e.g., LoRAs)
+- **extractors.ts**: Reusable extraction functions
+  - `concatTextExtractor`, `extractLorasFromText`, `removeLoraTagsFromText`, `cleanWildcardText`, `extractLorasFromStack`, `getWildcardOrPopulatedText`
+  - Reduces code duplication by 80-90% across node definitions (ttN concat: 45→5 lines, CR LoRA Stack: 40→3 lines)
+
+**Benefits:**
+- Type-safe metadata access with autocomplete and compile-time checks
+- Easier addition of new nodes (just mark `accumulate: true` in registry)
+- Better testability with structured outputs
+- Reduced technical debt through reusable extraction patterns
+
 ### Desktop Integration
 - **Electron Main Process (`electron.mjs`)** configures the BrowserWindow title (`Image MetaHub v0.9.5`), wires IPC handlers for file operations, and manages auto-update prompts.
 - **Preload Bridge (`preload.js`)** exposes a sandboxed `electronAPI` with directory listing, file stats, and shell helpers used by the directory tree.

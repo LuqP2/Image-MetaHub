@@ -4,7 +4,7 @@
 
 This document provides comprehensive guidance for developing and maintaining the ComfyUI metadata parser. The parser uses a **rule-based, declarative architecture** that handles graph complexities natively, outperforming legacy string-based parsers.
 
-**Current Status (v0.9.5)**: Production-ready with robust handling of complex workflows including efficiency-nodes, custom samplers, and multi-path prompt tracing.
+**Current Status (v0.9.6)**: Production-ready with robust handling of complex workflows including efficiency-nodes, custom samplers, and multi-path prompt tracing. **Recent architectural refactoring (v0.9.6)** separates data extraction from presentation logic for better maintainability and type safety.
 
 **Location**: `services/parsers/comfyui/`
 
@@ -39,13 +39,31 @@ This document provides comprehensive guidance for developing and maintaining the
   - **Single Path**: Follow one connection (for unique params like seed)
   - **Multi-Path**: Explore all paths and select best value (for prompts)
   - **Pass-Through**: Continue traversal through routing nodes
+- **NEW (v0.9.6)**: Generic accumulation system
+  - `checkIfParamNeedsAccumulation()`: Detects params marked with `accumulate: true`
+  - Replaces hardcoded LoRA collection with declarative parameter rules
+  - `resolveFacts()`: Returns structured `WorkflowFacts` object with type-safe metadata
 
 **3. Node Registry (`nodeRegistry.ts`)**
 - Declarative node definitions with:
   - **Roles**: SOURCE, SINK, TRANSFORM, PASS_THROUGH, ROUTING
   - **Inputs/Outputs**: Typed connections (MODEL, CONDITIONING, LATENT, etc.)
   - **param_mapping**: Rules for extracting parameters
+    - **NEW (v0.9.6)**: `accumulate: boolean` flag for multi-node collection
   - **widget_order**: Index-based mapping for widgets_values arrays
+- **NEW (v0.9.6)**: `WorkflowFacts` interface for structured metadata extraction
+  - Type-safe objects instead of loose `any` values
+  - Fields: prompts, model, loras, sampling, dimensions
+
+**4. Reusable Extractors (`extractors.ts`) - NEW in v0.9.6**
+- Composable extraction functions for common patterns:
+  - `concatTextExtractor`: Combine multiple text inputs with delimiter
+  - `extractLorasFromText`: Parse `<lora:name>` tags from prompt text
+  - `removeLoraTagsFromText`: Strip LoRA tags while preserving prompt
+  - `cleanWildcardText`: Remove unresolved wildcard artifacts
+  - `extractLorasFromStack`: Parse LoRA Stack widget arrays
+  - `getWildcardOrPopulatedText`: Prioritize populated over template text
+- Reduces code duplication by 80-90% across node definitions
 
 ### Key Design Decisions
 
@@ -77,16 +95,21 @@ This document provides comprehensive guidance for developing and maintaining the
 'Node Type Name': {
   category: 'LOADING' | 'SAMPLING' | 'CONDITIONING' | 'TRANSFORM' | 'ROUTING',
   roles: ['SOURCE', 'SINK', 'TRANSFORM', 'PASS_THROUGH', 'ROUTING'],
-  inputs: { 
+  inputs: {
     input_name: { type: 'MODEL' | 'CONDITIONING' | 'LATENT' | ... }
   },
-  outputs: { 
+  outputs: {
     output_name: { type: 'MODEL' | 'CONDITIONING' | 'LATENT' | ... }
   },
   param_mapping: {
-    prompt: { source: 'widget', key: 'text' },           // Extract from widgets_values
-    seed: { source: 'trace', input: 'seed' },            // Follow connection
-    lora: { source: 'custom_extractor', extractor: fn }, // Custom logic
+    prompt: { source: 'widget', key: 'text' },                            // Extract from widgets_values
+    seed: { source: 'trace', input: 'seed' },                             // Follow connection
+    lora: { source: 'widget', key: 'lora_name', accumulate: true },       // NEW: Collect from all nodes
+    prompt: {                                                              // NEW: Use reusable extractors
+      source: 'custom_extractor',
+      extractor: (node, state, graph, traverse) =>
+        extractors.concatTextExtractor(node, state, graph, traverse, ['text1', 'text2'])
+    }
   },
   widget_order: ['widget_name1', 'widget_name2', ...],  // Index mapping
   pass_through: [                                        // Pass-through rules
@@ -105,12 +128,20 @@ This document provides comprehensive guidance for developing and maintaining the
 ```typescript
 { source: 'widget', key: 'steps' }
 // Reads from widgets_values[widget_order.indexOf('steps')]
+
+// NEW (v0.9.6): With accumulation flag
+{ source: 'widget', key: 'lora_name', accumulate: true }
+// Collects values from ALL nodes in graph path, not just first match
+// Use for: LoRAs, multiple prompts, stacked parameters
 ```
 
 **2. Input Tracing (`source: 'trace'`)**
 ```typescript
 { source: 'trace', input: 'positive' }
 // Follows inputs['positive'] connection to source node
+
+// Can also use accumulate flag
+{ source: 'trace', input: 'conditioning', accumulate: true }
 ```
 
 **3. Direct Input (`source: 'input'`)**
@@ -121,13 +152,28 @@ This document provides comprehensive guidance for developing and maintaining the
 
 **4. Custom Extractor (`source: 'custom_extractor'`)**
 ```typescript
-{ 
-  source: 'custom_extractor', 
+{
+  source: 'custom_extractor',
   extractor: (node: ParserNode) => {
     // Custom logic for complex cases
     return extractedValue;
   }
 }
+
+// NEW (v0.9.6): Use reusable extractors when possible
+{
+  source: 'custom_extractor',
+  extractor: (node, state, graph, traverse) =>
+    extractors.concatTextExtractor(node, state, graph, traverse, ['text1', 'text2'], 'delimiter')
+}
+
+// Available extractors in extractors.ts:
+// - concatTextExtractor(node, state, graph, traverse, inputNames, delimiterKey)
+// - extractLorasFromText(text)
+// - removeLoraTagsFromText(text)
+// - cleanWildcardText(text)
+// - extractLorasFromStack(widgets, lorasPerGroup, switchIndex, nameIndex)
+// - getWildcardOrPopulatedText(node)
 ```
 
 ---
