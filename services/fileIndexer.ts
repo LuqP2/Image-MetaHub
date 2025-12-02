@@ -299,6 +299,10 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
+    // Check for Civitai resources format first (A1111 without Model hash but with Civitai resources)
+    if (metadataText.includes('Civitai resources:') && metadataText.includes('Steps:')) {
+      return { parameters: metadataText };
+    }
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
       return { parameters: metadataText };
     }
