@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
+  - "Generate Variation" button in ImageModal and ImagePreviewSidebar
+  - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
+  - Support for both fixed and random seed generation
+  - Real-time generation status feedback and progress tracking
+  - Seamless workflow: browse images → customize parameters → generate variations directly within the app
+  - Transforms Image MetaHub from a viewer/organizer into a complete AI image generation workflow tool
+- **A1111 Generation Progress Bar**: Real-time progress tracking in footer when generating images with A1111 integration:
+  - Polls A1111's `/sdapi/v1/progress` endpoint every 500ms for live updates
+  - Shows total batch progress (e.g., "2/3" for batch generations, "67%" for single images)
+  - Green-themed progress indicator distinct from blue enrichment progress
+  - Automatically clears 2 seconds after generation completes
+  - Persistent across all app navigation
+- **Resizable Prompt Fields**: Generate Variation modal prompt textareas now support vertical resizing by dragging the bottom-right corner for better handling of long prompts.
 - **Copy Prompt Button**: Added quick copy prompt button to image grid for faster workflow copying.
 - **Copy Seed Button**: Added hover-activated copy button to Seed field in ImageModal for quick seed copying.
 - **Open Cache Directory**: New option in Settings to open cache directory in system file explorer for manual cache inspection.
@@ -40,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **Generate Variation Modal UX**: Increased default size of prompt fields for better visibility - Prompt field now 10 rows (up from 4), Negative Prompt now 6 rows (up from 3). Fields remain fully resizable for customization.
 - **Simplified Search**: Removed search field dropdown - search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
 - **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.
 - **Phase B Progress Visibility**: Enhanced Phase B progress bar display with throttled updates (1000ms) and 2-second visibility after completion.
