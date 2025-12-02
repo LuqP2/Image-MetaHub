@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="fixed left-0 top-0 h-full w-12 bg-gray-800/80 backdrop-blur-sm border-r border-gray-700 z-40 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-white transition-colors mb-4 hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
+          className="text-gray-400 hover:text-gray-50 transition-colors mb-4 hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
           title="Expand sidebar"
         >
           <ChevronRight className="w-6 h-6" />
@@ -139,7 +139,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <h2 className="text-lg font-semibold text-gray-200">Filters</h2>
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-white transition-colors hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
+          className="text-gray-400 hover:text-gray-50 transition-colors hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
           title="Collapse sidebar"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -181,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
                 isIndexing
                   ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-white hover:shadow-md hover:shadow-accent/20'
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
               }`}
               title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
             >

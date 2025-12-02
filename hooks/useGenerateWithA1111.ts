@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import { IndexedImage } from '../types';
+import { IndexedImage, BaseMetadata } from '../types';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 
 interface GenerateStatus {
   success: boolean;
@@ -13,10 +14,14 @@ export function useGenerateWithA1111() {
   const [generateStatus, setGenerateStatus] = useState<GenerateStatus | null>(null);
 
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
+  const { startPolling, stopPolling } = useA1111ProgressContext();
 
   const generateWithA1111 = useCallback(
-    async (image: IndexedImage) => {
-      const metadata = image.metadata?.normalizedMetadata;
+    async (image: IndexedImage, customParams?: Partial<BaseMetadata>, numberOfImages?: number) => {
+      // Merge custom params with original metadata if provided
+      const metadata = customParams
+        ? { ...image.metadata?.normalizedMetadata, ...customParams }
+        : image.metadata?.normalizedMetadata;
 
       if (!metadata || !metadata.prompt) {
         setGenerateStatus({
@@ -42,9 +47,13 @@ export function useGenerateWithA1111() {
       try {
         const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
 
+        // Start progress polling
+        startPolling(a1111ServerUrl, numberOfImages || 1);
+
         // ALWAYS start generation (autoStart: true)
         const result = await client.sendToTxt2Img(metadata, {
           autoStart: true,
+          numberOfImages: numberOfImages || 1,
         });
 
         setGenerateStatus({
@@ -54,6 +63,9 @@ export function useGenerateWithA1111() {
             : (result.error || 'Generation failed'),
         });
 
+        // Stop progress polling
+        stopPolling();
+
         // Clear status after 5 seconds
         setTimeout(() => setGenerateStatus(null), 5000);
       } catch (error: any) {
@@ -62,12 +74,15 @@ export function useGenerateWithA1111() {
           message: `Error: ${error.message}`,
         });
 
+        // Stop progress polling on error
+        stopPolling();
+
         setTimeout(() => setGenerateStatus(null), 5000);
       } finally {
         setIsGenerating(false);
       }
     },
-    [a1111ServerUrl]
+    [a1111ServerUrl, startPolling, stopPolling]
   );
 
   return {

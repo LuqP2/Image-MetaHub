@@ -4,6 +4,7 @@ import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '.
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
+import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 
 interface ContextMenuState {
   x: number;
@@ -31,6 +32,8 @@ export const useContextMenu = () => {
     y: 0,
     visible: false
   });
+
+  const { startPolling, stopPolling } = useA1111ProgressContext();
 
   const hideContextMenu = useCallback(() => {
     setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -241,10 +244,17 @@ export const useContextMenu = () => {
 
     try {
       const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
+
+      // Start progress polling
+      startPolling(a1111ServerUrl, 1);
+
       // ALWAYS start generation (autoStart: true)
       const result = await client.sendToTxt2Img(metadata, {
         autoStart: true
       });
+
+      // Stop progress polling
+      stopPolling();
 
       if (result.success) {
         showNotification('Generated successfully!');
@@ -252,6 +262,8 @@ export const useContextMenu = () => {
         alert(result.error || 'Generation failed');
       }
     } catch (error: any) {
+      // Stop progress polling on error
+      stopPolling();
       alert(`Error: ${error.message}`);
     }
   };

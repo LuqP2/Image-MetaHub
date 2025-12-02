@@ -22,6 +22,9 @@ hotkeys.filter = function(event) {
 // A map to store the actions that the application supports.
 const registeredActions = new Map<string, RegisteredAction>();
 
+// Track whether hotkeys are currently paused
+let hotkeysPaused = false;
+
 /**
  * Unbinds all currently bound hotkeys from the hotkeys-js instance.
  * This is crucial before re-binding to prevent duplicate listeners.
@@ -50,6 +53,11 @@ const bindAllActions = () => {
     const keysToRegister = key.includes('cmd') ? key : `${key}, ${platformKey}`;
 
     hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
+      // If hotkeys are paused, don't execute any actions
+      if (hotkeysPaused) {
+        return;
+      }
+
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
       const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
@@ -111,12 +119,38 @@ const getRegisteredHotkeys = (): (HotkeyDefinition & { currentKey: string })[] =
   });
 };
 
+/**
+ * Temporarily pauses all hotkey execution.
+ * Useful when modals or input-heavy components are open.
+ */
+const pauseHotkeys = () => {
+  hotkeysPaused = true;
+};
+
+/**
+ * Resumes hotkey execution after being paused.
+ */
+const resumeHotkeys = () => {
+  hotkeysPaused = false;
+};
+
+/**
+ * Checks if hotkeys are currently paused.
+ * @returns True if hotkeys are paused, false otherwise.
+ */
+const areHotkeysPaused = () => {
+  return hotkeysPaused;
+};
+
 const hotkeyManager = {
   registerAction,
   bindAllActions,
   clearActions,
   setScope,
   getRegisteredHotkeys,
+  pauseHotkeys,
+  resumeHotkeys,
+  areHotkeysPaused,
 };
 
 export default hotkeyManager;

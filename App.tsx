@@ -23,10 +23,12 @@ import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
+import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
+  const { progressState: a1111Progress } = useA1111ProgressContext();
   
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
@@ -130,11 +132,26 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    const applyTheme = (themeValue, systemShouldUseDark) => {
-      if (themeValue === 'dark' || (themeValue === 'system' && systemShouldUseDark)) {
+    const applyTheme = (themeValue: string, systemShouldUseDark: boolean) => {
+      // Determine if we should be in "dark mode" for Tailwind utilities
+      const isDark =
+        themeValue === 'dark' ||
+        themeValue === 'dracula' ||
+        themeValue === 'nord' ||
+        themeValue === 'ocean' ||
+        (themeValue === 'system' && systemShouldUseDark);
+
+      if (isDark) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
+      }
+
+      // Apply the data-theme attribute for CSS variables
+      if (themeValue === 'system') {
+        document.documentElement.setAttribute('data-theme', systemShouldUseDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeValue);
       }
     };
 
@@ -486,6 +503,7 @@ export default function App() {
                 totalCount={selectionTotalImages}
                 directoryCount={selectionDirectoryCount}
                 enrichmentProgress={enrichmentProgress}
+                a1111Progress={a1111Progress}
               />
             </>
           )}

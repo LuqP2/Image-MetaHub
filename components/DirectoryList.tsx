@@ -308,7 +308,7 @@ export default function DirectoryList({
                       <button
                         onClick={() => onUpdateDirectory(dir.id)}
                         disabled={isIndexing}
-                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-50'}`}
                         title={isIndexing ? 'Cannot refresh during indexing' : 'Refresh folder'}
                       >
                         <RotateCcw className="w-4 h-4" />

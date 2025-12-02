@@ -5,6 +5,8 @@ import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { A1111GenerateModal } from './A1111GenerateModal';
+import hotkeyManager from '../services/hotkeyManager';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -66,7 +68,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
-  const [isA1111DropdownOpen, setIsA1111DropdownOpen] = useState(false);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
@@ -355,6 +357,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     loadImage();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
+      if (hotkeyManager.areHotkeysPaused()) {
+        return;
+      }
+
       if (isRenaming) return;
 
       // Alt+Enter = Toggle fullscreen (works in both grid and modal)
@@ -537,70 +544,52 @@ const ImageModal: React.FC<ImageModalProps> = ({
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
           </div>
 
-          {/* A1111 Integration - Split Button */}
+          {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
           {nMeta && (
-            <div className="mt-3 relative">
-              <div className="flex gap-1">
-                {/* Primary action: Copy to A1111 */}
-                <button
-                  onClick={() => copyToA1111(image)}
-                  disabled={isCopying || !nMeta.prompt}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded-l-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
-                >
-                  {isCopying ? (
-                    <>
-                      <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>Copying...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Clipboard className="w-3 h-3" />
-                      <span>Copy to A1111</span>
-                    </>
-                  )}
-                </button>
+            <div className="mt-3 space-y-2">
+              {/* Hero Button: Generate Variation */}
+              <button
+                onClick={() => setIsGenerateModalOpen(true)}
+                disabled={!nMeta.prompt}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isGenerating ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Variation</span>
+                  </>
+                )}
+              </button>
 
-                {/* Dropdown trigger */}
-                <button
-                  onClick={() => setIsA1111DropdownOpen(!isA1111DropdownOpen)}
-                  disabled={!nMeta.prompt}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-2 rounded-r-lg transition-all duration-200 border-l border-blue-500"
-                >
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Dropdown menu */}
-              {isA1111DropdownOpen && (
-                <div className="absolute left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
-                  <button
-                    onClick={() => {
-                      generateWithA1111(image);
-                      setIsA1111DropdownOpen(false);
-                    }}
-                    disabled={isGenerating || !nMeta.prompt}
-                    className="w-full px-3 py-2 text-xs font-medium text-left hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed flex items-center gap-2 rounded-lg transition-colors"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3 h-3" />
-                        <span>Quick Generate</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+              {/* Utility Button: Copy to A1111 */}
+              <button
+                onClick={() => copyToA1111(image)}
+                disabled={isCopying || !nMeta.prompt}
+                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+              >
+                {isCopying ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Copying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3 h-3" />
+                    <span>Copy Parameters</span>
+                  </>
+                )}
+              </button>
 
               {/* Status messages */}
               {(copyStatus || generateStatus) && (
@@ -611,6 +600,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }`}>
                   {copyStatus?.message || generateStatus?.message}
                 </div>
+              )}
+
+              {/* Generate Variation Modal */}
+              {isGenerateModalOpen && nMeta && (
+                <A1111GenerateModal
+                  isOpen={isGenerateModalOpen}
+                  onClose={() => setIsGenerateModalOpen(false)}
+                  image={image}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithA1111(image, customMetadata, params.numberOfImages);
+                    setIsGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGenerating}
+                />
               )}
             </div>
           )}
