@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { IndexedImage } from '../types';
+import hotkeyManager from '../services/hotkeyManager';
 
 interface A1111GenerateModalProps {
   isOpen: boolean;
@@ -38,6 +39,19 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   });
 
   const [validationError, setValidationError] = useState<string>('');
+
+  // Pause hotkeys when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      hotkeyManager.pauseHotkeys();
+    } else {
+      hotkeyManager.resumeHotkeys();
+    }
+
+    return () => {
+      hotkeyManager.resumeHotkeys();
+    };
+  }, [isOpen]);
 
   // Initialize form with image metadata when modal opens
   useEffect(() => {
@@ -146,8 +160,8 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             <textarea
               value={params.prompt}
               onChange={(e) => setParams(prev => ({ ...prev, prompt: e.target.value }))}
-              rows={4}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={10}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your prompt..."
             />
           </div>
@@ -160,8 +174,8 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
             <textarea
               value={params.negativePrompt}
               onChange={(e) => setParams(prev => ({ ...prev, negativePrompt: e.target.value }))}
-              rows={3}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={6}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter negative prompt (optional)..."
             />
           </div>

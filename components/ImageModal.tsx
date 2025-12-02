@@ -6,6 +6,7 @@ import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clip
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import hotkeyManager from '../services/hotkeyManager';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -356,6 +357,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     loadImage();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
+      if (hotkeyManager.areHotkeysPaused()) {
+        return;
+      }
+
       if (isRenaming) return;
 
       // Alt+Enter = Toggle fullscreen (works in both grid and modal)
