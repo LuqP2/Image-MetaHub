@@ -19,7 +19,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
             href="https://github.com/LuqP2/Image-MetaHub/issues/new"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-2 py-2 rounded-lg transition-colors text-sm text-gray-400 hover:bg-gray-700 hover:text-white flex items-center gap-2"
+            className="px-2 py-2 rounded-lg transition-colors text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-50 flex items-center gap-2"
             title="Report a bug or provide feedback"
           >
             <Bug size={16} />

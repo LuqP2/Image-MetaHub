@@ -180,7 +180,7 @@ export const HotkeySettings = () => {
                     </button>
                     <button
                       onClick={() => updateKeybinding(hotkey.scope, hotkey.id, hotkey.defaultKey)}
-                      className="text-xs text-gray-400 hover:text-white hover:underline"
+                      className="text-xs text-gray-400 hover:text-gray-50 hover:underline"
                     >
                       Reset
                     </button>

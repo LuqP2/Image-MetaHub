@@ -70,7 +70,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         return <h3 key={index} className="text-lg font-semibold text-gray-200 mt-4 mb-2">{line.replace('### ', '')}</h3>;
       }
       if (line.startsWith('## ')) {
-        return <h2 key={index} className="text-xl font-bold text-white mt-6 mb-4">{line.replace(/## \[([^\]]+)\].*/, '$1')}</h2>;
+        return <h2 key={index} className="text-xl font-bold text-gray-100 mt-6 mb-4">{line.replace(/## \[([^\]]+)\].*/, '$1')}</h2>;
       }
       // List items
       if (line.startsWith('- **')) {
@@ -100,12 +100,12 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <div>
-            <h2 className="text-2xl font-bold text-white">What's New</h2>
+            <h2 className="text-2xl font-bold text-gray-100">What's New</h2>
             <p className="text-gray-400 text-sm mt-1">Image MetaHub v{currentVersion}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+            className="p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-50"
             title="Close"
           >
             <X size={24} />

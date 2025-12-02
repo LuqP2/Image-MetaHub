@@ -56,7 +56,7 @@ interface SettingsState {
   cachePath: string | null;
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
-  theme: 'light' | 'dark' | 'system';
+  theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean';
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
@@ -76,7 +76,7 @@ interface SettingsState {
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
-  setTheme: (theme: 'light' | 'dark' | 'system') => void;
+  setTheme: (theme: 'light' | 'dark' | 'system' | 'dracula' | 'nord' | 'ocean') => void;
   updateKeybinding: (scope: string, action: string, keybinding: string) => void;
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
