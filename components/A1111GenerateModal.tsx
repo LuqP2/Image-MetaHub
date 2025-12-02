@@ -98,7 +98,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
         <div
-          className="bg-gray-800 text-white rounded-lg shadow-xl p-6 max-w-md"
+          className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 max-w-md"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-between items-center mb-4">
@@ -122,7 +122,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
       <div
-        className="bg-gray-800 text-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

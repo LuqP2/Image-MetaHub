@@ -132,11 +132,26 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    const applyTheme = (themeValue, systemShouldUseDark) => {
-      if (themeValue === 'dark' || (themeValue === 'system' && systemShouldUseDark)) {
+    const applyTheme = (themeValue: string, systemShouldUseDark: boolean) => {
+      // Determine if we should be in "dark mode" for Tailwind utilities
+      const isDark =
+        themeValue === 'dark' ||
+        themeValue === 'dracula' ||
+        themeValue === 'nord' ||
+        themeValue === 'ocean' ||
+        (themeValue === 'system' && systemShouldUseDark);
+
+      if (isDark) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
+      }
+
+      // Apply the data-theme attribute for CSS variables
+      if (themeValue === 'system') {
+        document.documentElement.setAttribute('data-theme', systemShouldUseDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeValue);
       }
     };
 
