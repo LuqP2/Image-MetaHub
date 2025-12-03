@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
@@ -18,9 +18,10 @@ interface ImageCardProps {
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   baseWidth: number;
+  isComparisonFirst?: boolean;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -106,6 +107,11 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
             </div>
           </div>
         )}
+        {isComparisonFirst && (
+          <div className="absolute top-2 left-2 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
+            Compare #1
+          </div>
+        )}
         <button
           onClick={handlePreviewClick}
           className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
@@ -172,6 +178,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
+  const [comparisonFirstImage, setComparisonFirstImage] = useState<IndexedImage | null>(null);
+  const { setComparisonImages, openComparisonModal } = useImageStore();
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
@@ -199,6 +207,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       setIsGenerateModalOpen(true);
       hideContextMenu();
     }
+  };
+
+  const selectForComparison = () => {
+    if (!contextMenu.image) return;
+
+    if (!comparisonFirstImage) {
+      // First image selected
+      setComparisonFirstImage(contextMenu.image);
+      // Show notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+      notification.textContent = 'Image 1 selected. Right-click another image to compare.';
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification);
+        }
+      }, 3000);
+    } else {
+      // Second image selected - start comparison
+      setComparisonImages([comparisonFirstImage, contextMenu.image]);
+      openComparisonModal();
+      setComparisonFirstImage(null);
+    }
+
+    hideContextMenu();
   };
 
   // Sync focusedImageIndex when previewImage changes
@@ -351,6 +385,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               onImageLoad={handleImageLoad}
               onContextMenu={handleContextMenu}
               baseWidth={imageSize}
+              isComparisonFirst={comparisonFirstImage?.id === image.id}
             />
           );
         })}
@@ -402,6 +437,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Copy className="w-4 h-4" />
             Copy Model
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+            onClick={selectForComparison}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <GitCompare className="w-4 h-4" />
+            {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>

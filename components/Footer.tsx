@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, GitCompare } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
+import { useImageStore } from '../store/useImageStore';
+import { IndexedImage } from '../types';
 
 interface FooterProps {
   currentPage: number;
@@ -47,6 +49,7 @@ const Footer: React.FC<FooterProps> = ({
   enrichmentProgress,
   a1111Progress
 }) => {
+  const { selectedImages, filteredImages, setComparisonImages, openComparisonModal } = useImageStore();
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
 
@@ -183,6 +186,36 @@ const Footer: React.FC<FooterProps> = ({
               <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300 text-xs underline-offset-2 hover:underline transition-colors">Clear</button>
               <button onClick={onDeleteSelected} className="text-red-400 hover:text-red-300 text-xs underline-offset-2 hover:underline transition-colors">Delete</button>
             </div>
+          </>
+        )}
+        {selectedCount >= 2 && (
+          <>
+            <span className="text-gray-600">•</span>
+            <button
+              onClick={() => {
+                if (selectedCount !== 2) {
+                  alert('Please select exactly 2 images to compare');
+                  return;
+                }
+                const selected = Array.from(selectedImages)
+                  .map(id => filteredImages.find(img => img.id === id))
+                  .filter((img): img is IndexedImage => img !== undefined)
+                  .slice(0, 2);
+
+                setComparisonImages([selected[0], selected[1]]);
+                openComparisonModal();
+              }}
+              disabled={selectedCount !== 2}
+              className="flex items-center gap-1.5 px-3 py-1 rounded
+                         bg-purple-500/10 border border-purple-500/30
+                         text-purple-400 text-xs font-medium
+                         hover:bg-purple-500/20 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              title={selectedCount === 2 ? "Compare 2 images" : "Select exactly 2 images"}
+            >
+              <GitCompare className="w-3 h-3" />
+              <span className="hidden sm:inline">Compare</span>
+            </button>
           </>
         )}
       </div>

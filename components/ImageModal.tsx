@@ -2,9 +2,10 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import hotkeyManager from '../services/hotkeyManager';
 
@@ -73,6 +74,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+
+  // Image comparison hook
+  const { addImage, comparisonCount } = useImageComparison();
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -542,6 +546,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
+            <button
+              onClick={() => {
+                const added = addImage(image);
+                if (added && comparisonCount === 1) {
+                  onClose(); // Close ImageModal, ComparisonModal will auto-open
+                }
+              }}
+              disabled={comparisonCount >= 2}
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              title={comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
+            >
+              <GitCompare className="w-3 h-3" />
+              Add to Compare {comparisonCount > 0 && `(${comparisonCount}/2)`}
+            </button>
           </div>
 
           {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
