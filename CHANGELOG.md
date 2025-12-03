@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Side-by-Side Image Comparison**: Professional comparison tool for analyzing image quality differences:
+  - Compare 2 images side-by-side with synchronized zoom and pan controls
+  - Three entry points: Footer button (when 2+ images selected), Context menu ("Select for Comparison"), ImageModal ("Add to Compare")
+  - Synchronized zoom with toggle control (press `S` to enable/disable sync)
+  - Collapsible metadata panels that expand/collapse together for both images
+  - Full-screen modal with responsive layout (side-by-side on desktop, stacked on mobile)
+  - Keyboard shortcuts: `Escape` to close, `S` to toggle sync, `Space` to swap images
+  - Visual indicator shows "Compare #1" badge when first image is selected via context menu
+  - Built with `react-zoom-pan-pinch` for smooth zoom/pan gestures including mobile pinch-to-zoom
+  - Perfect for comparing upscalers, checkpoints, samplers, or generation parameters
 - **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
   - "Generate Variation" button in ImageModal and ImagePreviewSidebar
   - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
