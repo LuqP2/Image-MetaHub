@@ -5,19 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.6-rc] - 2025-11-29
-
-### Fixed
-
-- **Critical Search Crash**: Fixed application crash when searching with multiple folders due to non-string values in models/loras arrays. Added comprehensive type guards in search, filter, and enrichment logic to handle all edge cases robustly.
-- **LoRA Categorization (Issue #45)**: Fixed LoRAs appearing incorrectly in the Models dropdown filter. InvokeAI parser now properly excludes LoRA fields during model detection, ensuring clean separation between Models and LoRAs.
-- **Image Flickering During Indexing**: Fixed images reloading/flickering when viewing in modal during Phase B metadata enrichment. Implemented React.memo with custom prop comparator and memoized callbacks to prevent unnecessary component re-renders when other images are being indexed.
-- **Cache Reset Crash**: Fixed blank screen with ERR_CACHE_READ_FAILURE after clearing cache. Now performs complete app restart using app.relaunch() instead of window.reload(), ensuring clean state recovery.
-- **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in useImageStore.
-- **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
-- **Pagination Input**: Fixed pagination input field not responding to Enter key press.
+## [0.10.0] - 2025-12-04
 
 ### Added
+
+- **Tags System**: Comprehensive tagging system for organizing and filtering images:
+  - Add custom tags to images with lowercase normalization to prevent duplicates
+  - Tag filtering with OR logic (matches ANY selected tag) consistent with model/LoRA filters
+  - Tag autocomplete showing top 5 existing tags when typing in ImageModal
+  - Tag search input (appears when folder has > 5 tags) to quickly find specific tags
+  - Visual tag display on image cards (shows first 2 tags + counter for remaining)
+  - Full tag management in ImageModal with add/remove capabilities
+  - Bulk tag operations for adding/removing tags from multiple images at once
+  - Tag counts showing number of images per tag in current folder
+  - Selected tags counter with clear button to reset all tag filters
+
+- **Favorites System**: Mark and filter favorite images with star icons:
+  - Star button on image cards (visible on hover, always visible when favorited)
+  - "Show Favorites Only" filter toggle in sidebar
+  - Favorite count badge showing number of favorites in current folder
+  - Yellow star icon with fill state for visual feedback
+  - Bulk favorite operations for marking multiple images at once
+  - Persistent favorite status across folder reloads
+
+- **Smart Conditional Rendering**: Tags & Favorites sidebar section only appears when current folder contains tagged or favorited images, keeping UI clean and relevant
+
+- **IndexedDB Persistence**: Upgraded IndexedDB to v2 with new `imageAnnotations` store:
+  - Separate storage for user annotations (favorites, tags) independent of metadata
+  - Multi-entry index on tags for efficient tag-based queries
+  - Index on `isFavorite` for fast favorite filtering
+  - Auto-load annotations on app startup
+  - Denormalization pattern: annotations stored separately but copied to `IndexedImage` for optimal read performance
 
 - **Side-by-Side Image Comparison**: Professional comparison tool for analyzing image quality differences:
   - Compare 2 images side-by-side with synchronized zoom and pan controls
@@ -29,6 +47,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Visual indicator shows "Compare #1" badge when first image is selected via context menu
   - Built with `react-zoom-pan-pinch` for smooth zoom/pan gestures including mobile pinch-to-zoom
   - Perfect for comparing upscalers, checkpoints, samplers, or generation parameters
+
+- **Enhanced Image Selection**: Multiple intuitive ways to select images without keyboard modifiers:
+  - Clickable checkbox in top-left corner of each image (appears on hover, always visible when selected)
+  - Drag-to-select: Click and drag on empty grid area to draw a selection box
+  - Selection box shows semi-transparent blue overlay with all intersecting images selected
+  - Shift+Drag to add to existing selection instead of replacing it
+  - Maintains existing Ctrl+Click and Shift+Click selection methods
+  - Visual feedback with blue checkmark icon when images are selected
+
 - **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
   - "Generate Variation" button in ImageModal and ImagePreviewSidebar
   - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
@@ -36,13 +63,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Real-time generation status feedback and progress tracking
   - Seamless workflow: browse images → customize parameters → generate variations directly within the app
   - Transforms Image MetaHub from a viewer/organizer into a complete AI image generation workflow tool
+
 - **A1111 Generation Progress Bar**: Real-time progress tracking in footer when generating images with A1111 integration:
   - Polls A1111's `/sdapi/v1/progress` endpoint every 500ms for live updates
   - Shows total batch progress (e.g., "2/3" for batch generations, "67%" for single images)
   - Green-themed progress indicator distinct from blue enrichment progress
   - Automatically clears 2 seconds after generation completes
   - Persistent across all app navigation
+
 - **Resizable Prompt Fields**: Generate Variation modal prompt textareas now support vertical resizing by dragging the bottom-right corner for better handling of long prompts.
+
+### Fixed
+
+- **Annotations Persistence Bug**: Fixed critical issue where favorites and tags were not persisting when closing and reopening folders. Annotations now correctly reapply to images whenever folders are loaded or refreshed.
+- **Conditional Rendering**: Tags & Favorites section now correctly scopes to current folder images only, not global IndexedDB data, ensuring accurate counts and relevance.
+
+### Technical Improvements
+
+- Created `services/imageAnnotationsStorage.ts` following established storage patterns from `folderSelectionStorage.ts`
+- Enhanced `useImageStore` with annotations state management and filtering integration
+- Implemented `applyAnnotationsToImages()` helper to ensure annotations persist across image state updates
+- Added batch operations (`bulkSaveAnnotations`, `bulkToggleFavorite`, `bulkAddTag`, `bulkRemoveTag`) for performance
+- Integrated favorites and tags filters into existing `filterAndSort()` pipeline
+- Used `React.useMemo` for tag counting optimization in `TagsAndFavorites` component
+- Maintained backward compatibility with existing IndexedDB v1 folderSelection store
+
+### Improved
+
+- **Generate Variation Modal UX**: Increased default size of prompt fields for better visibility – Prompt field now 10 rows (up from 4), Negative Prompt now 6 rows (up from 3). Fields remain fully resizable for customization.
+
+
+## [0.9.6-rc] - 2025-11-29
+
+### Fixed
+
+- **Critical Search Crash**: Fixed application crash when searching with multiple folders due to non-string values in models/loras arrays. Added comprehensive type guards in search, filter, and enrichment logic to handle all edge cases robustly.
+- **LoRA Categorization (Issue #45)**: Fixed LoRAs appearing incorrectly in the Models dropdown filter. InvokeAI parser now properly excludes LoRA fields during model detection, ensuring clean separation between Models and LoRAs.
+- **Image Flickering During Indexing**: Fixed images reloading/flickering when viewing in modal during Phase B metadata enrichment. Implemented `React.memo` with custom prop comparator and memoized callbacks to prevent unnecessary component re-renders when other images are being indexed.
+- **Cache Reset Crash**: Fixed blank screen with `ERR_CACHE_READ_FAILURE` after clearing cache. Now performs complete app restart using `app.relaunch()` instead of `window.reload()`, ensuring clean state recovery.
+- **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in `useImageStore`.
+- **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
+- **Pagination Input**: Fixed pagination input field not responding to Enter key press.
+
+### Added
+
 - **Copy Prompt Button**: Added quick copy prompt button to image grid for faster workflow copying.
 - **Copy Seed Button**: Added hover-activated copy button to Seed field in ImageModal for quick seed copying.
 - **Open Cache Directory**: New option in Settings to open cache directory in system file explorer for manual cache inspection.
@@ -54,9 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cache Reset Functionality**: Comprehensive cache and storage reset tool that clears:
   - Electron disk caches (metadata, thumbnails)
   - IndexedDB databases
-  - localStorage and sessionStorage
-  - Zustand store state and persistence
-  - Now triggers complete app restart for clean recovery
+  - `localStorage` and `sessionStorage`
+  - Zustand store state and persistence  
+  Now triggers complete app restart for clean recovery.
 - **ComfyUI Parser Enhancements**:
   - Added support for SDXL Loader and Unpacker nodes
   - Parser now skips muted nodes in terminal node search
@@ -64,16 +128,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **Generate Variation Modal UX**: Increased default size of prompt fields for better visibility - Prompt field now 10 rows (up from 4), Negative Prompt now 6 rows (up from 3). Fields remain fully resizable for customization.
-- **Simplified Search**: Removed search field dropdown - search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
+- **Simplified Search**: Removed search field dropdown – search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
 - **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.
 - **Phase B Progress Visibility**: Enhanced Phase B progress bar display with throttled updates (1000ms) and 2-second visibility after completion.
-- **Indexing Concurrency**: Increased default Phase B concurrency from 4-8 to 8 workers with configurable maximum of 16 (previously 8) for faster metadata enrichment.
+- **Indexing Concurrency**: Increased default Phase B concurrency from 4–8 to 8 workers with configurable maximum of 16 (previously 8) for faster metadata enrichment.
 - **Fullscreen Handling**: Refactored fullscreen toggle functionality in ImageModal for better Electron integration and streamlined event listeners.
 
 ### Changed
 
-- **Dependencies Cleanup**: Removed unused dependencies (cbor-web, react-masonry-css, cross-env, react-virtualized) reducing bundle size.
+- **Dependencies Cleanup**: Removed unused dependencies (`cbor-web`, `react-masonry-css`, `cross-env`, `react-virtualized`) reducing bundle size.
 
 ## [0.9.5] - 2025-11-08
 
