@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
@@ -87,6 +87,13 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     }
   };
 
+  const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+
+  const handleFavoriteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFavorite(image.id);
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
@@ -121,14 +128,27 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         </button>
 
         {!isSelected && (
-        <button
-          onClick={handleCopyClick}
-          className="absolute top-2 right-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
-          title="Copy Prompt"
-          disabled={!image.prompt}
-        >
-          <Copy className="h-4 w-4" />
-        </button>
+          <>
+            <button
+              onClick={handleFavoriteClick}
+              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all ${
+                image.isFavorite
+                  ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
+                  : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
+              }`}
+              title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+            </button>
+            <button
+              onClick={handleCopyClick}
+              className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
+              title="Copy Prompt"
+              disabled={!image.prompt}
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </>
         )}
 
         {imageUrl ? (
@@ -141,8 +161,31 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         ) : (
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
         )}
+        {/* Tags display - always visible if tags exist */}
+        {image.tags && image.tags.length > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent">
+            <div className="flex flex-wrap gap-1 items-center">
+              {image.tags.slice(0, 2).map(tag => (
+                <span
+                  key={tag}
+                  className="text-[10px] bg-gray-700/80 text-gray-300 px-1.5 py-0.5 rounded"
+                >
+                  #{tag}
+                </span>
+              ))}
+              {image.tags.length > 2 && (
+                <span className="text-[10px] text-gray-400">
+                  +{image.tags.length - 2}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {!showFilenames && (
-          <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <div className={`absolute left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+            image.tags && image.tags.length > 0 ? 'bottom-8' : 'bottom-0'
+          }`}>
             <p className="text-white text-xs truncate">{image.name}</p>
           </div>
         )}

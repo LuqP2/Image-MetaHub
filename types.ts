@@ -520,6 +520,30 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+
+  // User Annotations (loaded from ImageAnnotations table)
+  isFavorite?: boolean;          // Quick access to favorite status
+  tags?: string[];               // Quick access to tags array
+}
+
+/**
+ * User annotations for an image (favorites, tags, notes)
+ * Stored separately from image metadata in IndexedDB
+ */
+export interface ImageAnnotations {
+  imageId: string;              // Links to IndexedImage.id (unique)
+  isFavorite: boolean;           // Star/Favorite flag
+  tags: string[];                // User-defined tags (lowercase normalized)
+  addedAt: number;               // Timestamp when first annotated
+  updatedAt: number;             // Timestamp of last update
+}
+
+/**
+ * Tag with usage statistics
+ */
+export interface TagInfo {
+  name: string;                  // Tag name (lowercase)
+  count: number;                 // Number of images with this tag
 }
 
 export interface Directory {
