@@ -299,6 +299,82 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     hideContextMenu();
   };
 
+  // Drag-to-select handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start selection if clicking on the grid background (not on an image)
+    if (e.target !== e.currentTarget && !(e.target as HTMLElement).hasAttribute('data-grid-background')) {
+      return;
+    }
+
+    e.preventDefault();
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+
+    setIsSelecting(true);
+    setSelectionStart({ x, y });
+    setSelectionEnd({ x, y });
+    setInitialSelectedImages(new Set(selectedImages));
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isSelecting || !selectionStart) return;
+
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+
+    setSelectionEnd({ x, y });
+
+    // Calculate which images are within the selection box
+    const box = {
+      left: Math.min(selectionStart.x, x),
+      right: Math.max(selectionStart.x, x),
+      top: Math.min(selectionStart.y, y),
+      bottom: Math.max(selectionStart.y, y),
+    };
+
+    const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
+
+    imageCardsRef.current.forEach((element, imageId) => {
+      const imageRect = element.getBoundingClientRect();
+      const scrollTop = gridRef.current?.scrollTop || 0;
+      const scrollLeft = gridRef.current?.scrollLeft || 0;
+
+      const imageBox = {
+        left: imageRect.left - rect.left + scrollLeft,
+        right: imageRect.right - rect.left + scrollLeft,
+        top: imageRect.top - rect.top + scrollTop,
+        bottom: imageRect.bottom - rect.top + scrollTop,
+      };
+
+      // Check if boxes intersect
+      const intersects = !(
+        imageBox.right < box.left ||
+        imageBox.left > box.right ||
+        imageBox.bottom < box.top ||
+        imageBox.top > box.bottom
+      );
+
+      if (intersects) {
+        newSelection.add(imageId);
+      }
+    });
+
+    useImageStore.setState({ selectedImages: newSelection });
+  };
+
+  const handleMouseUp = () => {
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionEnd(null);
+  };
+
+  // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
   // Sync focusedImageIndex when previewImage changes
   useEffect(() => {
     if (previewImage) {
@@ -307,7 +383,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         setFocusedImageIndex(index);
       }
     }
-  }, [previewImage, images, focusedImageIndex, setFocusedImageIndex]);
+  }, [previewImage?.id, focusedImageIndex]); // Only depend on previewImage.id, not the whole object
 
   // Adjust focusedImageIndex when changing pages via arrow keys
   useEffect(() => {
@@ -316,7 +392,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       setFocusedImageIndex(images.length - 1);
       setPreviewImage(images[images.length - 1]);
     }
-  }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage]);
+  }, [focusedImageIndex, images.length]); // Only depend on images.length, not the whole array
 
   // Keyboard navigation
   useEffect(() => {
@@ -409,6 +485,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
 
+  // Add global mouseup listener to handle selection end even outside the grid
+  useEffect(() => {
+    if (!isSelecting) return;
+
+    const handleGlobalMouseUp = () => {
+      setIsSelecting(false);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isSelecting]);
+
   if (images.length === 0) {
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
@@ -420,95 +510,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
   };
-
-  // Drag-to-select handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only start selection if clicking on the grid background (not on an image)
-    if (e.target !== e.currentTarget && !(e.target as HTMLElement).hasAttribute('data-grid-background')) {
-      return;
-    }
-
-    e.preventDefault();
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
-
-    setIsSelecting(true);
-    setSelectionStart({ x, y });
-    setSelectionEnd({ x, y });
-    setInitialSelectedImages(new Set(selectedImages));
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isSelecting || !selectionStart) return;
-
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
-
-    setSelectionEnd({ x, y });
-
-    // Calculate which images are within the selection box
-    const box = {
-      left: Math.min(selectionStart.x, x),
-      right: Math.max(selectionStart.x, x),
-      top: Math.min(selectionStart.y, y),
-      bottom: Math.max(selectionStart.y, y),
-    };
-
-    const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
-
-    imageCardsRef.current.forEach((element, imageId) => {
-      const imageRect = element.getBoundingClientRect();
-      const scrollTop = gridRef.current?.scrollTop || 0;
-      const scrollLeft = gridRef.current?.scrollLeft || 0;
-
-      const imageBox = {
-        left: imageRect.left - rect.left + scrollLeft,
-        right: imageRect.right - rect.left + scrollLeft,
-        top: imageRect.top - rect.top + scrollTop,
-        bottom: imageRect.bottom - rect.top + scrollTop,
-      };
-
-      // Check if boxes intersect
-      const intersects = !(
-        imageBox.right < box.left ||
-        imageBox.left > box.right ||
-        imageBox.bottom < box.top ||
-        imageBox.top > box.bottom
-      );
-
-      if (intersects) {
-        newSelection.add(imageId);
-      }
-    });
-
-    useImageStore.setState({ selectedImages: newSelection });
-  };
-
-  const handleMouseUp = () => {
-    setIsSelecting(false);
-    setSelectionStart(null);
-    setSelectionEnd(null);
-  };
-
-  // Add global mouseup listener to handle selection end even outside the grid
-  useEffect(() => {
-    if (isSelecting) {
-      const handleGlobalMouseUp = () => {
-        setIsSelecting(false);
-        setSelectionStart(null);
-        setSelectionEnd(null);
-      };
-
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-      return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
-    }
-  }, [isSelecting]);
 
   return (
     <div

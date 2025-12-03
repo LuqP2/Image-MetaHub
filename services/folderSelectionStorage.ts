@@ -111,7 +111,8 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
   } catch (error) {
     const errorName = getErrorName(error);
 
-    if (allowReset && !hasResetAttempted && (errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
+    // Auto-reset on version errors, unknown errors, or invalid state
+    if (allowReset && !hasResetAttempted && (errorName === 'VersionError' || errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
       console.warn('Resetting folder selection storage due to IndexedDB error:', error);
       hasResetAttempted = true;
       const resetSuccessful = await deleteDatabase();
