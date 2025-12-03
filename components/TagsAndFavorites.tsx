@@ -11,20 +11,39 @@ const TagsAndFavorites: React.FC = () => {
     selectedTags,
     setSelectedTags,
     filteredImages,
+    images, // All images in current folder(s)
   } = useImageStore();
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
 
-  // Count favorites in current filtered set
+  // Count favorites in ALL current images (not just filtered)
+  const totalFavoriteCount = images.filter(img => img.isFavorite).length;
+
+  // Count favorites in filtered set (for display)
   const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
+
+  // Get tags only from current images (not all from IndexedDB)
+  const currentImagesTags = React.useMemo(() => {
+    const tagCounts = new Map<string, number>();
+    for (const image of images) {
+      if (image.tags) {
+        for (const tag of image.tags) {
+          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+        }
+      }
+    }
+    return Array.from(tagCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [images]);
 
   // Filter tags by search query
   const filteredTags = tagSearchQuery
-    ? availableTags.filter(tag =>
+    ? currentImagesTags.filter(tag =>
         tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
       )
-    : availableTags;
+    : currentImagesTags;
 
   const handleTagToggle = (tagName: string, checked: boolean) => {
     if (checked) {
@@ -38,8 +57,8 @@ const TagsAndFavorites: React.FC = () => {
     setSelectedTags([]);
   };
 
-  // Don't render if no tags exist and favorites is off
-  if (availableTags.length === 0 && !showFavoritesOnly && favoriteCount === 0) {
+  // Don't render if no tags or favorites exist in current images
+  if (currentImagesTags.length === 0 && totalFavoriteCount === 0) {
     return null;
   }
 
@@ -72,7 +91,7 @@ const TagsAndFavorites: React.FC = () => {
           >
             <div className="px-4 pb-4 space-y-3">
               {/* Favorites Toggle */}
-              {favoriteCount > 0 && (
+              {totalFavoriteCount > 0 && (
                 <label className="flex items-center space-x-2 cursor-pointer group">
                   <input
                     type="checkbox"
@@ -93,7 +112,7 @@ const TagsAndFavorites: React.FC = () => {
               )}
 
               {/* Tags Section */}
-              {availableTags.length > 0 && (
+              {currentImagesTags.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -117,7 +136,7 @@ const TagsAndFavorites: React.FC = () => {
                   </div>
 
                   {/* Tag Search */}
-                  {availableTags.length > 5 && (
+                  {currentImagesTags.length > 5 && (
                     <input
                       type="text"
                       placeholder="Filter tags..."
@@ -156,16 +175,16 @@ const TagsAndFavorites: React.FC = () => {
                     )}
                   </div>
 
-                  {filteredTags.length > 0 && availableTags.length > filteredTags.length && (
+                  {filteredTags.length > 0 && currentImagesTags.length > filteredTags.length && (
                     <div className="text-xs text-gray-500 text-center pt-1">
-                      {filteredTags.length} of {availableTags.length} tags
+                      {filteredTags.length} of {currentImagesTags.length} tags
                     </div>
                   )}
                 </div>
               )}
 
               {/* Empty State */}
-              {availableTags.length === 0 && favoriteCount === 0 && (
+              {currentImagesTags.length === 0 && totalFavoriteCount === 0 && (
                 <div className="text-xs text-gray-500 text-center py-4">
                   No favorites or tags yet
                 </div>
