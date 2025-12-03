@@ -304,17 +304,35 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
+    // --- Helper function to apply annotations to images ---
+    const applyAnnotationsToImages = (images: IndexedImage[], annotations: Map<string, ImageAnnotations>): IndexedImage[] => {
+        return images.map(img => {
+            const annotation = annotations.get(img.id);
+            if (annotation) {
+                return {
+                    ...img,
+                    isFavorite: annotation.isFavorite,
+                    tags: annotation.tags,
+                };
+            }
+            return img;
+        });
+    };
+
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        // Apply annotations to new images
+        const imagesWithAnnotations = applyAnnotationsToImages(newImages, currentState.annotations);
+
         const newState: Partial<ImageState> = {
-            images: newImages,
+            images: imagesWithAnnotations,
         };
 
         const combinedState = { ...currentState, ...newState };
 
         // First, get filtered images based on folder selection
         const filteredResult = filterAndSort(combinedState);
-        
+
         // Then, recalculate available filters based on the filtered images (after folder selection)
         const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
 
@@ -921,18 +939,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             const tags = await getAllTags();
 
             set(state => {
-                // Denormalize annotations into images array
-                const updatedImages = state.images.map(img => {
-                    const annotation = annotationsMap.get(img.id);
-                    if (annotation) {
-                        return {
-                            ...img,
-                            isFavorite: annotation.isFavorite,
-                            tags: annotation.tags,
-                        };
-                    }
-                    return img;
-                });
+                // Denormalize annotations into images array using helper
+                const updatedImages = applyAnnotationsToImages(state.images, annotationsMap);
 
                 const newState = {
                     ...state,
