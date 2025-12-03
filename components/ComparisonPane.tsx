@@ -136,7 +136,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
         centerOnInit
         wheel={{ step: 0.1 }}
         onTransformed={(ref) => {
-          if (!syncEnabled && onZoomChange) {
+          if (onZoomChange) {
             const { positionX, positionY, scale } = ref.state;
             onZoomChange(scale, positionX, positionY);
           }

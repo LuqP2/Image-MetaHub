@@ -11,8 +11,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   // State
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [sharedZoom, setSharedZoom] = useState<ZoomState>({ zoom: 1, x: 0, y: 0 });
-  const [leftExpanded, setLeftExpanded] = useState(false);
-  const [rightExpanded, setRightExpanded] = useState(false);
+  const [metadataExpanded, setMetadataExpanded] = useState(false);
 
   // Handlers
   const handleZoomChange = (zoom: number, x: number, y: number) => {
@@ -149,14 +148,14 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
         <div className="flex flex-col md:flex-row gap-4 max-w-7xl mx-auto">
           <ComparisonMetadataPanel
             image={comparisonImages[0]}
-            isExpanded={leftExpanded}
-            onToggleExpanded={() => setLeftExpanded(!leftExpanded)}
+            isExpanded={metadataExpanded}
+            onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
           />
 
           <ComparisonMetadataPanel
             image={comparisonImages[1]}
-            isExpanded={rightExpanded}
-            onToggleExpanded={() => setRightExpanded(!rightExpanded)}
+            isExpanded={metadataExpanded}
+            onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
           />
         </div>
       </div>
