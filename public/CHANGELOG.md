@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console Warnings**: Fixed excessive PNG debug console messages and maximum update depth warning in useImageStore.
 - **Thumbnail Performance**: Fixed slow thumbnail loading and misaligned header items during indexing.
 - **Pagination Input**: Fixed pagination input field not responding to Enter key press.
-- **ComfyUI Parser**: Fixed negative prompt extraction in CLIPTextEncode nodes and added null safety checks for malformed workflows.
 
 ### Added
 
@@ -55,11 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
-- **ComfyUI Parser Architecture**: Major refactoring to separate data extraction from presentation logic:
-  - **WorkflowFacts Interface**: Introduced structured, type-safe metadata extraction with `resolveFacts()` function returning strongly-typed objects instead of loose `any` values. Enables autocomplete, compile-time checks, and easier testing.
-  - **Generic Accumulation System**: Replaced hardcoded LoRA collection logic with declarative `accumulate: boolean` flag on param mapping rules. Adding new accumulating parameters now requires only registry updates instead of custom code.
-  - **Reusable Extractors**: Created `extractors.ts` module with composable extraction functions (`concatTextExtractor`, `extractLorasFromText`, `cleanWildcardText`, etc.), reducing code duplication by 80-90% across nodes (ttN concat: 45→5 lines, CR LoRA Stack: 40→3 lines).
-  - Benefits: Better maintainability, easier node additions, improved type safety, and reduced technical debt.
 - **Generate Variation Modal UX**: Increased default size of prompt fields for better visibility - Prompt field now 10 rows (up from 4), Negative Prompt now 6 rows (up from 3). Fields remain fully resizable for customization.
 - **Simplified Search**: Removed search field dropdown - search now always queries across all fields (prompt, model, LoRA, seed, settings) by default. Search bar now occupies full sidebar width for better UX.
 - **Case-Insensitive Sorting**: All filter dropdowns now sort naturally (alfa → Amarelo → Azul) regardless of case.

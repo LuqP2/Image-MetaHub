@@ -155,6 +155,10 @@ interface ImageState {
   scanSubfolders: boolean;
   isFullscreenMode: boolean;
 
+  // Comparison State
+  comparisonImages: [IndexedImage | null, IndexedImage | null];
+  isComparisonModalOpen: boolean;
+
   // Filter & Sort State
   searchQuery: string;
   availableModels: string[];
@@ -220,6 +224,15 @@ interface ImageState {
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
+
+  // Comparison Actions
+  setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
+  addImageToComparison: (image: IndexedImage) => void;
+  removeImageFromComparison: (index: 0 | 1) => void;
+  swapComparisonImages: () => void;
+  clearComparison: () => void;
+  openComparisonModal: () => void;
+  closeComparisonModal: () => void;
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -531,6 +544,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
         isFullscreenMode: false,
+        comparisonImages: [null, null],
+        isComparisonModalOpen: false,
 
         // --- ACTIONS ---
 
@@ -818,6 +833,41 @@ export const useImageStore = create<ImageState>((set, get) => {
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
+        // Comparison Actions
+        setComparisonImages: (images) => set({ comparisonImages: images }),
+
+        addImageToComparison: (image) => set(state => {
+            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
+
+            // Find first empty slot
+            const emptyIndex = newImages.findIndex(img => img === null);
+            if (emptyIndex !== -1) {
+                newImages[emptyIndex] = image;
+            }
+
+            return { comparisonImages: newImages };
+        }),
+
+        removeImageFromComparison: (index) => set(state => {
+            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
+            newImages[index] = null;
+            return { comparisonImages: newImages };
+        }),
+
+        swapComparisonImages: () => set(state => {
+            const [left, right] = state.comparisonImages;
+            return { comparisonImages: [right, left] };
+        }),
+
+        clearComparison: () => set({
+            comparisonImages: [null, null],
+            isComparisonModalOpen: false
+        }),
+
+        openComparisonModal: () => set({ isComparisonModalOpen: true }),
+
+        closeComparisonModal: () => set({ isComparisonModalOpen: false }),
+
         toggleImageSelection: (imageId) => {
             set(state => {
                 const newSelection = new Set(state.selectedImages);
@@ -896,6 +946,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             scanSubfolders: true,
             sortOrder: 'desc',
             isFullscreenMode: false,
+            comparisonImages: [null, null],
+            isComparisonModalOpen: false,
         }),
 
         cleanupInvalidImages: () => {

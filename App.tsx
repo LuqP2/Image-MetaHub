@@ -16,6 +16,7 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
+import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
@@ -78,6 +79,8 @@ export default function App() {
     handleNavigateNext,
     handleNavigatePrevious,
     cleanupInvalidImages,
+    isComparisonModalOpen,
+    closeComparisonModal,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
@@ -391,6 +394,11 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         initialTab={settingsTab}
+      />
+
+      <ComparisonModal
+        isOpen={isComparisonModalOpen}
+        onClose={closeComparisonModal}
       />
 
       {hasDirectories && (

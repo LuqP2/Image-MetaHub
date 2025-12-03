@@ -552,3 +552,35 @@ declare global {
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   }
 }
+
+// Image Comparison Types
+export interface ComparisonState {
+  images: [IndexedImage | null, IndexedImage | null];
+  isModalOpen: boolean;
+}
+
+export interface ZoomState {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+export interface ComparisonPaneProps {
+  image: IndexedImage;
+  directoryPath: string;
+  position: 'left' | 'right';
+  syncEnabled: boolean;
+  externalZoom?: ZoomState;
+  onZoomChange?: (zoom: number, x: number, y: number) => void;
+}
+
+export interface ComparisonModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export interface ComparisonMetadataPanelProps {
+  image: IndexedImage;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
+}
