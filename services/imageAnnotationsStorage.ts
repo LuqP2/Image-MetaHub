@@ -399,7 +399,7 @@ export async function getFavoriteImageIds(): Promise<string[]> {
     const transaction = db.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const index = store.index('isFavorite');
-    const request = index.getAll(true); // Get all where isFavorite === true
+    const request = index.getAll(IDBKeyRange.only(true)); // Get all where isFavorite === true
 
     const close = () => {
       try {

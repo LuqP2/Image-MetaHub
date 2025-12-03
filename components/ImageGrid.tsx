@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
@@ -19,15 +19,17 @@ interface ImageCardProps {
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   baseWidth: number;
   isComparisonFirst?: boolean;
+  cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst }) => {
+const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const [showToast, setShowToast] = useState(false);
+  const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
 
   useThumbnail(image);
 
@@ -94,10 +96,16 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
     toggleFavorite(image.id);
   };
 
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleImageSelection(image.id);
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
+        ref={cardRef}
         className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
           isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
         } ${
@@ -107,49 +115,55 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
         onClick={(e) => onImageClick(image, e)}
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
       >
-        {isSelected && (
-          <div className="absolute top-2 right-2 z-20">
-            <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-              <Check className="w-4 h-4 text-white" />
-            </div>
-          </div>
-        )}
+        {/* Checkbox for selection - always visible on hover or when selected */}
+        <button
+          onClick={handleCheckboxClick}
+          className={`absolute top-2 left-2 z-20 p-1 rounded transition-all ${
+            isSelected
+              ? 'bg-blue-500 text-white opacity-100'
+              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-blue-500/80'
+          }`}
+          title={isSelected ? 'Deselect image' : 'Select image'}
+        >
+          {isSelected ? (
+            <CheckSquare className="h-5 w-5" />
+          ) : (
+            <Square className="h-5 w-5" />
+          )}
+        </button>
+
         {isComparisonFirst && (
-          <div className="absolute top-2 left-2 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
+          <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
             Compare #1
           </div>
         )}
         <button
           onClick={handlePreviewClick}
-          className="absolute top-2 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
+          className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
           title="Show details"
         >
           <Info className="h-4 w-4" />
         </button>
 
-        {!isSelected && (
-          <>
-            <button
-              onClick={handleFavoriteClick}
-              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all ${
-                image.isFavorite
-                  ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
-                  : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
-              }`}
-              title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            >
-              <Star className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
-            </button>
-            <button
-              onClick={handleCopyClick}
-              className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
-              title="Copy Prompt"
-              disabled={!image.prompt}
-            >
-              <Copy className="h-4 w-4" />
-            </button>
-          </>
-        )}
+        <button
+          onClick={handleFavoriteClick}
+          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all ${
+            image.isFavorite
+              ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
+              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
+          }`}
+          title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Star className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+        </button>
+        <button
+          onClick={handleCopyClick}
+          className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
+          title="Copy Prompt"
+          disabled={!image.prompt}
+        >
+          <Copy className="h-4 w-4" />
+        </button>
 
         {imageUrl ? (
           <img
@@ -218,11 +232,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const gridRef = useRef<HTMLDivElement>(null);
+  const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comparisonFirstImage, setComparisonFirstImage] = useState<IndexedImage | null>(null);
-  const { setComparisonImages, openComparisonModal } = useImageStore();
+  const { setComparisonImages, openComparisonModal, toggleImageSelection } = useImageStore();
+
+  // Drag-to-select states
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
+  const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
@@ -400,24 +421,117 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     showContextMenu(e, image, directoryPath);
   };
 
+  // Drag-to-select handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start selection if clicking on the grid background (not on an image)
+    if (e.target !== e.currentTarget && !(e.target as HTMLElement).hasAttribute('data-grid-background')) {
+      return;
+    }
+
+    e.preventDefault();
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+
+    setIsSelecting(true);
+    setSelectionStart({ x, y });
+    setSelectionEnd({ x, y });
+    setInitialSelectedImages(new Set(selectedImages));
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isSelecting || !selectionStart) return;
+
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+
+    setSelectionEnd({ x, y });
+
+    // Calculate which images are within the selection box
+    const box = {
+      left: Math.min(selectionStart.x, x),
+      right: Math.max(selectionStart.x, x),
+      top: Math.min(selectionStart.y, y),
+      bottom: Math.max(selectionStart.y, y),
+    };
+
+    const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
+
+    imageCardsRef.current.forEach((element, imageId) => {
+      const imageRect = element.getBoundingClientRect();
+      const scrollTop = gridRef.current?.scrollTop || 0;
+      const scrollLeft = gridRef.current?.scrollLeft || 0;
+
+      const imageBox = {
+        left: imageRect.left - rect.left + scrollLeft,
+        right: imageRect.right - rect.left + scrollLeft,
+        top: imageRect.top - rect.top + scrollTop,
+        bottom: imageRect.bottom - rect.top + scrollTop,
+      };
+
+      // Check if boxes intersect
+      const intersects = !(
+        imageBox.right < box.left ||
+        imageBox.left > box.right ||
+        imageBox.bottom < box.top ||
+        imageBox.top > box.bottom
+      );
+
+      if (intersects) {
+        newSelection.add(imageId);
+      }
+    });
+
+    useImageStore.setState({ selectedImages: newSelection });
+  };
+
+  const handleMouseUp = () => {
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionEnd(null);
+  };
+
+  // Add global mouseup listener to handle selection end even outside the grid
+  useEffect(() => {
+    if (isSelecting) {
+      const handleGlobalMouseUp = () => {
+        setIsSelecting(false);
+        setSelectionStart(null);
+        setSelectionEnd(null);
+      };
+
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+      return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
+    }
+  }, [isSelecting]);
+
   return (
-    <div 
+    <div
       ref={gridRef}
-      className="h-full w-full p-1 outline-none overflow-auto" 
-      style={{ minWidth: 0, minHeight: 0 }} 
-      data-area="grid" 
+      className="h-full w-full p-1 outline-none overflow-auto"
+      style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
+      data-area="grid"
       tabIndex={0}
       onClick={() => gridRef.current?.focus()}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
-      <div 
+      <div
         className="flex flex-wrap gap-2"
         style={{
           alignContent: 'flex-start',
         }}
+        data-grid-background
       >
         {images.map((image, index) => {
           const isFocused = focusedImageIndex === index;
-          
+
           return (
             <ImageCard
               key={image.id}
@@ -429,10 +543,32 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               onContextMenu={handleContextMenu}
               baseWidth={imageSize}
               isComparisonFirst={comparisonFirstImage?.id === image.id}
+              cardRef={(el) => {
+                if (el) {
+                  imageCardsRef.current.set(image.id, el);
+                } else {
+                  imageCardsRef.current.delete(image.id);
+                }
+              }}
             />
           );
         })}
       </div>
+
+      {/* Selection box visual */}
+      {isSelecting && selectionStart && selectionEnd && (
+        <div
+          className="absolute pointer-events-none z-30"
+          style={{
+            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+            border: '2px solid rgba(59, 130, 246, 0.8)',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          }}
+        />
+      )}
 
       {contextMenu.visible && (
         <div
