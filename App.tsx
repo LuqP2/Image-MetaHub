@@ -81,6 +81,8 @@ export default function App() {
     cleanupInvalidImages,
     isComparisonModalOpen,
     closeComparisonModal,
+    loadAnnotations,
+    isAnnotationsLoaded,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
@@ -132,6 +134,13 @@ export default function App() {
       initializeFolderSelection();
     }
   }, [initializeFolderSelection, isFolderSelectionLoaded]);
+
+  // Load annotations on app start
+  useEffect(() => {
+    if (!isAnnotationsLoaded) {
+      loadAnnotations();
+    }
+  }, [loadAnnotations, isAnnotationsLoaded]);
 
   // --- Effects ---
   useEffect(() => {

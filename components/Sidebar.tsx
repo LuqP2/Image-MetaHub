@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
+import TagsAndFavorites from './TagsAndFavorites';
 import { ChevronLeft, ChevronRight, X, ChevronDown, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -193,6 +194,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Render children, which will be the DirectoryList */}
         {children}
+
+        {/* Tags and Favorites Section */}
+        <TagsAndFavorites />
 
         {/* Models Section */}
         {availableModels.length > 0 && (

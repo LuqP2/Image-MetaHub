@@ -1,6 +1,12 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
+import {
+  loadAllAnnotations,
+  saveAnnotation,
+  bulkSaveAnnotations,
+  getAllTags,
+} from '../services/imageAnnotationsStorage';
 
 type SelectionState = StoredSelectionState;
 
@@ -171,6 +177,13 @@ interface ImageState {
   sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc';
   advancedFilters: any;
 
+  // Annotations State
+  annotations: Map<string, ImageAnnotations>;
+  availableTags: TagInfo[];
+  selectedTags: string[];
+  showFavoritesOnly: boolean;
+  isAnnotationsLoaded: boolean;
+
   // Actions
   addDirectory: (directory: Directory) => void;
   removeDirectory: (directoryId: string) => void;
@@ -234,6 +247,19 @@ interface ImageState {
   openComparisonModal: () => void;
   closeComparisonModal: () => void;
 
+  // Annotations Actions
+  loadAnnotations: () => Promise<void>;
+  toggleFavorite: (imageId: string) => Promise<void>;
+  bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
+  addTagToImage: (imageId: string, tag: string) => Promise<void>;
+  removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
+  bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
+  bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
+  setSelectedTags: (tags: string[]) => void;
+  setShowFavoritesOnly: (show: boolean) => void;
+  getImageAnnotations: (imageId: string) => ImageAnnotations | null;
+  refreshAvailableTags: () => Promise<void>;
+
   // Navigation Actions
   handleNavigateNext: () => void;
   handleNavigatePrevious: () => void;
@@ -278,17 +304,35 @@ export const useImageStore = create<ImageState>((set, get) => {
         };
     };
 
+    // --- Helper function to apply annotations to images ---
+    const applyAnnotationsToImages = (images: IndexedImage[], annotations: Map<string, ImageAnnotations>): IndexedImage[] => {
+        return images.map(img => {
+            const annotation = annotations.get(img.id);
+            if (annotation) {
+                return {
+                    ...img,
+                    isFavorite: annotation.isFavorite,
+                    tags: annotation.tags,
+                };
+            }
+            return img;
+        });
+    };
+
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        // Apply annotations to new images
+        const imagesWithAnnotations = applyAnnotationsToImages(newImages, currentState.annotations);
+
         const newState: Partial<ImageState> = {
-            images: newImages,
+            images: imagesWithAnnotations,
         };
 
         const combinedState = { ...currentState, ...newState };
 
         // First, get filtered images based on folder selection
         const filteredResult = filterAndSort(combinedState);
-        
+
         // Then, recalculate available filters based on the filtered images (after folder selection)
         const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
 
@@ -368,6 +412,20 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         let results = selectionFiltered;
+
+        // Step 2: Favorites filter
+        if (state.showFavoritesOnly) {
+            results = results.filter(img => img.isFavorite === true);
+        }
+
+        // Step 3: Tags filter
+        if (state.selectedTags && state.selectedTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.tags || img.tags.length === 0) return false;
+                // Match ANY selected tag (OR logic)
+                return state.selectedTags.some(tag => img.tags!.includes(tag));
+            });
+        }
 
         if (searchQuery) {
             const searchTerms = searchQuery
@@ -546,6 +604,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         isFullscreenMode: false,
         comparisonImages: [null, null],
         isComparisonModalOpen: false,
+
+        // Annotations initial values
+        annotations: new Map(),
+        availableTags: [],
+        selectedTags: [],
+        showFavoritesOnly: false,
+        isAnnotationsLoaded: false,
 
         // --- ACTIONS ---
 
@@ -868,6 +933,314 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         closeComparisonModal: () => set({ isComparisonModalOpen: false }),
 
+        // Annotations Actions
+        loadAnnotations: async () => {
+            const annotationsMap = await loadAllAnnotations();
+            const tags = await getAllTags();
+
+            set(state => {
+                // Denormalize annotations into images array using helper
+                const updatedImages = applyAnnotationsToImages(state.images, annotationsMap);
+
+                const newState = {
+                    ...state,
+                    annotations: annotationsMap,
+                    availableTags: tags,
+                    isAnnotationsLoaded: true,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+        },
+
+        toggleFavorite: async (imageId) => {
+            const { annotations, images } = get();
+
+            const currentAnnotation = annotations.get(imageId);
+            const newIsFavorite = !(currentAnnotation?.isFavorite ?? false);
+
+            const updatedAnnotation: ImageAnnotations = {
+                imageId,
+                isFavorite: newIsFavorite,
+                tags: currentAnnotation?.tags ?? [],
+                addedAt: currentAnnotation?.addedAt ?? Date.now(),
+                updatedAt: Date.now(),
+            };
+
+            // Update in-memory state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                newAnnotations.set(imageId, updatedAnnotation);
+
+                const updatedImages = state.images.map(img =>
+                    img.id === imageId ? { ...img, isFavorite: newIsFavorite } : img
+                );
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist to IndexedDB (async, don't await)
+            saveAnnotation(updatedAnnotation).catch(error => {
+                console.error('Failed to save annotation:', error);
+            });
+        },
+
+        bulkToggleFavorite: async (imageIds, isFavorite) => {
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const imageId of imageIds) {
+                const current = annotations.get(imageId);
+                updatedAnnotations.push({
+                    imageId,
+                    isFavorite,
+                    tags: current?.tags ?? [],
+                    addedAt: current?.addedAt ?? Date.now(),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const updatedImages = state.images.map(img => {
+                    const annotation = newAnnotations.get(img.id);
+                    if (annotation && imageIds.includes(img.id)) {
+                        return { ...img, isFavorite: annotation.isFavorite };
+                    }
+                    return img;
+                });
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist to IndexedDB
+            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+                console.error('Failed to bulk save annotations:', error);
+            });
+        },
+
+        addTagToImage: async (imageId, tag) => {
+            const normalizedTag = tag.trim().toLowerCase();
+            if (!normalizedTag) return;
+
+            const { annotations } = get();
+            const currentAnnotation = annotations.get(imageId);
+
+            // Don't add duplicate
+            if (currentAnnotation?.tags.includes(normalizedTag)) {
+                return;
+            }
+
+            const updatedAnnotation: ImageAnnotations = {
+                imageId,
+                isFavorite: currentAnnotation?.isFavorite ?? false,
+                tags: [...(currentAnnotation?.tags ?? []), normalizedTag],
+                addedAt: currentAnnotation?.addedAt ?? Date.now(),
+                updatedAt: Date.now(),
+            };
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                newAnnotations.set(imageId, updatedAnnotation);
+
+                const updatedImages = state.images.map(img =>
+                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags } : img
+                );
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist and refresh tags
+            saveAnnotation(updatedAnnotation).catch(error => {
+                console.error('Failed to save annotation:', error);
+            });
+            get().refreshAvailableTags();
+        },
+
+        removeTagFromImage: async (imageId, tag) => {
+            const { annotations } = get();
+            const currentAnnotation = annotations.get(imageId);
+
+            if (!currentAnnotation || !currentAnnotation.tags.includes(tag)) {
+                return;
+            }
+
+            const updatedAnnotation: ImageAnnotations = {
+                ...currentAnnotation,
+                tags: currentAnnotation.tags.filter(t => t !== tag),
+                updatedAt: Date.now(),
+            };
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                newAnnotations.set(imageId, updatedAnnotation);
+
+                const updatedImages = state.images.map(img =>
+                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags } : img
+                );
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist and refresh tags
+            saveAnnotation(updatedAnnotation).catch(error => {
+                console.error('Failed to save annotation:', error);
+            });
+            get().refreshAvailableTags();
+        },
+
+        bulkAddTag: async (imageIds, tag) => {
+            const normalizedTag = tag.trim().toLowerCase();
+            if (!normalizedTag || imageIds.length === 0) return;
+
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const imageId of imageIds) {
+                const current = annotations.get(imageId);
+                if (current?.tags.includes(normalizedTag)) {
+                    continue; // Skip if already tagged
+                }
+
+                updatedAnnotations.push({
+                    imageId,
+                    isFavorite: current?.isFavorite ?? false,
+                    tags: [...(current?.tags ?? []), normalizedTag],
+                    addedAt: current?.addedAt ?? Date.now(),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const updatedImages = state.images.map(img => {
+                    const annotation = newAnnotations.get(img.id);
+                    if (annotation && imageIds.includes(img.id)) {
+                        return { ...img, tags: annotation.tags };
+                    }
+                    return img;
+                });
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist and refresh tags
+            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+                console.error('Failed to bulk save annotations:', error);
+            });
+            get().refreshAvailableTags();
+        },
+
+        bulkRemoveTag: async (imageIds, tag) => {
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const imageId of imageIds) {
+                const current = annotations.get(imageId);
+                if (!current || !current.tags.includes(tag)) {
+                    continue; // Skip if doesn't have this tag
+                }
+
+                updatedAnnotations.push({
+                    ...current,
+                    tags: current.tags.filter(t => t !== tag),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const updatedImages = state.images.map(img => {
+                    const annotation = newAnnotations.get(img.id);
+                    if (annotation && imageIds.includes(img.id)) {
+                        return { ...img, tags: annotation.tags };
+                    }
+                    return img;
+                });
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist and refresh tags
+            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+                console.error('Failed to bulk save annotations:', error);
+            });
+            get().refreshAvailableTags();
+        },
+
+        setSelectedTags: (tags) => set(state => {
+            const newState = { ...state, selectedTags: tags };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        setShowFavoritesOnly: (show) => set(state => {
+            const newState = { ...state, showFavoritesOnly: show };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        getImageAnnotations: (imageId) => {
+            return get().annotations.get(imageId) || null;
+        },
+
+        refreshAvailableTags: async () => {
+            const tags = await getAllTags();
+            set({ availableTags: tags });
+        },
+
         toggleImageSelection: (imageId) => {
             set(state => {
                 const newSelection = new Set(state.selectedImages);
@@ -948,6 +1321,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             isFullscreenMode: false,
             comparisonImages: [null, null],
             isComparisonModalOpen: false,
+            annotations: new Map(),
+            availableTags: [],
+            selectedTags: [],
+            showFavoritesOnly: false,
+            isAnnotationsLoaded: false,
         }),
 
         cleanupInvalidImages: () => {

@@ -2,12 +2,13 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import hotkeyManager from '../services/hotkeyManager';
+import { useImageStore } from '../store/useImageStore';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -77,6 +78,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
+
+  // Annotations hooks
+  const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const addTagToImage = useImageStore((state) => state.addTagToImage);
+  const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
+  const availableTags = useImageStore((state) => state.availableTags);
+
+  // State for tag input
+  const [tagInput, setTagInput] = useState('');
+  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -434,6 +445,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
+  // Tag management handlers
+  const handleAddTag = () => {
+    if (!tagInput.trim()) return;
+    addTagToImage(image.id, tagInput);
+    setTagInput('');
+    setShowTagAutocomplete(false);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    removeTagFromImage(image.id, tag);
+  };
+
+  const handleToggleFavorite = () => {
+    toggleFavorite(image.id);
+  };
+
+  // Filter autocomplete tags
+  const autocompleteOptions = tagInput
+    ? availableTags
+        .filter(tag =>
+          tag.name.includes(tagInput.toLowerCase()) &&
+          !(image.tags || []).includes(tag.name)
+        )
+        .slice(0, 5)
+    : [];
+
   return (
     <div
       className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
@@ -490,6 +527,116 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </h2>
             )}
             <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
+          </div>
+
+          {/* Annotations Section */}
+          <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700/50 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Annotations</h3>
+
+            {/* Favorite Button */}
+            <button
+              onClick={handleToggleFavorite}
+              className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                image.isFavorite
+                  ? 'bg-yellow-500/20 border-2 border-yellow-500 text-yellow-400 hover:bg-yellow-500/30'
+                  : 'bg-gray-700/50 border-2 border-gray-600 text-gray-400 hover:bg-gray-700 hover:border-yellow-500 hover:text-yellow-400'
+              }`}
+            >
+              <Star className={`w-5 h-5 ${image.isFavorite ? 'fill-current' : ''}`} />
+              <span className="font-medium">
+                {image.isFavorite ? 'Favorite' : 'Add to Favorites'}
+              </span>
+            </button>
+
+            {/* Tags Section */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400 uppercase tracking-wider">Tags:</label>
+
+              {/* Current Tags */}
+              {image.tags && image.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {image.tags.map(tag => (
+                    <span
+                      key={tag}
+                      className="flex items-center gap-1 bg-gray-700 text-gray-200 px-2 py-1 rounded text-sm group hover:bg-gray-600"
+                    >
+                      #{tag}
+                      <button
+                        onClick={() => handleRemoveTag(tag)}
+                        className="opacity-70 hover:opacity-100 hover:text-red-400"
+                        title="Remove tag"
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Tag Input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Add tag..."
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setShowTagAutocomplete(e.target.value.length > 0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                    if (e.key === 'Escape') {
+                      setTagInput('');
+                      setShowTagAutocomplete(false);
+                    }
+                  }}
+                  onFocus={() => tagInput && setShowTagAutocomplete(true)}
+                  onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
+                  className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500"
+                />
+
+                {/* Autocomplete Dropdown */}
+                {showTagAutocomplete && autocompleteOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {autocompleteOptions.map(tag => (
+                      <button
+                        key={tag.name}
+                        onClick={() => {
+                          addTagToImage(image.id, tag.name);
+                          setTagInput('');
+                          setShowTagAutocomplete(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                      >
+                        <span>#{tag.name}</span>
+                        <span className="text-xs text-gray-500">({tag.count})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tag Suggestions */}
+              {(!image.tags || image.tags.length === 0) && availableTags.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-xs text-gray-500">Suggestions:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {availableTags.slice(0, 5).map(tag => (
+                      <button
+                        key={tag.name}
+                        onClick={() => addTagToImage(image.id, tag.name)}
+                        className="text-xs bg-gray-700/50 text-gray-400 px-2 py-1 rounded hover:bg-gray-600 hover:text-gray-200"
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {nMeta ? (

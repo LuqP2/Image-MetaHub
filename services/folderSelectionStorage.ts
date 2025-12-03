@@ -3,7 +3,7 @@
 export type StoredSelectionState = 'checked' | 'unchecked';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'folderSelection';
 const RECORD_KEY = 'selection';
 
@@ -104,22 +104,37 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
       };
 
       request.onerror = () => {
-        console.warn('Failed to open folder selection storage', request.error);
-        reject(request.error);
+        const error = request.error;
+        console.warn('Failed to open folder selection storage', error);
+
+        // Check for VersionError immediately and reject with proper error
+        if (error && (error.name === 'VersionError' || (error as any).constructor?.name === 'VersionError')) {
+          const versionError = new Error('VersionError');
+          versionError.name = 'VersionError';
+          reject(versionError);
+        } else {
+          reject(error);
+        }
       };
     });
   } catch (error) {
     const errorName = getErrorName(error);
 
-    if (allowReset && !hasResetAttempted && (errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
-      console.warn('Resetting folder selection storage due to IndexedDB error:', error);
+    console.log('🔍 IndexedDB Error caught:', { errorName, allowReset, hasResetAttempted });
+
+    // Auto-reset on version errors, unknown errors, or invalid state
+    if (allowReset && !hasResetAttempted && (errorName === 'VersionError' || errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
+      console.warn('🔄 Resetting folder selection storage due to IndexedDB error:', error);
       hasResetAttempted = true;
       const resetSuccessful = await deleteDatabase();
+      console.log('🗑️ Database deletion result:', resetSuccessful);
       if (resetSuccessful) {
+        console.log('♻️ Attempting to reopen database with version 1...');
         return openDatabase({ allowReset: false });
       }
     }
 
+    console.error('❌ Could not recover from IndexedDB error. Disabling persistence.');
     disablePersistence(error);
     return null;
   }
