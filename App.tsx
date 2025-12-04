@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useImageLoader } from './hooks/useImageLoader';
@@ -379,7 +379,10 @@ export default function App() {
   }, [handleNavigatePrevious]);
 
   // --- Render Logic ---
-  const paginatedImages = filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const paginatedImages = useMemo(
+    () => filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    [filteredImages, currentPage, itemsPerPage]
+  );
   const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
   const hasDirectories = directories.length > 0;
   const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;

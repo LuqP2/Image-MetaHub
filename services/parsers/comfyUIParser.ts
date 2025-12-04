@@ -254,6 +254,7 @@ function extractAdvancedModifiers(graph: Graph): {
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
+    if (!node.class_type) continue; // Skip nodes without class_type
     const classType = node.class_type.toLowerCase();
     
     // ControlNet detection (only from loaders, not apply nodes)
@@ -268,6 +269,7 @@ function extractAdvancedModifiers(graph: Graph): {
       // Search for ControlNetApply nodes that reference this loader
       for (const applyNodeId in graph) {
         const applyNode = graph[applyNodeId];
+        if (!applyNode.class_type) continue; // Skip nodes without class_type
         if (applyNode.class_type.toLowerCase().includes('controlnetapply')) {
           // Check if this apply node uses our loader
           if (applyNode.inputs?.control_net && Array.isArray(applyNode.inputs.control_net)) {
@@ -310,7 +312,8 @@ function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: n
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
-    
+    if (!node.class_type) continue; // Skip nodes without class_type
+
     if (node.class_type === 'SaveImage') {
       const timestamp = node.inputs?.timestamp || Date.now();
       history.push({ action: 'save', timestamp: Number(timestamp) });
@@ -417,8 +420,8 @@ function findTerminalNode(graph: Graph): ParserNode | null {
     for (const nodeId in graph) {
         const node = graph[nodeId];
 
-        // Skip muted nodes (mode 2 or 4)
-        if (node.mode === 2 || node.mode === 4) {
+        // Skip nodes without class_type or muted nodes (mode 2 or 4)
+        if (!node.class_type || node.mode === 2 || node.mode === 4) {
             continue;
         }
 
@@ -452,6 +455,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   // Count unknown nodes for telemetry
   for (const nodeId in graph) {
     const node = graph[nodeId];
+    if (!node.class_type) continue; // Skip nodes without class_type
     if (!NodeRegistry[node.class_type]) {
       telemetry.unknown_nodes_count++;
       telemetry.warnings.push(`Unknown node type: ${node.class_type}`);

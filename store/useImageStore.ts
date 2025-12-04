@@ -272,6 +272,10 @@ interface ImageState {
 }
 
 export const useImageStore = create<ImageState>((set, get) => {
+    // --- Throttle map to prevent excessive setImageThumbnail calls ---
+    const thumbnailUpdateTimestamps = new Map<string, number>();
+    const THUMBNAIL_UPDATE_THROTTLE_MS = 50;
+
     // --- Helper function to recalculate available filters from visible images ---
     const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
         const models = new Set<string>();
@@ -836,6 +840,25 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setImageThumbnail: (imageId, data) => {
             set(state => {
+                // CIRCUIT BREAKER: Prevent excessive updates
+                const now = Date.now();
+                const stats = thumbnailUpdateTimestamps.get(imageId) || { count: 0, lastUpdate: now };
+
+                // Reset counter if more than 1 second has passed
+                if (now - stats.lastUpdate > 1000) {
+                    stats.count = 0;
+                    stats.lastUpdate = now;
+                }
+
+                stats.count++;
+                thumbnailUpdateTimestamps.set(imageId, stats);
+
+                // If too many updates in 1 second, block and warn
+                if (stats.count > 10) {
+                    console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
+                    return state;
+                }
+
                 const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
                 const currentImage = findImage(state.images) || findImage(state.filteredImages);
 
@@ -867,7 +890,20 @@ export const useImageStore = create<ImageState>((set, get) => {
                         return list; // Image not in this list, return original
                     }
 
-                    // Create new array only if image exists
+                    const current = list[index];
+
+                    // CRITICAL: Only create new object if values actually changed
+                    // This prevents infinite loops from redundant updates
+                    if (
+                        current.thumbnailUrl === nextThumbnailUrl &&
+                        current.thumbnailHandle === nextThumbnailHandle &&
+                        current.thumbnailStatus === nextThumbnailStatus &&
+                        current.thumbnailError === nextThumbnailError
+                    ) {
+                        return list; // Nothing changed, return same array reference
+                    }
+
+                    // Create new array only if values actually changed
                     const newList = [...list];
                     newList[index] = {
                         ...list[index],

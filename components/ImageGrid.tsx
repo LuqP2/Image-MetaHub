@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -22,7 +22,7 @@ interface ImageCardProps {
   cardRef?: (el: HTMLDivElement | null) => void;
 }
 
-const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -211,7 +211,20 @@ const ImageCard: React.FC<ImageCardProps> = ({ image, onImageClick, isSelected, 
       )}
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if relevant data changed
+  return (
+    prevProps.image.id === nextProps.image.id &&
+    prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
+    prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
+    prevProps.image.isFavorite === nextProps.image.isFavorite &&
+    JSON.stringify(prevProps.image.tags) === JSON.stringify(nextProps.image.tags) &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isFocused === nextProps.isFocused &&
+    prevProps.isComparisonFirst === nextProps.isComparisonFirst &&
+    prevProps.baseWidth === nextProps.baseWidth
+  );
+});
 
 
 // --- ImageGrid Component ---
@@ -265,15 +278,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyMetadataToA1111
   } = useContextMenu();
 
-  const openGenerateModal = () => {
+  const openGenerateModal = useCallback(() => {
     if (contextMenu.image) {
       setSelectedImageForGeneration(contextMenu.image);
       setIsGenerateModalOpen(true);
       hideContextMenu();
     }
-  };
+  }, [contextMenu.image, hideContextMenu]);
 
-  const selectForComparison = () => {
+  const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
 
     if (!comparisonFirstImage) {
@@ -297,10 +310,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
 
     hideContextMenu();
-  };
+  }, [contextMenu.image, comparisonFirstImage, setComparisonImages, openComparisonModal, hideContextMenu]);
 
   // Drag-to-select handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Only start selection if clicking on the grid background (not on an image)
     if (e.target !== e.currentTarget && !(e.target as HTMLElement).hasAttribute('data-grid-background')) {
       return;
@@ -317,9 +330,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setSelectionStart({ x, y });
     setSelectionEnd({ x, y });
     setInitialSelectedImages(new Set(selectedImages));
-  };
+  }, [selectedImages]);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isSelecting || !selectionStart) return;
 
     const rect = gridRef.current?.getBoundingClientRect();
@@ -366,13 +379,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     });
 
     useImageStore.setState({ selectedImages: newSelection });
-  };
+  }, [isSelecting, selectionStart, initialSelectedImages]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
     setSelectionStart(null);
     setSelectionEnd(null);
-  };
+  }, []);
 
   // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
   // Sync focusedImageIndex when previewImage changes
@@ -499,17 +512,30 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [isSelecting]);
 
-  if (images.length === 0) {
-    return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
-  }
-
-  const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
+  // Memoized callbacks - MUST be before early return
+  const handleContextMenu = useCallback((image: IndexedImage, e: React.MouseEvent) => {
     if (selectedImages.size > 1) {
       return;
     }
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
-  };
+  }, [selectedImages.size, directories, showContextMenu]);
+
+  // Memoized cardRef callback factory
+  const createCardRef = useCallback((imageId: string) => {
+    return (el: HTMLDivElement | null) => {
+      if (el) {
+        imageCardsRef.current.set(imageId, el);
+      } else {
+        imageCardsRef.current.delete(imageId);
+      }
+    };
+  }, []);
+
+  // Early return AFTER all hooks
+  if (images.length === 0) {
+    return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
+  }
 
   return (
     <div
@@ -544,13 +570,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               onContextMenu={handleContextMenu}
               baseWidth={imageSize}
               isComparisonFirst={comparisonFirstImage?.id === image.id}
-              cardRef={(el) => {
-                if (el) {
-                  imageCardsRef.current.set(image.id, el);
-                } else {
-                  imageCardsRef.current.delete(image.id);
-                }
-              }}
+              cardRef={createCardRef(image.id)}
             />
           );
         })}
