@@ -88,10 +88,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Used `React.useMemo` for tag counting optimization in `TagsAndFavorites` component
 - Maintained backward compatibility with existing IndexedDB v1 folderSelection store
 
-### Improved
-
-- **Generate Variation Modal UX**: Increased default size of prompt fields for better visibility – Prompt field now 10 rows (up from 4), Negative Prompt now 6 rows (up from 3). Fields remain fully resizable for customization.
-
 
 ## [0.9.6-rc] - 2025-11-29
 

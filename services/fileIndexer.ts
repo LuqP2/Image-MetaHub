@@ -773,7 +773,7 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 256;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
   const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
 
   const phaseAStats: PhaseTelemetry = {
@@ -1007,7 +1007,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 64;
+  const FILE_READ_BATCH_SIZE = 32;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
