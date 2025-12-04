@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from './useFeatureAccess';
 import { IndexedImage } from '../types';
 
 export const useImageComparison = () => {
@@ -13,6 +14,9 @@ export const useImageComparison = () => {
     openComparisonModal
   } = useImageStore();
 
+  // Feature access check
+  const { canUseComparison, showProModal } = useFeatureAccess();
+
   const canCompare = useMemo(() => {
     return comparisonImages[0] !== null && comparisonImages[1] !== null;
   }, [comparisonImages]);
@@ -22,6 +26,12 @@ export const useImageComparison = () => {
   }, [comparisonImages]);
 
   const handleAddImage = useCallback((image: IndexedImage) => {
+    // Safety check: Feature gating
+    if (!canUseComparison) {
+      showProModal('comparison');
+      return false;
+    }
+
     if (comparisonCount >= 2) {
       alert('Maximum 2 images can be compared. Remove one first.');
       return false;
@@ -41,7 +51,7 @@ export const useImageComparison = () => {
     }
 
     return true;
-  }, [comparisonImages, comparisonCount, addImageToComparison, openComparisonModal]);
+  }, [comparisonImages, comparisonCount, addImageToComparison, openComparisonModal, canUseComparison, showProModal]);
 
   const handleStartComparison = useCallback((images: IndexedImage[]) => {
     if (images.length !== 2) {

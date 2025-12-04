@@ -3,7 +3,9 @@ import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, GitCompare } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { IndexedImage } from '../types';
+import ProBadge from './ProBadge';
 
 interface FooterProps {
   currentPage: number;
@@ -50,6 +52,7 @@ const Footer: React.FC<FooterProps> = ({
   a1111Progress
 }) => {
   const { selectedImages, filteredImages, setComparisonImages, openComparisonModal } = useImageStore();
+  const { canUseA1111, canUseComparison, showProModal } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
 
@@ -65,7 +68,7 @@ const Footer: React.FC<FooterProps> = ({
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
   const showPageControls = totalPages > 1;
   const hasEnrichmentJob = enrichmentProgress && enrichmentProgress.total > 0;
-  const hasA1111Job = a1111Progress && a1111Progress.isGenerating;
+  const hasA1111Job = canUseA1111 && a1111Progress && a1111Progress.isGenerating; // Only show if feature is available
   const hasAnyJob = hasEnrichmentJob || hasA1111Job;
 
   return (
@@ -193,6 +196,10 @@ const Footer: React.FC<FooterProps> = ({
             <span className="text-gray-600">•</span>
             <button
               onClick={() => {
+                if (!canUseComparison) {
+                  showProModal('comparison');
+                  return;
+                }
                 if (selectedCount !== 2) {
                   alert('Please select exactly 2 images to compare');
                   return;
@@ -205,16 +212,16 @@ const Footer: React.FC<FooterProps> = ({
                 setComparisonImages([selected[0], selected[1]]);
                 openComparisonModal();
               }}
-              disabled={selectedCount !== 2}
+              disabled={canUseComparison && selectedCount !== 2}
               className="flex items-center gap-1.5 px-3 py-1 rounded
                          bg-purple-500/10 border border-purple-500/30
                          text-purple-400 text-xs font-medium
                          hover:bg-purple-500/20 transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
-              title={selectedCount === 2 ? "Compare 2 images" : "Select exactly 2 images"}
+              title={!canUseComparison ? "Comparison (Pro Feature)" : selectedCount === 2 ? "Compare 2 images" : "Select exactly 2 images"}
             >
               <GitCompare className="w-3 h-3" />
-              <span className="hidden sm:inline">Compare</span>
+              <span className="hidden sm:inline">Compare {!canUseComparison && <ProBadge size="sm" />}</span>
             </button>
           </>
         )}
