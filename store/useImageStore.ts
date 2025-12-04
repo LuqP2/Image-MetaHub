@@ -273,8 +273,18 @@ interface ImageState {
 
 export const useImageStore = create<ImageState>((set, get) => {
     // --- Throttle map to prevent excessive setImageThumbnail calls ---
-    const thumbnailUpdateTimestamps = new Map<string, number>();
-    const THUMBNAIL_UPDATE_THROTTLE_MS = 50;
+    const thumbnailUpdateTimestamps = new Map<string, { count: number; lastUpdate: number }>();
+    const thumbnailUpdateInProgress = new Set<string>();
+    const lastThumbnailState = new Map<string, {
+        url: string | undefined;
+        handle: FileSystemFileHandle | undefined;
+        status: ThumbnailStatus;
+        error: string | null | undefined;
+    }>();
+
+    const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
+        return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
+    };
 
     // --- Helper function to recalculate available filters from visible images ---
     const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
@@ -839,96 +849,144 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         setImageThumbnail: (imageId, data) => {
-            set(state => {
-                // CIRCUIT BREAKER: Prevent excessive updates
-                const now = Date.now();
-                const stats = thumbnailUpdateTimestamps.get(imageId) || { count: 0, lastUpdate: now };
+            const preState = get();
+            const preImage = getImageById(preState, imageId);
 
-                // Reset counter if more than 1 second has passed
-                if (now - stats.lastUpdate > 1000) {
-                    stats.count = 0;
-                    stats.lastUpdate = now;
-                }
+            if (!preImage) {
+                return;
+            }
 
-                stats.count++;
-                thumbnailUpdateTimestamps.set(imageId, stats);
+            const nextThumbnailUrl = data.thumbnailUrl ?? preImage.thumbnailUrl;
+            const nextThumbnailHandle = data.thumbnailHandle ?? preImage.thumbnailHandle;
+            const nextThumbnailStatus = data.status;
+            const nextThumbnailError = data.error ?? (data.status === 'error'
+                ? 'Failed to load thumbnail'
+                : preImage.thumbnailError);
 
-                // If too many updates in 1 second, block and warn
-                if (stats.count > 10) {
-                    console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
-                    return state;
-                }
+            const lastState = lastThumbnailState.get(imageId);
+            if (
+                lastState &&
+                lastState.url === nextThumbnailUrl &&
+                lastState.handle === nextThumbnailHandle &&
+                lastState.status === nextThumbnailStatus &&
+                lastState.error === nextThumbnailError
+            ) {
+                return; // Identical to last applied payload
+            }
 
-                const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
-                const currentImage = findImage(state.images) || findImage(state.filteredImages);
+            if (
+                preImage.thumbnailUrl === nextThumbnailUrl &&
+                preImage.thumbnailHandle === nextThumbnailHandle &&
+                preImage.thumbnailStatus === nextThumbnailStatus &&
+                preImage.thumbnailError === nextThumbnailError
+            ) {
+                lastThumbnailState.set(imageId, {
+                    url: nextThumbnailUrl,
+                    handle: nextThumbnailHandle,
+                    status: nextThumbnailStatus,
+                    error: nextThumbnailError,
+                });
+                return;
+            }
 
-                if (!currentImage) {
-                    return state;
-                }
+            if (thumbnailUpdateInProgress.has(imageId)) {
+                return;
+            }
 
-                const nextThumbnailUrl = data.thumbnailUrl !== undefined ? data.thumbnailUrl : currentImage.thumbnailUrl;
-                const nextThumbnailHandle = data.thumbnailHandle !== undefined ? data.thumbnailHandle : currentImage.thumbnailHandle;
-                const nextThumbnailStatus = data.status;
-                const nextThumbnailError = data.error !== undefined ? data.error : (data.status === 'error'
-                    ? 'Failed to load thumbnail'
-                    : currentImage.thumbnailError);
+            thumbnailUpdateInProgress.add(imageId);
 
-                // Avoid unnecessary updates that can trigger render loops
-                if (
-                    currentImage.thumbnailUrl === nextThumbnailUrl &&
-                    currentImage.thumbnailHandle === nextThumbnailHandle &&
-                    currentImage.thumbnailStatus === nextThumbnailStatus &&
-                    currentImage.thumbnailError === nextThumbnailError
-                ) {
-                    return state;
-                }
+            try {
+                set(state => {
+                    // CIRCUIT BREAKER: Prevent excessive updates
+                    const now = Date.now();
+                    const stats = thumbnailUpdateTimestamps.get(imageId) || { count: 0, lastUpdate: now };
 
-                const updateList = (list: IndexedImage[]) => {
-                    // Check if image exists in this list
-                    const index = list.findIndex(img => img.id === imageId);
-                    if (index === -1) {
-                        return list; // Image not in this list, return original
+                    if (now - stats.lastUpdate > 1000) {
+                        stats.count = 0;
+                        stats.lastUpdate = now;
                     }
 
-                    const current = list[index];
+                    stats.count++;
+                    thumbnailUpdateTimestamps.set(imageId, stats);
 
-                    // CRITICAL: Only create new object if values actually changed
-                    // This prevents infinite loops from redundant updates
+                    if (stats.count > 10) {
+                        console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
+                        return state;
+                    }
+
+                    const currentImage = getImageById(state, imageId);
+
+                    if (!currentImage) {
+                        return state;
+                    }
+
+                    const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
+                    const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
+                    const nextThumbnailStatus = data.status;
+                    const nextThumbnailError = data.error ?? (data.status === 'error'
+                        ? 'Failed to load thumbnail'
+                        : currentImage.thumbnailError);
+
                     if (
-                        current.thumbnailUrl === nextThumbnailUrl &&
-                        current.thumbnailHandle === nextThumbnailHandle &&
-                        current.thumbnailStatus === nextThumbnailStatus &&
-                        current.thumbnailError === nextThumbnailError
+                        currentImage.thumbnailUrl === nextThumbnailUrl &&
+                        currentImage.thumbnailHandle === nextThumbnailHandle &&
+                        currentImage.thumbnailStatus === nextThumbnailStatus &&
+                        currentImage.thumbnailError === nextThumbnailError
                     ) {
-                        return list; // Nothing changed, return same array reference
+                        return state;
                     }
 
-                    // Create new array only if values actually changed
-                    const newList = [...list];
-                    newList[index] = {
-                        ...list[index],
-                        thumbnailUrl: nextThumbnailUrl,
-                        thumbnailHandle: nextThumbnailHandle,
-                        thumbnailStatus: nextThumbnailStatus,
-                        thumbnailError: nextThumbnailError,
+                    const updateList = (list: IndexedImage[]) => {
+                        const index = list.findIndex(img => img.id === imageId);
+                        if (index === -1) {
+                            return list;
+                        }
+
+                        const current = list[index];
+
+                        if (
+                            current.thumbnailUrl === nextThumbnailUrl &&
+                            current.thumbnailHandle === nextThumbnailHandle &&
+                            current.thumbnailStatus === nextThumbnailStatus &&
+                            current.thumbnailError === nextThumbnailError
+                        ) {
+                            return list;
+                        }
+
+                        const newList = [...list];
+                        newList[index] = {
+                            ...list[index],
+                            thumbnailUrl: nextThumbnailUrl,
+                            thumbnailHandle: nextThumbnailHandle,
+                            thumbnailStatus: nextThumbnailStatus,
+                            thumbnailError: nextThumbnailError,
+                        };
+                        return newList;
                     };
-                    return newList;
-                };
 
-                const updatedImages = updateList(state.images);
-                const updatedFilteredImages = updateList(state.filteredImages);
+                    const updatedImages = updateList(state.images);
+                    const updatedFilteredImages = updateList(state.filteredImages);
 
-                // Only return new state if something actually changed
-                if (updatedImages === state.images && updatedFilteredImages === state.filteredImages) {
-                    return state;
-                }
+                    if (updatedImages === state.images && updatedFilteredImages === state.filteredImages) {
+                        return state;
+                    }
 
-                return {
-                    ...state,
-                    images: updatedImages,
-                    filteredImages: updatedFilteredImages,
-                };
-            });
+                    lastThumbnailState.set(imageId, {
+                        url: nextThumbnailUrl,
+                        handle: nextThumbnailHandle,
+                        status: nextThumbnailStatus,
+                        error: nextThumbnailError,
+                    });
+
+                    return {
+                        ...state,
+                        images: updatedImages,
+                        filteredImages: updatedFilteredImages,
+                    };
+                });
+            } finally {
+                thumbnailUpdateInProgress.delete(imageId);
+            }
         },
 
         setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),
