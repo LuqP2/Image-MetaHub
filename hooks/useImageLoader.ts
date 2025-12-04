@@ -606,6 +606,7 @@ export function useImageLoader() {
             };
 
             const shouldProcessPipeline = (fileHandles.length > 0) || (preloadedImages.length > 0) || !!cacheWriter;
+            const indexingMode = useSettingsStore.getState().indexingMode ?? 'balanced';
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing()) {
@@ -635,6 +636,7 @@ export function useImageLoader() {
                         fileStats: fileStatsMap,
                         onEnrichmentBatch: handleEnrichmentBatch,
                         onEnrichmentProgress: handleEnrichmentProgress,
+                        indexingMode,
                     }
                 );
 

@@ -60,6 +60,7 @@ interface SettingsState {
   keymap: Keymap;
   lastViewedVersion: string | null;
   indexingConcurrency: number;
+  indexingMode: 'balanced' | 'fast';
   disableThumbnails: boolean;
   showFilenames: boolean;
 
@@ -81,6 +82,7 @@ interface SettingsState {
   resetKeymap: () => void;
   setLastViewedVersion: (version: string) => void;
   setIndexingConcurrency: (value: number) => void;
+  setIndexingMode: (mode: 'balanced' | 'fast') => void;
   setDisableThumbnails: (value: boolean) => void;
   setShowFilenames: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
@@ -109,6 +111,7 @@ export const useSettingsStore = create<SettingsState>()(
       keymap: getDefaultKeymap(),
       lastViewedVersion: null,
       indexingConcurrency: defaultIndexingConcurrency,
+      indexingMode: 'balanced',
       disableThumbnails: false,
       showFilenames: false,
 
@@ -137,6 +140,7 @@ export const useSettingsStore = create<SettingsState>()(
             ? Math.max(1, Math.floor(value))
             : 1,
         }),
+      setIndexingMode: (mode) => set({ indexingMode: mode }),
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       setShowFilenames: (value) => set({ showFilenames: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
@@ -168,6 +172,7 @@ export const useSettingsStore = create<SettingsState>()(
         keymap: getDefaultKeymap(),
         lastViewedVersion: null,
         indexingConcurrency: defaultIndexingConcurrency,
+        indexingMode: 'balanced',
         disableThumbnails: false,
         showFilenames: false,
         a1111ServerUrl: 'http://127.0.0.1:7860',

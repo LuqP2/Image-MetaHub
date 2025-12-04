@@ -76,18 +76,22 @@ export function extractModelsFromInvokeAI(metadata: InvokeAIMetadata): string[] 
     if (modelName) models.add(modelName);
   }
 
-  // FIX: Create a copy of metadata WITHOUT loras field to avoid picking up LoRA .safetensors files
-  const metadataWithoutLoras = { ...metadata };
-  delete metadataWithoutLoras.loras;
+  // If we already have at least one model from explicit fields,
+  // skip the expensive JSON stringify + regex scan.
+  if (models.size === 0) {
+    // FIX: Create a copy of metadata WITHOUT loras field to avoid picking up LoRA .safetensors files
+    const metadataWithoutLoras = { ...metadata };
+    delete metadataWithoutLoras.loras;
 
-  const metadataStr = JSON.stringify(metadataWithoutLoras).toLowerCase();
-  const modelMatches = metadataStr.match(/['"]\s*([^'"]*\.(safetensors|ckpt|pt))\s*['"]/g);
-  if (modelMatches) {
-    modelMatches.forEach(match => {
-      let modelName = match.replace(/['"]/g, '').trim();
-      modelName = modelName.split(/[/\\]/).pop() || modelName;
-      if (modelName) models.add(modelName);
-    });
+    const metadataStr = JSON.stringify(metadataWithoutLoras).toLowerCase();
+    const modelMatches = metadataStr.match(/['"]\s*([^'"]*\.(safetensors|ckpt|pt))\s*['"]/g);
+    if (modelMatches) {
+      modelMatches.forEach(match => {
+        let modelName = match.replace(/['"]/g, '').trim();
+        modelName = modelName.split(/[/\\]/).pop() || modelName;
+        if (modelName) models.add(modelName);
+      });
+    }
   }
 
   return Array.from(models);

@@ -31,6 +31,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const toggleAutoUpdate = useSettingsStore((state) => state.toggleAutoUpdate);
   const indexingConcurrency = useSettingsStore((state) => state.indexingConcurrency);
   const setIndexingConcurrency = useSettingsStore((state) => state.setIndexingConcurrency);
+  const indexingMode = useSettingsStore((state) => state.indexingMode);
+  const setIndexingMode = useSettingsStore((state) => state.setIndexingMode);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
 
@@ -375,6 +377,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   Detected {hardwareConcurrency} logical cores. The default is capped at 8 to stay responsive.
                 </p>
               )}
+              <div className="border-t border-gray-800 pt-3 mt-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm">Indexing mode</p>
+                    <p className="text-xs text-gray-400">
+                      Balanced parses full metadata; Fast focuses on essential fields for quicker initial indexing.
+                    </p>
+                  </div>
+                  <select
+                    value={indexingMode}
+                    onChange={(event) => setIndexingMode(event.target.value as 'balanced' | 'fast')}
+                    className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+                  >
+                    <option value="balanced">Balanced (full metadata)</option>
+                    <option value="fast">Fast (essential fields)</option>
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
 

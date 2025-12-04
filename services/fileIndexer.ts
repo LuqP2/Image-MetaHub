@@ -119,6 +119,10 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
 
 // Main parsing function for PNG files
 async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+async function parsePNGMetadata(
+  buffer: ArrayBuffer,
+  indexingMode: 'balanced' | 'fast' = 'balanced'
+): Promise<ImageMetadata | null> {
   const view = new DataView(buffer);
   let offset = 8;
   const decoder = new TextDecoder();
@@ -202,18 +206,52 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return { prompt: chunks.prompt };
   }
 
-  // Always try to extract EXIF/XMP data from PNG (many modern apps like Draw Things use XMP)
+  // In fast mode, intentionally skip EXIF/XMP scan for PNG to avoid
+  // expensive EXIF parsing on images without textual metadata chunks.
+  // PNGs that rely solely on EXIF/XMP will be treated as images without
+  // embedded metadata by this function.
+  if (indexingMode === 'fast') {
+    return null;
+  }
+
+  // Balanced mode: try to extract EXIF/XMP data from PNG (many modern apps
+  // like Draw Things use XMP).
   try {
     const exifResult = await parseJPEGMetadata(buffer);
     if (exifResult) {
       return exifResult;
     }
   } catch {
-    // Silent error - EXIF extraction may fail
+    // Silent error - EXIF parsing may fail
   }
 
-  // If no EXIF found, try PNG chunks as fallback
-  // ...existing code...
+  return null;
+}
+
+// Global limiter for image dimension decoding to avoid too many parallel
+// decode operations on large images during Phase B.
+const MAX_DIMENSION_DECODE_CONCURRENCY = 2;
+let activeDimensionDecodes = 0;
+const dimensionDecodeQueue: Array<() => void> = [];
+
+async function acquireDimensionDecodeSlot(): Promise<void> {
+  if (activeDimensionDecodes < MAX_DIMENSION_DECODE_CONCURRENCY) {
+    activeDimensionDecodes += 1;
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    dimensionDecodeQueue.push(resolve);
+  });
+  activeDimensionDecodes += 1;
+}
+
+function releaseDimensionDecodeSlot(): void {
+  activeDimensionDecodes = Math.max(0, activeDimensionDecodes - 1);
+  const next = dimensionDecodeQueue.shift();
+  if (next) {
+    next();
+  }
 }
 
 // Main parsing function for JPEG files
@@ -417,7 +455,10 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 }
 
 // Main image metadata parser
-async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
+async function parseImageMetadata(
+  file: File,
+  indexingMode: 'balanced' | 'fast' = 'balanced'
+): Promise<ImageMetadata | null> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
   
@@ -431,7 +472,7 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
   }
   
   if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
-    const result = await parsePNGMetadata(buffer);
+    const result = await parsePNGMetadata(buffer, indexingMode);
     if (!isProduction) {
       console.log('[FILE DEBUG] PNG metadata result:', {
         name: file.name,
@@ -454,7 +495,8 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
 async function processSingleFileOptimized(
   fileEntry: CatalogFileEntry,
   directoryId: string,
-  fileData?: ArrayBuffer
+  fileData: ArrayBuffer | undefined,
+  indexingMode: 'balanced' | 'fast' = 'balanced'
 ): Promise<IndexedImage | null> {
   try {
     let file: File;
@@ -465,7 +507,7 @@ async function processSingleFileOptimized(
       // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
       const view = new DataView(fileData);
       if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
-        rawMetadata = await parsePNGMetadata(fileData);
+        rawMetadata = await parsePNGMetadata(fileData, indexingMode);
       } else if (view.getUint16(0) === 0xFFD8) {
         rawMetadata = await parseJPEGMetadata(fileData);
       } else {
@@ -477,7 +519,7 @@ async function processSingleFileOptimized(
     } else {
       // Fallback to individual file read (browser path)
       file = await fileEntry.handle.getFile();
-      rawMetadata = await parseImageMetadata(file);
+      rawMetadata = await parseImageMetadata(file, indexingMode);
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
@@ -639,8 +681,10 @@ if (rawMetadata) {
     const normalizedFileType = fileEntry.type ?? (file.type || fallbackType);
     const normalizedFileSize = fileEntry.size ?? file.size;
 
-    // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
+    // Read actual image dimensions - OPTIMIZED: Only if not already in metadata,
+    // and with a global concurrency cap to avoid too many parallel decodes.
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {
+      await acquireDimensionDecodeSlot();
       try {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
@@ -657,9 +701,10 @@ if (rawMetadata) {
           };
           img.src = objectUrl;
         });
-      } catch (e) {
-        // console.warn('Failed to read image dimensions:', e);
+      } catch {
         // Keep width/height as 0 if failed
+      } finally {
+        releaseDimensionDecodeSlot();
       }
     }
 
@@ -725,6 +770,7 @@ interface ProcessFilesOptions {
   onEnrichmentBatch?: (batch: IndexedImage[]) => void;
   enrichmentBatchSize?: number;
   onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
+  indexingMode?: 'balanced' | 'fast';
 }
 
 export interface ProcessFilesResult {
@@ -773,8 +819,10 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
+  const defaultEnrichmentBatchSize = concurrencyLimit >= 8 ? 256 : 128;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? defaultEnrichmentBatchSize;
   const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
+  const indexingMode = options.indexingMode ?? 'balanced';
 
   const phaseAStats: PhaseTelemetry = {
     startTime: performance.now(),
@@ -1007,7 +1055,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 32;
+  const FILE_READ_BATCH_SIZE = concurrencyLimit >= 8 ? 64 : 32;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -1162,7 +1210,7 @@ export async function processFiles(
         return null;
       }
 
-      const enriched = await processSingleFileOptimized(entry.source, directoryId, undefined);
+      const enriched = await processSingleFileOptimized(entry.source, directoryId, undefined, indexingMode);
       const merged = processEnrichmentResult(entry, enriched);
       if (merged) {
         entry.needsEnrichment = false;
@@ -1238,7 +1286,7 @@ export async function processFiles(
             return null;
           }
           const buffer = dataMap.get(filePath);
-          const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer);
+          const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, indexingMode);
           const merged = processEnrichmentResult(entry, enriched);
           if (merged) {
             entry.needsEnrichment = false;
