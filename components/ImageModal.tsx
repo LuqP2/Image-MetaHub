@@ -6,7 +6,9 @@ import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clip
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useImageComparison } from '../hooks/useImageComparison';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 
@@ -78,6 +80,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
+
+  // Feature access (license/trial gating)
+  const { canUseA1111, canUseComparison, showProModal, initialized } = useFeatureAccess();
 
   // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -693,17 +698,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
             <button
               onClick={() => {
+                if (!canUseComparison) {
+                  showProModal('comparison');
+                  return;
+                }
                 const added = addImage(image);
                 if (added && comparisonCount === 1) {
                   onClose(); // Close ImageModal, ComparisonModal will auto-open
                 }
               }}
-              disabled={comparisonCount >= 2}
+              disabled={canUseComparison && comparisonCount >= 2}
               className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
-              title={comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
+              title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
             >
               <GitCompare className="w-3 h-3" />
-              Add to Compare {comparisonCount > 0 && `(${comparisonCount}/2)`}
+              Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/2)`}
+              {!canUseComparison && initialized && <ProBadge size="sm" />}
             </button>
           </div>
 
@@ -712,11 +722,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="mt-3 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
-                onClick={() => setIsGenerateModalOpen(true)}
-                disabled={!nMeta.prompt}
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  setIsGenerateModalOpen(true);
+                }}
+                disabled={canUseA1111 && !nMeta.prompt}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
-                {isGenerating ? (
+                {isGenerating && canUseA1111 ? (
                   <>
                     <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -728,17 +744,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <>
                     <Sparkles className="w-4 h-4" />
                     <span>Generate Variation</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
               </button>
 
               {/* Utility Button: Copy to A1111 */}
               <button
-                onClick={() => copyToA1111(image)}
-                disabled={isCopying || !nMeta.prompt}
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  copyToA1111(image);
+                }}
+                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
                 className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
               >
-                {isCopying ? (
+                {isCopying && canUseA1111 ? (
                   <>
                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -750,6 +773,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <>
                     <Clipboard className="w-3 h-3" />
                     <span>Copy Parameters</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
               </button>

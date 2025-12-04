@@ -4,7 +4,9 @@ import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import ProBadge from './ProBadge';
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -50,6 +52,9 @@ const ImagePreviewSidebar: React.FC = () => {
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+
+  // Feature access (license/trial gating)
+  const { canUseA1111, showProModal, initialized } = useFeatureAccess();
 
   useEffect(() => {
     let isMounted = true;
@@ -329,11 +334,17 @@ const ImagePreviewSidebar: React.FC = () => {
             <div className="mt-4 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
-                onClick={() => setIsGenerateModalOpen(true)}
-                disabled={!nMeta.prompt}
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  setIsGenerateModalOpen(true);
+                }}
+                disabled={canUseA1111 && !nMeta.prompt}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
-                {isGenerating ? (
+                {isGenerating && canUseA1111 ? (
                   <>
                     <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -345,17 +356,24 @@ const ImagePreviewSidebar: React.FC = () => {
                   <>
                     <Sparkles className="w-4 h-4" />
                     <span>Generate Variation</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
               </button>
 
               {/* Utility Button: Copy to A1111 */}
               <button
-                onClick={() => copyToA1111(previewImage)}
-                disabled={isCopying || !nMeta.prompt}
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  copyToA1111(previewImage);
+                }}
+                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
                 className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
               >
-                {isCopying ? (
+                {isCopying && canUseA1111 ? (
                   <>
                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -367,6 +385,7 @@ const ImagePreviewSidebar: React.FC = () => {
                   <>
                     <Clipboard className="w-3 h-3" />
                     <span>Copy Parameters</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
               </button>

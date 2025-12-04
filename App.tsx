@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
 import { X } from 'lucide-react';
 
@@ -24,6 +26,7 @@ import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
+import ProOnlyModal from './components/ProOnlyModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
@@ -118,6 +121,9 @@ export default function App() {
     setIsSettingsModalOpen,
   });
 
+  // --- License/Trial Hook ---
+  const { proModalOpen, proModalFeature, closeProModal, isTrialActive, trialDaysRemaining } = useFeatureAccess();
+
   const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
     setSettingsTab(tab);
     setIsSettingsModalOpen(true);
@@ -140,6 +146,26 @@ export default function App() {
       loadAnnotations();
     }
   }, [loadAnnotations, isAnnotationsLoaded]);
+
+  // Initialize license and activate trial on first launch
+  useEffect(() => {
+    const initializeLicense = async () => {
+      // 1. Rehydrate Zustand store from persistent storage
+      await useLicenseStore.persist.rehydrate();
+      const licenseState = useLicenseStore.getState();
+
+      // 2. Activate trial if first time
+      if (!licenseState.trialActivated) {
+        licenseState.activateTrial();
+        console.log('✅ Trial de 7 dias ativado!');
+      } else {
+        // 3. Check status if already activated before
+        licenseState.checkLicenseStatus();
+      }
+    };
+
+    initializeLicense();
+  }, []);
 
   // --- Effects ---
   useEffect(() => {
@@ -554,6 +580,14 @@ export default function App() {
         <Analytics
           isOpen={isAnalyticsOpen}
           onClose={() => setIsAnalyticsOpen(false)}
+        />
+
+        <ProOnlyModal
+          isOpen={proModalOpen}
+          onClose={closeProModal}
+          feature={proModalFeature}
+          isTrialActive={isTrialActive}
+          daysRemaining={trialDaysRemaining}
         />
       </div>
     </div>

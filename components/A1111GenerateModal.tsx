@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { IndexedImage } from '../types';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import hotkeyManager from '../services/hotkeyManager';
 
 interface A1111GenerateModalProps {
@@ -28,6 +29,9 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   onGenerate,
   isGenerating,
 }) => {
+  // Feature access safety check
+  const { canUseA1111 } = useFeatureAccess();
+
   const [params, setParams] = useState<GenerationParams>({
     prompt: '',
     negativePrompt: '',
@@ -104,6 +108,12 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   };
 
   if (!isOpen) {
+    return null;
+  }
+
+  // Safety check: Don't render if feature is not available
+  if (!canUseA1111) {
+    console.warn('[IMH] A1111GenerateModal accessed without permission');
     return null;
   }
 
