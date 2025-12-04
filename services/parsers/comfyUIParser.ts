@@ -204,39 +204,48 @@ function extractAdvancedModel(node: ParserNode | null, graph: Graph): string | n
     return null;
   }
 
-  // Try model_name from inputs
+  // FIRST: Traverse to source nodes (CheckpointLoader) via model connections
+  // This ensures we follow the chain: LoraLoader -> LoraLoader -> CheckpointLoader
+  if (node.inputs?.model && Array.isArray(node.inputs.model)) {
+    const [sourceId] = node.inputs.model;
+    const sourceNode = graph[sourceId];
+    if (sourceNode) {
+      const sourceModel = extractAdvancedModel(sourceNode, graph);
+      if (sourceModel) {
+        return sourceModel;
+      }
+    }
+  }
+
+  // SECOND: Try direct input values (for nodes that have model_name/ckpt_name in inputs)
   if (typeof node.inputs?.model_name === 'string') {
     return node.inputs.model_name;
   }
-  
+
   if (typeof node.inputs?.ckpt_name === 'string') {
     return node.inputs.ckpt_name;
   }
-  
-  // Try widgets_values for model name (string ending in .safetensors or .ckpt)
-  if (Array.isArray(node.widgets_values)) {
+
+  // THIRD: Try widgets_values for model name (only for CheckpointLoader-type nodes)
+  // Check if this is a checkpoint loader node to avoid picking up LoRA names
+  const isCheckpointLoader = node.class_type?.toLowerCase().includes('checkpoint') ||
+                             node.class_type?.toLowerCase().includes('unet') ||
+                             node.class_type === 'CheckpointLoaderSimple';
+
+  if (isCheckpointLoader && Array.isArray(node.widgets_values)) {
     for (const value of node.widgets_values) {
       if (typeof value === 'string' && (value.endsWith('.safetensors') || value.endsWith('.ckpt') || value.endsWith('.pt'))) {
         return value;
       }
     }
   }
-  
-  // Try model hash fallback
+
+  // LAST: Try model hash fallback
   const hashMatch = JSON.stringify(node).match(/"(?:model_hash|hash)"\s*:\s*"([0-9a-fA-F]{8,})"/);
   if (hashMatch) {
     return `unknown (hash: ${hashMatch[1].substring(0, 8)})`;
   }
-  
-  // Traverse to CheckpointLoaderSimple or similar
-  if (node.inputs?.model && Array.isArray(node.inputs.model)) {
-    const [sourceId] = node.inputs.model;
-    const sourceNode = graph[sourceId];
-    if (sourceNode) {
-      return extractAdvancedModel(sourceNode, graph);
-    }
-  }
-  
+
   return null;
 }
 

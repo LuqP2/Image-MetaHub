@@ -1034,5 +1034,224 @@ String: {
     { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING+' },
     { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING-' }
   ]
+},
+
+// --- CUSTOM SAMPLER NODES ---
+SamplerCustom: {
+  category: 'SAMPLING',
+  roles: ['SINK'],
+  inputs: {
+    model: { type: 'MODEL' },
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    sampler: { type: 'SAMPLER' },
+    sigmas: { type: 'SIGMAS' },
+    latent_image: { type: 'LATENT' }
+  },
+  outputs: {
+    output: { type: 'LATENT' },
+    denoised_output: { type: 'LATENT' }
+  },
+  param_mapping: {
+    seed: { source: 'widget', key: 'noise_seed' },
+    cfg: { source: 'widget', key: 'cfg' },
+    sampler_name: { source: 'trace', input: 'sampler' },
+    scheduler: { source: 'trace', input: 'sigmas' },
+    steps: { source: 'trace', input: 'sigmas' },
+    denoise: { source: 'trace', input: 'sigmas' },
+    model: { source: 'trace', input: 'model' },
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' }
+  },
+  widget_order: ['add_noise', 'noise_seed', 'seed_mode', 'cfg']
+},
+
+AlignYourStepsScheduler: {
+  category: 'UTILS',
+  roles: ['TRANSFORM'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    SIGMAS: { type: 'SIGMAS' }
+  },
+  param_mapping: {
+    steps: { source: 'widget', key: 'steps' },
+    denoise: { source: 'widget', key: 'denoise' }
+  },
+  widget_order: ['model_type', 'steps', 'denoise']
+},
+
+PerturbedAttention: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['scale', 'adaptive_scale', 'unet_block', 'unet_block_id', 'sigma_start', 'sigma_end', 'rescale', 'rescale_mode', 'unet_block_list'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+'Automatic CFG': {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['hard_mode', 'boost'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+TiledDiffusion: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['method', 'tile_width', 'tile_height', 'tile_overlap', 'tile_batch_size'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+FreeU_V2: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['b1', 'b2', 's1', 's2'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+VAEEncodeTiled: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    pixels: { type: 'IMAGE' },
+    vae: { type: 'VAE' }
+  },
+  outputs: {
+    LATENT: { type: 'LATENT' }
+  },
+  param_mapping: {
+    vae: { source: 'trace', input: 'vae' }
+  },
+  widget_order: ['tile_size']
+},
+
+VAEDecodeTiled: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    samples: { type: 'LATENT' },
+    vae: { type: 'VAE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {
+    vae: { source: 'trace', input: 'vae' }
+  },
+  widget_order: ['tile_size']
+},
+
+ControlNetLoader: {
+  category: 'LOADING',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: {
+    CONTROL_NET: { type: 'CONTROL_NET' }
+  },
+  param_mapping: {},
+  widget_order: ['control_net_name']
+},
+
+ControlNetApplyAdvanced: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    control_net: { type: 'CONTROL_NET' },
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' }
+  },
+  widget_order: ['strength', 'start_percent', 'end_percent']
+},
+
+ImageScaleBy: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {},
+  widget_order: ['upscale_method', 'scale_by']
+},
+
+FilmGrain: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {},
+  widget_order: ['intensity', 'scale', 'temperature', 'vignette']
+},
+
+'Image Comparer (rgthree)': {
+  category: 'IO',
+  roles: ['SINK'],
+  inputs: {
+    image_a: { type: 'IMAGE' },
+    image_b: { type: 'IMAGE' }
+  },
+  outputs: {},
+  param_mapping: {},
+  widget_order: []
+},
+
+PrimitiveNode: {
+  category: 'UTILS',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: {
+    '*': { type: 'ANY' }
+  },
+  param_mapping: {
+    seed: { source: 'widget', key: 'value' },
+    steps: { source: 'widget', key: 'value' },
+    cfg: { source: 'widget', key: 'value' },
+    denoise: { source: 'widget', key: 'value' }
+  },
+  widget_order: ['value', 'control_after_generate']
 }
 };
