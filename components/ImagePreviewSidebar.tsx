@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, Star, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -37,10 +37,16 @@ const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,
     setPreviewImage,
-    directories
+    directories,
+    toggleFavorite,
+    addTagToImage,
+    removeTagFromImage,
+    availableTags
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -138,6 +144,34 @@ const ImagePreviewSidebar: React.FC = () => {
     });
   };
 
+  // Tag management handlers
+  const handleAddTag = () => {
+    if (!tagInput.trim() || !previewImage) return;
+    addTagToImage(previewImage.id, tagInput);
+    setTagInput('');
+    setShowTagAutocomplete(false);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    if (!previewImage) return;
+    removeTagFromImage(previewImage.id, tag);
+  };
+
+  const handleToggleFavorite = () => {
+    if (!previewImage) return;
+    toggleFavorite(previewImage.id);
+  };
+
+  // Filter autocomplete tags
+  const autocompleteOptions = tagInput && previewImage
+    ? availableTags
+        .filter(tag =>
+          tag.name.includes(tagInput.toLowerCase()) &&
+          !(previewImage.tags || []).includes(tag.name)
+        )
+        .slice(0, 5)
+    : [];
+
   return (
     <div data-area="preview" tabIndex={-1} className="fixed right-0 top-0 h-full w-96 bg-gray-800 border-l border-gray-700 z-40 flex flex-col">
       {/* Header */}
@@ -163,6 +197,106 @@ const ImagePreviewSidebar: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
           <p className="text-xs text-blue-400 font-mono break-all">{new Date(previewImage.lastModified).toLocaleString()}</p>
+        </div>
+
+        {/* Annotations Section */}
+        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
+          {/* Favorite and Tags Row */}
+          <div className="flex items-start gap-3">
+            {/* Favorite Star - Discrete */}
+            <button
+              onClick={handleToggleFavorite}
+              className={`p-1.5 rounded transition-all ${
+                previewImage.isFavorite
+                  ? 'text-yellow-400 hover:text-yellow-300'
+                  : 'text-gray-500 hover:text-yellow-400'
+              }`}
+              title={previewImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star className={`w-5 h-5 ${previewImage.isFavorite ? 'fill-current' : ''}`} />
+            </button>
+
+            {/* Tags Pills */}
+            <div className="flex-1 space-y-2">
+              {/* Current Tags */}
+              {previewImage.tags && previewImage.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {previewImage.tags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleRemoveTag(tag)}
+                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                      title="Click to remove"
+                    >
+                      {tag}
+                      <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Tag Input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Add tag..."
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setShowTagAutocomplete(e.target.value.length > 0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                    if (e.key === 'Escape') {
+                      setTagInput('');
+                      setShowTagAutocomplete(false);
+                    }
+                  }}
+                  onFocus={() => tagInput && setShowTagAutocomplete(true)}
+                  onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
+                  className="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                />
+
+                {/* Autocomplete Dropdown */}
+                {showTagAutocomplete && autocompleteOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                    {autocompleteOptions.map(tag => (
+                      <button
+                        key={tag.name}
+                        onClick={() => {
+                          addTagToImage(previewImage.id, tag.name);
+                          setTagInput('');
+                          setShowTagAutocomplete(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                      >
+                        <span>{tag.name}</span>
+                        <span className="text-xs text-gray-500">({tag.count})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tag Suggestions */}
+              {(!previewImage.tags || previewImage.tags.length === 0) && availableTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {availableTags.slice(0, 5).map(tag => (
+                    <button
+                      key={tag.name}
+                      onClick={() => addTagToImage(previewImage.id, tag.name)}
+                      className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {nMeta ? (
