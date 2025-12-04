@@ -155,37 +155,61 @@ export async function loadAllAnnotations(): Promise<Map<string, ImageAnnotations
     return new Map(inMemoryAnnotations);
   }
 
-  return new Promise((resolve) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
 
-    const close = () => {
+      const close = () => {
+        try {
+          db.close();
+        } catch (error) {
+          console.warn('Failed to close image annotations storage after load', error);
+        }
+      };
+
+      transaction.oncomplete = close;
+      transaction.onabort = close;
+      transaction.onerror = close;
+
+      request.onsuccess = () => {
+        const results = request.result as ImageAnnotations[];
+        inMemoryAnnotations.clear();
+        for (const annotation of results) {
+          inMemoryAnnotations.set(annotation.imageId, annotation);
+        }
+        resolve(new Map(inMemoryAnnotations));
+      };
+
+      request.onerror = () => {
+        console.error('Failed to load image annotations', request.error);
+        reject(request.error);
+      };
+    });
+  } catch (error) {
+    const errorName = getErrorName(error);
+
+    // If the object store doesn't exist, reset the database and retry once
+    if (errorName === 'NotFoundError' && !hasResetAttempted) {
+      console.warn('Image annotations store not found. Resetting database...', error);
       try {
         db.close();
-      } catch (error) {
-        console.warn('Failed to close image annotations storage after load', error);
+      } catch (closeError) {
+        console.warn('Failed to close database before reset', closeError);
       }
-    };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
-
-    request.onsuccess = () => {
-      const results = request.result as ImageAnnotations[];
-      inMemoryAnnotations.clear();
-      for (const annotation of results) {
-        inMemoryAnnotations.set(annotation.imageId, annotation);
+      hasResetAttempted = true;
+      const resetSuccessful = await deleteDatabase();
+      if (resetSuccessful) {
+        return loadAllAnnotations();
       }
-      resolve(new Map(inMemoryAnnotations));
-    };
+    }
 
-    request.onerror = () => {
-      console.error('Failed to load image annotations', request.error);
-      resolve(new Map(inMemoryAnnotations));
-    };
-  });
+    console.error('Failed to load image annotations from IndexedDB:', error);
+    disablePersistence(error);
+    return new Map(inMemoryAnnotations);
+  }
 }
 
 /**
