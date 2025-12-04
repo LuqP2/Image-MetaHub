@@ -275,6 +275,16 @@ export const useImageStore = create<ImageState>((set, get) => {
     // --- Throttle map to prevent excessive setImageThumbnail calls ---
     const thumbnailUpdateTimestamps = new Map<string, { count: number; lastUpdate: number }>();
     const thumbnailUpdateInProgress = new Set<string>();
+    const lastThumbnailState = new Map<string, {
+        url: string | undefined;
+        handle: FileSystemFileHandle | undefined;
+        status: ThumbnailStatus;
+        error: string | null | undefined;
+    }>();
+
+    const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
+        return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
+    };
 
     // --- Helper function to recalculate available filters from visible images ---
     const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
@@ -840,27 +850,42 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setImageThumbnail: (imageId, data) => {
             const preState = get();
-            const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
-            const preImage = findImage(preState.images) || findImage(preState.filteredImages);
+            const preImage = getImageById(preState, imageId);
 
             if (!preImage) {
                 return;
             }
 
-            const nextThumbnailUrl = data.thumbnailUrl !== undefined ? data.thumbnailUrl : preImage.thumbnailUrl;
-            const nextThumbnailHandle = data.thumbnailHandle !== undefined ? data.thumbnailHandle : preImage.thumbnailHandle;
+            const nextThumbnailUrl = data.thumbnailUrl ?? preImage.thumbnailUrl;
+            const nextThumbnailHandle = data.thumbnailHandle ?? preImage.thumbnailHandle;
             const nextThumbnailStatus = data.status;
-            const nextThumbnailError = data.error !== undefined ? data.error : (data.status === 'error'
+            const nextThumbnailError = data.error ?? (data.status === 'error'
                 ? 'Failed to load thumbnail'
                 : preImage.thumbnailError);
 
-            // Avoid calling Zustand set if nothing actually changed
+            const lastState = lastThumbnailState.get(imageId);
+            if (
+                lastState &&
+                lastState.url === nextThumbnailUrl &&
+                lastState.handle === nextThumbnailHandle &&
+                lastState.status === nextThumbnailStatus &&
+                lastState.error === nextThumbnailError
+            ) {
+                return; // Identical to last applied payload
+            }
+
             if (
                 preImage.thumbnailUrl === nextThumbnailUrl &&
                 preImage.thumbnailHandle === nextThumbnailHandle &&
                 preImage.thumbnailStatus === nextThumbnailStatus &&
                 preImage.thumbnailError === nextThumbnailError
             ) {
+                lastThumbnailState.set(imageId, {
+                    url: nextThumbnailUrl,
+                    handle: nextThumbnailHandle,
+                    status: nextThumbnailStatus,
+                    error: nextThumbnailError,
+                });
                 return;
             }
 
@@ -876,7 +901,6 @@ export const useImageStore = create<ImageState>((set, get) => {
                     const now = Date.now();
                     const stats = thumbnailUpdateTimestamps.get(imageId) || { count: 0, lastUpdate: now };
 
-                    // Reset counter if more than 1 second has passed
                     if (now - stats.lastUpdate > 1000) {
                         stats.count = 0;
                         stats.lastUpdate = now;
@@ -885,27 +909,24 @@ export const useImageStore = create<ImageState>((set, get) => {
                     stats.count++;
                     thumbnailUpdateTimestamps.set(imageId, stats);
 
-                    // If too many updates in 1 second, block and warn
                     if (stats.count > 10) {
                         console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
                         return state;
                     }
 
-                    const findImage = (list: IndexedImage[]) => list.find(img => img.id === imageId);
-                    const currentImage = findImage(state.images) || findImage(state.filteredImages);
+                    const currentImage = getImageById(state, imageId);
 
                     if (!currentImage) {
                         return state;
                     }
 
-                    const nextThumbnailUrl = data.thumbnailUrl !== undefined ? data.thumbnailUrl : currentImage.thumbnailUrl;
-                    const nextThumbnailHandle = data.thumbnailHandle !== undefined ? data.thumbnailHandle : currentImage.thumbnailHandle;
+                    const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
+                    const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
                     const nextThumbnailStatus = data.status;
-                    const nextThumbnailError = data.error !== undefined ? data.error : (data.status === 'error'
+                    const nextThumbnailError = data.error ?? (data.status === 'error'
                         ? 'Failed to load thumbnail'
                         : currentImage.thumbnailError);
 
-                    // Avoid unnecessary updates that can trigger render loops
                     if (
                         currentImage.thumbnailUrl === nextThumbnailUrl &&
                         currentImage.thumbnailHandle === nextThumbnailHandle &&
@@ -916,26 +937,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                     }
 
                     const updateList = (list: IndexedImage[]) => {
-                        // Check if image exists in this list
                         const index = list.findIndex(img => img.id === imageId);
                         if (index === -1) {
-                            return list; // Image not in this list, return original
+                            return list;
                         }
 
                         const current = list[index];
 
-                        // CRITICAL: Only create new object if values actually changed
-                        // This prevents infinite loops from redundant updates
                         if (
                             current.thumbnailUrl === nextThumbnailUrl &&
                             current.thumbnailHandle === nextThumbnailHandle &&
                             current.thumbnailStatus === nextThumbnailStatus &&
                             current.thumbnailError === nextThumbnailError
                         ) {
-                            return list; // Nothing changed, return same array reference
+                            return list;
                         }
 
-                        // Create new array only if values actually changed
                         const newList = [...list];
                         newList[index] = {
                             ...list[index],
@@ -950,10 +967,16 @@ export const useImageStore = create<ImageState>((set, get) => {
                     const updatedImages = updateList(state.images);
                     const updatedFilteredImages = updateList(state.filteredImages);
 
-                    // Only return new state if something actually changed
                     if (updatedImages === state.images && updatedFilteredImages === state.filteredImages) {
                         return state;
                     }
+
+                    lastThumbnailState.set(imageId, {
+                        url: nextThumbnailUrl,
+                        handle: nextThumbnailHandle,
+                        status: nextThumbnailStatus,
+                        error: nextThumbnailError,
+                    });
 
                     return {
                         ...state,
