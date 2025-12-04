@@ -496,16 +496,6 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
-  // DEBUG: Log raw metadata for SwarmUI detection
-  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string' &&
-      rawMetadata.parameters.includes('sui_image_params')) {
-    if (!isProduction) {
-      console.log('[SwarmUI DEBUG] Found sui_image_params in parameters:', {
-        fileName: fileEntry.handle.name,
-        parametersPreview: rawMetadata.parameters.substring(0, 200),
-      });
-    }
-  }
   
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
   if (isComfyUIMetadata(rawMetadata)) {
@@ -549,15 +539,9 @@ if (rawMetadata) {
       try {
         const parsedParams = JSON.parse(params);
         if (parsedParams.sui_image_params) {
-          if (!isProduction) {
-            console.log('[SwarmUI PNG] Detected SwarmUI metadata in parameters field:', fileEntry.handle.name);
-          }
           normalizedMetadata = parseSwarmUIMetadata(parsedParams as SwarmUIMetadata);
         }
-      } catch (error) {
-        if (!isProduction) {
-          console.warn('[SwarmUI PNG] Failed to parse SwarmUI JSON:', error);
-        }
+      } catch {
         // Not valid SwarmUI JSON, continue with other checks
       }
     }
