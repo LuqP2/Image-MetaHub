@@ -37,7 +37,6 @@ export default function App() {
 
   // --- Zustand Store State ---
   const {
-    images,
     filteredImages,
     selectionTotalImages,
     selectionDirectoryCount,
@@ -195,24 +194,26 @@ export default function App() {
         path = undefined;
       }
       await cacheManager.init();
-      
+
       // Validate cached images have valid file handles (for hot reload scenarios in browser)
       // Note: In Electron, mock handles are created with proper getFile() implementation
       const isElectron = typeof window !== 'undefined' && window.electronAPI;
-      if (!isElectron && images.length > 0) {
-        const firstImage = images[0];
+      const currentImages = useImageStore.getState().images;
+
+      if (!isElectron && currentImages.length > 0) {
+        const firstImage = currentImages[0];
         const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
         if (!fileHandle || typeof fileHandle.getFile !== 'function') {
           console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
           resetState();
         }
-      } else if (images.length > 0) {
+      } else if (currentImages.length > 0) {
         // Clean up any invalid images that might have been loaded
         cleanupInvalidImages();
       }
     };
     initializeCache().catch(console.error);
-  }, [images, resetState]);
+  }, []); // ✅ Run only once on mount
 
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {

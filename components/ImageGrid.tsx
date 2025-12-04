@@ -383,7 +383,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         setFocusedImageIndex(index);
       }
     }
-  }, [previewImage?.id, focusedImageIndex]); // Only depend on previewImage.id, not the whole object
+  }, [previewImage?.id]); // ✅ Removed focusedImageIndex to break circular dependency
 
   // Adjust focusedImageIndex when changing pages via arrow keys
   useEffect(() => {
@@ -392,7 +392,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       setFocusedImageIndex(images.length - 1);
       setPreviewImage(images[images.length - 1]);
     }
-  }, [focusedImageIndex, images.length]); // Only depend on images.length, not the whole array
+  }, [images.length]); // ✅ Removed focusedImageIndex to break circular dependency
 
   // Keyboard navigation
   useEffect(() => {

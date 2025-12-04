@@ -306,23 +306,39 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function to apply annotations to images ---
     const applyAnnotationsToImages = (images: IndexedImage[], annotations: Map<string, ImageAnnotations>): IndexedImage[] => {
-        return images.map(img => {
+        let hasChanges = false;
+        const result = images.map(img => {
             const annotation = annotations.get(img.id);
             if (annotation) {
-                return {
-                    ...img,
-                    isFavorite: annotation.isFavorite,
-                    tags: annotation.tags,
-                };
+                // Check if annotation values are different from current image values
+                const isFavoriteChanged = img.isFavorite !== annotation.isFavorite;
+                const tagsChanged = JSON.stringify(img.tags || []) !== JSON.stringify(annotation.tags);
+
+                if (isFavoriteChanged || tagsChanged) {
+                    hasChanges = true;
+                    return {
+                        ...img,
+                        isFavorite: annotation.isFavorite,
+                        tags: annotation.tags,
+                    };
+                }
             }
             return img;
         });
+
+        // Only return new array if there were actual changes
+        return hasChanges ? result : images;
     };
 
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
         // Apply annotations to new images
         const imagesWithAnnotations = applyAnnotationsToImages(newImages, currentState.annotations);
+
+        // Early return if images didn't change (prevents unnecessary recalculations)
+        if (imagesWithAnnotations === currentState.images) {
+            return currentState;
+        }
 
         const newState: Partial<ImageState> = {
             images: imagesWithAnnotations,
@@ -827,12 +843,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return state;
                 }
 
-                const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
-                const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
+                const nextThumbnailUrl = data.thumbnailUrl !== undefined ? data.thumbnailUrl : currentImage.thumbnailUrl;
+                const nextThumbnailHandle = data.thumbnailHandle !== undefined ? data.thumbnailHandle : currentImage.thumbnailHandle;
                 const nextThumbnailStatus = data.status;
-                const nextThumbnailError = data.error ?? (data.status === 'error'
-                    ? (data.error ?? 'Failed to load thumbnail')
-                    : null);
+                const nextThumbnailError = data.error !== undefined ? data.error : (data.status === 'error'
+                    ? 'Failed to load thumbnail'
+                    : currentImage.thumbnailError);
 
                 // Avoid unnecessary updates that can trigger render loops
                 if (
@@ -844,23 +860,37 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return state;
                 }
 
-                const updateList = (list: IndexedImage[]) => list.map(img => {
-                    if (img.id !== imageId) {
-                        return img;
+                const updateList = (list: IndexedImage[]) => {
+                    // Check if image exists in this list
+                    const index = list.findIndex(img => img.id === imageId);
+                    if (index === -1) {
+                        return list; // Image not in this list, return original
                     }
-                    return {
-                        ...img,
+
+                    // Create new array only if image exists
+                    const newList = [...list];
+                    newList[index] = {
+                        ...list[index],
                         thumbnailUrl: nextThumbnailUrl,
                         thumbnailHandle: nextThumbnailHandle,
                         thumbnailStatus: nextThumbnailStatus,
                         thumbnailError: nextThumbnailError,
                     };
-                });
+                    return newList;
+                };
+
+                const updatedImages = updateList(state.images);
+                const updatedFilteredImages = updateList(state.filteredImages);
+
+                // Only return new state if something actually changed
+                if (updatedImages === state.images && updatedFilteredImages === state.filteredImages) {
+                    return state;
+                }
 
                 return {
                     ...state,
-                    images: updateList(state.images),
-                    filteredImages: updateList(state.filteredImages),
+                    images: updatedImages,
+                    filteredImages: updatedFilteredImages,
                 };
             });
         },
