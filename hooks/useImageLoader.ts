@@ -163,6 +163,17 @@ async function getFileHandles(
                             const lowerName = file.name.toLowerCase();
                             const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
                             return new File([freshData as any], file.name, { type });
+                        } else {
+                            // Only log non-file-not-found errors to reduce console noise
+                            if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
+                                console.error(`Failed to read file: ${file.name}`, {
+                                    error: fileResult.error,
+                                    errorType: fileResult.errorType,
+                                    errorCode: fileResult.errorCode,
+                                    path: filePath
+                                });
+                            }
+                            throw new Error(`Failed to read file: ${file.name}`);
                         }
                     }
                     throw new Error(`Failed to read file: ${filePath}`);
@@ -402,6 +413,17 @@ export function useImageLoader() {
                                         const lowerName = meta.name.toLowerCase();
                                         const type = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
                                         return new File([freshData as any], meta.name, { type });
+                                    } else {
+                                        // Only log non-file-not-found errors to reduce console noise
+                                        if (fileResult.errorType && fileResult.errorType !== 'FILE_NOT_FOUND') {
+                                            console.error(`Failed to read file: ${meta.name}`, {
+                                                error: fileResult.error,
+                                                errorType: fileResult.errorType,
+                                                errorCode: fileResult.errorCode,
+                                                path: filePath
+                                            });
+                                        }
+                                        throw new Error(`Failed to read file: ${meta.name}`);
                                     }
                                 }
                                 throw new Error(`Failed to read file: ${meta.name}`);

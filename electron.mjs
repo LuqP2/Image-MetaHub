@@ -9,6 +9,7 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -899,9 +900,24 @@ function setupFileOperationHandlers() {
 
   // --- Thumbnail Cache IPC Handlers ---
   const getThumbnailCachePath = async (thumbnailId) => {
-    const safeId = thumbnailId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
     await fs.mkdir(cacheDir, { recursive: true });
+
+    // Use MD5 hash for long IDs to avoid Windows MAX_PATH (260 char) limit
+    // Windows path limit includes the full path, not just the filename
+    // Reserve ~100 chars for the base path, leaving ~160 for the filename
+    const MAX_FILENAME_LENGTH = 160;
+
+    let safeId;
+    if (thumbnailId.length > MAX_FILENAME_LENGTH) {
+      // Use MD5 hash for very long IDs (32 hex chars)
+      const hash = crypto.createHash('md5').update(thumbnailId).digest('hex');
+      safeId = hash;
+    } else {
+      // For shorter IDs, just sanitize special characters
+      safeId = thumbnailId.replace(/[^a-zA-Z0-9-_]/g, '_');
+    }
+
     return path.join(cacheDir, `${safeId}.webp`);
   };
 
@@ -924,7 +940,21 @@ function setupFileOperationHandlers() {
       await fs.writeFile(filePath, data);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      // Log the error with context for debugging
+      const isPathTooLong = error.code === 'ENAMETOOLONG' || error.message?.includes('path too long');
+      const isPermissionError = error.code === 'EACCES' || error.code === 'EPERM';
+
+      if (isPathTooLong) {
+        console.error(`Thumbnail path too long (this should not happen with hashing):`, {
+          thumbnailIdLength: thumbnailId.length,
+          filePathLength: filePath.length,
+          error: error.message
+        });
+      } else if (!isPermissionError) {
+        console.error('Error caching thumbnail:', error);
+      }
+
+      return { success: false, error: error.message, errorCode: error.code };
     }
   });
 
@@ -1291,7 +1321,7 @@ function setupFileOperationHandlers() {
         console.error('  [read-file] Requested path:', filePath);
         console.error('  [read-file] Normalized path:', path.normalize(filePath));
         console.error('  [read-file] Allowed directories:', Array.from(allowedDirectoryPaths));
-        return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
       const data = await fs.readFile(filePath);
@@ -1299,11 +1329,21 @@ function setupFileOperationHandlers() {
 
       return { success: true, data: data };
     } catch (error) {
-      // Only log errors that aren't "file not found" to avoid spam when cache is stale
-      if (!error.message?.includes('ENOENT') && !error.message?.includes('no such file')) {
-        console.error('Error reading file:', error);
+      // Classify the error type for better handling in the frontend
+      const isFileNotFound = error.code === 'ENOENT' || error.message?.includes('no such file');
+      const isPermissionError = error.code === 'EACCES' || error.code === 'EPERM';
+
+      // Only log non-ENOENT errors to avoid spam when cache is stale
+      if (!isFileNotFound) {
+        console.error('Error reading file:', filePath, error);
       }
-      return { success: false, error: error.message };
+
+      return {
+        success: false,
+        error: error.message,
+        errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
+        errorCode: error.code
+      };
     }
   });
 

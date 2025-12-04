@@ -60,9 +60,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         fallbackUrl = URL.createObjectURL(file);
         setImageUrl(fallbackUrl);
       } catch (error) {
-        if (isElectron) {
+        if (!isMounted) return;
+        // Only log non-file-not-found errors to reduce console noise
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (isElectron && !errorMessage.includes('Failed to read file')) {
           console.error('Failed to load image:', error);
         }
+        // Set a special marker to indicate load failure
+        setImageUrl('ERROR');
       }
     };
 
@@ -70,7 +75,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
     return () => {
       isMounted = false;
-      if (fallbackUrl) {
+      if (fallbackUrl && fallbackUrl !== 'ERROR') {
         URL.revokeObjectURL(fallbackUrl);
       }
     };
@@ -165,7 +170,16 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           <Copy className="h-4 w-4" />
         </button>
 
-        {imageUrl ? (
+        {imageUrl === 'ERROR' ? (
+          <div className="w-full h-full flex items-center justify-center bg-gray-900">
+            <div className="text-center text-gray-400 px-4">
+              <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <p className="text-xs">File not found</p>
+            </div>
+          </div>
+        ) : imageUrl ? (
           <img
             src={imageUrl}
             alt={image.name}
