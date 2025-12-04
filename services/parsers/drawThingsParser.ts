@@ -6,7 +6,6 @@ import { BaseMetadata } from '../../types';
  */
 export function parseDrawThingsMetadata(parameters: string, userComment?: string): BaseMetadata {
   const result: Partial<BaseMetadata> = {};
-  console.log('📱 Parsing Draw Things metadata...');
   // Parse JSON from UserComment if available (contains detailed metadata)
   let jsonData: Record<string, unknown> | null = null;
   if (userComment) {
@@ -16,10 +15,9 @@ export function parseDrawThingsMetadata(parameters: string, userComment?: string
       if (jsonStart !== -1) {
         const jsonString = userComment.substring(jsonStart);
         jsonData = JSON.parse(jsonString);
-        console.log('📱 Found JSON metadata in UserComment');
       }
-    } catch (e) {
-      console.log('📱 Failed to parse UserComment JSON, using parameters only');
+    } catch {
+      // Failed to parse UserComment JSON, using parameters only
     }
   }
   // Extract basic parameters from Description field
@@ -59,13 +57,6 @@ export function parseDrawThingsMetadata(parameters: string, userComment?: string
     if (typeof jsonData.model === 'string') result.model = jsonData.model;
     if (typeof jsonData.c === 'string') result.prompt = jsonData.c; // Clean prompt from JSON
   }
-  console.log('✅ Draw Things parsing successful:', {
-    prompt: (result.prompt || positivePrompt || '').substring(0, 50) + '...',
-    model: result.model || model,
-    width,
-    height,
-    hasJson: !!jsonData
-  });
   // Build normalized metadata
   const normalizedResult: BaseMetadata = {
     prompt: result.prompt || positivePrompt || '',
