@@ -40,6 +40,7 @@ For maintainers: See [RELEASE-GUIDE.md](RELEASE-GUIDE.md) for the automated rele
 - **Smart Conditional Rendering:** Tags & Favorites section only appears when current folder contains tagged or favorited images
 
 **Enhanced User Experience**
+- **Multiple Themes & Light Mode:** Choose from multiple color schemes including light mode for bright environments and multiple dark themes with persistent theme preference
 - **Side-by-Side Image Comparison:** Compare images with synchronized zoom/pan, collapsible metadata panels, and keyboard shortcuts (perfect for comparing upscalers, checkpoints, or samplers)
 - **Enhanced Image Selection:** Multiple selection methods including drag-to-select boxes, clickable checkboxes, and traditional Ctrl+Click/Shift+Click
 - **Right Sidebar Preview:** Hover over thumbnails to see instant preview with metadata in a collapsible right sidebar

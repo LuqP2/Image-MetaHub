@@ -70,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Auto-load annotations on app startup
   - Denormalization pattern: annotations stored separately but copied to `IndexedImage` for optimal read performance
 
+- **Multiple Themes & Light Mode**: Comprehensive theming system with multiple color schemes:
+  - Light mode for bright environments with optimized contrast and readability
+  - Multiple dark themes including the original dark theme and alternative dark variants
+  - Theme switcher in settings for easy switching between themes
+  - Persistent theme preference stored locally
+  - All UI components adapted to support multiple themes seamlessly
+
 ### Technical Improvements
 
 - Created `services/imageAnnotationsStorage.ts` following established storage patterns from `folderSelectionStorage.ts`
