@@ -36,48 +36,31 @@ export const useFeatureAccess = () => {
   const devOverride = typeof window !== 'undefined' &&
                      localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
 
-  // Fallback during initialization - allow all features to avoid race conditions
-  if (!licenseStore.initialized) {
-    return {
-      // Feature flags - allow everything during init to avoid flickering
-      canUseA1111: true,
-      canUseComparison: true,
-      canUseAnalytics: true,
-
-      // Status
-      isTrialActive: false,
-      isExpired: false,
-      isPro: false,
-      initialized: false,
-
-      // Trial info
-      trialDaysRemaining: 0,
-
-      // Modal control (don't show modal during init)
-      proModalOpen: false,
-      proModalFeature: 'a1111' as ProFeature,
-      showProModal: () => {},
-      closeProModal: () => {},
-    };
-  }
+  const isInitialized = licenseStore.initialized;
 
   // Compute status (CENTRALIZED LOGIC HERE!)
   const isPro = devOverride ||
-                licenseStore.licenseStatus === 'pro' ||
-                licenseStore.licenseStatus === 'lifetime';
+                (isInitialized && (licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime'));
 
-  const isTrialActive = licenseStore.licenseStatus === 'trial' &&
+  const isTrialActive = isInitialized &&
+                        licenseStore.licenseStatus === 'trial' &&
                         !isTrialExpired(licenseStore.trialStartDate);
 
-  const isExpired = licenseStore.licenseStatus === 'expired';
+  const isExpired = isInitialized && licenseStore.licenseStatus === 'expired';
+
+  // During initialization, keep features open to avoid flicker
+  const allowDuringInit = !isInitialized || devOverride;
+  const canUseDuringTrialOrPro = isPro || isTrialActive;
 
   // Feature flags (all Pro features have same access requirements)
-  const canUseA1111 = isPro || isTrialActive;
-  const canUseComparison = isPro || isTrialActive;
-  const canUseAnalytics = isPro || isTrialActive;
+  const canUseA1111 = allowDuringInit || canUseDuringTrialOrPro;
+  const canUseComparison = allowDuringInit || canUseDuringTrialOrPro;
+  const canUseAnalytics = allowDuringInit || canUseDuringTrialOrPro;
 
   // Trial countdown
-  const trialDaysRemaining = calculateDaysRemaining(licenseStore.trialStartDate);
+  const trialDaysRemaining = isInitialized
+    ? calculateDaysRemaining(licenseStore.trialStartDate)
+    : 0;
 
   // Modal control
   const showProModal = (feature: ProFeature) => {

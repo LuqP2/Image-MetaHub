@@ -74,7 +74,6 @@ export default function App() {
     toggleDirectoryVisibility,
     setFolderSelectionState,
     getFolderSelectionState,
-    initializeFolderSelection,
     resetState,
     setSuccess,
     setError,
@@ -83,11 +82,16 @@ export default function App() {
     cleanupInvalidImages,
     isComparisonModalOpen,
     closeComparisonModal,
-    loadAnnotations,
     isAnnotationsLoaded,
+    initializeFolderSelection,
+    loadAnnotations,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+
+  const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
+  const safeDirectories = Array.isArray(directories) ? directories : [];
+  const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
 
   // --- Settings Store State ---
   const {
@@ -246,7 +250,7 @@ export default function App() {
     try {
       
       // Check if directory already exists in the store
-      const existingDir = directories.find(d => d.path === path);
+      const existingDir = safeDirectories.find(d => d.path === path);
       if (existingDir) {
         return;
       }
@@ -271,13 +275,13 @@ export default function App() {
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [loadDirectory, directories]);
+  }, [loadDirectory, safeDirectories]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
-    // The hook is memoized, so this will only run once on mount
+    // Only run once on mount
     handleLoadFromStorage();
-  }, [handleLoadFromStorage]);
+  }, []);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
@@ -361,19 +365,19 @@ export default function App() {
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
-    const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
+    const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [filteredImages.length, itemsPerPage, currentPage]);
+  }, [safeFilteredImages.length, itemsPerPage, currentPage]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
-    if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
+    if (selectedImage && !safeDirectories.find(d => d.id === selectedImage.directoryId)) {
       console.warn('Selected image directory no longer exists, clearing selection');
       setSelectedImage(null);
     }
-  }, [selectedImage, directories, setSelectedImage]);
+  }, [selectedImage, safeDirectories, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
@@ -388,8 +392,8 @@ export default function App() {
 
   const getCurrentImageIndex = useCallback(() => {
     if (!selectedImage) return 0;
-    return filteredImages.findIndex(img => img.id === selectedImage.id);
-  }, [selectedImage, filteredImages]);
+    return safeFilteredImages.findIndex(img => img.id === selectedImage.id);
+  }, [selectedImage, safeFilteredImages]);
 
   // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
   const handleCloseImageModal = useCallback(() => {
@@ -406,12 +410,12 @@ export default function App() {
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
-    () => filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
-    [filteredImages, currentPage, itemsPerPage]
+    () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    [safeFilteredImages, currentPage, itemsPerPage]
   );
-  const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
-  const hasDirectories = directories.length > 0;
-  const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
+  const hasDirectories = safeDirectories.length > 0;
+  const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
@@ -469,7 +473,7 @@ export default function App() {
           onSortOrderChange={imageStoreSetSortOrder}
         >
           <DirectoryList
-            directories={directories}
+            directories={safeDirectories}
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
@@ -521,7 +525,7 @@ export default function App() {
                     <ImageGrid
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
-                      selectedImages={selectedImages}
+                      selectedImages={safeSelectedImages}
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
@@ -530,7 +534,7 @@ export default function App() {
                     <ImageTable
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
-                      selectedImages={selectedImages}
+                      selectedImages={safeSelectedImages}
                     />
                 )}
               </div>
@@ -541,12 +545,12 @@ export default function App() {
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
-                selectedCount={selectedImages.size}
+                selectedCount={safeSelectedImages.size}
                 onClearSelection={clearSelection}
                 onDeleteSelected={handleDeleteSelectedImages}
                 viewMode={viewMode}
                 onViewModeChange={toggleViewMode}
-                filteredCount={filteredImages.length}
+                filteredCount={safeFilteredImages.length}
                 totalCount={selectionTotalImages}
                 directoryCount={selectionDirectoryCount}
                 enrichmentProgress={enrichmentProgress}
@@ -563,7 +567,7 @@ export default function App() {
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
-            totalImages={filteredImages.length}
+            totalImages={safeFilteredImages.length}
             onNavigateNext={handleImageModalNavigateNext}
             onNavigatePrevious={handleImageModalNavigatePrevious}
             directoryPath={directoryPath}

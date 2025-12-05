@@ -12,8 +12,8 @@ export interface ElectronAPI {
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[];
     error?: string;
   }>;
-  readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
-  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
+  readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
+  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   getSettings: () => Promise<any>;
@@ -32,7 +32,7 @@ export interface ElectronAPI {
   finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
-  cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
+  cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
