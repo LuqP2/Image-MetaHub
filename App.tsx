@@ -113,7 +113,7 @@ export default function App() {
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState<string>('0.9.6-rc');
+  const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -303,7 +303,7 @@ export default function App() {
       // Wait for Zustand persistence to rehydrate
       await useSettingsStore.persist.rehydrate();
 
-      let version = '0.9.6-rc'; // Default fallback version
+      let version = '0.10.0'; // Default fallback version
 
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
