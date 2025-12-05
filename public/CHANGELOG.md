@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
+  - "Generate Variation" button in ImageModal and ImagePreviewSidebar
+  - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
+  - Support for both fixed and random seed generation
+  - Real-time generation status feedback and progress tracking
+  - Seamless workflow: browse images → customize parameters → generate variations directly within the app
+  - Transforms Image MetaHub from a viewer/organizer into a complete AI image generation workflow tool
+  - Real-time progress tracking in footer with polling of A1111's `/sdapi/v1/progress` endpoint every 500ms for live updates
+  - Shows total batch progress (e.g., "2/3" for batch generations, "67%" for single images)
+  - Green-themed progress indicator distinct from blue enrichment progress
+  - Automatically clears 2 seconds after generation completes
+  - Progress bar persistent across all app navigation
+  - Resizable prompt fields: Generate Variation modal prompt textareas support vertical resizing by dragging the bottom-right corner for better handling of long prompts
+
 - **Tags System**: Comprehensive tagging system for organizing and filtering images:
   - Add custom tags to images with lowercase normalization to prevent duplicates
   - Tag filtering with OR logic (matches ANY selected tag) consistent with model/LoRA filters
@@ -27,15 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Yellow star icon with fill state for visual feedback
   - Bulk favorite operations for marking multiple images at once
   - Persistent favorite status across folder reloads
-
-- **Smart Conditional Rendering**: Tags & Favorites sidebar section only appears when current folder contains tagged or favorited images, keeping UI clean and relevant
-
-- **IndexedDB Persistence**: Upgraded IndexedDB to v2 with new `imageAnnotations` store:
-  - Separate storage for user annotations (favorites, tags) independent of metadata
-  - Multi-entry index on tags for efficient tag-based queries
-  - Index on `isFavorite` for fast favorite filtering
-  - Auto-load annotations on app startup
-  - Denormalization pattern: annotations stored separately but copied to `IndexedImage` for optimal read performance
 
 - **Side-by-Side Image Comparison**: Professional comparison tool for analyzing image quality differences:
   - Compare 2 images side-by-side with synchronized zoom and pan controls
@@ -56,27 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maintains existing Ctrl+Click and Shift+Click selection methods
   - Visual feedback with blue checkmark icon when images are selected
 
-- **A1111 Image Generation Integration**: Revolutionary new feature that enables direct image generation from Image MetaHub using Automatic1111 API:
-  - "Generate Variation" button in ImageModal and ImagePreviewSidebar
-  - Full-featured generation modal with editable prompts, negative prompts, CFG Scale, Steps, and Seed control
-  - Support for both fixed and random seed generation
-  - Real-time generation status feedback and progress tracking
-  - Seamless workflow: browse images → customize parameters → generate variations directly within the app
-  - Transforms Image MetaHub from a viewer/organizer into a complete AI image generation workflow tool
+- **Smart Conditional Rendering**: Tags & Favorites sidebar section only appears when current folder contains tagged or favorited images, keeping UI clean and relevant
 
-- **A1111 Generation Progress Bar**: Real-time progress tracking in footer when generating images with A1111 integration:
-  - Polls A1111's `/sdapi/v1/progress` endpoint every 500ms for live updates
-  - Shows total batch progress (e.g., "2/3" for batch generations, "67%" for single images)
-  - Green-themed progress indicator distinct from blue enrichment progress
-  - Automatically clears 2 seconds after generation completes
-  - Persistent across all app navigation
-
-- **Resizable Prompt Fields**: Generate Variation modal prompt textareas now support vertical resizing by dragging the bottom-right corner for better handling of long prompts.
-
-### Fixed
-
-- **Annotations Persistence Bug**: Fixed critical issue where favorites and tags were not persisting when closing and reopening folders. Annotations now correctly reapply to images whenever folders are loaded or refreshed.
-- **Conditional Rendering**: Tags & Favorites section now correctly scopes to current folder images only, not global IndexedDB data, ensuring accurate counts and relevance.
+- **IndexedDB Persistence**: Upgraded IndexedDB to v2 with new `imageAnnotations` store:
+  - Separate storage for user annotations (favorites, tags) independent of metadata
+  - Multi-entry index on tags for efficient tag-based queries
+  - Index on `isFavorite` for fast favorite filtering
+  - Auto-load annotations on app startup
+  - Denormalization pattern: annotations stored separately but copied to `IndexedImage` for optimal read performance
 
 ### Technical Improvements
 
