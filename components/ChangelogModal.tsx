@@ -120,6 +120,26 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
             </div>
           ) : (
             <>
+              {/* Message from the Dev */}
+              <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
+                <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
+                  <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
+
+                  <p>Image MetaHub 0.10.0 is here. This is the biggest update so far!</p>
+
+                  <p>In 0.10.0 the goal was to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and a few new tools that are clearly beyond the basics. The full list is in the changelog below — this is just the high-level context.</p>
+
+                  <p>From this version on, some of these new features are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced tools are part of the Pro tier. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>
+
+                  <p>There's a 7-day trial that unlocks all Pro features so you can see in practice if they actually help your workflow.</p>
+
+                  <p>Details on how to get a license are on the website - <a href="https://www.imagemetahub.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://www.imagemetahub.com</a></p>
+
+                  <p className="font-medium">Thanks for supporting the project and for using Image MetaHub!</p>
+                </div>
+              </div>
+
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">
                 <ul className="list-disc list-inside space-y-1">
