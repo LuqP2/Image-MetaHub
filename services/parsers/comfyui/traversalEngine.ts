@@ -1,4 +1,4 @@
-import { NodeRegistry, ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType, NodeDefinition } from './nodeRegistry';
+import { NodeRegistry, ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType, NodeDefinition, WorkflowFacts } from './nodeRegistry';
 
 type NodeLink = [string, number];
 type Graph = Record<string, ParserNode>;
@@ -34,11 +34,16 @@ function createInitialState(param: ComfyTraversableParam): TraversalState {
  * @returns O valor resolvido ou o acumulador.
  */
 function traverse(
-  currentNode: ParserNode,
+  currentNode: ParserNode | null | undefined,
   state: TraversalState,
   graph: Graph,
   accumulator: any[]
 ): any {
+  // Handle null or undefined node
+  if (!currentNode) {
+    return state.targetParam === 'lora' ? accumulator : null;
+  }
+
   // 1. Consciência de Estado: Ignora nós silenciados ("muted")
   if (currentNode.mode === 2 || currentNode.mode === 4) {
     return state.targetParam === 'lora' ? accumulator : null;
@@ -280,63 +285,114 @@ function selectBestPromptValue(values: any[], paramType: ComfyTraversableParam):
 
 export function resolve(args: { startNode: ParserNode, param: ComfyTraversableParam, graph: Graph }): any {
     const initialState = createInitialState(args.param);
-    
-    // Para LoRAs, precisamos coletar de TODOS os nós no caminho
-    if (args.param === 'lora') {
-        const allLoras: string[] = [];
+
+    // Check if this parameter needs accumulation across multiple nodes
+    const needsAccumulation = checkIfParamNeedsAccumulation(args.startNode, args.param, args.graph);
+
+    if (needsAccumulation) {
+        // Collect values from ALL nodes in the path (used for LoRAs, multiple prompts, etc.)
+        const allValues: any[] = [];
         const visited = new Set<string>();
-        
-        // Função recursiva para coletar LoRAs
-        const collectLoras = (currentNode: ParserNode) => {
+
+        // Função recursiva para coletar valores
+        const collectValues = (currentNode: ParserNode) => {
             if (visited.has(currentNode.id)) return;
             visited.add(currentNode.id);
-            
+
             // Ignora nós silenciados
             if (currentNode.mode === 2 || currentNode.mode === 4) return;
-            
+
             const nodeDef = NodeRegistry[currentNode.class_type];
             if (!nodeDef) return;
-            
-            // Extrai LoRAs deste nó
-            const paramRule = nodeDef.param_mapping?.lora;
+
+            // Extrai valor deste nó
+            const paramRule = nodeDef.param_mapping?.[args.param];
             if (paramRule) {
                 const value = extractValue(currentNode, paramRule, initialState, args.graph, []);
                 if (Array.isArray(value)) {
-                    allLoras.push(...value.filter(l => l && l !== 'None'));
+                    allValues.push(...value.filter(v => v && v !== 'None'));
                 } else if (value && value !== 'None') {
-                    allLoras.push(value);
+                    allValues.push(value);
                 }
             }
-            
+
             // Continua explorando inputs
             for (const inputName in currentNode.inputs) {
                 const inputLink = currentNode.inputs[inputName];
                 if (Array.isArray(inputLink) && inputLink.length === 2) {
                     const [sourceNodeId] = inputLink;
                     let nextNode = args.graph[sourceNodeId];
-                    
+
                     // Suporte para grouped nodes
                     if (!nextNode && sourceNodeId.includes(':')) {
                         const parentId = sourceNodeId.split(':')[0];
                         nextNode = args.graph[parentId];
                     }
-                    
+
                     if (nextNode) {
-                        collectLoras(nextNode);
+                        collectValues(nextNode);
                     }
                 }
             }
         };
-        
-        collectLoras(args.startNode);
-        
+
+        collectValues(args.startNode);
+
         // Remove duplicatas mantendo ordem
-        const uniqueLoras = Array.from(new Set(allLoras));
-        return uniqueLoras.length > 0 ? uniqueLoras : [];
+        const uniqueValues = Array.from(new Set(allValues));
+        return uniqueValues.length > 0 ? uniqueValues : [];
     }
-    
+
     // Para outros parâmetros, usa traversal simples
     return traverse(args.startNode, initialState, args.graph, []);
+}
+
+/**
+ * Check if a parameter needs accumulation based on its param_mapping rules.
+ * This is a generic approach that replaces hardcoded checks for specific params.
+ */
+function checkIfParamNeedsAccumulation(startNode: ParserNode | null, param: ComfyTraversableParam, graph: Graph): boolean {
+    // Handle null or undefined startNode
+    if (!startNode) return false;
+
+    // Check if any node in the graph has this param with accumulate: true
+    const visited = new Set<string>();
+
+    const check = (currentNode: ParserNode | null | undefined): boolean => {
+        if (!currentNode) return false;
+        if (visited.has(currentNode.id)) return false;
+        visited.add(currentNode.id);
+
+        const nodeDef = NodeRegistry[currentNode.class_type];
+        if (!nodeDef) return false;
+
+        const paramRule = nodeDef.param_mapping?.[param];
+        if (paramRule && 'accumulate' in paramRule && paramRule.accumulate) {
+            return true;
+        }
+
+        // Check connected nodes
+        for (const inputName in currentNode.inputs) {
+            const inputLink = currentNode.inputs[inputName];
+            if (Array.isArray(inputLink) && inputLink.length === 2) {
+                const [sourceNodeId] = inputLink;
+                let nextNode = graph[sourceNodeId];
+
+                if (!nextNode && sourceNodeId.includes(':')) {
+                    const parentId = sourceNodeId.split(':')[0];
+                    nextNode = graph[parentId];
+                }
+
+                if (nextNode && check(nextNode)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    };
+
+    return check(startNode);
 }
 
 export function resolveAll(args: { startNode: ParserNode, params: ComfyTraversableParam[], graph: Graph }): Record<string, any> {
@@ -345,5 +401,62 @@ export function resolveAll(args: { startNode: ParserNode, params: ComfyTraversab
         results[param] = resolve({ ...args, param });
     }
     return results;
+}
+
+/**
+ * Resolves workflow facts from a graph into a structured format.
+ * This separates "data extraction" from "presentation logic".
+ *
+ * @param args.startNode - The terminal node to start traversal from (usually a SINK like SaveImage, KSampler)
+ * @param args.graph - The complete workflow graph
+ * @returns Structured facts about the workflow
+ */
+export function resolveFacts(args: { startNode: ParserNode, graph: Graph }): WorkflowFacts {
+    // Resolve all individual parameters
+    const prompt = resolve({ ...args, param: 'prompt' });
+    const negativePrompt = resolve({ ...args, param: 'negativePrompt' });
+    const model = resolve({ ...args, param: 'model' });
+    const vae = resolve({ ...args, param: 'vae' });
+    const lorasRaw = resolve({ ...args, param: 'lora' });
+    const seed = resolve({ ...args, param: 'seed' });
+    const steps = resolve({ ...args, param: 'steps' });
+    const cfg = resolve({ ...args, param: 'cfg' });
+    const sampler_name = resolve({ ...args, param: 'sampler_name' });
+    const scheduler = resolve({ ...args, param: 'scheduler' });
+    const denoise = resolve({ ...args, param: 'denoise' });
+    const width = resolve({ ...args, param: 'width' });
+    const height = resolve({ ...args, param: 'height' });
+
+    // Transform loras array into structured format
+    const loras = Array.isArray(lorasRaw)
+        ? lorasRaw.map(name => ({ name: String(name) }))
+        : lorasRaw
+            ? [{ name: String(lorasRaw) }]
+            : [];
+
+    // Build structured facts object
+    return {
+        prompts: {
+            positive: prompt ? String(prompt) : null,
+            negative: negativePrompt ? String(negativePrompt) : null,
+        },
+        model: {
+            base: model ? String(model) : null,
+            vae: vae ? String(vae) : null,
+        },
+        loras,
+        sampling: {
+            seed: seed !== null && seed !== undefined ? Number(seed) : null,
+            steps: steps !== null && steps !== undefined ? Number(steps) : null,
+            cfg: cfg !== null && cfg !== undefined ? Number(cfg) : null,
+            sampler_name: sampler_name ? String(sampler_name) : null,
+            scheduler: scheduler ? String(scheduler) : null,
+            denoise: denoise !== null && denoise !== undefined ? Number(denoise) : null,
+        },
+        dimensions: {
+            width: width !== null && width !== undefined ? Number(width) : null,
+            height: height !== null && height !== undefined ? Number(height) : null,
+        }
+    };
 }
 

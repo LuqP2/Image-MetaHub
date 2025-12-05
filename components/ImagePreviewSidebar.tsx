@@ -1,6 +1,12 @@
 import React, { useEffect, useState, FC } from 'react';
+import { Clipboard, Sparkles, ChevronDown, Star, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata } from '../types';
+import { useCopyToA1111 } from '../hooks/useCopyToA1111';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { A1111GenerateModal } from './A1111GenerateModal';
+import ProBadge from './ProBadge';
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -15,7 +21,7 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
       <div className="flex justify-between items-start">
         <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider">{label}</p>
         {onCopy && (
-            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white" title={`Copy ${label}`}>
+            <button onClick={() => onCopy(displayValue)} className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-50" title={`Copy ${label}`}>
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1zM5 5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2H5z"></path></svg>
             </button>
         )}
@@ -33,9 +39,22 @@ const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,
     setPreviewImage,
-    directories
+    directories,
+    toggleFavorite,
+    addTagToImage,
+    removeTagFromImage,
+    availableTags
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
+
+  const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
+  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+
+  // Feature access (license/trial gating)
+  const { canUseA1111, showProModal, initialized } = useFeatureAccess();
 
   useEffect(() => {
     let isMounted = true;
@@ -130,6 +149,34 @@ const ImagePreviewSidebar: React.FC = () => {
     });
   };
 
+  // Tag management handlers
+  const handleAddTag = () => {
+    if (!tagInput.trim() || !previewImage) return;
+    addTagToImage(previewImage.id, tagInput);
+    setTagInput('');
+    setShowTagAutocomplete(false);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    if (!previewImage) return;
+    removeTagFromImage(previewImage.id, tag);
+  };
+
+  const handleToggleFavorite = () => {
+    if (!previewImage) return;
+    toggleFavorite(previewImage.id);
+  };
+
+  // Filter autocomplete tags
+  const autocompleteOptions = tagInput && previewImage
+    ? availableTags
+        .filter(tag =>
+          tag.name.includes(tagInput.toLowerCase()) &&
+          !(previewImage.tags || []).includes(tag.name)
+        )
+        .slice(0, 5)
+    : [];
+
   return (
     <div data-area="preview" tabIndex={-1} className="fixed right-0 top-0 h-full w-96 bg-gray-800 border-l border-gray-700 z-40 flex flex-col">
       {/* Header */}
@@ -137,7 +184,7 @@ const ImagePreviewSidebar: React.FC = () => {
         <h2 className="text-lg font-semibold text-gray-200">Image Preview</h2>
         <button
           onClick={() => setPreviewImage(null)}
-          className="text-gray-400 hover:text-white transition-colors"
+          className="text-gray-400 hover:text-gray-50 transition-colors"
           title="Close preview"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -155,6 +202,106 @@ const ImagePreviewSidebar: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
           <p className="text-xs text-blue-400 font-mono break-all">{new Date(previewImage.lastModified).toLocaleString()}</p>
+        </div>
+
+        {/* Annotations Section */}
+        <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
+          {/* Favorite and Tags Row */}
+          <div className="flex items-start gap-3">
+            {/* Favorite Star - Discrete */}
+            <button
+              onClick={handleToggleFavorite}
+              className={`p-1.5 rounded transition-all ${
+                previewImage.isFavorite
+                  ? 'text-yellow-400 hover:text-yellow-300'
+                  : 'text-gray-500 hover:text-yellow-400'
+              }`}
+              title={previewImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Star className={`w-5 h-5 ${previewImage.isFavorite ? 'fill-current' : ''}`} />
+            </button>
+
+            {/* Tags Pills */}
+            <div className="flex-1 space-y-2">
+              {/* Current Tags */}
+              {previewImage.tags && previewImage.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {previewImage.tags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleRemoveTag(tag)}
+                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                      title="Click to remove"
+                    >
+                      {tag}
+                      <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Tag Input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Add tag..."
+                  value={tagInput}
+                  onChange={(e) => {
+                    setTagInput(e.target.value);
+                    setShowTagAutocomplete(e.target.value.length > 0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                    if (e.key === 'Escape') {
+                      setTagInput('');
+                      setShowTagAutocomplete(false);
+                    }
+                  }}
+                  onFocus={() => tagInput && setShowTagAutocomplete(true)}
+                  onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
+                  className="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                />
+
+                {/* Autocomplete Dropdown */}
+                {showTagAutocomplete && autocompleteOptions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                    {autocompleteOptions.map(tag => (
+                      <button
+                        key={tag.name}
+                        onClick={() => {
+                          addTagToImage(previewImage.id, tag.name);
+                          setTagInput('');
+                          setShowTagAutocomplete(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                      >
+                        <span>{tag.name}</span>
+                        <span className="text-xs text-gray-500">({tag.count})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tag Suggestions */}
+              {(!previewImage.tags || previewImage.tags.length === 0) && availableTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {availableTags.slice(0, 5).map(tag => (
+                    <button
+                      key={tag.name}
+                      onClick={() => addTagToImage(previewImage.id, tag.name)}
+                      className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {nMeta ? (
@@ -182,6 +329,99 @@ const ImagePreviewSidebar: React.FC = () => {
                   <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
                </>
             )}
+
+            {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
+            <div className="mt-4 space-y-2">
+              {/* Hero Button: Generate Variation */}
+              <button
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  setIsGenerateModalOpen(true);
+                }}
+                disabled={canUseA1111 && !nMeta.prompt}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-md text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isGenerating && canUseA1111 ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Variation</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Utility Button: Copy to A1111 */}
+              <button
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  copyToA1111(previewImage);
+                }}
+                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
+                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+              >
+                {isCopying && canUseA1111 ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Copying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3 h-3" />
+                    <span>Copy Parameters</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Status messages */}
+              {(copyStatus || generateStatus) && (
+                <div className={`p-2 rounded text-xs ${
+                  (copyStatus?.success || generateStatus?.success)
+                    ? 'bg-green-900/50 border border-green-700 text-green-300'
+                    : 'bg-red-900/50 border border-red-700 text-red-300'
+                }`}>
+                  {copyStatus?.message || generateStatus?.message}
+                </div>
+              )}
+
+              {/* Generate Variation Modal */}
+              {isGenerateModalOpen && nMeta && (
+                <A1111GenerateModal
+                  isOpen={isGenerateModalOpen}
+                  onClose={() => setIsGenerateModalOpen(false)}
+                  image={previewImage}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
+                    setIsGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGenerating}
+                />
+              )}
+            </div>
           </>
         ) : (
           <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">

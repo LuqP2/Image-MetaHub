@@ -11,6 +11,8 @@
  * - O schema agora descreve o comportamento dinâmico e de estado, não apenas caminhos estáticos.
  */
 
+import * as extractors from './extractors';
+
 // =============================================================================
 // SECTION: Type Definitions (Schema Fortificado)
 // =============================================================================
@@ -32,13 +34,14 @@ export type ComfyTraversableParam =
   | 'prompt' | 'negativePrompt' | 'seed' | 'steps' | 'cfg' | 'width' | 'height'
   | 'model' | 'sampler_name' | 'scheduler' | 'lora' | 'vae' | 'denoise';
 
-interface WidgetRule { source: 'widget'; key: string; }
-interface TraceRule { source: 'trace'; input: string; }
-interface CustomExtractorRule { 
-  source: 'custom_extractor'; 
-  extractor: (node: ParserNode, state: any, graph: any, traverse: any) => any; 
+interface WidgetRule { source: 'widget'; key: string; accumulate?: boolean; }
+interface TraceRule { source: 'trace'; input: string; accumulate?: boolean; }
+interface CustomExtractorRule {
+  source: 'custom_extractor';
+  extractor: (node: ParserNode, state: any, graph: any, traverse: any) => any;
+  accumulate?: boolean;
 }
-interface InputRule { source: 'input'; key: string; }
+interface InputRule { source: 'input'; key: string; accumulate?: boolean; }
 export type ParamMappingRule = WidgetRule | TraceRule | CustomExtractorRule | InputRule;
 
 export interface InputDefinition { type: ComfyNodeDataType; }
@@ -64,6 +67,38 @@ export interface NodeDefinition {
   pass_through_rules?: PassThroughRule[];
   conditional_routing?: ConditionalRoutingRule; // Para nós como ImpactSwitch
   widget_order?: string[]; // Ordered list of widget names for index-based extraction
+}
+
+/**
+ * Structured workflow facts extracted from the graph.
+ * This separates "what was extracted" from "how to present it".
+ */
+export interface WorkflowFacts {
+  prompts: {
+    positive: string | null;
+    negative: string | null;
+  };
+  model: {
+    base: string | null;
+    vae: string | null;
+  };
+  loras: Array<{
+    name: string;
+    modelStrength?: number;
+    clipStrength?: number;
+  }>;
+  sampling: {
+    seed: number | null;
+    steps: number | null;
+    cfg: number | null;
+    sampler_name: string | null;
+    scheduler: string | null;
+    denoise: number | null;
+  };
+  dimensions: {
+    width: number | null;
+    height: number | null;
+  };
 }
 
 // =============================================================================
@@ -152,11 +187,32 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
         source: 'custom_extractor',
         extractor: (node, state, graph, traverse) => {
           // If text comes from a link (like String Literal), trace it
-          const textLink = node.inputs?.text;
-          if (textLink && Array.isArray(textLink)) {
-            return traverse(textLink as any, { ...state, targetParam: 'prompt' }, graph, []);
+          const textInput = node.inputs?.text;
+          if (textInput && Array.isArray(textInput)) {
+            return traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
+          }
+          // If text is a direct value in inputs, use it
+          if (textInput && typeof textInput === 'string') {
+            return textInput;
           }
           // Otherwise use widget value at index 0
+          if (node.widgets_values?.[0]) {
+            return node.widgets_values[0];
+          }
+          return null;
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          // Same logic as prompt - CLIPTextEncode can be used for both positive and negative
+          const textInput = node.inputs?.text;
+          if (textInput && Array.isArray(textInput)) {
+            return traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+          }
+          if (textInput && typeof textInput === 'string') {
+            return textInput;
+          }
           if (node.widgets_values?.[0]) {
             return node.widgets_values[0];
           }
@@ -177,7 +233,10 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     category: 'LOADING', roles: ['TRANSFORM'],
     inputs: { model: { type: 'MODEL' }, clip: { type: 'CLIP' } },
     outputs: { MODEL: { type: 'MODEL' }, CLIP: { type: 'CLIP' } },
-    param_mapping: { lora: { source: 'widget', key: 'lora_name' }, model: { source: 'trace', input: 'model' }, },
+    param_mapping: {
+      lora: { source: 'widget', key: 'lora_name', accumulate: true },
+      model: { source: 'trace', input: 'model' },
+    },
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }, { from_input: 'clip', to_output: 'CLIP' },],
     widget_order: ['lora_name', 'strength_model', 'strength_clip']
   },
@@ -710,45 +769,7 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       prompt: {
         source: 'custom_extractor',
         extractor: (node, state, graph, traverseFromLink) => {
-          // Concatenate text1, text2, text3 with delimiter
-          const text1Input = node.inputs?.text1;
-          const text2Input = node.inputs?.text2;
-          const text3Input = node.inputs?.text3;
-          const delimiter = node.inputs?.delimiter || ' ';
-          
-          const texts: string[] = [];
-          
-          // text1: direct value or link
-          if (text1Input) {
-            if (Array.isArray(text1Input)) {
-              const result = traverseFromLink(text1Input as any, state, graph, []);
-              if (result) texts.push(String(result));
-            } else if (text1Input) {
-              texts.push(String(text1Input));
-            }
-          }
-          
-          // text2: direct value or link
-          if (text2Input) {
-            if (Array.isArray(text2Input)) {
-              const result = traverseFromLink(text2Input as any, state, graph, []);
-              if (result) texts.push(String(result));
-            } else if (text2Input) {
-              texts.push(String(text2Input));
-            }
-          }
-          
-          // text3: direct value or link
-          if (text3Input) {
-            if (Array.isArray(text3Input)) {
-              const result = traverseFromLink(text3Input as any, state, graph, []);
-              if (result) texts.push(String(result));
-            } else if (text3Input) {
-              texts.push(String(text3Input));
-            }
-          }
-          
-          return texts.filter(t => t.trim()).join(String(delimiter));
+          return extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['text1', 'text2', 'text3'], 'delimiter');
         }
       }
     },
@@ -816,28 +837,11 @@ ImpactWildcardProcessor: {
   inputs: {},
   outputs: { STRING: { type: 'STRING' } },
   param_mapping: {
-    prompt: { 
+    prompt: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
-        // Prioriza 'populated_text' (resultado após wildcard)
-        const populated = node.inputs?.populated_text || node.widgets_values?.[1];
-        const wildcard = node.inputs?.wildcard_text || node.widgets_values?.[0];
-        
-        // Usa populated_text se disponível, senão wildcard_text
-        let text = (populated || wildcard || '').trim();
-        
-        // Remove wildcards não resolvidos (ex: __bo/random/anything__)
-        text = text.replace(/__[a-zA-Z0-9/_-]+__/g, '');
-        
-        // Limpa artefatos comuns
-        text = text
-          .replace(/,\s*,/g, ',')      // Remove vírgulas duplas
-          .replace(/\s+,/g, ',')       // Remove espaços antes de vírgula
-          .replace(/,\s+/g, ', ')      // Normaliza espaços após vírgula
-          .replace(/\s+/g, ' ')        // Normaliza espaços múltiplos
-          .trim();
-        
-        return text || null;
+        const text = extractors.getWildcardOrPopulatedText(node);
+        return extractors.cleanWildcardText(text);
       }
     }
   },
@@ -846,11 +850,11 @@ ImpactWildcardProcessor: {
 ImpactWildcardEncode: {
   category: 'UTILS',
   roles: ['SOURCE', 'TRANSFORM'],
-  inputs: { 
-    model: { type: 'MODEL' }, 
-    clip: { type: 'CLIP' } 
+  inputs: {
+    model: { type: 'MODEL' },
+    clip: { type: 'CLIP' }
   },
-  outputs: { 
+  outputs: {
     model: { type: 'MODEL' },
     clip: { type: 'CLIP' },
     conditioning: { type: 'CONDITIONING' },
@@ -861,37 +865,14 @@ ImpactWildcardEncode: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
         const text = node.inputs?.wildcard_text || node.widgets_values?.[0] || '';
-        
-        // Extrai todos os <lora:nome> do texto
-        const loraMatches = text.matchAll(/<lora:([^>]+)>/gi);
-        const loras: string[] = [];
-        
-        for (const match of loraMatches) {
-          let loraPath = match[1];
-          
-          // Remove prefixos comuns
-          loraPath = loraPath.replace(/^(?:Flux|flux|FLUX)[\\/]+/i, '');
-          
-          // Remove extensão .safetensors
-          loraPath = loraPath.replace(/\.safetensors$/i, '');
-          
-          if (loraPath) {
-            loras.push(loraPath);
-          }
-        }
-        
-        return loras;
+        return extractors.extractLorasFromText(text);
       }
     },
     prompt: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
         const text = node.inputs?.wildcard_text || node.widgets_values?.[0] || '';
-        
-        // Remove todos os <lora:...> do texto (só deixa o prompt puro)
-        const cleanText = text.replace(/<lora:[^>]+>/gi, '').trim();
-        
-        return cleanText || null;
+        return extractors.removeLoraTagsFromText(text) || null;
       }
     }
   },
@@ -904,50 +885,18 @@ ImpactWildcardEncode: {
 JWStringConcat: {
   category: 'UTILS',
   roles: ['TRANSFORM'],
-  inputs: { 
-    a: { type: 'STRING' }, 
-    b: { type: 'STRING' } 
+  inputs: {
+    a: { type: 'STRING' },
+    b: { type: 'STRING' }
   },
-  outputs: { 
-    STRING: { type: 'STRING' } 
+  outputs: {
+    STRING: { type: 'STRING' }
   },
   param_mapping: {
     prompt: {
       source: 'custom_extractor',
       extractor: (node, state, graph, traverseFromLink) => {
-        const inputA = node.inputs?.a;
-        const inputB = node.inputs?.b;
-        
-        let textA = '';
-        let textB = '';
-        
-        // Resolve input A
-        if (Array.isArray(inputA) && inputA.length === 2) {
-          const result = traverseFromLink(inputA as any, state, graph, []);
-          if (result) textA = String(result);
-        } else if (inputA !== undefined && inputA !== null) {
-          textA = String(inputA);
-        }
-        
-        // Resolve input B
-        if (Array.isArray(inputB) && inputB.length === 2) {
-          const result = traverseFromLink(inputB as any, state, graph, []);
-          if (result) textB = String(result);
-        } else if (inputB !== undefined && inputB !== null) {
-          textB = String(inputB);
-        }
-        
-        // Concatena e limpa
-        const combined = [textA, textB]
-          .filter(t => t.trim())
-          .join(' ')
-          .replace(/,\s*,/g, ',')
-          .replace(/\s+,/g, ',')
-          .replace(/,\s+/g, ', ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        return combined || null;
+        return extractors.concatTextExtractor(node, state, graph, traverseFromLink, ['a', 'b']);
       }
     }
   },
@@ -1001,41 +950,8 @@ String: {
     lora: {
       source: 'custom_extractor',
       extractor: (node: ParserNode) => {
-        const loras: string[] = [];
         const widgets = node.widgets_values || [];
-
-        // CR LoRA Stack widget_order: [switch_1, lora_name_1, model_weight_1, clip_weight_1, switch_2, ...]
-        // Each LoRA is a group of 4 widgets: switch, name, model_weight, clip_weight
-        const lorasPerGroup = 4;
-        const maxLoras = Math.floor(widgets.length / lorasPerGroup);
-
-        for (let i = 0; i < maxLoras; i++) {
-          const switchIdx = i * lorasPerGroup;
-          const loraNameIdx = i * lorasPerGroup + 1;
-
-          const switchValue = widgets[switchIdx];
-          const loraValue = widgets[loraNameIdx];
-
-          // Verifica se o switch está "On" e há um LoRA válido
-          if (switchValue === 'On' && loraValue && loraValue !== 'None') {
-            let loraPath = String(loraValue);
-
-            // Remove prefixos comuns (Flux\\, flux\\, etc.)
-            loraPath = loraPath.replace(/^(?:flux|Flux|FLUX)[\\/\-\s]+/i, '');
-
-            // Remove extensão .safetensors
-            loraPath = loraPath.replace(/\.safetensors$/i, '');
-
-            // Limpa espaços extras
-            loraPath = loraPath.trim();
-
-            if (loraPath) {
-              loras.push(loraPath);
-            }
-          }
-        }
-
-        return loras;
+        return extractors.extractLorasFromStack(widgets, 4, 0, 1);
       }
     }
   },
@@ -1118,5 +1034,224 @@ String: {
     { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING+' },
     { from_input: 'sdxl_tuple', to_output: 'BASE_CONDITIONING-' }
   ]
+},
+
+// --- CUSTOM SAMPLER NODES ---
+SamplerCustom: {
+  category: 'SAMPLING',
+  roles: ['SINK'],
+  inputs: {
+    model: { type: 'MODEL' },
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    sampler: { type: 'SAMPLER' },
+    sigmas: { type: 'SIGMAS' },
+    latent_image: { type: 'LATENT' }
+  },
+  outputs: {
+    output: { type: 'LATENT' },
+    denoised_output: { type: 'LATENT' }
+  },
+  param_mapping: {
+    seed: { source: 'widget', key: 'noise_seed' },
+    cfg: { source: 'widget', key: 'cfg' },
+    sampler_name: { source: 'trace', input: 'sampler' },
+    scheduler: { source: 'trace', input: 'sigmas' },
+    steps: { source: 'trace', input: 'sigmas' },
+    denoise: { source: 'trace', input: 'sigmas' },
+    model: { source: 'trace', input: 'model' },
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' }
+  },
+  widget_order: ['add_noise', 'noise_seed', 'seed_mode', 'cfg']
+},
+
+AlignYourStepsScheduler: {
+  category: 'UTILS',
+  roles: ['TRANSFORM'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    SIGMAS: { type: 'SIGMAS' }
+  },
+  param_mapping: {
+    steps: { source: 'widget', key: 'steps' },
+    denoise: { source: 'widget', key: 'denoise' }
+  },
+  widget_order: ['model_type', 'steps', 'denoise']
+},
+
+PerturbedAttention: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['scale', 'adaptive_scale', 'unet_block', 'unet_block_id', 'sigma_start', 'sigma_end', 'rescale', 'rescale_mode', 'unet_block_list'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+'Automatic CFG': {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['hard_mode', 'boost'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+TiledDiffusion: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['method', 'tile_width', 'tile_height', 'tile_overlap', 'tile_batch_size'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+FreeU_V2: {
+  category: 'TRANSFORM',
+  roles: ['PASS_THROUGH'],
+  inputs: {
+    model: { type: 'MODEL' }
+  },
+  outputs: {
+    MODEL: { type: 'MODEL' }
+  },
+  param_mapping: {},
+  widget_order: ['b1', 'b2', 's1', 's2'],
+  pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+},
+
+VAEEncodeTiled: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    pixels: { type: 'IMAGE' },
+    vae: { type: 'VAE' }
+  },
+  outputs: {
+    LATENT: { type: 'LATENT' }
+  },
+  param_mapping: {
+    vae: { source: 'trace', input: 'vae' }
+  },
+  widget_order: ['tile_size']
+},
+
+VAEDecodeTiled: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    samples: { type: 'LATENT' },
+    vae: { type: 'VAE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {
+    vae: { source: 'trace', input: 'vae' }
+  },
+  widget_order: ['tile_size']
+},
+
+ControlNetLoader: {
+  category: 'LOADING',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: {
+    CONTROL_NET: { type: 'CONTROL_NET' }
+  },
+  param_mapping: {},
+  widget_order: ['control_net_name']
+},
+
+ControlNetApplyAdvanced: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' },
+    control_net: { type: 'CONTROL_NET' },
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    positive: { type: 'CONDITIONING' },
+    negative: { type: 'CONDITIONING' }
+  },
+  param_mapping: {
+    prompt: { source: 'trace', input: 'positive' },
+    negativePrompt: { source: 'trace', input: 'negative' }
+  },
+  widget_order: ['strength', 'start_percent', 'end_percent']
+},
+
+ImageScaleBy: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {},
+  widget_order: ['upscale_method', 'scale_by']
+},
+
+FilmGrain: {
+  category: 'TRANSFORM',
+  roles: ['TRANSFORM'],
+  inputs: {
+    image: { type: 'IMAGE' }
+  },
+  outputs: {
+    IMAGE: { type: 'IMAGE' }
+  },
+  param_mapping: {},
+  widget_order: ['intensity', 'scale', 'temperature', 'vignette']
+},
+
+'Image Comparer (rgthree)': {
+  category: 'IO',
+  roles: ['SINK'],
+  inputs: {
+    image_a: { type: 'IMAGE' },
+    image_b: { type: 'IMAGE' }
+  },
+  outputs: {},
+  param_mapping: {},
+  widget_order: []
+},
+
+PrimitiveNode: {
+  category: 'UTILS',
+  roles: ['SOURCE'],
+  inputs: {},
+  outputs: {
+    '*': { type: 'ANY' }
+  },
+  param_mapping: {
+    seed: { source: 'widget', key: 'value' },
+    steps: { source: 'widget', key: 'value' },
+    cfg: { source: 'widget', key: 'value' },
+    denoise: { source: 'widget', key: 'value' }
+  },
+  widget_order: ['value', 'control_after_generate']
 }
 };

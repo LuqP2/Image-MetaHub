@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, GitCompare } from 'lucide-react';
+import { A1111ProgressState } from '../hooks/useA1111Progress';
+import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { IndexedImage } from '../types';
+import ProBadge from './ProBadge';
 
 interface FooterProps {
   currentPage: number;
@@ -17,6 +22,7 @@ interface FooterProps {
   totalCount?: number;
   directoryCount?: number;
   enrichmentProgress?: { processed: number; total: number } | null;
+  a1111Progress?: A1111ProgressState | null;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -42,8 +48,11 @@ const Footer: React.FC<FooterProps> = ({
   filteredCount,
   totalCount,
   directoryCount,
-  enrichmentProgress
+  enrichmentProgress,
+  a1111Progress
 }) => {
+  const { selectedImages, filteredImages, setComparisonImages, openComparisonModal } = useImageStore();
+  const { canUseA1111, canUseComparison, showProModal } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
 
@@ -58,10 +67,12 @@ const Footer: React.FC<FooterProps> = ({
 
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
   const showPageControls = totalPages > 1;
-  const hasJob = enrichmentProgress && enrichmentProgress.total > 0;
+  const hasEnrichmentJob = enrichmentProgress && enrichmentProgress.total > 0;
+  const hasA1111Job = canUseA1111 && a1111Progress && a1111Progress.isGenerating; // Only show if feature is available
+  const hasAnyJob = hasEnrichmentJob || hasA1111Job;
 
   return (
-    <footer className={`sticky bottom-0 px-3 flex items-center gap-3 bg-neutral-900/90 backdrop-blur-sm border-t border-neutral-800 transition-all duration-200 ${hasJob ? 'h-11 md:h-12' : 'h-10 md:h-11'}`}>
+    <footer className={`sticky bottom-0 px-3 flex items-center gap-3 bg-neutral-900/90 backdrop-blur-sm border-t border-neutral-800 transition-all duration-200 ${hasAnyJob ? 'h-11 md:h-12' : 'h-10 md:h-11'}`}>
       <div className="min-w-0 flex-1 flex items-center gap-2 text-xs">
         {filteredCount !== undefined && totalCount !== undefined && (
           <Token title="Images in current view / Total images">
@@ -73,14 +84,30 @@ const Footer: React.FC<FooterProps> = ({
         {directoryCount !== undefined && directoryCount > 0 && (
           <Token title="Number of folders"><span>{directoryCount}</span> {' '}{folderText}</Token>
         )}
-        {hasJob && (
+        {hasEnrichmentJob && (
           <div className="flex items-center gap-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs animate-fade-in">
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="font-medium">{enrichmentProgress.processed}/{enrichmentProgress.total}</span>
+              <span className="font-medium">{enrichmentProgress!.processed}/{enrichmentProgress!.total}</span>
             </div>
             <div className="w-16 h-1 bg-gray-700/50 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${(enrichmentProgress.processed / enrichmentProgress.total) * 100}%` }} />
+              <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${(enrichmentProgress!.processed / enrichmentProgress!.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
+        {hasA1111Job && (
+          <div className="flex items-center gap-2 px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-green-400 text-xs animate-fade-in">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="font-medium">
+                {a1111Progress!.totalImages > 1
+                  ? `${a1111Progress!.currentImage}/${a1111Progress!.totalImages}`
+                  : `${Math.round(a1111Progress!.progress * 100)}%`
+                }
+              </span>
+            </div>
+            <div className="w-16 h-1 bg-gray-700/50 rounded-full overflow-hidden">
+              <div className="h-full bg-green-500 transition-all duration-300" style={{ width: `${a1111Progress!.progress * 100}%` }} />
             </div>
           </div>
         )}
@@ -162,6 +189,40 @@ const Footer: React.FC<FooterProps> = ({
               <button onClick={onClearSelection} className="text-blue-400 hover:text-blue-300 text-xs underline-offset-2 hover:underline transition-colors">Clear</button>
               <button onClick={onDeleteSelected} className="text-red-400 hover:text-red-300 text-xs underline-offset-2 hover:underline transition-colors">Delete</button>
             </div>
+          </>
+        )}
+        {selectedCount >= 2 && (
+          <>
+            <span className="text-gray-600">•</span>
+            <button
+              onClick={() => {
+                if (!canUseComparison) {
+                  showProModal('comparison');
+                  return;
+                }
+                if (selectedCount !== 2) {
+                  alert('Please select exactly 2 images to compare');
+                  return;
+                }
+                const selected = Array.from(selectedImages)
+                  .map(id => filteredImages.find(img => img.id === id))
+                  .filter((img): img is IndexedImage => img !== undefined)
+                  .slice(0, 2);
+
+                setComparisonImages([selected[0], selected[1]]);
+                openComparisonModal();
+              }}
+              disabled={canUseComparison && selectedCount !== 2}
+              className="flex items-center gap-1.5 px-3 py-1 rounded
+                         bg-purple-500/10 border border-purple-500/30
+                         text-purple-400 text-xs font-medium
+                         hover:bg-purple-500/20 transition-colors
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!canUseComparison ? "Comparison (Pro Feature)" : selectedCount === 2 ? "Compare 2 images" : "Select exactly 2 images"}
+            >
+              <GitCompare className="w-3 h-3" />
+              <span className="hidden sm:inline">Compare {!canUseComparison && <ProBadge size="sm" />}</span>
+            </button>
           </>
         )}
       </div>

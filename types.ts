@@ -12,8 +12,8 @@ export interface ElectronAPI {
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[];
     error?: string;
   }>;
-  readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
-  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string }[]; error?: string }>;
+  readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
+  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   getSettings: () => Promise<any>;
@@ -32,7 +32,7 @@ export interface ElectronAPI {
   finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
-  cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string }>;
+  cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
@@ -520,6 +520,30 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+
+  // User Annotations (loaded from ImageAnnotations table)
+  isFavorite?: boolean;          // Quick access to favorite status
+  tags?: string[];               // Quick access to tags array
+}
+
+/**
+ * User annotations for an image (favorites, tags, notes)
+ * Stored separately from image metadata in IndexedDB
+ */
+export interface ImageAnnotations {
+  imageId: string;              // Links to IndexedImage.id (unique)
+  isFavorite: boolean;           // Star/Favorite flag
+  tags: string[];                // User-defined tags (lowercase normalized)
+  addedAt: number;               // Timestamp when first annotated
+  updatedAt: number;             // Timestamp of last update
+}
+
+/**
+ * Tag with usage statistics
+ */
+export interface TagInfo {
+  name: string;                  // Tag name (lowercase)
+  count: number;                 // Number of images with this tag
 }
 
 export interface Directory {
@@ -551,4 +575,36 @@ declare global {
   interface Window {
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   }
+}
+
+// Image Comparison Types
+export interface ComparisonState {
+  images: [IndexedImage | null, IndexedImage | null];
+  isModalOpen: boolean;
+}
+
+export interface ZoomState {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+export interface ComparisonPaneProps {
+  image: IndexedImage;
+  directoryPath: string;
+  position: 'left' | 'right';
+  syncEnabled: boolean;
+  externalZoom?: ZoomState;
+  onZoomChange?: (zoom: number, x: number, y: number) => void;
+}
+
+export interface ComparisonModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export interface ComparisonMetadataPanelProps {
+  image: IndexedImage;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
 }

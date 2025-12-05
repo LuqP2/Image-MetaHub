@@ -74,7 +74,7 @@ npm run electron-dist
 
 ## ComfyUI Parser Architecture
 
-The ComfyUI parser is the most complex metadata parser in the project. It uses a **rule-based, declarative architecture** to handle ComfyUI's graph-based workflow format.
+The ComfyUI parser is the most complex metadata parser in the project. It uses a **rule-based, declarative architecture** to handle ComfyUI's graph-based workflow format, recently refactored to separate data extraction from presentation logic.
 
 **Location**: `services/parsers/comfyui/`
 
@@ -92,10 +92,24 @@ The ComfyUI parser is the most complex metadata parser in the project. It uses a
      - **Single Path**: For unique parameters (seed)
      - **Multi-Path**: For prompts (explores all paths)
      - **Pass-Through**: For routing nodes
+   - **Generic Accumulation**: Uses declarative `accumulate: boolean` flag on param rules instead of hardcoded logic
+   - **Structured Output**: `resolveFacts()` returns type-safe `WorkflowFacts` object with prompts, model, loras, sampling, and dimensions
 
 3. **Node Registry** (`nodeRegistry.ts`)
    - Declarative node definitions with roles, inputs, outputs, and parameter mappings
+   - **WorkflowFacts Interface**: Structured type for extracted workflow metadata
+   - **Accumulate Flag**: Mark parameters that should collect values from all nodes in path (e.g., `lora: { source: 'widget', key: 'lora_name', accumulate: true }`)
    - See `services/parsers/comfyui/DEVELOPMENT.md` for complete reference
+
+4. **Reusable Extractors** (`extractors.ts`)
+   - Composable extraction functions for common patterns:
+     - `concatTextExtractor`: Concatenate multiple text inputs
+     - `extractLorasFromText`: Extract LoRA tags from `<lora:name>` syntax
+     - `removeLoraTagsFromText`: Strip LoRA tags from prompts
+     - `cleanWildcardText`: Remove unresolved wildcard artifacts
+     - `extractLorasFromStack`: Parse LoRA Stack widget arrays
+     - `getWildcardOrPopulatedText`: Prioritize populated over template text
+   - Reduces code duplication by 80-90% across node definitions
 
 **Adding New ComfyUI Nodes:**
 
@@ -108,19 +122,28 @@ The ComfyUI parser is the most complex metadata parser in the project. It uses a
   inputs: { input_name: { type: 'MODEL' | 'CONDITIONING' | ... } },
   outputs: { output_name: { type: 'MODEL' | 'CONDITIONING' | ... } },
   param_mapping: {
-    steps: { source: 'widget', key: 'steps' },      // Extract from widgets_values
-    seed: { source: 'trace', input: 'seed' },        // Follow connection
-    lora: { source: 'custom_extractor', extractor: fn } // Custom logic
+    steps: { source: 'widget', key: 'steps' },              // Extract from widgets_values
+    seed: { source: 'trace', input: 'seed' },                // Follow connection
+    lora: { source: 'widget', key: 'lora_name', accumulate: true }, // Collect from all nodes
+    prompt: {
+      source: 'custom_extractor',
+      extractor: (node, state, graph, traverse) =>
+        extractors.concatTextExtractor(node, state, graph, traverse, ['text1', 'text2'])
+    }
   },
   widget_order: ['widget1', 'widget2', ...]  // CRITICAL: Must match PNG export order
 }
 ```
 
-2. **widget_order is CRITICAL**: The array must match the exact sequence in embedded PNG `widgets_values` data. Mismatches cause value swapping bugs (e.g., steps=0, cfg=28 instead of steps=28, cfg=3).
+2. **Use Extractors When Possible**: Check `extractors.ts` for reusable functions before writing custom extractors. Common patterns like text concatenation, LoRA extraction, and wildcard cleaning are already implemented.
 
-3. Add tests in `__tests__/comfyui/` with real workflow fixtures
+3. **Accumulate Flag**: For parameters that should collect values from multiple nodes in the graph (like LoRAs), add `accumulate: true` to the param mapping rule. The traversal engine will automatically collect values from all nodes instead of stopping at the first match.
 
-4. Verify with actual ComfyUI PNG exports
+4. **widget_order is CRITICAL**: The array must match the exact sequence in embedded PNG `widgets_values` data. Mismatches cause value swapping bugs (e.g., steps=0, cfg=28 instead of steps=28, cfg=3).
+
+5. Add tests in `__tests__/comfyui/` with real workflow fixtures
+
+6. Verify with actual ComfyUI PNG exports
 
 **Common Issues:**
 
@@ -166,11 +189,102 @@ Metadata sources:
 
 ## Key Features to Maintain
 
-1. **Privacy**: All processing is local, no external connections (except auto-updater)
+1. **Privacy**: All processing is local, no external connections (except auto-updater and A1111 integration)
 2. **Performance**: Optimized for 18,000+ images with smart caching
 3. **Metadata Search**: Full-text search across all metadata fields
 4. **Multi-Format Support**: Handle various AI generator formats
 5. **File Operations**: Rename, delete, export metadata (desktop only)
+6. **A1111 Integration**: Send images back to Automatic1111 for editing or regeneration
+
+## A1111 Integration
+
+The application includes bidirectional workflow with Automatic1111 WebUI, allowing users to send image metadata back to A1111 for editing or regeneration.
+
+**Location:** `services/a1111ApiClient.ts`, `hooks/useCopyToA1111.ts`, `hooks/useGenerateWithA1111.ts`, `utils/a1111Formatter.ts`
+
+**Key Components:**
+
+1. **A1111 API Client** (`services/a1111ApiClient.ts`)
+   - REST API client for A1111 WebUI
+   - Connection testing (`/sdapi/v1/options`)
+   - Sampler list fetching with 5-minute cache
+   - Fuzzy sampler matching (case-insensitive, removes underscores/spaces)
+   - Image generation endpoint (`/sdapi/v1/txt2img`)
+   - 3-minute timeout for longer generations
+
+2. **Metadata Formatter** (`utils/a1111Formatter.ts`)
+   - Converts `BaseMetadata` to A1111 parseable format
+   - Three-line format:
+     - Line 1: Positive prompt
+     - Line 2: `Negative prompt: [text]` (if exists)
+     - Line 3: Comma-separated parameters (Steps, Sampler, CFG, Seed, Size, Model)
+   - Compatible with A1111's "Read generation parameters" feature (blue arrow button)
+
+3. **Copy to Clipboard Hook** (`hooks/useCopyToA1111.ts`)
+   - Formats metadata and copies to clipboard
+   - Toast notification: "Copied! Paste into A1111 prompt box and click the Blue Arrow."
+   - Error handling for clipboard API failures
+   - Primary workflow for manual parameter editing
+
+4. **Background Generation Hook** (`hooks/useGenerateWithA1111.ts`)
+   - Sends metadata directly to A1111 API
+   - Always starts generation (`autoStart: true`)
+   - Toast notifications for success/failure
+   - Secondary workflow for quick image variations
+
+**UI Integration:**
+
+- **ImagePreviewSidebar**: Split button (Copy primary, Generate in dropdown)
+- **ImageModal**: Split button (same design)
+- **Context Menu**: Two separate items (Copy to A1111, Quick Generate)
+
+**User Workflows:**
+
+1. **Copy for Manual Editing** (Primary):
+   - Click "Copy to A1111"
+   - Paste (Ctrl+V) into A1111 prompt box
+   - Click blue arrow icon ("Read generation parameters")
+   - All fields populate automatically
+   - User edits parameters before generating
+
+2. **Quick Generate** (Secondary):
+   - Click dropdown → "Quick Generate"
+   - Image generates immediately in background
+   - No UI interaction required on A1111 side
+
+**Configuration:**
+
+Settings in `store/useSettingsStore.ts`:
+- `a1111ServerUrl`: Default `http://127.0.0.1:7860`
+- `a1111LastConnectionStatus`: Connection state tracking
+- Connection test button in Settings modal
+
+**A1111 Setup Requirements:**
+
+User must start A1111 with API flags:
+```bash
+--api --cors-allow-origins=http://localhost:5173
+```
+
+**Common Issues:**
+
+- **CORS errors**: Missing `--cors-allow-origins` flag
+- **Connection timeout**: A1111 not running or wrong port
+- **Generation timeout**: Increase timeout in `a1111ApiClient.ts` if using slow models
+- **Sampler mismatch**: Fuzzy matching handles most cases, but custom samplers may not match
+
+**Testing A1111 Integration:**
+
+```bash
+# Start A1111 with API enabled
+webui.bat --api --cors-allow-origins=http://localhost:5173
+
+# In app:
+# 1. Settings → A1111 Integration → Test Connection
+# 2. Open image → Click "Copy to A1111"
+# 3. Paste in A1111 → Click blue arrow
+# 4. Verify all fields populated correctly
+```
 
 ## Common Tasks
 

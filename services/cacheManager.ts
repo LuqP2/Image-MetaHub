@@ -310,7 +310,11 @@ class CacheManager {
     const data = new Uint8Array(arrayBuffer);
     const result = await window.electronAPI.cacheThumbnail({ thumbnailId: imageId, data });
     if (!result.success) {
-      console.error("Failed to cache thumbnail:", result.error);
+      // Only log non-path-related errors (path errors should be handled by the hash fix in Electron)
+      const isPathError = result.errorCode === 'ENAMETOOLONG' || result.error?.includes('path too long') || result.error?.includes('ENOENT');
+      if (!isPathError) {
+        console.error("Failed to cache thumbnail:", result.error);
+      }
     }
   }
 
@@ -320,7 +324,9 @@ class CacheManager {
     if (result.success && result.data) {
       return new Blob([new Uint8Array(result.data)], { type: 'image/webp' });
     }
-    if (!result.success) {
+    // Don't log errors for thumbnails that don't exist yet (expected during first load)
+    // Only log unexpected errors
+    if (!result.success && result.error && !result.error.includes('ENOENT')) {
       console.error("Failed to get cached thumbnail:", result.error);
     }
     return null;

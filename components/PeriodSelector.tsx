@@ -11,10 +11,10 @@ interface PeriodOption {
 
 const PERIOD_OPTIONS: PeriodOption[] = [
   { value: '7days', label: 'Last 7 Days' },
-  { value: '30days', label: 'Last 30 Days', disabled: true },
-  { value: '90days', label: 'Last 90 Days', disabled: true },
-  { value: 'thisMonth', label: 'This Month', disabled: true },
-  { value: 'all', label: 'All Time', disabled: true },
+  { value: '30days', label: 'Last 30 Days' },
+  { value: '90days', label: 'Last 90 Days' },
+  { value: 'thisMonth', label: 'This Month' },
+  { value: 'all', label: 'All Time' },
 ];
 
 interface PeriodSelectorProps {

@@ -48,10 +48,51 @@
 - **Caching (`services/cacheManager.ts`)** persists intermediate results so subsequent launches only process new or changed files.
 - **Enrichment (`hooks/useImageLoader.ts`)** coordinates indexing jobs, respects user-controlled concurrency, and updates progress indicators exposed through `useImageStore`.
 
+### ComfyUI Parser Architecture (Recent Refactoring)
+The ComfyUI parser (`services/parsers/comfyui/`) underwent major architectural improvements to separate data extraction from presentation logic:
+
+**Core Components:**
+- **traversalEngine.ts**: Graph traversal with generic accumulation system
+  - `resolveFacts()`: Returns type-safe `WorkflowFacts` object with structured metadata
+  - `checkIfParamNeedsAccumulation()`: Generic accumulation detection based on `accumulate: boolean` flag
+  - Replaced hardcoded LoRA collection with declarative parameter rules
+- **nodeRegistry.ts**: Declarative node definitions with enhanced parameter mapping
+  - `WorkflowFacts` interface: Structured type for prompts, model, loras, sampling params, dimensions
+  - `accumulate` flag: Mark parameters for multi-node collection (e.g., LoRAs)
+- **extractors.ts**: Reusable extraction functions
+  - `concatTextExtractor`, `extractLorasFromText`, `removeLoraTagsFromText`, `cleanWildcardText`, `extractLorasFromStack`, `getWildcardOrPopulatedText`
+  - Reduces code duplication by 80-90% across node definitions (ttN concat: 45→5 lines, CR LoRA Stack: 40→3 lines)
+
+**Benefits:**
+- Type-safe metadata access with autocomplete and compile-time checks
+- Easier addition of new nodes (just mark `accumulate: true` in registry)
+- Better testability with structured outputs
+- Reduced technical debt through reusable extraction patterns
+
 ### Desktop Integration
 - **Electron Main Process (`electron.mjs`)** configures the BrowserWindow title (`Image MetaHub v0.9.5`), wires IPC handlers for file operations, and manages auto-update prompts.
 - **Preload Bridge (`preload.js`)** exposes a sandboxed `electronAPI` with directory listing, file stats, and shell helpers used by the directory tree.
 - **CLI (`cli.ts`)** provides command-line indexing utilities with the same version stamp (`0.9.5-rc`) displayed in the desktop UI.
+
+### A1111 Integration
+The application provides bidirectional workflow with Automatic1111 WebUI, enabling users to send image metadata back to A1111 for editing or quick regeneration.
+
+**Architecture:**
+- **API Client (`services/a1111ApiClient.ts`)** handles REST communication with A1111's `/sdapi/v1` endpoints (options, samplers, txt2img)
+- **Formatter (`utils/a1111Formatter.ts`)** converts normalized metadata to A1111's three-line format compatible with "Read generation parameters" feature
+- **React Hooks** provide two workflows:
+  - `useCopyToA1111.ts`: Clipboard-based workflow for manual editing
+  - `useGenerateWithA1111.ts`: Direct API generation (always autoStart)
+
+**UI Surface:**
+- Split button in `ImagePreviewSidebar.tsx` and `ImageModal.tsx` (Copy primary, Generate in dropdown)
+- Context menu items in `ImageGrid.tsx` via `useContextMenu.ts`
+- Settings panel in `SettingsModal.tsx` for server URL configuration and connection testing
+
+**Configuration:**
+- Settings stored in `useSettingsStore.ts`: server URL (default: `http://127.0.0.1:7860`), connection status
+- User must launch A1111 with `--api` and `--cors-allow-origins` flags
+- 3-minute timeout for generation requests to accommodate slower models
 
 ### Project Structure
 ```

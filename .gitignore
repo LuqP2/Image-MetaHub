@@ -4,6 +4,7 @@ test-*.cjs
 test-*.mjs
 test-*.ts
 debug-*.js
+debug-*.md
 simulate-*.js
 
 # Logs

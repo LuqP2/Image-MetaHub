@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { A1111ApiClient } from '../services/a1111ApiClient';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { formatMetadataForA1111 } from '../utils/a1111Formatter';
+import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 
 interface ContextMenuState {
   x: number;
@@ -28,6 +32,8 @@ export const useContextMenu = () => {
     y: 0,
     visible: false
   });
+
+  const { startPolling, stopPolling } = useA1111ProgressContext();
 
   const hideContextMenu = useCallback(() => {
     setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -181,9 +187,84 @@ export const useContextMenu = () => {
       // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Export error:', error);
       alert(`An unexpected error occurred during export: ${error.message}`);
+    }
+  };
+
+  const copyMetadataToA1111 = async () => {
+    if (!contextMenu.image) return;
+
+    const metadata = contextMenu.image.metadata?.normalizedMetadata;
+    if (!metadata || !metadata.prompt) {
+      alert('No metadata available for this image');
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+
+    try {
+      // Format metadata to A1111 string
+      const formattedText = formatMetadataForA1111(metadata);
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(formattedText);
+
+      showNotification('Copied! Paste into A1111 prompt box and click the Blue Arrow.');
+    } catch (error: any) {
+      const errorMessage = error.message?.includes('clipboard')
+        ? 'Clipboard access denied. Please use HTTPS or localhost.'
+        : `Error: ${error.message}`;
+      alert(errorMessage);
+    }
+  };
+
+  const quickGenerateInA1111 = async () => {
+    if (!contextMenu.image) return;
+
+    const metadata = contextMenu.image.metadata?.normalizedMetadata;
+    if (!metadata || !metadata.prompt) {
+      alert('No metadata available for this image');
+      hideContextMenu();
+      return;
+    }
+
+    // Get settings from store
+    const { a1111ServerUrl } = useSettingsStore.getState();
+
+    if (!a1111ServerUrl) {
+      alert('A1111 server URL not configured. Please check Settings.');
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+
+    try {
+      const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
+
+      // Start progress polling
+      startPolling(a1111ServerUrl, 1);
+
+      // ALWAYS start generation (autoStart: true)
+      const result = await client.sendToTxt2Img(metadata, {
+        autoStart: true
+      });
+
+      // Stop progress polling
+      stopPolling();
+
+      if (result.success) {
+        showNotification('Generated successfully!');
+      } else {
+        alert(result.error || 'Generation failed');
+      }
+    } catch (error: any) {
+      // Stop progress polling on error
+      stopPolling();
+      alert(`Error: ${error.message}`);
     }
   };
 
@@ -197,6 +278,8 @@ export const useContextMenu = () => {
     copyImage,
     copyModel,
     showInFolder,
-    exportImage
+    exportImage,
+    copyMetadataToA1111,
+    quickGenerateInA1111
   };
 };

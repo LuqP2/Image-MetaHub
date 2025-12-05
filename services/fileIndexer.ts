@@ -299,6 +299,10 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     // A1111-style data is often not valid JSON, so we check for its characteristic pattern first.
+    // Check for Civitai resources format first (A1111 without Model hash but with Civitai resources)
+    if (metadataText.includes('Civitai resources:') && metadataText.includes('Steps:')) {
+      return { parameters: metadataText };
+    }
     if (metadataText.includes('Steps:') && metadataText.includes('Sampler:') && metadataText.includes('Model hash:')) {
       return { parameters: metadataText };
     }
@@ -492,16 +496,6 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
-  // DEBUG: Log raw metadata for SwarmUI detection
-  if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string' &&
-      rawMetadata.parameters.includes('sui_image_params')) {
-    if (!isProduction) {
-      console.log('[SwarmUI DEBUG] Found sui_image_params in parameters:', {
-        fileName: fileEntry.handle.name,
-        parametersPreview: rawMetadata.parameters.substring(0, 200),
-      });
-    }
-  }
   
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
   if (isComfyUIMetadata(rawMetadata)) {
@@ -545,15 +539,9 @@ if (rawMetadata) {
       try {
         const parsedParams = JSON.parse(params);
         if (parsedParams.sui_image_params) {
-          if (!isProduction) {
-            console.log('[SwarmUI PNG] Detected SwarmUI metadata in parameters field:', fileEntry.handle.name);
-          }
           normalizedMetadata = parseSwarmUIMetadata(parsedParams as SwarmUIMetadata);
         }
-      } catch (error) {
-        if (!isProduction) {
-          console.warn('[SwarmUI PNG] Failed to parse SwarmUI JSON:', error);
-        }
+      } catch {
         // Not valid SwarmUI JSON, continue with other checks
       }
     }
@@ -785,7 +773,7 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 256;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
   const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
 
   const phaseAStats: PhaseTelemetry = {
@@ -1019,7 +1007,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 64;
+  const FILE_READ_BATCH_SIZE = 32;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {

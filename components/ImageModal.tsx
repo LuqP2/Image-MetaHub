@@ -2,7 +2,15 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X } from 'lucide-react';
+import { useCopyToA1111 } from '../hooks/useCopyToA1111';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useImageComparison } from '../hooks/useImageComparison';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { A1111GenerateModal } from './A1111GenerateModal';
+import ProBadge from './ProBadge';
+import hotkeyManager from '../services/hotkeyManager';
+import { useImageStore } from '../store/useImageStore';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -64,6 +72,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+
+  // A1111 integration hooks
+  const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
+  const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+
+  // Image comparison hook
+  const { addImage, comparisonCount } = useImageComparison();
+
+  // Feature access (license/trial gating)
+  const { canUseA1111, canUseComparison, showProModal, initialized } = useFeatureAccess();
+
+  // Annotations hooks
+  const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const addTagToImage = useImageStore((state) => state.addTagToImage);
+  const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
+  const availableTags = useImageStore((state) => state.availableTags);
+
+  // Get live tags and favorite status from store instead of props
+  const imageFromStore = useImageStore((state) =>
+    state.images.find(img => img.id === image.id) ||
+    state.filteredImages.find(img => img.id === image.id)
+  );
+  const currentTags = imageFromStore?.tags || image.tags || [];
+  const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
+
+  // State for tag input
+  const [tagInput, setTagInput] = useState('');
+  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -348,6 +385,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     loadImage();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
+      if (hotkeyManager.areHotkeysPaused()) {
+        return;
+      }
+
       if (isRenaming) return;
 
       // Alt+Enter = Toggle fullscreen (works in both grid and modal)
@@ -416,6 +458,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
+  // Tag management handlers
+  const handleAddTag = () => {
+    if (!tagInput.trim()) return;
+    addTagToImage(image.id, tagInput);
+    setTagInput('');
+    setShowTagAutocomplete(false);
+  };
+
+  const handleRemoveTag = (tag: string) => {
+    removeTagFromImage(image.id, tag);
+  };
+
+  const handleToggleFavorite = () => {
+    toggleFavorite(image.id);
+  };
+
+  // Filter autocomplete tags
+  const autocompleteOptions = tagInput
+    ? availableTags
+        .filter(tag =>
+          tag.name.includes(tagInput.toLowerCase()) &&
+          !currentTags.includes(tag.name)
+        )
+        .slice(0, 5)
+    : [];
+
   return (
     <div
       className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
@@ -474,6 +542,106 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
           </div>
 
+          {/* Annotations Section */}
+          <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
+            {/* Favorite and Tags Row */}
+            <div className="flex items-start gap-3">
+              {/* Favorite Star - Discrete */}
+              <button
+                onClick={handleToggleFavorite}
+                className={`p-1.5 rounded transition-all ${
+                  currentIsFavorite
+                    ? 'text-yellow-400 hover:text-yellow-300'
+                    : 'text-gray-500 hover:text-yellow-400'
+                }`}
+                title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
+              </button>
+
+              {/* Tags Pills */}
+              <div className="flex-1 space-y-2">
+                {/* Current Tags */}
+                {currentTags && currentTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {currentTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => handleRemoveTag(tag)}
+                        className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                        title="Click to remove"
+                      >
+                        {tag}
+                        <X size={12} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Tag Input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Add tag..."
+                    value={tagInput}
+                    onChange={(e) => {
+                      setTagInput(e.target.value);
+                      setShowTagAutocomplete(e.target.value.length > 0);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTag();
+                      }
+                      if (e.key === 'Escape') {
+                        setTagInput('');
+                        setShowTagAutocomplete(false);
+                      }
+                    }}
+                    onFocus={() => tagInput && setShowTagAutocomplete(true)}
+                    onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
+                    className="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                  />
+
+                  {/* Autocomplete Dropdown */}
+                  {showTagAutocomplete && autocompleteOptions.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                      {autocompleteOptions.map(tag => (
+                        <button
+                          key={tag.name}
+                          onClick={() => {
+                            addTagToImage(image.id, tag.name);
+                            setTagInput('');
+                            setShowTagAutocomplete(false);
+                          }}
+                          className="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                        >
+                          <span>{tag.name}</span>
+                          <span className="text-xs text-gray-500">({tag.count})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Tag Suggestions */}
+                {(!currentTags || currentTags.length === 0) && availableTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {availableTags.slice(0, 5).map(tag => (
+                      <button
+                        key={tag.name}
+                        onClick={() => addTagToImage(image.id, tag.name)}
+                        className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {nMeta ? (
             <div className="space-y-4">
               {/* Prompt Section - Always Visible */}
@@ -528,7 +696,121 @@ const ImageModal: React.FC<ImageModalProps> = ({
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
             }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
+            <button
+              onClick={() => {
+                if (!canUseComparison) {
+                  showProModal('comparison');
+                  return;
+                }
+                const added = addImage(image);
+                if (added && comparisonCount === 1) {
+                  onClose(); // Close ImageModal, ComparisonModal will auto-open
+                }
+              }}
+              disabled={canUseComparison && comparisonCount >= 2}
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
+            >
+              <GitCompare className="w-3 h-3" />
+              Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/2)`}
+              {!canUseComparison && initialized && <ProBadge size="sm" />}
+            </button>
           </div>
+
+          {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
+          {nMeta && (
+            <div className="mt-3 space-y-2">
+              {/* Hero Button: Generate Variation */}
+              <button
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  setIsGenerateModalOpen(true);
+                }}
+                disabled={canUseA1111 && !nMeta.prompt}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isGenerating && canUseA1111 ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate Variation</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Utility Button: Copy to A1111 */}
+              <button
+                onClick={() => {
+                  if (!canUseA1111) {
+                    showProModal('a1111');
+                    return;
+                  }
+                  copyToA1111(image);
+                }}
+                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
+                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+              >
+                {isCopying && canUseA1111 ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Copying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3 h-3" />
+                    <span>Copy Parameters</span>
+                    {!canUseA1111 && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Status messages */}
+              {(copyStatus || generateStatus) && (
+                <div className={`mt-2 p-2 rounded text-xs ${
+                  (copyStatus?.success || generateStatus?.success)
+                    ? 'bg-green-900/50 border border-green-700 text-green-300'
+                    : 'bg-red-900/50 border border-red-700 text-red-300'
+                }`}>
+                  {copyStatus?.message || generateStatus?.message}
+                </div>
+              )}
+
+              {/* Generate Variation Modal */}
+              {isGenerateModalOpen && nMeta && (
+                <A1111GenerateModal
+                  isOpen={isGenerateModalOpen}
+                  onClose={() => setIsGenerateModalOpen(false)}
+                  image={image}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithA1111(image, customMetadata, params.numberOfImages);
+                    setIsGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGenerating}
+                />
+              )}
+            </div>
+          )}
 
           <div>
             <button onClick={() => setShowRawMetadata(!showRawMetadata)} className="text-gray-400 text-sm w-full text-left mt-4 py-1 border-t border-gray-700 flex items-center gap-1">
@@ -623,8 +905,18 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
   // Return true if props are EQUAL (skip re-render)
   // Return false if props are DIFFERENT (re-render)
 
+  // Helper to compare tag arrays
+  const tagsEqual = (tags1?: string[], tags2?: string[]) => {
+    if (!tags1 && !tags2) return true;
+    if (!tags1 || !tags2) return false;
+    if (tags1.length !== tags2.length) return false;
+    return tags1.every((tag, index) => tag === tags2[index]);
+  };
+
   const propsEqual =
     prevProps.image.id === nextProps.image.id &&
+    prevProps.image.isFavorite === nextProps.image.isFavorite &&
+    tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
     prevProps.onClose === nextProps.onClose &&
     prevProps.onImageDeleted === nextProps.onImageDeleted &&
     prevProps.onImageRenamed === nextProps.onImageRenamed &&

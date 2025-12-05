@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, TrendingUp, Calendar, Package, Layers, Clock } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import {
   BarChart,
   Bar,
@@ -50,8 +51,22 @@ const EmptyChart: React.FC<{ message?: string }> = ({ message = 'No data availab
 );
 
 const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
+  // Feature access safety check
+  const { canUseAnalytics } = useFeatureAccess();
+
   const allImages = useImageStore((state) => state.images);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('7days');
+
+  // Don't render anything if modal is closed
+  if (!isOpen) {
+    return null;
+  }
+
+  // Safety check: Don't render if feature is not available
+  if (!canUseAnalytics) {
+    console.warn('[IMH] Analytics accessed without permission');
+    return null;
+  }
 
   const analytics = useMemo(() => {
     if (!allImages || allImages.length === 0) {

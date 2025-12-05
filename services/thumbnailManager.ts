@@ -45,8 +45,16 @@ class ThumbnailManager {
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
+    // Check current status from store (not from prop, which may be stale)
+    const storeState = useImageStore.getState();
+    const currentImage = storeState.images.find(img => img.id === image.id);
+
+    if (currentImage?.thumbnailStatus === 'ready' && currentImage.thumbnailUrl) {
       return;
+    }
+
+    if (currentImage?.thumbnailStatus === 'loading') {
+      return; // Already being loaded
     }
 
     const existing = this.inflight.get(image.id);

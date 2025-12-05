@@ -148,7 +148,12 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
  * - Hex: "seed": "0xabc123"
  * - Derived: "derived_seed": {...} → approximateSeed flag
  */
-function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
+function extractAdvancedSeed(node: ParserNode | null, graph: Graph): { seed: number | null; approximateSeed?: boolean } {
+  // Handle null node
+  if (!node) {
+    return { seed: null };
+  }
+
   // Try numeric seed first (standard path)
   if (typeof node.inputs?.seed === 'number') {
     return { seed: node.inputs.seed };
@@ -193,40 +198,54 @@ function extractAdvancedSeed(node: ParserNode, graph: Graph): { seed: number | n
  * - Extracts model name from CheckpointLoader, LoraLoader nodes
  * - Maps model hashes to "unknown (hash: xxxx)" format
  */
-function extractAdvancedModel(node: ParserNode, graph: Graph): string | null {
-  // Try model_name from inputs
+function extractAdvancedModel(node: ParserNode | null, graph: Graph): string | null {
+  // Handle null node
+  if (!node) {
+    return null;
+  }
+
+  // FIRST: Traverse to source nodes (CheckpointLoader) via model connections
+  // This ensures we follow the chain: LoraLoader -> LoraLoader -> CheckpointLoader
+  if (node.inputs?.model && Array.isArray(node.inputs.model)) {
+    const [sourceId] = node.inputs.model;
+    const sourceNode = graph[sourceId];
+    if (sourceNode) {
+      const sourceModel = extractAdvancedModel(sourceNode, graph);
+      if (sourceModel) {
+        return sourceModel;
+      }
+    }
+  }
+
+  // SECOND: Try direct input values (for nodes that have model_name/ckpt_name in inputs)
   if (typeof node.inputs?.model_name === 'string') {
     return node.inputs.model_name;
   }
-  
+
   if (typeof node.inputs?.ckpt_name === 'string') {
     return node.inputs.ckpt_name;
   }
-  
-  // Try widgets_values for model name (string ending in .safetensors or .ckpt)
-  if (Array.isArray(node.widgets_values)) {
+
+  // THIRD: Try widgets_values for model name (only for CheckpointLoader-type nodes)
+  // Check if this is a checkpoint loader node to avoid picking up LoRA names
+  const isCheckpointLoader = node.class_type?.toLowerCase().includes('checkpoint') ||
+                             node.class_type?.toLowerCase().includes('unet') ||
+                             node.class_type === 'CheckpointLoaderSimple';
+
+  if (isCheckpointLoader && Array.isArray(node.widgets_values)) {
     for (const value of node.widgets_values) {
       if (typeof value === 'string' && (value.endsWith('.safetensors') || value.endsWith('.ckpt') || value.endsWith('.pt'))) {
         return value;
       }
     }
   }
-  
-  // Try model hash fallback
+
+  // LAST: Try model hash fallback
   const hashMatch = JSON.stringify(node).match(/"(?:model_hash|hash)"\s*:\s*"([0-9a-fA-F]{8,})"/);
   if (hashMatch) {
     return `unknown (hash: ${hashMatch[1].substring(0, 8)})`;
   }
-  
-  // Traverse to CheckpointLoaderSimple or similar
-  if (node.inputs?.model && Array.isArray(node.inputs.model)) {
-    const [sourceId] = node.inputs.model;
-    const sourceNode = graph[sourceId];
-    if (sourceNode) {
-      return extractAdvancedModel(sourceNode, graph);
-    }
-  }
-  
+
   return null;
 }
 
@@ -244,6 +263,7 @@ function extractAdvancedModifiers(graph: Graph): {
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
+    if (!node.class_type) continue; // Skip nodes without class_type
     const classType = node.class_type.toLowerCase();
     
     // ControlNet detection (only from loaders, not apply nodes)
@@ -258,6 +278,7 @@ function extractAdvancedModifiers(graph: Graph): {
       // Search for ControlNetApply nodes that reference this loader
       for (const applyNodeId in graph) {
         const applyNode = graph[applyNodeId];
+        if (!applyNode.class_type) continue; // Skip nodes without class_type
         if (applyNode.class_type.toLowerCase().includes('controlnetapply')) {
           // Check if this apply node uses our loader
           if (applyNode.inputs?.control_net && Array.isArray(applyNode.inputs.control_net)) {
@@ -300,7 +321,8 @@ function extractEditHistory(graph: Graph): Array<{ action: string; timestamp?: n
   
   for (const nodeId in graph) {
     const node = graph[nodeId];
-    
+    if (!node.class_type) continue; // Skip nodes without class_type
+
     if (node.class_type === 'SaveImage') {
       const timestamp = node.inputs?.timestamp || Date.now();
       history.push({ action: 'save', timestamp: Number(timestamp) });
@@ -407,8 +429,8 @@ function findTerminalNode(graph: Graph): ParserNode | null {
     for (const nodeId in graph) {
         const node = graph[nodeId];
 
-        // Skip muted nodes (mode 2 or 4)
-        if (node.mode === 2 || node.mode === 4) {
+        // Skip nodes without class_type or muted nodes (mode 2 or 4)
+        if (!node.class_type || node.mode === 2 || node.mode === 4) {
             continue;
         }
 
@@ -442,6 +464,7 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   // Count unknown nodes for telemetry
   for (const nodeId in graph) {
     const node = graph[nodeId];
+    if (!node.class_type) continue; // Skip nodes without class_type
     if (!NodeRegistry[node.class_type]) {
       telemetry.unknown_nodes_count++;
       telemetry.warnings.push(`Unknown node type: ${node.class_type}`);
@@ -450,6 +473,10 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   
   const terminalNode = findTerminalNode(graph);
 
+  // Check if terminal node was found
+  if (!terminalNode) {
+    telemetry.warnings.push('No terminal node found');
+  }
 
   // Note: width/height are NOT extracted from workflow, they're read from actual image dimensions
   const results = resolveAll({

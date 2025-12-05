@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useLicenseStore } from './store/useLicenseStore';
 import { useImageLoader } from './hooks/useImageLoader';
 import { useImageSelection } from './hooks/useImageSelection';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useFeatureAccess } from './hooks/useFeatureAccess';
 import { Directory } from './types';
 import { X } from 'lucide-react';
 
@@ -16,6 +18,7 @@ import Header from './components/Header';
 import Toast from './components/Toast';
 import SettingsModal from './components/SettingsModal';
 import ChangelogModal from './components/ChangelogModal';
+import ComparisonModal from './components/ComparisonModal';
 import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
@@ -23,10 +26,13 @@ import ImagePreviewSidebar from './components/ImagePreviewSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
+import ProOnlyModal from './components/ProOnlyModal';
+import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
+  const { progressState: a1111Progress } = useA1111ProgressContext();
   
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
@@ -34,7 +40,6 @@ export default function App() {
 
   // --- Zustand Store State ---
   const {
-    images,
     filteredImages,
     selectionTotalImages,
     selectionDirectoryCount,
@@ -69,16 +74,24 @@ export default function App() {
     toggleDirectoryVisibility,
     setFolderSelectionState,
     getFolderSelectionState,
-    initializeFolderSelection,
     resetState,
     setSuccess,
     setError,
     handleNavigateNext,
     handleNavigatePrevious,
     cleanupInvalidImages,
+    isComparisonModalOpen,
+    closeComparisonModal,
+    isAnnotationsLoaded,
+    initializeFolderSelection,
+    loadAnnotations,
   } = useImageStore();
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+
+  const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
+  const safeDirectories = Array.isArray(directories) ? directories : [];
+  const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
 
   // --- Settings Store State ---
   const {
@@ -112,6 +125,9 @@ export default function App() {
     setIsSettingsModalOpen,
   });
 
+  // --- License/Trial Hook ---
+  const { proModalOpen, proModalFeature, closeProModal, isTrialActive, trialDaysRemaining } = useFeatureAccess();
+
   const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
     setSettingsTab(tab);
     setIsSettingsModalOpen(true);
@@ -128,13 +144,55 @@ export default function App() {
     }
   }, [initializeFolderSelection, isFolderSelectionLoaded]);
 
+  // Load annotations on app start
+  useEffect(() => {
+    if (!isAnnotationsLoaded) {
+      loadAnnotations();
+    }
+  }, [loadAnnotations, isAnnotationsLoaded]);
+
+  // Initialize license and activate trial on first launch
+  useEffect(() => {
+    const initializeLicense = async () => {
+      // 1. Rehydrate Zustand store from persistent storage
+      await useLicenseStore.persist.rehydrate();
+      const licenseState = useLicenseStore.getState();
+
+      // 2. Activate trial if first time
+      if (!licenseState.trialActivated) {
+        licenseState.activateTrial();
+        console.log('✅ Trial de 7 dias ativado!');
+      } else {
+        // 3. Check status if already activated before
+        licenseState.checkLicenseStatus();
+      }
+    };
+
+    initializeLicense();
+  }, []);
+
   // --- Effects ---
   useEffect(() => {
-    const applyTheme = (themeValue, systemShouldUseDark) => {
-      if (themeValue === 'dark' || (themeValue === 'system' && systemShouldUseDark)) {
+    const applyTheme = (themeValue: string, systemShouldUseDark: boolean) => {
+      // Determine if we should be in "dark mode" for Tailwind utilities
+      const isDark =
+        themeValue === 'dark' ||
+        themeValue === 'dracula' ||
+        themeValue === 'nord' ||
+        themeValue === 'ocean' ||
+        (themeValue === 'system' && systemShouldUseDark);
+
+      if (isDark) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
+      }
+
+      // Apply the data-theme attribute for CSS variables
+      if (themeValue === 'system') {
+        document.documentElement.setAttribute('data-theme', systemShouldUseDark ? 'dark' : 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', themeValue);
       }
     };
 
@@ -166,31 +224,33 @@ export default function App() {
         path = undefined;
       }
       await cacheManager.init();
-      
+
       // Validate cached images have valid file handles (for hot reload scenarios in browser)
       // Note: In Electron, mock handles are created with proper getFile() implementation
       const isElectron = typeof window !== 'undefined' && window.electronAPI;
-      if (!isElectron && images.length > 0) {
-        const firstImage = images[0];
+      const currentImages = useImageStore.getState().images;
+
+      if (!isElectron && currentImages.length > 0) {
+        const firstImage = currentImages[0];
         const fileHandle = firstImage.thumbnailHandle || firstImage.handle;
         if (!fileHandle || typeof fileHandle.getFile !== 'function') {
           console.warn('⚠️ Detected invalid file handles (likely after hot reload). Clearing state...');
           resetState();
         }
-      } else if (images.length > 0) {
+      } else if (currentImages.length > 0) {
         // Clean up any invalid images that might have been loaded
         cleanupInvalidImages();
       }
     };
     initializeCache().catch(console.error);
-  }, [images, resetState]);
+  }, []); // ✅ Run only once on mount
 
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
       
       // Check if directory already exists in the store
-      const existingDir = directories.find(d => d.path === path);
+      const existingDir = safeDirectories.find(d => d.path === path);
       if (existingDir) {
         return;
       }
@@ -215,13 +275,13 @@ export default function App() {
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [loadDirectory, directories]);
+  }, [loadDirectory, safeDirectories]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
-    // The hook is memoized, so this will only run once on mount
+    // Only run once on mount
     handleLoadFromStorage();
-  }, [handleLoadFromStorage]);
+  }, []);
 
   // Listen for directory load events from the main process (e.g., from CLI argument)
   useEffect(() => {
@@ -305,19 +365,19 @@ export default function App() {
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
-    const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
+    const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [filteredImages.length, itemsPerPage, currentPage]);
+  }, [safeFilteredImages.length, itemsPerPage, currentPage]);
 
   // Clean up selectedImage if its directory no longer exists
   useEffect(() => {
-    if (selectedImage && !directories.find(d => d.id === selectedImage.directoryId)) {
+    if (selectedImage && !safeDirectories.find(d => d.id === selectedImage.directoryId)) {
       console.warn('Selected image directory no longer exists, clearing selection');
       setSelectedImage(null);
     }
-  }, [selectedImage, directories, setSelectedImage]);
+  }, [selectedImage, safeDirectories, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
@@ -332,8 +392,8 @@ export default function App() {
 
   const getCurrentImageIndex = useCallback(() => {
     if (!selectedImage) return 0;
-    return filteredImages.findIndex(img => img.id === selectedImage.id);
-  }, [selectedImage, filteredImages]);
+    return safeFilteredImages.findIndex(img => img.id === selectedImage.id);
+  }, [selectedImage, safeFilteredImages]);
 
   // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
   const handleCloseImageModal = useCallback(() => {
@@ -349,10 +409,13 @@ export default function App() {
   }, [handleNavigatePrevious]);
 
   // --- Render Logic ---
-  const paginatedImages = filteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
-  const hasDirectories = directories.length > 0;
-  const directoryPath = selectedImage ? directories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const paginatedImages = useMemo(
+    () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    [safeFilteredImages, currentPage, itemsPerPage]
+  );
+  const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
+  const hasDirectories = safeDirectories.length > 0;
+  const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
@@ -374,6 +437,11 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         initialTab={settingsTab}
+      />
+
+      <ComparisonModal
+        isOpen={isComparisonModalOpen}
+        onClose={closeComparisonModal}
       />
 
       {hasDirectories && (
@@ -405,7 +473,7 @@ export default function App() {
           onSortOrderChange={imageStoreSetSortOrder}
         >
           <DirectoryList
-            directories={directories}
+            directories={safeDirectories}
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
@@ -457,7 +525,7 @@ export default function App() {
                     <ImageGrid
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
-                      selectedImages={selectedImages}
+                      selectedImages={safeSelectedImages}
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
@@ -466,7 +534,7 @@ export default function App() {
                     <ImageTable
                       images={paginatedImages}
                       onImageClick={handleImageSelection}
-                      selectedImages={selectedImages}
+                      selectedImages={safeSelectedImages}
                     />
                 )}
               </div>
@@ -477,15 +545,16 @@ export default function App() {
                 onPageChange={setCurrentPage}
                 itemsPerPage={itemsPerPage}
                 onItemsPerPageChange={setItemsPerPage}
-                selectedCount={selectedImages.size}
+                selectedCount={safeSelectedImages.size}
                 onClearSelection={clearSelection}
                 onDeleteSelected={handleDeleteSelectedImages}
                 viewMode={viewMode}
                 onViewModeChange={toggleViewMode}
-                filteredCount={filteredImages.length}
+                filteredCount={safeFilteredImages.length}
                 totalCount={selectionTotalImages}
                 directoryCount={selectionDirectoryCount}
                 enrichmentProgress={enrichmentProgress}
+                a1111Progress={a1111Progress}
               />
             </>
           )}
@@ -498,7 +567,7 @@ export default function App() {
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
             currentIndex={getCurrentImageIndex()}
-            totalImages={filteredImages.length}
+            totalImages={safeFilteredImages.length}
             onNavigateNext={handleImageModalNavigateNext}
             onNavigatePrevious={handleImageModalNavigatePrevious}
             directoryPath={directoryPath}
@@ -515,6 +584,14 @@ export default function App() {
         <Analytics
           isOpen={isAnalyticsOpen}
           onClose={() => setIsAnalyticsOpen(false)}
+        />
+
+        <ProOnlyModal
+          isOpen={proModalOpen}
+          onClose={closeProModal}
+          feature={proModalFeature}
+          isTrialActive={isTrialActive}
+          daysRemaining={trialDaysRemaining}
         />
       </div>
     </div>
