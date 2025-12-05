@@ -57,18 +57,12 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
   const allImages = useImageStore((state) => state.images);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('7days');
 
-  // Don't render anything if modal is closed
-  if (!isOpen) {
-    return null;
-  }
-
-  // Safety check: Don't render if feature is not available
-  if (!canUseAnalytics) {
-    console.warn('[IMH] Analytics accessed without permission');
-    return null;
-  }
-
   const analytics = useMemo(() => {
+    // Short-circuit calculations when closed or feature not allowed
+    if (!isOpen || !canUseAnalytics) {
+      return null;
+    }
+
     if (!allImages || allImages.length === 0) {
       return null;
     }
@@ -162,9 +156,18 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
       totalImages: images.length,
       allImagesCount: allImages.length,
     };
-  }, [allImages, selectedPeriod]);
+  }, [allImages, canUseAnalytics, isOpen, selectedPeriod]);
 
-  if (!isOpen) return null;
+  // Don't render anything if modal is closed
+  if (!isOpen) {
+    return null;
+  }
+
+  // Safety check: Don't render if feature is not available
+  if (!canUseAnalytics) {
+    console.warn('[IMH] Analytics accessed without permission');
+    return null;
+  }
 
   if (!analytics || analytics.allImagesCount === 0) {
     return (
