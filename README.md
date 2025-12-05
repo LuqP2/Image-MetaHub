@@ -186,6 +186,7 @@ Contributions are welcome! Please open an issue for major changes to discuss the
 - **Batch operations on selected images** *(v0.10.0)*
 - **Favorites system with filtering** *(v0.10.0)*
 - **A1111 Image Generation Integration** *(v0.10.0)*
+- **Multiple Themes & Light Mode** *(v0.10.0)*
 
 **Medium-Term**
 - Advanced AI-powered image analysis and auto-tagging
