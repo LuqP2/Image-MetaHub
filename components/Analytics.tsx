@@ -57,6 +57,11 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
   const allImages = useImageStore((state) => state.images);
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodPreset>('7days');
 
+  // Don't render anything if modal is closed
+  if (!isOpen) {
+    return null;
+  }
+
   // Safety check: Don't render if feature is not available
   if (!canUseAnalytics) {
     console.warn('[IMH] Analytics accessed without permission');

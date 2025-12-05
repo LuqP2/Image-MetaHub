@@ -18,8 +18,8 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.0</h1>
             {isTrialActive && (
-              <span className="text-xs text-yellow-400 font-medium">
-                Trial: {trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left
+              <span className="text-xs text-yellow-400 font-medium flex items-center gap-1">
+                <Crown className="w-3 h-3" /> Pro ({trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left)
               </span>
             )}
             {isPro && (
