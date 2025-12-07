@@ -725,6 +725,7 @@ interface ProcessFilesOptions {
   onEnrichmentBatch?: (batch: IndexedImage[]) => void;
   enrichmentBatchSize?: number;
   onEnrichmentProgress?: (progress: { processed: number; total: number } | null) => void;
+  hydratePreloadedImages?: boolean;
 }
 
 export interface ProcessFilesResult {
@@ -876,7 +877,8 @@ export async function processFiles(
     image: IndexedImage,
     source: CatalogFileEntry | undefined,
     needsEnrichment: boolean,
-    countTowardsProgress: boolean
+    countTowardsProgress: boolean,
+    emitToUi: boolean = true
   ) => {
     if (abortSignal?.aborted) {
       return;
@@ -895,7 +897,9 @@ export async function processFiles(
       enrichmentQueue.push(entry);
     }
 
-    uiBatch.push(image);
+    if (emitToUi) {
+      uiBatch.push(image);
+    }
     chunkBuffer.push(image);
 
     phaseAStats.processed += 1;
@@ -906,7 +910,9 @@ export async function processFiles(
       setProgress({ current: processedNew, total: totalNewFiles });
     }
 
-    await pushUiBatch();
+    if (emitToUi) {
+      await pushUiBatch();
+    }
     await flushChunk();
   };
 
@@ -961,6 +967,7 @@ export async function processFiles(
 
   // Phase A: load any cached images first so they are part of the catalog output
   const preloadedImages = options.preloadedImages ?? [];
+  const hydratePreloadedImages = options.hydratePreloadedImages ?? true;
   for (const image of preloadedImages) {
     const stub = {
       ...image,
@@ -970,7 +977,7 @@ export async function processFiles(
       fileSize: image.fileSize ?? statsLookup.get(image.name)?.size,
       fileType: image.fileType ?? statsLookup.get(image.name)?.type,
     } as IndexedImage;
-    await registerCatalogImage(stub, undefined, false, false);
+    await registerCatalogImage(stub, undefined, false, false, hydratePreloadedImages);
   }
 
   if (preloadedImages.length > 0) {

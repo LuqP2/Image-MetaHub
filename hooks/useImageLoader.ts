@@ -537,11 +537,17 @@ export function useImageLoader() {
             const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
             let preloadedImages: IndexedImage[] = [];
+            const shouldHydratePreloadedImages = !isUpdate || diff.needsFullRefresh;
 
-            // CRITICAL FIX: Clear directory BEFORE adding cached images to avoid race conditions
-            // This ensures the store is in a clean state before we start adding images
-            if (isUpdate) {
+            if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);
+            } else if (diff.newAndModifiedFiles.length > 0) {
+                const changedIds = Array.from(new Set(
+                    diff.newAndModifiedFiles.map(file => `${directory.id}::${file.name}`)
+                ));
+                if (changedIds.length > 0) {
+                    removeImages(changedIds);
+                }
             }
 
             // Add cached images (both first load and refresh)
@@ -605,7 +611,7 @@ export function useImageLoader() {
                 removeImages(deletedFileIds);
             };
 
-            const shouldProcessPipeline = (fileHandles.length > 0) || (preloadedImages.length > 0) || !!cacheWriter;
+            const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || (shouldHydratePreloadedImages && preloadedImages.length > 0);
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing()) {
@@ -635,6 +641,7 @@ export function useImageLoader() {
                         fileStats: fileStatsMap,
                         onEnrichmentBatch: handleEnrichmentBatch,
                         onEnrichmentProgress: handleEnrichmentProgress,
+                        hydratePreloadedImages: shouldHydratePreloadedImages,
                     }
                 );
 
@@ -653,7 +660,7 @@ export function useImageLoader() {
                     finalizeDirectoryLoad(directory);
                 }
             } else {
-                if (preloadedImages.length > 0) {
+                if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
                 }
                 finalizeDirectoryLoad(directory);
