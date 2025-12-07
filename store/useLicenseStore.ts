@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import { validateLicenseKey } from '../utils/licenseKey';
 
 // --- Electron IPC-based storage for Zustand ---
 // This storage adapter will be used if the app is running in Electron.
@@ -103,7 +104,7 @@ export const useLicenseStore = create<LicenseState>()(
           initialized: true,
         });
 
-        console.log('✅ [IMH] Trial activated! 7 days of Pro features unlocked.');
+        console.log('[IMH] Trial activated! 7 days of Pro features unlocked.');
       },
 
       // Check license status (called on app start and periodically)
@@ -122,7 +123,7 @@ export const useLicenseStore = create<LicenseState>()(
             licenseStatus: 'expired',
             initialized: true,
           });
-          console.log('⚠️ [IMH] Trial expired. Upgrade to Pro to unlock features.');
+          console.log('[IMH] Trial expired. Upgrade to Pro to unlock features.');
           return;
         }
 
@@ -130,37 +131,29 @@ export const useLicenseStore = create<LicenseState>()(
         set({ initialized: true });
       },
 
-      // Activate license (future: will validate with LemonSqueezy/Gumroad)
+      // Activate license using offline key validation
       activateLicense: async (key: string, email: string) => {
-        // TODO: Validate with LemonSqueezy/Gumroad API
-        // For now, simple client-side check
-        if (!key || !email) return false;
-
-        // Placeholder: accept any key starting with 'IMH-PRO-' or 'IMH-LIFE-'
-        if (key.startsWith('IMH-PRO-')) {
-          set({
-            licenseStatus: 'pro',
-            licenseKey: key,
-            licenseEmail: email,
-            initialized: true,
-          });
-          console.log('✅ [IMH] Pro license activated!');
-          return true;
+        if (!key || !email) {
+          console.error('[IMH] License activation failed: email or key missing');
+          return false;
         }
 
-        if (key.startsWith('IMH-LIFE-')) {
-          set({
-            licenseStatus: 'lifetime',
-            licenseKey: key,
-            licenseEmail: email,
-            initialized: true,
-          });
-          console.log('✅ [IMH] Lifetime license activated!');
-          return true;
+        const isValid = validateLicenseKey(email, key);
+
+        if (!isValid) {
+          console.error('[IMH] Invalid license key for provided email');
+          return false;
         }
 
-        console.error('[IMH] Invalid license key format');
-        return false;
+        set({
+          licenseStatus: 'pro',
+          licenseKey: key,
+          licenseEmail: email,
+          initialized: true,
+        });
+
+        console.log('✅ [IMH] Pro license activated via offline key');
+        return true;
       },
 
       // Dev only: reset license
@@ -179,7 +172,7 @@ export const useLicenseStore = create<LicenseState>()(
           licenseEmail: null,
         });
 
-        console.log('🔄 [IMH] License reset');
+        console.log('[IMH] License reset');
       },
     }),
     {

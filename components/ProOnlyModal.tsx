@@ -123,16 +123,17 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
 
           {/* CTA */}
           <div className="space-y-3">
-            <button
-              disabled
-              className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-              title="Payment integration coming soon"
+            <a
+              href="https://lucasphere4660.gumroad.com/l/qmjima"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
             >
               <Crown className="w-5 h-5" />
-              Upgrade to Pro (Coming Soon)
-            </button>
+              Get Pro License
+            </a>
             <p className="text-xs text-gray-500 text-center">
-              Payment integration will be available in the next update
+              After purchase, you&apos;ll receive a license key by email. Open Settings → License to activate.
             </p>
           </div>
         </div>

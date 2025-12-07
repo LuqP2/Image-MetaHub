@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { X, Wrench, Keyboard, Palette, Check } from 'lucide-react';
+import { useLicenseStore } from '../store/useLicenseStore';
+import { X, Wrench, Keyboard, Palette, Check, Crown } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
 import { HotkeySettings } from './HotkeySettings';
 
@@ -49,6 +50,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     ? navigator.hardwareConcurrency
     : null;
   const maxConcurrency = hardwareConcurrency ? Math.max(1, Math.min(16, Math.floor(hardwareConcurrency))) : 16;
+
+  // License state
+  const licenseStatus = useLicenseStore((state) => state.licenseStatus);
+  const licenseEmail = useLicenseStore((state) => state.licenseEmail);
+  const licenseKey = useLicenseStore((state) => state.licenseKey);
+  const activateLicense = useLicenseStore((state) => state.activateLicense);
+
+  const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
+  const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
+  const [isActivatingLicense, setIsActivatingLicense] = useState(false);
+  const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -142,6 +154,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
         console.error('Failed to clear cache:', error);
         alert('❌ Failed to clear cache. Check console for details.');
       }
+    }
+  };
+
+  const handleActivateLicense = async () => {
+    setLicenseMessage(null);
+    const email = licenseEmailInput.trim();
+    const key = licenseKeyInput.trim();
+
+    if (!email || !key) {
+      setLicenseMessage('Please enter both email and license key.');
+      return;
+    }
+
+    try {
+      setIsActivatingLicense(true);
+      const success = await activateLicense(key, email);
+      if (success) {
+        setLicenseMessage('✅ License activated. Thank you for supporting the project!');
+      } else {
+        setLicenseMessage('Invalid license for this email. Please double-check both fields.');
+      }
+    } finally {
+      setIsActivatingLicense(false);
     }
   };
 
@@ -393,6 +428,98 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
             <p className="text-xs text-gray-500 mt-2">
               This will delete indexed metadata but keep your image files intact.
             </p>
+          </div>
+
+          {/* License / Pro Activation */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+              <Crown className="w-4 h-4 text-yellow-400" />
+              License / Pro
+            </h3>
+            <div className="bg-gray-900 p-3 rounded-md space-y-3 border border-gray-800">
+              <p className="text-sm text-gray-300">
+                Support the project and unlock Pro features with a simple offline license key. No online checks, no account system.
+              </p>
+              <p className="text-xs text-gray-500">
+                Buy a license on Gumroad, then paste the email you used at checkout and the license key you received.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-300">License email</label>
+                  <input
+                    type="email"
+                    value={licenseEmailInput}
+                    onChange={(event) => setLicenseEmailInput(event.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-300">License key</label>
+                  <input
+                    type="text"
+                    value={licenseKeyInput}
+                    onChange={(event) => setLicenseKeyInput(event.target.value)}
+                    placeholder="XXXX-XXXX-XXXX-XXXX-XXXX"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-2">
+                <button
+                  onClick={handleActivateLicense}
+                  disabled={isActivatingLicense}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2"
+                >
+                  {isActivatingLicense ? 'Activating...' : 'Activate'}
+                </button>
+                <div className="text-xs text-gray-400 text-right">
+                  <div>
+                    Status:{' '}
+                    <span
+                      className={
+                        licenseStatus === 'pro' || licenseStatus === 'lifetime'
+                          ? 'text-green-400'
+                          : licenseStatus === 'expired'
+                          ? 'text-red-400'
+                          : 'text-yellow-300'
+                      }
+                    >
+                      {licenseStatus === 'pro' && 'Pro'}
+                      {licenseStatus === 'lifetime' && 'Lifetime'}
+                      {licenseStatus === 'trial' && 'Trial'}
+                      {licenseStatus === 'expired' && 'Trial expired'}
+                    </span>
+                  </div>
+                  {licenseEmail && (
+                    <div className="mt-1">
+                      Activated for:{' '}
+                      <span className="text-gray-200">{licenseEmail}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {licenseMessage && (
+                <p className="text-xs mt-2 text-gray-300">
+                  {licenseMessage}
+                </p>
+              )}
+
+              <div className="mt-2 flex justify-end">
+                <a
+                  href="https://lucasphere4660.gumroad.com/l/qmjima"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-400 hover:text-blue-300 underline inline-flex items-center gap-1"
+                >
+                  <Crown className="w-3 h-3" />
+                  Get Pro license
+                </a>
+              </div>
+            </div>
           </div>
         </div>
         )}

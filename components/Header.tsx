@@ -41,6 +41,17 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
             Feedback & Bugs
           </a>
           <div className="border-l border-gray-600 h-8 mx-2"></div>
+          {/* Discreet Get Pro link */}
+          {!isPro && (
+            <a
+              href="https://lucasphere4660.gumroad.com/l/qmjima"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-yellow-300 hover:text-yellow-200 underline px-2 py-1 rounded-md bg-yellow-900/20 border border-yellow-700/40"
+            >
+              Get Pro
+            </a>
+          )}
           <button
             onClick={() => {
               if (canUseAnalytics) {
