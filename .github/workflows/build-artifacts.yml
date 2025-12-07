@@ -24,6 +24,8 @@ jobs:
     name: Build Linux AppImage
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.platform == 'linux' || github.event.inputs.platform == 'all' }}
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
 
     steps:
       - name: Checkout repository
@@ -62,6 +64,8 @@ jobs:
     name: Build Windows Installer
     runs-on: windows-latest
     if: ${{ github.event.inputs.platform == 'windows' || github.event.inputs.platform == 'all' }}
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
 
     steps:
       - name: Checkout repository
@@ -102,6 +106,8 @@ jobs:
     name: Build macOS App
     runs-on: macos-latest
     if: ${{ github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'all' }}
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
 
     steps:
       - name: Checkout repository

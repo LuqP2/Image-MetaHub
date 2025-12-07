@@ -13,6 +13,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
     outputs:
       release-created: true
 
@@ -101,6 +103,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
 
     steps:
       - name: Checkout repository
@@ -149,6 +153,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
 
     steps:
       - name: Checkout repository
