@@ -27,6 +27,31 @@ export interface CreationHabits {
   hourlyDistribution: { hour: number; count: number }[];
 }
 
+const normalizeItemName = (item: unknown): string | null => {
+  if (item === null || item === undefined) {
+    return null;
+  }
+
+  if (typeof item === 'string') {
+    const trimmed = item.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof item === 'number') {
+    return String(item);
+  }
+
+  if (typeof item === 'object' && 'name' in (item as Record<string, unknown>)) {
+    const possibleName = (item as Record<string, unknown>).name;
+    if (typeof possibleName === 'string') {
+      const trimmed = possibleName.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+  }
+
+  return null;
+};
+
 /**
  * Convert period preset to days back number
  */
@@ -136,9 +161,10 @@ export function getUniquePeriodCount(
   images
     .filter((img) => img.lastModified >= periodStart)
     .forEach((img) => {
-      const items = img[field] || [];
+      const items = Array.isArray(img[field]) ? img[field] : [img[field]];
       items.forEach((item) => {
-        if (item) uniqueItems.add(item);
+        const normalizedItem = normalizeItemName(item);
+        if (normalizedItem) uniqueItems.add(normalizedItem);
       });
     });
 
@@ -244,7 +270,7 @@ export function calculateTopItems(
     const isFavorite = false; // Placeholder - implement when favorite system exists
 
     if (field === 'scheduler') {
-      const scheduler = img.scheduler;
+      const scheduler = normalizeItemName(img.scheduler);
       if (scheduler) {
         const stats = itemStats.get(scheduler) || { total: 0, favorites: 0 };
         stats.total++;
@@ -252,13 +278,14 @@ export function calculateTopItems(
         itemStats.set(scheduler, stats);
       }
     } else {
-      const items = img[field] || [];
+      const items = Array.isArray(img[field]) ? img[field] : [img[field]];
       items.forEach((item) => {
-        if (item) {
-          const stats = itemStats.get(item) || { total: 0, favorites: 0 };
+        const normalizedItem = normalizeItemName(item);
+        if (normalizedItem) {
+          const stats = itemStats.get(normalizedItem) || { total: 0, favorites: 0 };
           stats.total++;
           if (isFavorite) stats.favorites++;
-          itemStats.set(item, stats);
+          itemStats.set(normalizedItem, stats);
         }
       });
     }
@@ -389,9 +416,23 @@ export function generateInsights(
 /**
  * Truncate long names for display
  */
-export function truncateName(name: string, maxLength: number): string {
-  if (name.length <= maxLength) return name;
-  return name.substring(0, maxLength - 3) + '...';
+export function truncateName(name: unknown, maxLength: number): string {
+  const safeMaxLength = Math.max(0, maxLength);
+  const safeName = typeof name === 'string'
+    ? name
+    : name === null || name === undefined
+    ? ''
+    : String(name);
+
+  if (safeName.length <= safeMaxLength) {
+    return safeName;
+  }
+
+  if (safeMaxLength <= 3) {
+    return safeName.substring(0, safeMaxLength);
+  }
+
+  return safeName.substring(0, safeMaxLength - 3) + '...';
 }
 
 /**

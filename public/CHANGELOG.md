@@ -7,14 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1] - 2025-12-07
 
-### Fixed
-
-- **Refresh Performance**: Fixed folder refresh to reuse Phase A catalog data, significantly improving refresh speed by skipping redundant file system scans
-
 ### Added
 
 - **Offline License Activation**: Added support for offline license activation with manual key entry for users without internet access or firewall restrictions
 - **Pro Purchase Links**: Added direct links to purchase Pro licenses in the header and licensing interface for easier access
+
+### Fixed
+
+- **Refresh Performance**: Fixed folder refresh to reuse Phase A catalog data, significantly improving refresh speed by skipping redundant file system scans
 
 ## [0.10.0] - 2025-12-04
 
