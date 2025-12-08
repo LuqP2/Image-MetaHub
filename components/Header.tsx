@@ -16,7 +16,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
         <div className="flex items-center gap-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-14 w-14 rounded-md" />
           <div className="flex flex-col">
-            <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.1</h1>
+            <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.2</h1>
             {isTrialActive && (
               <span className="text-xs text-yellow-400 font-medium flex items-center gap-1">
                 <Crown className="w-3 h-3" /> Pro ({trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left)

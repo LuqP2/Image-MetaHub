@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2025-12-08
+
+### Fixed
+
+- **Analytics Blank Screen**: Prevented Analytics dashboard crash when metadata contains non-string model/LoRA/scheduler values by normalizing inputs and hardening string truncation.
+
+### Added
+
+- **Generate Variation from ImageCompare Panel**
+
 ## [0.10.1] - 2025-12-07
 
 ### Added
@@ -654,4 +664,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vite build system
 - Browser-based file system access
 - Client-side metadata parsing
-- Responsive design for desktop and mobile
+- Responsive design for desktop

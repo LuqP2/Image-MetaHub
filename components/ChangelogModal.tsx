@@ -126,9 +126,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p>Image MetaHub 0.10.1 is here — a small follow-up to 0.10.0, which was the biggest update so far.</p>
+                  <p>Image MetaHub 0.10.2 is here — another small follow-up to 0.10.0, which was the biggest update so far.</p>
 
-                  <p>With the 0.10.x line the goal is to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and new tools that are clearly beyond the basics. 0.10.1 also includes a couple of small but annoying bug fixes to make this release nicer to use day-to-day. The full list is in the changelog below — this is just the high-level context.</p>
+                  <p>With the 0.10.x line the goal is to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and new tools that are clearly beyond the basics. 0.10.2 includes a couple more small but annoying bug fixes to make this release nicer to use day-to-day. The full list is in the changelog below — this is just the high-level context.</p>
 
                   <p>From this version on, some of these new features are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced tools are part of the Pro tier. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>
 
