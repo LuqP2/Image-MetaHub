@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, FC } from 'react';
 import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { ZoomIn, ZoomOut, RotateCcw, AlertCircle } from 'lucide-react';
-import { ComparisonPaneProps } from '../types';
+import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles } from 'lucide-react';
+import { ComparisonPaneProps, BaseMetadata } from '../types';
+import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { A1111GenerateModal } from './A1111GenerateModal';
 
 const ComparisonPane: FC<ComparisonPaneProps> = ({
   image,
@@ -14,6 +16,8 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const { generateWithA1111, isGenerating } = useGenerateWithA1111();
 
   // Load image (reuse ImageModal pattern)
   useEffect(() => {
@@ -184,6 +188,22 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
               >
                 <RotateCcw className="w-5 h-5 text-white" />
               </button>
+
+              {/* Separator */}
+              <div className="h-px bg-white/20 my-1"></div>
+
+              {/* Generate Variation Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsGenerateModalOpen(true);
+                }}
+                className="p-2 bg-purple-600/80 hover:bg-purple-700/90 rounded-lg backdrop-blur-sm transition-colors"
+                title="Generate Variation"
+                disabled={!image.metadata?.normalizedMetadata?.prompt}
+              >
+                <Sparkles className="w-5 h-5 text-white" />
+              </button>
             </div>
 
             {/* Image Name Label */}
@@ -195,6 +215,27 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
           </>
         )}
       </TransformWrapper>
+
+      {/* Generate Variation Modal */}
+      {isGenerateModalOpen && (
+        <A1111GenerateModal
+          isOpen={isGenerateModalOpen}
+          onClose={() => setIsGenerateModalOpen(false)}
+          image={image}
+          onGenerate={async (params) => {
+            const customMetadata: Partial<BaseMetadata> = {
+              prompt: params.prompt,
+              negativePrompt: params.negativePrompt,
+              cfg_scale: params.cfgScale,
+              steps: params.steps,
+              seed: params.randomSeed ? -1 : params.seed,
+            };
+            await generateWithA1111(image, customMetadata, params.numberOfImages);
+            setIsGenerateModalOpen(false);
+          }}
+          isGenerating={isGenerating}
+        />
+      )}
     </div>
   );
 };
