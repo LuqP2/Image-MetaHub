@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Thumbnail Flashing During Indexing**: Batching cached image inserts and debouncing filter updates to stop rapid re-renders while keeping the grid usable mid-indexing (notably improves Linux/AppImage experience).
+- **ComfyUI Multiline Prompts**: Extract prompts when `PrimitiveStringMultiline`/`String (Multiline)` feeds `CLIP Text Encode`, so prompts from those workflows show up instead of “(there is no prompt)”.
 
 ## [0.10.2] - 2025-12-08
 
