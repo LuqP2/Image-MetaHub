@@ -3,11 +3,13 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import Toast from './Toast';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import ProBadge from './ProBadge';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -271,6 +273,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
+  const { canUseComparison, showProModal, canUseA1111, initialized } = useFeatureAccess();
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
@@ -293,15 +296,24 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   } = useContextMenu();
 
   const openGenerateModal = useCallback(() => {
-    if (contextMenu.image) {
-      setSelectedImageForGeneration(contextMenu.image);
-      setIsGenerateModalOpen(true);
+    if (!contextMenu.image) return;
+    if (!canUseA1111) {
+      showProModal('a1111');
       hideContextMenu();
+      return;
     }
-  }, [contextMenu.image, hideContextMenu]);
+    setSelectedImageForGeneration(contextMenu.image);
+    setIsGenerateModalOpen(true);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, canUseA1111, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
+    if (!canUseComparison) {
+      showProModal('comparison');
+      hideContextMenu();
+      return;
+    }
 
     if (!comparisonFirstImage) {
       // First image selected
@@ -324,7 +336,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
 
     hideContextMenu();
-  }, [contextMenu.image, comparisonFirstImage, setComparisonImages, openComparisonModal, hideContextMenu]);
+  }, [contextMenu.image, comparisonFirstImage, setComparisonImages, openComparisonModal, hideContextMenu, canUseComparison, showProModal]);
 
   // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -658,9 +670,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={selectForComparison}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseComparison && initialized ? 'Pro feature - iniciar trial' : undefined}
           >
             <GitCompare className="w-4 h-4" />
-            {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
+            <span className="flex-1">
+              {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
+            </span>
+            <ProBadge size="sm" />
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
@@ -687,18 +703,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             onClick={copyMetadataToA1111}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
+            title={!canUseA1111 && initialized ? 'Pro feature - iniciar trial' : undefined}
           >
             <Clipboard className="w-4 h-4" />
-            Copy to A1111
+            <span className="flex-1">Copy to A1111</span>
+            <ProBadge size="sm" />
           </button>
 
           <button
             onClick={openGenerateModal}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
+            title={!canUseA1111 && initialized ? 'Pro feature - iniciar trial' : undefined}
           >
             <Sparkles className="w-4 h-4" />
-            Generate Variation
+            <span className="flex-1">Generate Variation</span>
+            <ProBadge size="sm" />
           </button>
         </div>
       )}

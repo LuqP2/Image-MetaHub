@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] - 2025-12-09
+
+### Added
+
+- **Opt-in Pro Trial Trigger**: Trial now starts only when the user opts in after attempting a Pro feature, preventing silent trial burn.
+- **Pro Badges & Gating**: Added subtle PRO badges to Pro-only actions (including context menu A1111 actions and comparison) with tooltip cues when locked.
+- **Persistent Status Indicator**: Header now shows Free / Pro Trial / Pro License / Expired with color cues and click-through to license settings.
+- **License Deep-Link**: Header status opens Settings directly to the License section for quicker activation and purchases.
+
+### Changed
+
+- **Trial Reset for 0.10.x Users**: One-time migration resets previously auto-started trials to Free; users can start a fresh 7-day trial.
+
+### Fixed
+
+- **Thumbnail Flashing During Indexing**: Batching cached image inserts and debouncing filter updates to stop rapid re-renders while keeping the grid usable mid-indexing (notably improves Linux/AppImage experience).
+
 ## [0.10.2] - 2025-12-08
 
 ### Fixed

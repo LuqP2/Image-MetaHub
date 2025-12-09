@@ -5,10 +5,58 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 interface HeaderProps {
   onOpenSettings: () => void;
   onOpenAnalytics: () => void;
+  onOpenLicense: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
-  const { canUseAnalytics, showProModal, isTrialActive, trialDaysRemaining, isPro, initialized } = useFeatureAccess();
+const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpenLicense }) => {
+  const {
+    canUseAnalytics,
+    showProModal,
+    isTrialActive,
+    trialDaysRemaining,
+    isPro,
+    initialized,
+    isExpired,
+    isFree,
+  } = useFeatureAccess();
+
+  const statusConfig = (() => {
+    if (!initialized) {
+      return {
+        label: 'Status: Checking license…',
+        classes: 'text-gray-300 bg-gray-800/70 border-gray-700',
+      };
+    }
+    if (isPro) {
+      return {
+        label: 'Status: Pro License',
+        classes: 'text-green-300 bg-green-900/30 border-green-600/50',
+      };
+    }
+    if (isTrialActive) {
+      const daysLabel = `${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left`;
+      return {
+        label: `Status: Pro Trial (${daysLabel})`,
+        classes: 'text-amber-200 bg-amber-900/30 border-amber-500/50',
+      };
+    }
+    if (isExpired) {
+      return {
+        label: 'Status: Trial expired',
+        classes: 'text-red-300 bg-red-900/30 border-red-600/50',
+      };
+    }
+    return {
+      label: 'Status: Free Version',
+      classes: 'text-gray-300 bg-gray-800/60 border-gray-700',
+    };
+  })();
+
+  const analyticsBadgeClass = isPro
+    ? 'text-green-300'
+    : isTrialActive
+    ? 'text-amber-200'
+    : 'text-purple-400';
 
   return (
     <header className="bg-gray-800/80 backdrop-blur-sm sticky top-0 z-10 p-4 shadow-md">
@@ -17,16 +65,14 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
           <img src="logo1.png" alt="Image MetaHub" className="h-14 w-14 rounded-md" />
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.2</h1>
-            {isTrialActive && (
-              <span className="text-xs text-yellow-400 font-medium flex items-center gap-1">
-                <Crown className="w-3 h-3" /> Pro ({trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left)
-              </span>
-            )}
-            {isPro && (
-              <span className="text-xs text-purple-400 font-medium flex items-center gap-1">
-                <Crown className="w-3 h-3" /> Pro
-              </span>
-            )}
+            <button
+              onClick={onOpenLicense}
+              className={`mt-1 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border transition-colors ${statusConfig.classes}`}
+              title={isFree ? 'Iniciar trial ou ativar licença' : 'Gerenciar licença e status'}
+            >
+              <Crown className="w-3 h-3" />
+              {statusConfig.label}
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -61,14 +107,12 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics }) => {
               }
             }}
             className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-blue-400/30 relative"
-            title={canUseAnalytics ? "Open Analytics" : "Analytics (Pro Feature)"}
+            title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - iniciar trial'}
           >
             <BarChart3 size={20} />
-            {!canUseAnalytics && initialized && (
-              <div className="absolute -top-1 -right-1">
-                <Crown className="w-3 h-3 text-purple-400" />
-              </div>
-            )}
+            <div className="absolute -top-1 -right-1">
+              <Crown className={`w-3 h-3 ${analyticsBadgeClass}`} />
+            </div>
           </button>
           <button
             onClick={onOpenSettings}

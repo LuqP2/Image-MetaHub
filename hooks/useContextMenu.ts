@@ -5,6 +5,7 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
+import { useFeatureAccess } from './useFeatureAccess';
 
 interface ContextMenuState {
   x: number;
@@ -34,6 +35,7 @@ export const useContextMenu = () => {
   });
 
   const { startPolling, stopPolling } = useA1111ProgressContext();
+  const { canUseA1111, showProModal } = useFeatureAccess();
 
   const hideContextMenu = useCallback(() => {
     setContextMenu((prev) => ({ ...prev, visible: false }));
@@ -196,6 +198,12 @@ export const useContextMenu = () => {
   const copyMetadataToA1111 = async () => {
     if (!contextMenu.image) return;
 
+    if (!canUseA1111) {
+      showProModal('a1111');
+      hideContextMenu();
+      return;
+    }
+
     const metadata = contextMenu.image.metadata?.normalizedMetadata;
     if (!metadata || !metadata.prompt) {
       alert('No metadata available for this image');
@@ -223,6 +231,12 @@ export const useContextMenu = () => {
 
   const quickGenerateInA1111 = async () => {
     if (!contextMenu.image) return;
+
+    if (!canUseA1111) {
+      showProModal('a1111');
+      hideContextMenu();
+      return;
+    }
 
     const metadata = contextMenu.image.metadata?.normalizedMetadata;
     if (!metadata || !metadata.prompt) {

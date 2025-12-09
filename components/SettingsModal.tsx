@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLicenseStore } from '../store/useLicenseStore';
 import { X, Wrench, Keyboard, Palette, Check, Crown } from 'lucide-react';
@@ -9,6 +9,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialTab?: 'general' | 'hotkeys' | 'themes';
+  focusSection?: 'license' | null;
 }
 
 type Tab = 'general' | 'hotkeys' | 'themes';
@@ -22,7 +23,7 @@ const themeOptions = [
   { id: 'ocean', name: 'Ocean', colors: ['#0f172a', '#38bdf8', '#e2e8f0'] },
 ];
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general' }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general', focusSection = null }) => {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
@@ -61,6 +62,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
   const [isActivatingLicense, setIsActivatingLicense] = useState(false);
   const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
+  const licenseSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -75,6 +77,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       });
     }
   }, [isOpen, cachePath]);
+
+  useEffect(() => {
+    if (isOpen && focusSection === 'license') {
+      setActiveTab('general');
+      requestAnimationFrame(() => {
+        licenseSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [focusSection, isOpen]);
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -431,7 +442,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
           </div>
 
           {/* License / Pro Activation */}
-          <div>
+          <div ref={licenseSectionRef}>
             <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
               <Crown className="w-4 h-4 text-yellow-400" />
               License / Pro
