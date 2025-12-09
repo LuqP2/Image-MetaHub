@@ -38,6 +38,16 @@ describe('ComfyUI Parser - Basic Workflows', () => {
   });
 });
 
+describe('ComfyUI Parser - Prompt Sources', () => {
+  it('should follow PrimitiveStringMultiline into CLIPTextEncode prompts', () => {
+    const fixture = loadFixture('primitive-string-multiline.json');
+    const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
+
+    expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes');
+    expect(result._telemetry.unknown_nodes_count).toBe(0);
+  });
+});
+
 describe('ComfyUI Parser - LoRA Workflows', () => {
   it('should detect multiple LoRAs with weights', () => {
     const fixture = loadFixture('lora-workflow.json');

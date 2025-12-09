@@ -317,6 +317,17 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { string: { type: 'STRING' } }, outputs: { STRING: { type: 'STRING' } },
     param_mapping: { prompt: { source: 'input', key: 'string' }, negativePrompt: { source: 'input', key: 'string' }, },
   },
+  PrimitiveStringMultiline: {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: { value: { type: 'STRING' } },
+    outputs: { STRING: { type: 'STRING' } },
+    param_mapping: {
+      prompt: { source: 'input', key: 'value' },
+      negativePrompt: { source: 'input', key: 'value' },
+    },
+    widget_order: ['value']
+  },
   'Seed Generator': {
     category: 'UTILS', roles: ['SOURCE'],
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
