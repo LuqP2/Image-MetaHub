@@ -670,7 +670,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <button
             onClick={selectForComparison}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            title={!canUseComparison && initialized ? 'Pro feature - iniciar trial' : undefined}
+            title={!canUseComparison && initialized ? 'Pro feature - start trial' : undefined}
           >
             <GitCompare className="w-4 h-4" />
             <span className="flex-1">
@@ -703,7 +703,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             onClick={copyMetadataToA1111}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
-            title={!canUseA1111 && initialized ? 'Pro feature - iniciar trial' : undefined}
+            title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
           >
             <Clipboard className="w-4 h-4" />
             <span className="flex-1">Copy to A1111</span>
@@ -714,7 +714,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             onClick={openGenerateModal}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
-            title={!canUseA1111 && initialized ? 'Pro feature - iniciar trial' : undefined}
+            title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate Variation</span>

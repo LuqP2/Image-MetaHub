@@ -69,18 +69,18 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
 
   const trialCopy = (() => {
     if (canStartTrial) {
-      return `Essa funcionalidade é Pro. Deseja iniciar seu trial de ${TRIAL_DURATION_DAYS} dias agora para testar?`;
+      return `This is a Pro feature. Would you like to start your ${TRIAL_DURATION_DAYS}-day trial now to test it?`;
     }
     if (isTrialActive) {
-      return `Trial ativo: ${daysRemaining} ${daysRemaining === 1 ? 'dia' : 'dias'} restantes.`;
+      return `Trial active: ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining.`;
     }
     if (isExpired) {
-      return 'Seu trial terminou. Ative uma licença para continuar usando os recursos Pro.';
+      return 'Your trial has ended. Activate a license to continue using Pro features.';
     }
     if (isPro) {
-      return 'Você já está no Pro. Obrigado por apoiar o projeto!';
+      return 'You are already on Pro. Thank you for supporting the project!';
     }
-    return 'Essa funcionalidade é Pro. Ative o trial ou uma licença para continuar.';
+    return 'This is a Pro feature. Activate the trial or a license to continue.';
   })();
 
   return (
@@ -92,7 +92,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
             <div className="p-2 bg-purple-600/20 rounded-lg">
               <Crown className="w-6 h-6 text-purple-400" />
             </div>
-            <h2 className="text-xl font-bold text-white">Recurso Pro</h2>
+            <h2 className="text-xl font-bold text-white">Pro Feature</h2>
           </div>
           <button
             onClick={onClose}
@@ -116,14 +116,14 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
 
           {/* Trial / License prompt */}
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-4 space-y-2">
-            <p className="text-gray-100 font-semibold">Essa funcionalidade é Pro.</p>
+            <p className="text-gray-100 font-semibold">This is a Pro feature.</p>
             <p className="text-gray-300 text-sm">{trialCopy}</p>
           </div>
 
           {/* Benefits */}
           <div>
             <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
-              O que você desbloqueia:
+              What you unlock:
             </h4>
             <ul className="space-y-2">
               {info.benefits.map((benefit, index) => (
@@ -146,7 +146,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
                 className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
               >
                 <Crown className="w-5 h-5" />
-                Iniciar trial de {TRIAL_DURATION_DAYS} dias
+                Start {TRIAL_DURATION_DAYS}-day trial
               </button>
             )}
             <a
@@ -156,14 +156,14 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
               className="w-full inline-flex items-center justify-center gap-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-semibold py-3 px-6 rounded-lg transition-colors border border-purple-500/40"
             >
               <Crown className="w-5 h-5" />
-              Comprar licença Pro
+              Buy Pro license
             </a>
             <button
               onClick={onClose}
               className="w-full inline-flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold py-2.5 px-6 rounded-lg transition-colors border border-gray-700"
             >
               <X className="w-4 h-4" />
-              Fechar
+              Close
             </button>
           </div>
         </div>

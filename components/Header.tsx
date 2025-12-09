@@ -68,7 +68,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpen
             <button
               onClick={onOpenLicense}
               className={`mt-1 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border transition-colors ${statusConfig.classes}`}
-              title={isFree ? 'Iniciar trial ou ativar licença' : 'Gerenciar licença e status'}
+              title={isFree ? 'Start trial or activate license' : 'Manage license and status'}
             >
               <Crown className="w-3 h-3" />
               {statusConfig.label}
@@ -107,7 +107,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpen
               }
             }}
             className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-blue-400/30 relative"
-            title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - iniciar trial'}
+            title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
           >
             <BarChart3 size={20} />
             <div className="absolute -top-1 -right-1">
