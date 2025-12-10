@@ -78,6 +78,44 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+// Decode iTXt text payload (supports uncompressed and deflate-compressed)
+async function decodeITXtText(
+  data: Uint8Array,
+  compressionFlag: number,
+  decoder: TextDecoder
+): Promise<string> {
+  if (compressionFlag === 0) {
+    return decoder.decode(data);
+  }
+
+  if (compressionFlag === 1) {
+    // Deflate-compressed (zlib) text
+    try {
+      // Prefer browser-native DecompressionStream (Chromium/Electron)
+      if (typeof DecompressionStream !== 'undefined') {
+        const ds = new DecompressionStream('deflate');
+        const decompressedStream = new Blob([data]).stream().pipeThrough(ds);
+        const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
+        return decoder.decode(decompressedBuffer);
+      }
+      // Fallback for Node.js (should rarely be needed in renderer)
+      if (typeof require !== 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const zlib = require('zlib');
+        const inflated = zlib.inflateSync(Buffer.from(data));
+        return decoder.decode(inflated);
+      }
+    } catch (err) {
+      if (shouldLogPngDebug) {
+        console.warn('[PNG DEBUG] Failed to decompress iTXt chunk', err);
+      }
+      return '';
+    }
+  }
+
+  return '';
+}
+
 /**
  * Attempts to read a sidecar JSON file for Easy Diffusion metadata
  * @param imagePath Path to the image file (e.g., /path/to/image.png)
@@ -152,26 +190,25 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
       if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
-        if (compressionFlag === 0) {
-          // 0 -> uncompressed, which is what we expect from A1111
-          let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
+        let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
-          const langTagEndIndex = chunkData.indexOf(0, currentIndex);
-          if (langTagEndIndex === -1) {
-            offset += 12 + length;
-            continue;
-          }
-          currentIndex = langTagEndIndex + 1;
+        const langTagEndIndex = chunkData.indexOf(0, currentIndex);
+        if (langTagEndIndex === -1) {
+          offset += 12 + length;
+          continue;
+        }
+        currentIndex = langTagEndIndex + 1;
 
-          const translatedKwEndIndex = chunkData.indexOf(0, currentIndex);
-          if (translatedKwEndIndex === -1) {
-            offset += 12 + length;
-            continue;
-          }
-          currentIndex = translatedKwEndIndex + 1;
+        const translatedKwEndIndex = chunkData.indexOf(0, currentIndex);
+        if (translatedKwEndIndex === -1) {
+          offset += 12 + length;
+          continue;
+        }
+        currentIndex = translatedKwEndIndex + 1;
 
-          const text = decoder.decode(chunkData.slice(currentIndex));
-          chunks[keyword] = text;
+        const text = await decodeITXtText(chunkData.slice(currentIndex), compressionFlag, decoder);
+        if (text) {
+          chunks[keyword.toLowerCase()] = text;
           foundChunks++;
         }
       }

@@ -18,6 +18,12 @@ function sanitizeJson(jsonString: string): string {
     return jsonString.replace(/:\s*NaN/g, ': null');
 }
 
+// Case-insensitive metadata key lookup (PNG/iTXt tags sometimes come capitalized)
+function getCaseInsensitive<T = any>(obj: Record<string, any>, key: string): T | undefined {
+    const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+    return foundKey ? obj[foundKey] : undefined;
+}
+
 interface ParserModule {
     parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata;
     generator: string;
@@ -56,12 +62,18 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         ('parameters' in metadata && typeof metadata.parameters === 'string' && metadata.parameters.includes('sui_image_params'))) {
         return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data), generator: 'SwarmUI' };
     }
-    if ('workflow' in metadata || ('prompt' in metadata && typeof metadata.prompt === 'object')) {
+
+    // ComfyUI detection (case-insensitive, accepts stringified prompt/workflow)
+    const workflowCI = getCaseInsensitive<any>(metadata as any, 'workflow');
+    const promptCI = getCaseInsensitive<any>(metadata as any, 'prompt');
+    const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|\"inputs\"/.test(promptCI);
+
+    if (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph) {
         return {
             parse: (data: ComfyUIMetadata) => {
                 // Parse workflow and prompt if they are strings
-                let workflow = data.workflow;
-                let prompt = data.prompt;
+                let workflow = workflowCI ?? (data as any).workflow;
+                let prompt = promptCI ?? (data as any).prompt;
                 try {
                     if (typeof workflow === 'string') {
                         workflow = JSON.parse(sanitizeJson(workflow));

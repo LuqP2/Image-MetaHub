@@ -240,6 +240,18 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }, { from_input: 'clip', to_output: 'CLIP' },],
     widget_order: ['lora_name', 'strength_model', 'strength_clip']
   },
+  LoraLoaderModelOnly: {
+    category: 'LOADING',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {
+      lora: { source: 'widget', key: 'lora_name', accumulate: true },
+      model: { source: 'trace', input: 'model' }
+    },
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+    widget_order: ['lora_name', 'strength_model']
+  },
   'LoRA Stacker': {
     category: 'LOADING', roles: ['TRANSFORM'],
     inputs: {}, outputs: { '*': { type: 'ANY' } },
@@ -333,6 +345,16 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     inputs: { seed: { type: 'INT' } }, outputs: { INT: { type: 'INT' } },
     param_mapping: { seed: { source: 'input', key: 'seed' }, },
   },
+  'Seed (rgthree)': {
+    category: 'UTILS',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: { INT: { type: 'INT' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'seed' }
+    },
+    widget_order: ['seed', '__unknown__', '__unknown__', '__unknown__']
+  },
 
   // --- FLUX-SPECIFIC NODES (woman.json workflow) ---
   'Lora Loader (JPS)': {
@@ -366,6 +388,15 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     outputs: { MODEL: { type: 'MODEL' } },
     param_mapping: {},
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
+  },
+  ModelSamplingAuraFlow: {
+    category: 'TRANSFORM',
+    roles: ['PASS_THROUGH'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }],
+    widget_order: ['flow_shift']
   },
 
   DualCLIPLoaderGGUF: {
@@ -556,6 +587,36 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     pass_through_rules: [{ from_input: 'model', to_output: 'MODEL' }]
   },
 
+  CLIPLoader: {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: { CLIP: { type: 'CLIP' } },
+    param_mapping: {},
+    widget_order: ['clip_name', 'clip_type', 'provider']
+  },
+
+  T5TokenizerOptions: {
+    category: 'CONDITIONING',
+    roles: ['PASS_THROUGH'],
+    inputs: { clip: { type: 'CLIP' } },
+    outputs: { CLIP: { type: 'CLIP' } },
+    param_mapping: {},
+    pass_through_rules: [{ from_input: 'clip', to_output: 'CLIP' }],
+    widget_order: ['mean_pool', 'return_tokens']
+  },
+
+  ScaledFP8HybridUNetLoader: {
+    category: 'LOADING',
+    roles: ['SOURCE'],
+    inputs: {},
+    outputs: { MODEL: { type: 'MODEL' } },
+    param_mapping: {
+      model: { source: 'widget', key: 'unet_name' }
+    },
+    widget_order: ['unet_name', '__unknown__', '__unknown__', '__unknown__', '__unknown__']
+  },
+
   UNETLoader: {
     category: 'LOADING', roles: ['SOURCE'],
     inputs: {},
@@ -568,6 +629,18 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 
   EmptyLatentImage: {
     category: 'LOADING', roles: ['SOURCE'],
+    inputs: {},
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      width: { source: 'input', key: 'width' },
+      height: { source: 'input', key: 'height' }
+    },
+    widget_order: ['width', 'height', 'batch_size']
+  },
+
+  EmptySD3LatentImage: {
+    category: 'LOADING',
+    roles: ['SOURCE'],
     inputs: {},
     outputs: { LATENT: { type: 'LATENT' } },
     param_mapping: {
@@ -678,10 +751,30 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
   // Additional grouped workflow support nodes
   RandomNoise: {
     category: 'UTILS', roles: ['SOURCE'],
-    inputs: {},
+    inputs: { noise_seed: { type: 'INT' } },
     outputs: { NOISE: { type: 'NOISE' } },
     param_mapping: {
-      seed: { source: 'widget', key: 'noise_seed' }
+      seed: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverseFromLink) => {
+          const noiseSeedInput = node.inputs?.noise_seed;
+
+          if (Array.isArray(noiseSeedInput)) {
+            return traverseFromLink(noiseSeedInput as any, state, graph, []);
+          }
+
+          if (noiseSeedInput !== undefined && noiseSeedInput !== null && !Array.isArray(noiseSeedInput)) {
+            return noiseSeedInput;
+          }
+
+          const widgetSeed = node.widgets_values?.[0];
+          if (widgetSeed !== undefined && widgetSeed !== null) {
+            return widgetSeed;
+          }
+
+          return null;
+        }
+      }
     },
     widget_order: ['noise_seed', 'seed_mode']
   },
@@ -706,6 +799,22 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
       denoise: { source: 'widget', key: 'denoise' }
     },
     widget_order: ['scheduler', 'steps', 'denoise'],
+    pass_through_rules: []
+  },
+
+  BetaSamplingScheduler: {
+    category: 'UTILS',
+    roles: ['TRANSFORM'],
+    inputs: { model: { type: 'MODEL' } },
+    outputs: { SIGMAS: { type: 'SIGMAS' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'steps' },
+      scheduler: {
+        source: 'custom_extractor',
+        extractor: () => 'beta'
+      }
+    },
+    widget_order: ['steps', 'beta_min', 'beta_max'],
     pass_through_rules: []
   },
 

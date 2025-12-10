@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolvePromptFromGraph } from '../services/parsers/comfyUIParser';
+import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -45,6 +46,23 @@ describe('ComfyUI Parser - Prompt Sources', () => {
 
     expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes');
     expect(result._telemetry.unknown_nodes_count).toBe(0);
+  });
+});
+
+describe('ComfyUI Parser - Detection from capitalized string keys', () => {
+  it('should detect ComfyUI when Prompt/Workflow are capitalized and stringified', () => {
+    const fixture = loadFixture('primitive-string-multiline.json');
+    const metadata: any = {
+      Prompt: JSON.stringify(fixture.prompt),
+      Workflow: JSON.stringify(fixture.workflow),
+      parameters: '' // present but should not force A1111 path
+    };
+
+    const result = parseImageMetadata(metadata)!;
+
+    expect(result.generator).toBe('ComfyUI');
+    expect(result.prompt).toContain('Visualize a long, eel-like mutant lizard');
+    expect(result.prompt).toContain('fossilized ocean desert');
   });
 });
 
