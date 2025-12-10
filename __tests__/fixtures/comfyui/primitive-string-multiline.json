@@ -1,0 +1,88 @@
+{
+  "workflow": {
+    "nodes": [
+      {
+        "id": 3,
+        "type": "KSampler",
+        "widgets_values": [381564805005045, "randomize", 4, 1, "euler", "simple", 1],
+        "mode": 0
+      },
+      {
+        "id": 4,
+        "type": "CheckpointLoaderSimple",
+        "widgets_values": ["model.safetensors"],
+        "mode": 0
+      },
+      {
+        "id": 6,
+        "type": "CLIPTextEncode",
+        "widgets_values": [""],
+        "mode": 0
+      },
+      {
+        "id": 7,
+        "type": "CLIPTextEncode",
+        "widgets_values": [""],
+        "mode": 0
+      },
+      {
+        "id": 114,
+        "type": "PrimitiveStringMultiline",
+        "widgets_values": [
+          "Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin.\n\nPlace it in a fossilized ocean desert where waves are frozen into glassy dunes."
+        ],
+        "mode": 0
+      }
+    ],
+    "links": [
+      [74, 4, 1, 6, 0, "CLIP"],
+      [75, 4, 1, 7, 0, "CLIP"],
+      [187, 114, 0, 6, 1, "STRING"],
+      [317, 6, 0, 3, 1, "CONDITIONING"],
+      [318, 7, 0, 3, 2, "CONDITIONING"]
+    ]
+  },
+  "prompt": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 381564805005045,
+        "steps": 4,
+        "cfg": 1,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0],
+        "latent_image": ["58", 0]
+      }
+    },
+    "4": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "model.safetensors"
+      }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": ["114", 0],
+        "clip": ["4", 1]
+      }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "",
+        "clip": ["4", 1]
+      }
+    },
+    "114": {
+      "class_type": "PrimitiveStringMultiline",
+      "inputs": {
+        "value": "Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin.\n\nPlace it in a fossilized ocean desert where waves are frozen into glassy dunes."
+      }
+    }
+  }
+}

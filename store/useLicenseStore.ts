@@ -32,12 +32,16 @@ const electronStorage: StateStorage = {
 // Check if running in Electron
 const isElectron = !!window.electronAPI;
 
+// Trial duration (shared across UI)
+export const TRIAL_DURATION_DAYS = 7;
+
 // Type definitions
-type LicenseStatus = 'trial' | 'expired' | 'pro' | 'lifetime';
+type LicenseStatus = 'free' | 'trial' | 'expired' | 'pro' | 'lifetime';
 
 interface LicenseState {
   // Initialization
   initialized: boolean;
+  migrationResetApplied: boolean;
 
   // Trial tracking
   trialStartDate: number | null;
@@ -60,8 +64,7 @@ const checkIfTrialExpired = (trialStartDate: number | null): boolean => {
   if (!trialStartDate) return false;
 
   const now = Date.now();
-  const sevenDays = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-  const trialEnd = trialStartDate + sevenDays;
+  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
 
   // Detect clock rollback
   if (now < trialStartDate) {
@@ -78,9 +81,10 @@ export const useLicenseStore = create<LicenseState>()(
     (set, get) => ({
       // Initial state
       initialized: false,
+      migrationResetApplied: false,
       trialStartDate: null,
       trialActivated: false,
-      licenseStatus: 'trial',
+      licenseStatus: 'free',
       licenseKey: null,
       licenseEmail: null,
 
@@ -91,7 +95,7 @@ export const useLicenseStore = create<LicenseState>()(
         // Only activate once
         if (state.trialActivated) {
           console.log('[IMH] Trial already activated');
-          set({ initialized: true });
+          set({ initialized: true, licenseStatus: checkIfTrialExpired(state.trialStartDate) ? 'expired' : 'trial' });
           return;
         }
 
@@ -113,22 +117,44 @@ export const useLicenseStore = create<LicenseState>()(
 
         // If Pro/Lifetime, keep that status
         if (state.licenseStatus === 'pro' || state.licenseStatus === 'lifetime') {
-          set({ initialized: true });
+          set({ initialized: true, migrationResetApplied: true });
           return;
         }
 
-        // Check if trial expired
-        if (state.licenseStatus === 'trial' && checkIfTrialExpired(state.trialStartDate)) {
+        // One-time migration: reset auto-start trials from 0.10.x to opt-in flow
+        if (!state.migrationResetApplied && state.trialActivated && (state.licenseStatus === 'trial' || state.licenseStatus === 'expired')) {
           set({
-            licenseStatus: 'expired',
+            trialStartDate: null,
+            trialActivated: false,
+            licenseStatus: 'free',
+            migrationResetApplied: true,
             initialized: true,
           });
-          console.log('[IMH] Trial expired. Upgrade to Pro to unlock features.');
+          console.log('[IMH] Trial reset to Free due to opt-in change. User can start a fresh trial.');
+          return;
+        } else if (!state.migrationResetApplied) {
+          set({ migrationResetApplied: true });
+        }
+
+        // If trial never started, stay in free mode
+        if (!state.trialActivated) {
+          set({ initialized: true, licenseStatus: 'free', trialStartDate: null });
           return;
         }
 
-        // Mark as initialized
-        set({ initialized: true });
+        // Derive trial status from stored dates
+        const trialExpired = checkIfTrialExpired(state.trialStartDate) || !state.trialStartDate;
+        const nextStatus: LicenseStatus = trialExpired ? 'expired' : 'trial';
+
+        set({
+          licenseStatus: nextStatus,
+          initialized: true,
+          migrationResetApplied: true,
+        });
+
+        if (trialExpired) {
+          console.log('[IMH] Trial expired. Upgrade to Pro to unlock features.');
+        }
       },
 
       // Activate license using offline key validation
@@ -165,9 +191,10 @@ export const useLicenseStore = create<LicenseState>()(
 
         set({
           initialized: false,
+          migrationResetApplied: false,
           trialStartDate: null,
           trialActivated: false,
-          licenseStatus: 'trial',
+          licenseStatus: 'free',
           licenseKey: null,
           licenseEmail: null,
         });

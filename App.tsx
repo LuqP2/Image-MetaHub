@@ -107,7 +107,8 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
+  const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
@@ -126,16 +127,32 @@ export default function App() {
   });
 
   // --- License/Trial Hook ---
-  const { proModalOpen, proModalFeature, closeProModal, isTrialActive, trialDaysRemaining } = useFeatureAccess();
+  const {
+    proModalOpen,
+    proModalFeature,
+    closeProModal,
+    isTrialActive,
+    trialDaysRemaining,
+    canStartTrial,
+    isExpired,
+    isFree,
+    isPro,
+    startTrial,
+  } = useFeatureAccess();
 
-  const handleOpenSettings = (tab: 'general' | 'hotkeys' = 'general') => {
+  const handleOpenSettings = (tab: 'general' | 'hotkeys' | 'themes' = 'general', section: 'license' | null = null) => {
     setSettingsTab(tab);
+    setSettingsSection(section);
     setIsSettingsModalOpen(true);
   };
 
   const handleOpenHotkeySettings = () => {
     setIsHotkeyHelpOpen(false);
     handleOpenSettings('hotkeys');
+  };
+
+  const handleOpenLicenseSettings = () => {
+    handleOpenSettings('general', 'license');
   };
 
   useEffect(() => {
@@ -151,21 +168,15 @@ export default function App() {
     }
   }, [loadAnnotations, isAnnotationsLoaded]);
 
-  // Initialize license and activate trial on first launch
+  // Initialize license and keep trial opt-in
   useEffect(() => {
     const initializeLicense = async () => {
       // 1. Rehydrate Zustand store from persistent storage
       await useLicenseStore.persist.rehydrate();
       const licenseState = useLicenseStore.getState();
 
-      // 2. Activate trial if first time
-      if (!licenseState.trialActivated) {
-        licenseState.activateTrial();
-        console.log('✅ Trial de 7 dias ativado!');
-      } else {
-        // 3. Check status if already activated before
-        licenseState.checkLicenseStatus();
-      }
+      // 2. Check current status (defaults to free until user opts into trial)
+      licenseState.checkLicenseStatus();
     };
 
     initializeLicense();
@@ -303,7 +314,7 @@ export default function App() {
       // Wait for Zustand persistence to rehydrate
       await useSettingsStore.persist.rehydrate();
 
-      let version = '0.10.2'; // Default fallback version
+      let version = '0.10.3'; // Default fallback version
 
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {
@@ -435,8 +446,12 @@ export default function App() {
 
       <SettingsModal
         isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
+        onClose={() => {
+          setIsSettingsModalOpen(false);
+          setSettingsSection(null);
+        }}
         initialTab={settingsTab}
+        focusSection={settingsSection}
       />
 
       <ComparisonModal
@@ -490,8 +505,9 @@ export default function App() {
 
       <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${previewImage ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
-          onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+          onOpenLicense={handleOpenLicenseSettings}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -592,6 +608,10 @@ export default function App() {
           feature={proModalFeature}
           isTrialActive={isTrialActive}
           daysRemaining={trialDaysRemaining}
+          canStartTrial={canStartTrial}
+          onStartTrial={startTrial}
+          isExpired={isExpired}
+          isPro={isPro}
         />
       </div>
     </div>
