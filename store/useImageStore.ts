@@ -880,7 +880,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         removeImages: (imageIds) => {
             const idsToRemove = new Set(imageIds);
-            clearPendingQueue();
+            flushPendingImages();
             set(state => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
@@ -888,7 +888,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImage: (imageId) => {
-            clearPendingQueue();
+            flushPendingImages();
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);
                 return _updateState(state, remainingImages);
