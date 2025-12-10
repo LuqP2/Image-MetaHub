@@ -337,6 +337,12 @@ export function useImageLoader() {
             return;
         }
         (window as any)[finalizationKey] = true;
+
+        // Flush any pending batched image inserts before final counts
+        const flushPending = useImageStore.getState().flushPendingImages;
+        if (flushPending) {
+            flushPending();
+        }
         
         // Wait a bit to ensure all images are added to the store
         await new Promise(resolve => setTimeout(resolve, 100));
