@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **ComfyUI Compressed Workflow Parsing**: Fixed ComfyUI prompt parsing from compressed iTXt PNG chunks and added case-insensitive workflow detection for better compatibility.
 - **PNG iTXt Decompression**: Ensure deflate chunks are copied into a real `ArrayBuffer` before piping through `DecompressionStream`, avoiding `SharedArrayBuffer`/Blob type errors in builds.
 - **Zlib Fallback**: Use dynamic `import('zlib')` in the renderer fallback path to keep eslint happy and avoid `require` in ESM.
 
