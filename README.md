@@ -1,5 +1,8 @@
 # Image MetaHub
 
+[![Get Pro](https://img.shields.io/badge/Get%20Pro-Gumroad-4b8bbe)](https://lucasphere4660.gumroad.com/l/qmjima)
+[![Support on Ko-fi](https://img.shields.io/badge/Support-Ko%E2%80%91fi-ff5f5f)](https://ko-fi.com/lucaspierri)
+
 *Local AI image browser and metadata hub for AI images from Stable Diffusion and related tools.*
 
 ![Image MetaHub main UI](assets/screenshot-hero-grid.webp)
@@ -11,7 +14,7 @@ It scans your folders, parses metadata from popular tools (Automatic1111, ComfyU
 
 It is open‑source (MPL 2.0) and free to use, with optional **Pro features** for power users.
 
-> *Previously known as **"Image Metadata Browser for Stable Diffusion"** – renamed as the project grew beyond just SD.*
+> *Previously known as **"Local Image Browser for InvokeAI"** – renamed as the project grew beyond a single backend into a broader AI image hub.*
 
 ---
 
@@ -200,3 +203,11 @@ For detailed issues and planned work, check the [Issues](https://github.com/LuqP
 Image MetaHub is built and maintained by **Lucas (LuqP2)**, with feedback and contributions from the community.
 
 If you find it useful and want to support development, consider upgrading to Pro or starring the repo on GitHub.
+
+---
+
+## Links
+
+* Website: [https://imagemetahub.com](https://imagemetahub.com)
+* Get Pro on Gumroad: [https://lucasphere4660.gumroad.com/l/qmjima](https://lucasphere4660.gumroad.com/l/qmjima)
+* Support on Ko‑fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
