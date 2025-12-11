@@ -1,13 +1,13 @@
 # Image MetaHub
 
-*Local AI image browser and metadata hub for Stable Diffusion, Automatic1111 and ComfyUI images.*
+*Local AI image browser and metadata hub for AI images from Stable Diffusion and related tools.*
 
 ![Image MetaHub main UI](assets/screenshot-hero-grid.webp)
 
 ## What is Image MetaHub?
 
 Image MetaHub is a **local image browser and manager** focused on AI‑generated images.
-It scans your folders, parses metadata from popular tools (Stable Diffusion, Automatic1111, ComfyUI, etc.) and lets you search, filter and organize your images by prompt, model, sampler, seed and more – all **offline**, on your machine.
+It scans your folders, parses metadata from popular tools (Automatic1111, ComfyUI, Fooocus, SD.Next, Forge, SwarmUI, DrawThings) and online services like Midjourney / Nijijourney, whenever their metadata is present in the files. and lets you search, filter and organize your images by prompt, model, sampler, seed and more – all **offline**, on your machine.
 
 It is open‑source (MPL 2.0) and free to use, with optional **Pro features** for power users.
 
@@ -82,8 +82,18 @@ For more detailed options (CLI, dev setup, advanced config), see the sections be
 Image MetaHub parses metadata from:
 
 * Stable Diffusion / Automatic1111 images (PNG info, etc.)
-* Many ComfyUI workflows
+* ComfyUI (partial coverage; parser is actively being extended)
+* Fooocus
+* SD.Next
+* Forge
+* SwarmUI
+* DrawThings
+* Online services like Midjourney / Nijijourney (when prompts/settings are saved into the downloaded files)
 * Other tools that store generation parameters in PNG/JPG metadata
+
+> Note: ComfyUI support is still evolving and may not cover every custom node or complex workflow yet.
+>
+> If Image MetaHub does not read the metadata from your ComfyUI images yet, please open an issue with your workflow / sample images and that format will be added in the next update whenever possible.
 
 If a tool writes prompt / settings in a consistent way, Image MetaHub can usually read it. The parsers are extensible and can be updated as new formats appear.
 
