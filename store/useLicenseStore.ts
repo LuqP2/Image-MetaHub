@@ -164,7 +164,7 @@ export const useLicenseStore = create<LicenseState>()(
           return false;
         }
 
-        const isValid = validateLicenseKey(email, key);
+        const isValid = await validateLicenseKey(email, key);
 
         if (!isValid) {
           console.error('[IMH] Invalid license key for provided email');

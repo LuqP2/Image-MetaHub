@@ -1,0 +1,40 @@
+name: Generate license key
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Customer email (used to generate the key)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  generate-key:
+    runs-on: ubuntu-latest
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate key
+        id: gen
+        run: |
+          if [ -z "$IMH_LICENSE_SECRET" ]; then
+            echo "IMH_LICENSE_SECRET is missing in repository secrets." >&2
+            exit 1
+          fi
+
+          echo "Generating license for: ${{ inputs.email }}"
+          OUTPUT=$(node scripts/generateLicenseKey.mjs "${{ inputs.email }}")
+          echo "$OUTPUT"
+
+          # Add to job summary for easy copy/paste
+          {
+            echo "## License for ${{ inputs.email }}"
+            echo '```'
+            echo "$OUTPUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
