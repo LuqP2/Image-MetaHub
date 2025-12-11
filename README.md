@@ -123,8 +123,9 @@ For step‑by‑step instructions, see the dedicated docs in this repo.
 The compare panel lets you:
 
 * Pin multiple images and inspect them side‑by‑side
-* Compare prompts, seeds, models and other settings
-* Study subtle differences between variations
+* Use synchronized zoom and pan to align details across images
+* View prompts and key generation settings for each image at the same time
+* Study subtle differences between variations (lighting, composition, models, seeds, etc.)
 
 ![Compare panel](assets/screenshot-compare.webp)
 
