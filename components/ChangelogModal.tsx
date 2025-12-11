@@ -126,9 +126,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p>Image MetaHub 0.10.3 is here — the latest 0.10.x release, with important fixes to the Pro trial flow, licensing UX, and ComfyUI prompt parsing.</p>
+                  <p>Image MetaHub 0.10.4 is here — the latest 0.10.x release, with critical licensing infrastructure improvements and PNG parsing fixes.</p>
 
-                  <p>The 0.10.x goal is to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and new tools that are clearly beyond the basics. 0.10.3 makes the Pro trial fully opt-in (no more silent countdown), adds a clearer status in the header (Free / Trial / Pro / Expired), and fixes thumbnail flashing during indexing. The full list is in the changelog below — this is just the high-level context.</p>
+                  <p>The 0.10.x goal is to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and new tools that are clearly beyond the basics. 0.10.4 adds build-time license validation guards, a GitHub Action for secure key generation, and fixes PNG decompression issues that were causing errors in some workflows. The full list is in the changelog below — this is just the high-level context.</p>
 
                   <p>Some of these new tools are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced features live behind the Pro toggle. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>
 

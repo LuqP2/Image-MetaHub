@@ -314,7 +314,7 @@ export default function App() {
       // Wait for Zustand persistence to rehydrate
       await useSettingsStore.persist.rehydrate();
 
-      let version = '0.10.3'; // Default fallback version
+      let version = '0.10.4'; // Default fallback version
 
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         try {

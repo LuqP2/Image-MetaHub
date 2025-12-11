@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] - 2025-12-10
+
+### Added
+
+- **GitHub Action: License Key Generator**: New workflow `Generate license key` that uses the repository secret `IMH_LICENSE_SECRET` to produce customer keys via Actions UI without exposing the secret locally.
+
+### Changed
+
+- **Build Guard for Licenses**: Builds now fail early if `IMH_LICENSE_SECRET` is missing or still the placeholder, preventing broken Pro activations in shipped binaries.
+
+### Fixed
+
+- **PNG iTXt Decompression**: Ensure deflate chunks are copied into a real `ArrayBuffer` before piping through `DecompressionStream`, avoiding `SharedArrayBuffer`/Blob type errors in builds.
+- **Zlib Fallback**: Use dynamic `import('zlib')` in the renderer fallback path to keep eslint happy and avoid `require` in ESM.
+
+### Developer
+
+- **WebCrypto License Validation**: License validation now runs in the renderer using WebCrypto, with Node fallback for CLI/scripts, removing the browser `crypto` externalization error.
+
 ## [0.10.3] - 2025-12-09
 
 ### Added

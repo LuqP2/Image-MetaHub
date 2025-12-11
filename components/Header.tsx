@@ -64,7 +64,7 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpen
         <div className="flex items-center gap-3">
           <img src="logo1.png" alt="Image MetaHub" className="h-14 w-14 rounded-md" />
           <div className="flex flex-col">
-            <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.3</h1>
+            <h1 className="text-2xl font-bold tracking-wider">Image MetaHub v0.10.4</h1>
             <button
               onClick={onOpenLicense}
               className={`mt-1 inline-flex items-center gap-2 text-xs font-semibold px-2 py-1 rounded-md border transition-colors ${statusConfig.classes}`}
