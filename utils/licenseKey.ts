@@ -1,9 +1,9 @@
 // IMPORTANTE:
-// - NÇO comite seu segredo real. Deixe este placeholder no git.
+// - Nao comite seu segredo real. Deixe este placeholder no git.
 // - Antes de buildar para distribuir, defina IMH_LICENSE_SECRET no ambiente
 //   (ex.: IMH_LICENSE_SECRET="seu-segredo" npm run build) para embutir o valor.
-// - O segredo fica no bin rio final (app cliente).  simples e offline; nÆo h 
-//   como ocultar 100% em c¢digo cliente.
+// - O segredo fica no binario final (app cliente). E simples e offline; nao ha
+//   como ocultar 100% em codigo cliente.
 const LICENSE_SECRET =
   (typeof process !== 'undefined' && process.env.IMH_LICENSE_SECRET) ||
   'CHANGE-ME-BEFORE-RELEASE';

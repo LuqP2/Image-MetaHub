@@ -94,14 +94,17 @@ async function decodeITXtText(
       // Prefer browser-native DecompressionStream (Chromium/Electron)
       if (typeof DecompressionStream !== 'undefined') {
         const ds = new DecompressionStream('deflate');
-        const decompressedStream = new Blob([data]).stream().pipeThrough(ds);
+        // Ensure we pass a real ArrayBuffer (not SharedArrayBuffer) to Blob to satisfy TS/DOM types
+        const arrayCopy = new Uint8Array(data.byteLength);
+        arrayCopy.set(data);
+        const arrayBuf = arrayCopy.buffer;
+        const decompressedStream = new Blob([arrayBuf]).stream().pipeThrough(ds);
         const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
         return decoder.decode(decompressedBuffer);
       }
       // Fallback for Node.js (should rarely be needed in renderer)
       if (typeof require !== 'undefined') {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const zlib = require('zlib');
+        const zlib = await import('zlib');
         const inflated = zlib.inflateSync(Buffer.from(data));
         return decoder.decode(inflated);
       }
