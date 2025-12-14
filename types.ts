@@ -589,6 +589,8 @@ export interface ZoomState {
   y: number;
 }
 
+export type ComparisonViewMode = 'side-by-side' | 'slider' | 'hover';
+
 export interface ComparisonPaneProps {
   image: IndexedImage;
   directoryPath: string;
