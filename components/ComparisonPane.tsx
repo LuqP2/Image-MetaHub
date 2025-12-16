@@ -4,6 +4,7 @@ import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles } from 'lucide-react'
 import { ComparisonPaneProps, BaseMetadata } from '../types';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import useComparisonImageSource from '../hooks/useComparisonImageSource';
 
 const ComparisonPane: FC<ComparisonPaneProps> = ({
   image,
@@ -13,101 +14,10 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   externalZoom,
   onZoomChange
 }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
-
-  // Load image (reuse ImageModal pattern)
-  useEffect(() => {
-    let isMounted = true;
-    let currentUrl: string | null = null;
-    setImageUrl(null);
-    setLoadError(null);
-
-    const loadImage = async () => {
-      if (!isMounted) return;
-
-      // Validate directoryPath before attempting to load
-      if (!directoryPath && window.electronAPI) {
-        console.error('Cannot load image: directoryPath is undefined');
-        if (isMounted) {
-          setLoadError('Directory path is not available');
-        }
-        return;
-      }
-
-      try {
-        // Primary method: Use handle (prefer full image over thumbnail for comparison)
-        const fileHandle = image.handle;
-
-        if (fileHandle && typeof fileHandle.getFile === 'function') {
-          const file = await fileHandle.getFile();
-          if (isMounted) {
-            currentUrl = URL.createObjectURL(file);
-            setImageUrl(currentUrl);
-          }
-          return; // Success, no need for fallback
-        }
-        throw new Error('Image handle is not a valid FileSystemFileHandle.');
-      } catch (handleError) {
-        // Fallback method: Use Electron API if available
-        console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
-        if (isMounted && window.electronAPI && directoryPath) {
-          try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
-            if (!pathResult.success || !pathResult.path) {
-              throw new Error(pathResult.error || 'Failed to construct image path.');
-            }
-            const fileResult = await window.electronAPI.readFile(pathResult.path);
-            if (fileResult.success && fileResult.data && isMounted) {
-              // fileResult.data is expected to be a base64 string or Uint8Array
-              let dataUrl: string;
-              if (typeof fileResult.data === 'string') {
-                // Assume base64 string
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
-                  ? 'jpeg'
-                  : 'png';
-                dataUrl = `data:image/${ext};base64,${fileResult.data}`;
-              } else if (fileResult.data instanceof Uint8Array) {
-                // Convert Uint8Array to base64
-                const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
-                const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
-                  ? 'jpeg'
-                  : 'png';
-                dataUrl = `data:image/${ext};base64,${base64}`;
-              } else {
-                throw new Error('Unknown file data format.');
-              }
-              currentUrl = dataUrl;
-              setImageUrl(dataUrl);
-            } else {
-              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
-            }
-          } catch (electronError) {
-            console.error('Electron fallback failed:', electronError);
-            if (isMounted) {
-              setLoadError(electronError.message || 'Failed to load image');
-            }
-          }
-        } else if (isMounted) {
-          // If no fallback is available
-          setLoadError('No valid file handle and not in a compatible Electron environment.');
-        }
-      }
-    };
-
-    loadImage();
-
-    return () => {
-      isMounted = false;
-      if (currentUrl && currentUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(currentUrl);
-      }
-    };
-  }, [image, directoryPath]);
+  const { imageUrl, loadError } = useComparisonImageSource(image, directoryPath);
 
   // Apply external zoom when sync enabled
   useEffect(() => {

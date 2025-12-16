@@ -49,7 +49,7 @@ async function parseMetadata(chunks: string[]): Promise<{ format: string; metada
 program
   .name('imagemetahub-cli')
   .description('Image MetaHub CLI - Parse AI-generated image metadata')
-  .version('0.10.4');
+  .version('0.10.5');
 
 /**
  * Parse a single PNG file and output JSON metadata

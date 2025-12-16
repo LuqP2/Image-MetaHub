@@ -456,8 +456,54 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
+// Extract dimensions without decoding the full image
+function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; height: number } | null {
+  const view = new DataView(buffer);
+
+  // PNG signature + IHDR
+  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+    // IHDR chunk starts at byte 16, big-endian
+    const width = view.getUint32(16, false);
+    const height = view.getUint32(20, false);
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+  }
+
+  // JPEG SOF markers
+  if (view.getUint16(0) === 0xFFD8) {
+    let offset = 2;
+    const length = view.byteLength;
+    while (offset < length) {
+      if (view.getUint8(offset) !== 0xFF) {
+        break;
+      }
+      const marker = view.getUint8(offset + 1);
+      const size = view.getUint16(offset + 2, false);
+
+      // SOF0 - SOF15 (except padding markers)
+      if (marker >= 0xC0 && marker <= 0xC3 || marker >= 0xC5 && marker <= 0xC7 || marker >= 0xC9 && marker <= 0xCB || marker >= 0xCD && marker <= 0xCF) {
+        const height = view.getUint16(offset + 5, false);
+        const width = view.getUint16(offset + 7, false);
+        if (width > 0 && height > 0) {
+          return { width, height };
+        }
+        break;
+      }
+
+      // Prevent infinite loop
+      if (size < 2) {
+        break;
+      }
+      offset += 2 + size;
+    }
+  }
+
+  return null;
+}
+
 // Main image metadata parser
-async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
+async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata | null; buffer: ArrayBuffer }> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
   
@@ -479,12 +525,12 @@ async function parseImageMetadata(file: File): Promise<ImageMetadata | null> {
         resultType: result ? Object.keys(result)[0] : 'none',
       });
     }
-    return result;
+    return { metadata: result, buffer };
   }
   if (view.getUint16(0) === 0xFFD8) {
-    return parseJPEGMetadata(buffer);
+    return { metadata: await parseJPEGMetadata(buffer), buffer };
   }
-  return null;
+  return { metadata: null, buffer };
 }
 
 /**
@@ -497,12 +543,14 @@ async function processSingleFileOptimized(
   fileData?: ArrayBuffer
 ): Promise<IndexedImage | null> {
   try {
-    let file: File;
     let rawMetadata: ImageMetadata | null;
+    let bufferForDimensions: ArrayBuffer | undefined;
+    let fileSizeValue: number | undefined = fileEntry.size;
+    const inferredType = fileEntry.type ?? (fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
     // If file data is provided (from batch read), parse directly from buffer
     if (fileData) {
-      // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
+      // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
       if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
         rawMetadata = await parsePNGMetadata(fileData);
@@ -511,13 +559,15 @@ async function processSingleFileOptimized(
       } else {
         rawMetadata = null;
       }
-      // Create File object for dimension reading (if needed later)
-      const blob = new Blob([fileData]);
-      file = new File([blob], fileEntry.handle.name, { lastModified: Date.now() });
+      bufferForDimensions = fileData;
+      fileSizeValue = fileSizeValue ?? fileData.byteLength;
     } else {
       // Fallback to individual file read (browser path)
-      file = await fileEntry.handle.getFile();
-      rawMetadata = await parseImageMetadata(file);
+      const file = await fileEntry.handle.getFile();
+      const parsed = await parseImageMetadata(file);
+      rawMetadata = parsed.metadata;
+      bufferForDimensions = parsed.buffer;
+      fileSizeValue = fileSizeValue ?? file.size;
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
@@ -676,35 +726,20 @@ if (rawMetadata) {
 // deve permanecer como está
 // ==============================================================================
     const fallbackType = fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-    const normalizedFileType = fileEntry.type ?? (file.type || fallbackType);
-    const normalizedFileSize = fileEntry.size ?? file.size;
+    const normalizedFileType = inferredType ?? fallbackType;
+    const normalizedFileSize = fileSizeValue ?? 0;
 
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
-    if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height)) {
-      try {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => {
-            normalizedMetadata!.width = img.width;
-            normalizedMetadata!.height = img.height;
-            URL.revokeObjectURL(objectUrl);
-            resolve();
-          };
-          img.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error('Failed to load image'));
-          };
-          img.src = objectUrl;
-        });
-      } catch (e) {
-        // console.warn('Failed to read image dimensions:', e);
-        // Keep width/height as 0 if failed
+    if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height) && bufferForDimensions) {
+      const dims = extractDimensionsFromBuffer(bufferForDimensions);
+      if (dims) {
+        normalizedMetadata.width = normalizedMetadata.width || dims.width;
+        normalizedMetadata.height = normalizedMetadata.height || dims.height;
       }
     }
 
     // Determine the best date for sorting (generation date vs file date)
-    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? file.lastModified;
+    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
 
     return {
       id: `${directoryId}::${fileEntry.path}`,
@@ -714,7 +749,7 @@ if (rawMetadata) {
       thumbnailError: null,
       directoryId,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
-      metadataString: rawMetadata ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata
+      metadataString: (rawMetadata && Object.keys(rawMetadata).length > 0) ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata or empty object
       lastModified: sortDate, // Use the determined sort date
       models: normalizedMetadata?.models || [],
       loras: normalizedMetadata?.loras || [],
@@ -814,7 +849,7 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 128;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 384;
   const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
 
   const phaseAStats: PhaseTelemetry = {
@@ -1054,7 +1089,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 32;
+  const FILE_READ_BATCH_SIZE = 128;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -1174,17 +1209,20 @@ export async function processFiles(
     console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
+    const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
+    const DIRTY_FLUSH_INTERVAL_MS = 350;
+    let lastFlushTime = performance.now();
 
-    const commitBatch = async () => {
-      if (resultsBatch.length === 0) {
-        return;
+    const commitBatch = async (force = false) => {
+      if (resultsBatch.length > 0) {
+        options.onEnrichmentBatch?.([...resultsBatch]);
+        resultsBatch.length = 0;
       }
 
-      options.onEnrichmentBatch?.([...resultsBatch]);
-      resultsBatch.length = 0;
-
-      if (cacheWriter && touchedChunks.size > 0) {
-        for (const chunkIndex of Array.from(touchedChunks)) {
+      if (cacheWriter && touchedChunks.size > 0 && (force || touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)) {
+        const chunkIndices = Array.from(touchedChunks);
+        const start = performance.now();
+        await Promise.all(chunkIndices.map(async (chunkIndex) => {
           const metadata = chunkRecords[chunkIndex];
           const rewriteStart = performance.now();
           await cacheWriter.overwrite(chunkIndex, metadata);
@@ -1196,7 +1234,10 @@ export async function processFiles(
           performance.mark('indexing:phaseB:chunk-flush', {
             detail: { chunkIndex, durationMs: duration, bytesWritten }
           });
-        }
+        }));
+        performance.mark('indexing:phaseB:chunk-flush-batch', {
+          detail: { chunks: chunkIndices.length, durationMs: performance.now() - start }
+        });
         touchedChunks.clear();
       }
     };
@@ -1237,8 +1278,14 @@ export async function processFiles(
           detail: { depth: queue.length - phaseBStats.processed }
         });
 
-        if (resultsBatch.length >= enrichmentBatchSize) {
+        const now = performance.now();
+        if (
+          resultsBatch.length >= enrichmentBatchSize ||
+          touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
+          now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+        ) {
           await commitBatch();
+          lastFlushTime = now;
         }
       }
       return merged;
@@ -1312,8 +1359,14 @@ export async function processFiles(
             performance.mark('indexing:phaseB:queue-depth', {
               detail: { depth: queue.length - phaseBStats.processed }
             });
-            if (resultsBatch.length >= enrichmentBatchSize) {
+            const now = performance.now();
+            if (
+              resultsBatch.length >= enrichmentBatchSize ||
+              touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
+              now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+            ) {
               await commitBatch();
+              lastFlushTime = now;
             }
           }
           return merged;
@@ -1325,7 +1378,7 @@ export async function processFiles(
       await asyncPool(concurrencyLimit, queue, iterator);
     }
 
-    await commitBatch();
+    await commitBatch(true);
 
     const elapsedMs = performance.now() - phaseBStats.startTime;
     performance.mark('indexing:phaseB:complete', {

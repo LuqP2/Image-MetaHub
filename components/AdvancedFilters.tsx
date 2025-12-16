@@ -22,6 +22,18 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLocalFilters(advancedFilters || {});
   }, [advancedFilters]);
 
+  // Debounce filter updates to avoid excessive re-filtering (300ms delay)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Only update if local filters differ from prop filters
+      if (JSON.stringify(localFilters) !== JSON.stringify(advancedFilters)) {
+        onAdvancedFiltersChange(localFilters);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [localFilters]); // Only depend on localFilters to debounce properly
+
   const updateFilter = (key: string, value: any) => {
     const newFilters = { ...localFilters, [key]: value };
     // Remove empty filters
@@ -39,7 +51,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       // For steps/cfg objects, remove if both min and max are null/undefined
       else if ((k === 'steps' || k === 'cfg') && typeof newFilters[k] === 'object') {
         const rangeObj = newFilters[k];
-        if ((rangeObj.min === null || rangeObj.min === undefined) && 
+        if ((rangeObj.min === null || rangeObj.min === undefined) &&
             (rangeObj.max === null || rangeObj.max === undefined)) {
           delete newFilters[k];
         }
@@ -49,9 +61,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         delete newFilters[k];
       }
     });
-    
+
+    // Update local state immediately for UI responsiveness
+    // The actual filter change will be debounced by the useEffect above
     setLocalFilters(newFilters);
-    onAdvancedFiltersChange(newFilters);
   };
 
   const hasActiveFilters = Object.keys(advancedFilters || {}).length > 0;

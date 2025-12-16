@@ -122,6 +122,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
+  joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
 
   // --- Caching ---

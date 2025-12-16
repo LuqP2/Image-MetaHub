@@ -433,4 +433,5 @@ const ImagePreviewSidebar: React.FC = () => {
   );
 };
 
-export default ImagePreviewSidebar;
+// Memoize to prevent unnecessary re-renders
+export default React.memo(ImagePreviewSidebar);

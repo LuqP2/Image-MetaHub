@@ -3,6 +3,7 @@ import cacheManager from './cacheManager';
 import { useImageStore } from '../store/useImageStore';
 
 const MAX_THUMBNAIL_EDGE = 320;
+const MAX_CONCURRENT_THUMBNAILS = 3;
 
 async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   try {
@@ -36,9 +37,20 @@ async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   }
 }
 
+type ThumbnailJob = {
+  image: IndexedImage;
+  token: number;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
+
 class ThumbnailManager {
   private inflight = new Map<string, Promise<void>>();
   private activeUrls = new Map<string, string>();
+  private queue: ThumbnailJob[] = [];
+  private activeWorkers = 0;
+  private requestTokens = new Map<string, number>();
+  private requestCounter = 0;
 
   async ensureThumbnail(image: IndexedImage): Promise<void> {
     if (!image || !image.id) {
@@ -53,37 +65,85 @@ class ThumbnailManager {
       return;
     }
 
-    if (currentImage?.thumbnailStatus === 'loading') {
-      return; // Already being loaded
-    }
-
     const existing = this.inflight.get(image.id);
-    if (existing) {
+    if (currentImage?.thumbnailStatus === 'loading' && existing) {
       return existing;
     }
 
-    const loadPromise = this.loadThumbnail(image).finally(() => {
-      this.inflight.delete(image.id);
+    // Bump token to invalidate older queued/processing jobs for the same image
+    const token = this.nextToken(image.id);
+    this.dropQueuedJobs(image.id);
+
+    const promise = new Promise<void>((resolve, reject) => {
+      this.queue.push({ image, token, resolve, reject });
+      this.processQueue();
     });
 
-    this.inflight.set(image.id, loadPromise);
-    await loadPromise;
+    this.inflight.set(image.id, promise);
+    return promise;
   }
 
-  private async loadThumbnail(image: IndexedImage): Promise<void> {
+  private nextToken(imageId: string): number {
+    const next = ++this.requestCounter;
+    this.requestTokens.set(imageId, next);
+    return next;
+  }
+
+  private dropQueuedJobs(imageId: string) {
+    if (this.queue.length === 0) return;
+    this.queue = this.queue.filter(job => job.image.id !== imageId);
+  }
+
+  private isStale(imageId: string, token: number): boolean {
+    return this.requestTokens.get(imageId) !== token;
+  }
+
+  private processQueue() {
+    while (this.activeWorkers < MAX_CONCURRENT_THUMBNAILS && this.queue.length > 0) {
+      const job = this.queue.shift();
+      if (!job) break;
+
+      // If a newer request exists, skip this job
+      if (this.isStale(job.image.id, job.token)) {
+        job.resolve();
+        continue;
+      }
+
+      this.activeWorkers++;
+
+      this.loadThumbnail(job.image, job.token)
+        .then(() => job.resolve())
+        .catch((err) => job.reject(err))
+        .finally(() => {
+          // Clean inflight only if this job is still the latest for the image
+          if (!this.isStale(job.image.id, job.token)) {
+            this.inflight.delete(job.image.id);
+          }
+          this.activeWorkers--;
+          this.processQueue();
+        });
+    }
+  }
+
+  private async loadThumbnail(image: IndexedImage, token: number): Promise<void> {
     const setImageThumbnail = useImageStore.getState().setImageThumbnail;
-    setImageThumbnail(image.id, { status: 'loading' });
+    const setSafe = (payload: { status: 'loading' | 'ready' | 'error'; thumbnailUrl?: string | null; error?: string | null }) => {
+      if (this.isStale(image.id, token)) return;
+      setImageThumbnail(image.id, payload);
+    };
+
+    setSafe({ status: 'loading' });
 
     try {
       if (image.thumbnailUrl) {
-        setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: image.thumbnailUrl });
+        setSafe({ status: 'ready', thumbnailUrl: image.thumbnailUrl });
         return;
       }
 
       const cachedBlob = await cacheManager.getCachedThumbnail(image.id);
       if (cachedBlob) {
         const url = this.updateObjectUrl(image.id, cachedBlob);
-        setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: url });
+        setSafe({ status: 'ready', thumbnailUrl: url });
         return;
       }
 
@@ -95,10 +155,10 @@ class ThumbnailManager {
 
       await cacheManager.cacheThumbnail(image.id, blob);
       const url = this.updateObjectUrl(image.id, blob);
-      setImageThumbnail(image.id, { status: 'ready', thumbnailUrl: url });
+      setSafe({ status: 'ready', thumbnailUrl: url });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown thumbnail error';
-      setImageThumbnail(image.id, { status: 'error', error: message });
+      setSafe({ status: 'error', error: message });
     }
   }
 
@@ -115,4 +175,3 @@ class ThumbnailManager {
 }
 
 export const thumbnailManager = new ThumbnailManager();
-

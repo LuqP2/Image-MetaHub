@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
@@ -44,7 +44,8 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   };
 
   // Function to apply sorting based on current field and direction
-  const applySorting = (imagesToSort: IndexedImage[], field: SortField | null, direction: SortDirection) => {
+  // Memoized for performance - avoids recreating sort function on every render
+  const applySorting = useCallback((imagesToSort: IndexedImage[], field: SortField | null, direction: SortDirection) => {
     if (!field || !direction) {
       return imagesToSort;
     }
@@ -52,7 +53,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     return [...imagesToSort].sort((a, b) => {
       let aValue: string | number;
       let bValue: string | number;
-      
+
       switch (field) {
         case 'filename':
           aValue = a.handle.name.toLowerCase();
@@ -95,14 +96,14 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
         default:
           return 0;
       }
-      
+
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
       } else {
         return direction === 'asc' ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number);
       }
     });
-  };
+  }, []); // No dependencies - pure function
 
   const handleSort = (field: SortField) => {
     let newDirection: SortDirection = 'asc';
@@ -136,7 +137,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   useEffect(() => {
     const sorted = applySorting(images, sortField, sortDirection);
     setSortedImages(sorted);
-  }, [images, sortField, sortDirection]);
+  }, [images, sortField, sortDirection, applySorting]);
 
   const columnWidths = [
     '96px', // Preview
@@ -320,7 +321,7 @@ interface ImageTableRowProps {
   gridTemplateColumns: string;
 }
 
-const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
+const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -343,6 +344,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
 
     let isMounted = true;
     let fallbackUrl: string | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const fileHandle = image.thumbnailHandle || image.handle;
     const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
@@ -369,10 +371,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
       }
     };
 
-    void loadFallback();
+    fallbackTimer = setTimeout(() => {
+      void loadFallback();
+    }, 180);
 
     return () => {
       isMounted = false;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+      }
       if (fallbackUrl) {
         URL.revokeObjectURL(fallbackUrl);
       }
@@ -468,6 +475,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = ({ image, onImageClick, isSe
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison for performance - only re-render if critical props changed
+  return (
+    prevProps.image.id === nextProps.image.id &&
+    prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
+    prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.gridTemplateColumns === nextProps.gridTemplateColumns
+  );
+});
 
 export default ImageTable;
