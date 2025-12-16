@@ -444,4 +444,5 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-export default Sidebar;
+// Memoize to prevent unnecessary re-renders
+export default React.memo(Sidebar);
