@@ -27,10 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.5] - 2025-12-16
 
+### Added
+
+- **Compare Modes: Slider & Hover**: New comparison modes alongside side-by-side: drag a divider to reveal each image or hover to flip between them, selectable via the mode toggle in the comparison header.
+- **Mode-Aware Sync Controls**: Sync toggle is now clearly tied to side-by-side mode, with contextual hints per mode.
+
 ### Changed
 
 - **Bounded Thumbnail Queue**: Thumbnail loading now uses a max-concurrency queue with cancellation of stale requests, preventing outdated jobs from overwriting newer loads during rapid navigation.
-- **Debounced Full-Image Fallbacks**: Grid and table views delay heavy fallback reads by ~180ms when thumbnails aren’t ready, reducing bursty I/O when paginating quickly.
+- **Debounced Full-Image Fallbacks**: Grid and table views delay heavy fallback reads by ~180ms when thumbnails aren't ready, reducing bursty I/O when paginating quickly.
 - **Phase B Header Dimensions**: Metadata enrichment reads PNG/JPEG dimensions directly from file headers, skipping full image decode for width/height.
 - **Phase B Batch Tuning**: Larger enrichment batches, timed dirty-chunk flushing, and parallel cache rewrites cut IPC/disk churn during metadata extraction.
 
