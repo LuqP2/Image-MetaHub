@@ -4,7 +4,15 @@
 //   (ex.: IMH_LICENSE_SECRET="seu-segredo" npm run build) para embutir o valor.
 // - O segredo fica no binario final (app cliente). E simples e offline; nao ha
 //   como ocultar 100% em codigo cliente.
+// - Para o renderer Vite expor a variavel, use o prefixo VITE_ (ex.: VITE_IMH_LICENSE_SECRET)
+const licenseSecretFromVite =
+  typeof import.meta !== 'undefined'
+    ? // import.meta.env fica estatico no build; use any para evitar tipo de bundler aqui
+      (import.meta as any)?.env?.VITE_IMH_LICENSE_SECRET
+    : undefined;
+
 const LICENSE_SECRET =
+  licenseSecretFromVite ||
   (typeof process !== 'undefined' && process.env.IMH_LICENSE_SECRET) ||
   'CHANGE-ME-BEFORE-RELEASE';
 
