@@ -21,6 +21,7 @@ export interface ElectronAPI {
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
+  joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
