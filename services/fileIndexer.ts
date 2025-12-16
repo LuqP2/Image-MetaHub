@@ -1089,7 +1089,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 32;
+  const FILE_READ_BATCH_SIZE = 64;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -1210,6 +1210,8 @@ export async function processFiles(
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
     const DIRTY_CHUNK_FLUSH_THRESHOLD = 8;
+    const DIRTY_FLUSH_INTERVAL_MS = 250;
+    let lastFlushTime = performance.now();
 
     const commitBatch = async (force = false) => {
       if (resultsBatch.length > 0) {
@@ -1218,7 +1220,9 @@ export async function processFiles(
       }
 
       if (cacheWriter && touchedChunks.size > 0 && (force || touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)) {
-        for (const chunkIndex of Array.from(touchedChunks)) {
+        const chunkIndices = Array.from(touchedChunks);
+        const start = performance.now();
+        await Promise.all(chunkIndices.map(async (chunkIndex) => {
           const metadata = chunkRecords[chunkIndex];
           const rewriteStart = performance.now();
           await cacheWriter.overwrite(chunkIndex, metadata);
@@ -1230,7 +1234,10 @@ export async function processFiles(
           performance.mark('indexing:phaseB:chunk-flush', {
             detail: { chunkIndex, durationMs: duration, bytesWritten }
           });
-        }
+        }));
+        performance.mark('indexing:phaseB:chunk-flush-batch', {
+          detail: { chunks: chunkIndices.length, durationMs: performance.now() - start }
+        });
         touchedChunks.clear();
       }
     };
@@ -1271,8 +1278,10 @@ export async function processFiles(
           detail: { depth: queue.length - phaseBStats.processed }
         });
 
-        if (resultsBatch.length >= enrichmentBatchSize) {
+        const now = performance.now();
+        if (resultsBatch.length >= enrichmentBatchSize || (touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD && now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS)) {
           await commitBatch();
+          lastFlushTime = now;
         }
       }
       return merged;
@@ -1346,8 +1355,10 @@ export async function processFiles(
             performance.mark('indexing:phaseB:queue-depth', {
               detail: { depth: queue.length - phaseBStats.processed }
             });
-            if (resultsBatch.length >= enrichmentBatchSize) {
+            const now = performance.now();
+            if (resultsBatch.length >= enrichmentBatchSize || (touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD && now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS)) {
               await commitBatch();
+              lastFlushTime = now;
             }
           }
           return merged;
