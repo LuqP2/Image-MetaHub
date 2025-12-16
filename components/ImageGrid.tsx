@@ -48,6 +48,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
     let isMounted = true;
     let fallbackUrl: string | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const fileHandle = image.thumbnailHandle || image.handle;
     const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
@@ -73,10 +74,16 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       }
     };
 
-    void loadFallback();
+    // Debounce heavy fallback fetch; if thumbnail becomes ready meanwhile, this effect will rerun and cancel
+    fallbackTimer = setTimeout(() => {
+      void loadFallback();
+    }, 180);
 
     return () => {
       isMounted = false;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+      }
       if (fallbackUrl && fallbackUrl !== 'ERROR') {
         URL.revokeObjectURL(fallbackUrl);
       }
@@ -229,12 +236,18 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   );
 }, (prevProps, nextProps) => {
   // Custom comparison: only re-render if relevant data changed
+  // Efficient tag comparison using join instead of JSON.stringify
+  const prevTags = prevProps.image.tags;
+  const nextTags = nextProps.image.tags;
+  const tagsEqual = (!prevTags && !nextTags) ||
+    (prevTags && nextTags && prevTags.length === nextTags.length && prevTags.join(',') === nextTags.join(','));
+
   return (
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
     prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
-    JSON.stringify(prevProps.image.tags) === JSON.stringify(nextProps.image.tags) &&
+    tagsEqual &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isFocused === nextProps.isFocused &&
     prevProps.isComparisonFirst === nextProps.isComparisonFirst &&
@@ -266,7 +279,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comparisonFirstImage, setComparisonFirstImage] = useState<IndexedImage | null>(null);
-  const { setComparisonImages, openComparisonModal, toggleImageSelection } = useImageStore();
+  const setComparisonImages = useImageStore((state) => state.setComparisonImages);
+  const openComparisonModal = useImageStore((state) => state.openComparisonModal);
+  const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
 
   // Drag-to-select states
   const [isSelecting, setIsSelecting] = useState(false);
@@ -358,53 +373,65 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setInitialSelectedImages(new Set(selectedImages));
   }, [selectedImages]);
 
+  // Throttled with requestAnimationFrame for performance
+  const rafIdRef = useRef<number | null>(null);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isSelecting || !selectionStart) return;
 
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    // Cancel any pending animation frame
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
 
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+    // Schedule the intersection calculation for the next animation frame
+    rafIdRef.current = requestAnimationFrame(() => {
+      const rect = gridRef.current?.getBoundingClientRect();
+      if (!rect) return;
 
-    setSelectionEnd({ x, y });
+      const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
+      const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
 
-    // Calculate which images are within the selection box
-    const box = {
-      left: Math.min(selectionStart.x, x),
-      right: Math.max(selectionStart.x, x),
-      top: Math.min(selectionStart.y, y),
-      bottom: Math.max(selectionStart.y, y),
-    };
+      setSelectionEnd({ x, y });
 
-    const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
-
-    imageCardsRef.current.forEach((element, imageId) => {
-      const imageRect = element.getBoundingClientRect();
-      const scrollTop = gridRef.current?.scrollTop || 0;
-      const scrollLeft = gridRef.current?.scrollLeft || 0;
-
-      const imageBox = {
-        left: imageRect.left - rect.left + scrollLeft,
-        right: imageRect.right - rect.left + scrollLeft,
-        top: imageRect.top - rect.top + scrollTop,
-        bottom: imageRect.bottom - rect.top + scrollTop,
+      // Calculate which images are within the selection box
+      const box = {
+        left: Math.min(selectionStart.x, x),
+        right: Math.max(selectionStart.x, x),
+        top: Math.min(selectionStart.y, y),
+        bottom: Math.max(selectionStart.y, y),
       };
 
-      // Check if boxes intersect
-      const intersects = !(
-        imageBox.right < box.left ||
-        imageBox.left > box.right ||
-        imageBox.bottom < box.top ||
-        imageBox.top > box.bottom
-      );
+      const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
 
-      if (intersects) {
-        newSelection.add(imageId);
-      }
+      imageCardsRef.current.forEach((element, imageId) => {
+        const imageRect = element.getBoundingClientRect();
+        const scrollTop = gridRef.current?.scrollTop || 0;
+        const scrollLeft = gridRef.current?.scrollLeft || 0;
+
+        const imageBox = {
+          left: imageRect.left - rect.left + scrollLeft,
+          right: imageRect.right - rect.left + scrollLeft,
+          top: imageRect.top - rect.top + scrollTop,
+          bottom: imageRect.bottom - rect.top + scrollTop,
+        };
+
+        // Check if boxes intersect
+        const intersects = !(
+          imageBox.right < box.left ||
+          imageBox.left > box.right ||
+          imageBox.bottom < box.top ||
+          imageBox.top > box.bottom
+        );
+
+        if (intersects) {
+          newSelection.add(imageId);
+        }
+      });
+
+      useImageStore.setState({ selectedImages: newSelection });
+      rafIdRef.current = null;
     });
-
-    useImageStore.setState({ selectedImages: newSelection });
   }, [isSelecting, selectionStart, initialSelectedImages]);
 
   const handleMouseUp = useCallback(() => {

@@ -38,54 +38,65 @@ export default function App() {
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
-  // --- Zustand Store State ---
-  const {
-    filteredImages,
-    selectionTotalImages,
-    selectionDirectoryCount,
-    directories,
-    isLoading,
-    progress,
-    indexingState,
-    error,
-    success,
-    previewImage,
-    selectedImage,
-    selectedImages,
-    searchQuery,
-    scanSubfolders,
-    availableModels,
-    availableLoras,
-    availableSchedulers,
-    availableDimensions,
-    selectedModels,
-    selectedLoras,
-    selectedSchedulers,
-    advancedFilters,
-    folderSelection,
-    isFolderSelectionLoaded,
-    enrichmentProgress,
-    setSearchQuery,
-    setSelectedFilters,
-    setAdvancedFilters,
-    setSelectedImage,
-    removeImage,
-    updateImage,
-    toggleDirectoryVisibility,
-    setFolderSelectionState,
-    getFolderSelectionState,
-    resetState,
-    setSuccess,
-    setError,
-    handleNavigateNext,
-    handleNavigatePrevious,
-    cleanupInvalidImages,
-    isComparisonModalOpen,
-    closeComparisonModal,
-    isAnnotationsLoaded,
-    initializeFolderSelection,
-    loadAnnotations,
-  } = useImageStore();
+  // --- Zustand Store State (Granular Selectors for Performance) ---
+  // Data selectors
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
+  const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
+  const directories = useImageStore((state) => state.directories);
+  const selectedImages = useImageStore((state) => state.selectedImages);
+  const selectedImage = useImageStore((state) => state.selectedImage);
+  const previewImage = useImageStore((state) => state.previewImage);
+
+  // Loading & progress selectors
+  const isLoading = useImageStore((state) => state.isLoading);
+  const progress = useImageStore((state) => state.progress);
+  const indexingState = useImageStore((state) => state.indexingState);
+  const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
+
+  // Status selectors
+  const error = useImageStore((state) => state.error);
+  const success = useImageStore((state) => state.success);
+
+  // Filter state selectors
+  const searchQuery = useImageStore((state) => state.searchQuery);
+  const scanSubfolders = useImageStore((state) => state.scanSubfolders);
+  const availableModels = useImageStore((state) => state.availableModels);
+  const availableLoras = useImageStore((state) => state.availableLoras);
+  const availableSchedulers = useImageStore((state) => state.availableSchedulers);
+  const availableDimensions = useImageStore((state) => state.availableDimensions);
+  const selectedModels = useImageStore((state) => state.selectedModels);
+  const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const advancedFilters = useImageStore((state) => state.advancedFilters);
+
+  // Folder selection selectors
+  const folderSelection = useImageStore((state) => state.folderSelection);
+  const isFolderSelectionLoaded = useImageStore((state) => state.isFolderSelectionLoaded);
+
+  // Modal state selectors
+  const isComparisonModalOpen = useImageStore((state) => state.isComparisonModalOpen);
+  const isAnnotationsLoaded = useImageStore((state) => state.isAnnotationsLoaded);
+
+  // Action selectors
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+  const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
+  const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
+  const setSelectedImage = useImageStore((state) => state.setSelectedImage);
+  const removeImage = useImageStore((state) => state.removeImage);
+  const updateImage = useImageStore((state) => state.updateImage);
+  const toggleDirectoryVisibility = useImageStore((state) => state.toggleDirectoryVisibility);
+  const setFolderSelectionState = useImageStore((state) => state.setFolderSelectionState);
+  const getFolderSelectionState = useImageStore((state) => state.getFolderSelectionState);
+  const resetState = useImageStore((state) => state.resetState);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
+  const handleNavigateNext = useImageStore((state) => state.handleNavigateNext);
+  const handleNavigatePrevious = useImageStore((state) => state.handleNavigatePrevious);
+  const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
+  const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
+  const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
+  const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
 

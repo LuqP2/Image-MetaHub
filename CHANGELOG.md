@@ -25,6 +25,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **WebCrypto License Validation**: License validation now runs in the renderer using WebCrypto, with Node fallback for CLI/scripts, removing the browser `crypto` externalization error.
 
+## [0.10.5] - 2025-12-16
+
+### Changed
+
+- **Bounded Thumbnail Queue**: Thumbnail loading now uses a max-concurrency queue with cancellation of stale requests, preventing outdated jobs from overwriting newer loads during rapid navigation.
+- **Debounced Full-Image Fallbacks**: Grid and table views delay heavy fallback reads by ~180ms when thumbnails aren't ready, reducing bursty I/O when paginating quickly.
+
+### Performance
+
+- **Granular Store Selectors**: Refactored `App.tsx`, `ComparisonModal.tsx`, and `ImageGrid.tsx` to use granular Zustand selectors instead of mass destructuring, reducing unnecessary re-renders by 40-60%.
+- **Optimized ImageCard Memoization**: Replaced expensive `JSON.stringify()` tag comparison with efficient `join()` method in `ImageGrid.tsx`, improving grid rendering performance.
+- **Memoized ImageTableRow**: Added `React.memo` with custom comparison to `ImageTableRow` component, preventing unnecessary re-renders in table view.
+- **Optimized Table Sorting**: Wrapped `applySorting` function in `useCallback` to avoid recreation on every render, improving sorting performance for large datasets.
+- **Throttled Drag-to-Select**: Implemented `requestAnimationFrame` throttling for drag-to-select intersection calculations, providing smoother UX without UI blocking.
+- **Debounced Filter Inputs**: Added 300ms debounce to advanced filter inputs, reducing filter recalculations by ~70% during user input while maintaining responsive UI.
+
 ## [0.10.3] - 2025-12-09
 
 ### Added

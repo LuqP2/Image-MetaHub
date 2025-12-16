@@ -7,7 +7,11 @@ import ComparisonMetadataPanel from './ComparisonMetadataPanel';
 import ComparisonOverlayView from './ComparisonOverlayView';
 
 const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
-  const { comparisonImages, directories, swapComparisonImages, clearComparison } = useImageStore();
+  // Granular selectors for performance
+  const comparisonImages = useImageStore((state) => state.comparisonImages);
+  const directories = useImageStore((state) => state.directories);
+  const swapComparisonImages = useImageStore((state) => state.swapComparisonImages);
+  const clearComparison = useImageStore((state) => state.clearComparison);
 
   // State
   const [syncEnabled, setSyncEnabled] = useState(true);
