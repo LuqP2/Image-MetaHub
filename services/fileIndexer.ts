@@ -1089,7 +1089,7 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
-  const FILE_READ_BATCH_SIZE = 64;
+  const FILE_READ_BATCH_SIZE = 128;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -1209,8 +1209,8 @@ export async function processFiles(
     console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
-    const DIRTY_CHUNK_FLUSH_THRESHOLD = 8;
-    const DIRTY_FLUSH_INTERVAL_MS = 250;
+    const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
+    const DIRTY_FLUSH_INTERVAL_MS = 350;
     let lastFlushTime = performance.now();
 
     const commitBatch = async (force = false) => {
@@ -1279,7 +1279,11 @@ export async function processFiles(
         });
 
         const now = performance.now();
-        if (resultsBatch.length >= enrichmentBatchSize || (touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD && now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS)) {
+        if (
+          resultsBatch.length >= enrichmentBatchSize ||
+          touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
+          now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+        ) {
           await commitBatch();
           lastFlushTime = now;
         }
@@ -1356,7 +1360,11 @@ export async function processFiles(
               detail: { depth: queue.length - phaseBStats.processed }
             });
             const now = performance.now();
-            if (resultsBatch.length >= enrichmentBatchSize || (touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD && now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS)) {
+            if (
+              resultsBatch.length >= enrichmentBatchSize ||
+              touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
+              now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+            ) {
               await commitBatch();
               lastFlushTime = now;
             }
