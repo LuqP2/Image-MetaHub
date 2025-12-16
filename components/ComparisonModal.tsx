@@ -90,9 +90,9 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   const leftDirectory = directories.find(d => d.id === comparisonImages[0]?.directoryId);
   const rightDirectory = directories.find(d => d.id === comparisonImages[1]?.directoryId);
   const viewModes: { id: ComparisonViewMode; label: string; hint: string }[] = [
-    { id: 'slider', label: 'Slider', hint: 'Arraste o divisor para ver cada imagem' },
-    { id: 'side-by-side', label: 'Side-by-Side', hint: 'Duas janelas com zoom sincronizado opcional' },
-    { id: 'hover', label: 'Hover', hint: 'Passe o mouse para alternar entre as imagens' },
+    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image' },
+    { id: 'side-by-side', label: 'Side-by-Side', hint: 'Two panes with optional synced zoom' },
+    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images' },
   ];
   const isSideBySide = viewMode === 'side-by-side';
 
@@ -162,7 +162,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
             ))}
           </div>
           <span className="text-xs text-gray-500 hidden lg:inline">
-            Slider: arraste o divisor · Side-by-Side: zoom sincronizado · Hover: revele a segunda imagem
+            Slider: drag the divider | Side-by-Side: synced zoom | Hover: reveal the second image
           </span>
         </div>
       </div>
