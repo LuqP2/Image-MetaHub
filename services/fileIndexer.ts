@@ -543,13 +543,14 @@ async function processSingleFileOptimized(
   fileData?: ArrayBuffer
 ): Promise<IndexedImage | null> {
   try {
-    let file: File;
     let rawMetadata: ImageMetadata | null;
     let bufferForDimensions: ArrayBuffer | undefined;
+    let fileSizeValue: number | undefined = fileEntry.size;
+    const inferredType = fileEntry.type ?? (fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
 
     // If file data is provided (from batch read), parse directly from buffer
     if (fileData) {
-      // OPTIMIZED: Parse directly from ArrayBuffer, create File object later only if needed
+      // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
       if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
         rawMetadata = await parsePNGMetadata(fileData);
@@ -559,15 +560,14 @@ async function processSingleFileOptimized(
         rawMetadata = null;
       }
       bufferForDimensions = fileData;
-      // Create File object for dimension reading (if needed later)
-      const blob = new Blob([fileData]);
-      file = new File([blob], fileEntry.handle.name, { lastModified: Date.now() });
+      fileSizeValue = fileSizeValue ?? fileData.byteLength;
     } else {
       // Fallback to individual file read (browser path)
-      file = await fileEntry.handle.getFile();
+      const file = await fileEntry.handle.getFile();
       const parsed = await parseImageMetadata(file);
       rawMetadata = parsed.metadata;
       bufferForDimensions = parsed.buffer;
+      fileSizeValue = fileSizeValue ?? file.size;
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
@@ -726,8 +726,8 @@ if (rawMetadata) {
 // deve permanecer como está
 // ==============================================================================
     const fallbackType = fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-    const normalizedFileType = fileEntry.type ?? (file.type || fallbackType);
-    const normalizedFileSize = fileEntry.size ?? file.size;
+    const normalizedFileType = inferredType ?? fallbackType;
+    const normalizedFileSize = fileSizeValue ?? 0;
 
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height) && bufferForDimensions) {
@@ -739,7 +739,7 @@ if (rawMetadata) {
     }
 
     // Determine the best date for sorting (generation date vs file date)
-    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? file.lastModified;
+    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
 
     return {
       id: `${directoryId}::${fileEntry.path}`,
@@ -849,7 +849,7 @@ export async function processFiles(
   const cacheWriter = options.cacheWriter ?? null;
   const chunkThreshold = options.flushChunkSize ?? cacheWriter?.targetChunkSize ?? 512;
   const concurrencyLimit = options.concurrency ?? 4;
-  const enrichmentBatchSize = options.enrichmentBatchSize ?? 256;
+  const enrichmentBatchSize = options.enrichmentBatchSize ?? 384;
   const statsLookup = options.fileStats ?? new Map<string, { size?: number; type?: string; birthtimeMs?: number }>();
 
   const phaseAStats: PhaseTelemetry = {
@@ -1209,7 +1209,7 @@ export async function processFiles(
     console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
-    const DIRTY_CHUNK_FLUSH_THRESHOLD = 4;
+    const DIRTY_CHUNK_FLUSH_THRESHOLD = 8;
 
     const commitBatch = async (force = false) => {
       if (resultsBatch.length > 0) {
