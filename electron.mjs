@@ -1467,6 +1467,25 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Handle batch path joining - optimized for processing multiple paths at once
+  ipcMain.handle('join-paths-batch', async (event, { basePath, fileNames }) => {
+    try {
+      if (!basePath) {
+        return { success: false, error: 'No base path provided' };
+      }
+      if (!Array.isArray(fileNames) || fileNames.length === 0) {
+        return { success: false, error: 'No file names provided' };
+      }
+
+      // Process all paths in a single call
+      const paths = fileNames.map(fileName => path.resolve(basePath, fileName));
+      return { success: true, paths };
+    } catch (error) {
+      console.error('Error joining paths in batch:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle writing file content
   ipcMain.handle('write-file', async (event, filePath, data) => {
     try {

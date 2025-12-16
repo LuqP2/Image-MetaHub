@@ -749,7 +749,7 @@ if (rawMetadata) {
       thumbnailError: null,
       directoryId,
       metadata: normalizedMetadata ? { ...rawMetadata, normalizedMetadata } : rawMetadata || {},
-      metadataString: rawMetadata ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata
+      metadataString: (rawMetadata && Object.keys(rawMetadata).length > 0) ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata or empty object
       lastModified: sortDate, // Use the determined sort date
       models: normalizedMetadata?.models || [],
       loras: normalizedMetadata?.loras || [],

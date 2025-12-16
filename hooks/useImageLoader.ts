@@ -128,27 +128,21 @@ async function getFileHandles(
     const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number}[] = [];
 
     if (getIsElectron()) {
-        // Process paths in smaller chunks to avoid overwhelming IPC
-        const CHUNK_SIZE = 1000;
+        // Use batch path joining for optimal performance - single IPC call instead of multiple
         const fileNames = files.map(f => f.name);
-        const joinResults: any[] = [];
-        
-        for (let i = 0; i < fileNames.length; i += CHUNK_SIZE) {
-            const chunk = fileNames.slice(i, i + CHUNK_SIZE);
-            const chunkResults = await Promise.all(
-                chunk.map(fileName => window.electronAPI.joinPaths(directoryPath, fileName))
-            );
-            joinResults.push(...chunkResults);
+        const batchResult = await window.electronAPI.joinPathsBatch({ basePath: directoryPath, fileNames });
+
+        if (!batchResult.success) {
+            console.error("Failed to join paths in batch:", batchResult.error);
+            // Fallback: use manual path construction
+            const filePaths = fileNames.map(name => `${directoryPath}/${name}`);
+            batchResult.paths = filePaths;
         }
 
+        // Process all files with the returned paths
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const joinResult = joinResults[i];
-            const filePath = joinResult.success ? joinResult.path : `${directoryPath}/${file.name}`;
-            
-            if (!joinResult.success) {
-                console.error("Failed to join paths, falling back to manual concatenation:", joinResult.error);
-            }
+            const filePath = batchResult.paths[i];
 
             const mockHandle = {
                 name: file.name,
@@ -399,13 +393,21 @@ export function useImageLoader() {
                         return;
                     }
 
-                    const filePaths = await Promise.all(
-                        metadataChunk.map(meta => window.electronAPI.joinPaths(directory.path, meta.name))
-                    );
+                    // Use batch path joining for optimal performance
+                    const fileNames = metadataChunk.map(meta => meta.name);
+                    const batchResult = await window.electronAPI.joinPathsBatch({ basePath: directory.path, fileNames });
+
+                    let filePaths: string[];
+                    if (batchResult.success) {
+                        filePaths = batchResult.paths;
+                    } else {
+                        console.error("Failed to join paths in batch:", batchResult.error);
+                        // Fallback to manual path construction
+                        filePaths = fileNames.map(name => `${directory.path}/${name}`);
+                    }
 
                     const chunkImages: IndexedImage[] = metadataChunk.map((meta, i) => {
-                        const joinResult = filePaths[i];
-                        const filePath = joinResult.success ? joinResult.path : `${directory.path}/${meta.name}`;
+                        const filePath = filePaths[i];
 
                         const mockHandle = {
                             name: meta.name,
