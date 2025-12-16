@@ -126,18 +126,20 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p>Image MetaHub 0.10.5 is here — the latest 0.10.x release, bringing major performance improvements and new comparison modes.</p>
+                  <p><strong className="text-white">Image MetaHub 0.10.5 is here — a dedicated performance release.</strong></p>
 
-                  <p>The 0.10.x goal is to push past "just a metadata viewer" and move towards a local AI image studio: smoother browsing, better quality-of-life in the UI, and new tools that are clearly beyond the basics. 0.10.5 adds slider and hover comparison modes, batched IPC operations for 3-5x faster loading, and comprehensive performance optimizations reducing re-renders by 40-60%. The full list is in the changelog below — this is just the high-level context.</p>
+                  <p>After the major feature drops in the 0.10.x line, I spent this cycle strictly "under the hood." The goal was to make the app feel significantly lighter and snappier, especially for large libraries. <strong>0.10.5</strong> brings a new prioritized loading queue (no more laggy thumbnails when scrolling fast), optimized IPC communication (much less CPU overhead), and smoother rendering across the grid and table views.</p>
+
+                  <p>If you have a massive collection, you should feel the difference immediately: less stutter, cleaner scrolling, and smarter resource usage.</p>
 
                   <p>Some of these new tools are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced features live behind the Pro toggle. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>
 
-                  <p>There’s a 7-day Pro trial that only starts when you opt in after trying a Pro feature, so you can see in practice if the extra tools actually help your workflow.</p>
+                  <p>There’s a 7-day Pro trial that only starts <strong className="text-white">when you opt in</strong> after trying a Pro feature, so you can see in practice if the extra tools actually help your workflow.</p>
 
                   <p>Details on how to get a license are on <a href="https://www.imagemetahub.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">the website</a>, or via the Get Pro / license status link in the app header.</p>
 
 
-                  <p className="font-medium">Thanks for supporting the project and for using Image MetaHub!</p>
+                  <p className="font-medium mt-4">Thanks for supporting the project and for using Image MetaHub!</p>
                 </div>
               </div>
 
