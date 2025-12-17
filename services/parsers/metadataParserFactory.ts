@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, isInvokeAIMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -63,10 +63,15 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data), generator: 'SwarmUI' };
     }
 
+    // InvokeAI (embedded JSON fields)
+    if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
+        return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
+    }
+
     // ComfyUI detection (case-insensitive, accepts stringified prompt/workflow)
     const workflowCI = getCaseInsensitive<any>(metadata as any, 'workflow');
     const promptCI = getCaseInsensitive<any>(metadata as any, 'prompt');
-    const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|\"inputs\"/.test(promptCI);
+    const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
 
     if (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph) {
         return {
@@ -102,9 +107,6 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
             },
             generator: 'ComfyUI'
         };
-    }
-    if ('invokeai_metadata' in metadata) {
-        return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
     }
     // Check for Fooocus (before general A1111 detection)
     if ('parameters' in metadata && 
