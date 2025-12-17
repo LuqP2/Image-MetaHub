@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
+import os from 'os';
 import { parseImageFile } from './services/metadataEngine';
 
 const program = new Command();
@@ -13,8 +14,8 @@ program
   .description('Image MetaHub CLI - Parse AI-generated image metadata')
   .version('0.10.5');
 
-type ParseOptions = { json: boolean; pretty: boolean; raw?: boolean };
-type IndexOptions = { out: string; recursive: boolean; raw?: boolean };
+type ParseOptions = { json: boolean; pretty: boolean; raw?: boolean; quiet?: boolean };
+type IndexOptions = { out: string; recursive: boolean; raw?: boolean; quiet?: boolean; concurrency?: string };
 
 function formatOutput(
   result: Awaited<ReturnType<typeof parseImageFile>>,
@@ -27,6 +28,8 @@ function formatOutput(
     sha256: result.sha256,
     dimensions: result.dimensions || null,
     metadata: result.metadata,
+    schema_version: result.schema_version,
+    _telemetry: result._telemetry,
     parsed_at: new Date().toISOString(),
     errors: result.errors,
   } as any;
@@ -65,6 +68,7 @@ program
   .option('--json', 'Output as JSON', true)
   .option('--pretty', 'Pretty-print JSON output', false)
   .option('--raw', 'Include raw metadata payload when available', false)
+  .option('--quiet', 'Suppress informational logs', false)
   .action(async (file: string, options: ParseOptions) => {
     try {
       const filePath = path.resolve(file);
@@ -94,6 +98,8 @@ program
   .option('--out <file>', 'Output JSONL file', 'index.jsonl')
   .option('--recursive', 'Scan subdirectories recursively', false)
   .option('--raw', 'Include raw metadata payload when available', false)
+  .option('--quiet', 'Suppress informational logs', false)
+  .option('--concurrency <number>', 'Number of files to process in parallel', undefined)
   .action(async (dir: string, options: IndexOptions) => {
     try {
       const dirPath = path.resolve(dir);
@@ -109,14 +115,22 @@ program
 
       let processedCount = 0;
       let errorCount = 0;
+      const cpuCount = Math.max(1, os.cpus().length);
+      const concurrency = Math.max(1, Math.min(64, Number(options.concurrency || cpuCount) || cpuCount));
 
-      console.log(`Scanning directory: ${dirPath}`);
-      console.log(`Output file: ${outputPath}`);
-      console.log(`Recursive: ${options.recursive}`);
-      console.log(`Images found: ${files.length}`);
-      console.log('---');
+      if (!options.quiet) {
+        console.log(`Scanning directory: ${dirPath}`);
+        console.log(`Output file: ${outputPath}`);
+        console.log(`Recursive: ${options.recursive}`);
+        console.log(`Images found: ${files.length}`);
+        console.log(`Concurrency: ${concurrency}`);
+        console.log('---');
+      }
 
-      for (const filePath of files) {
+      const queue: Promise<void>[] = [];
+      let index = 0;
+
+      const runWorker = async (filePath: string) => {
         try {
           const result = await parseImageFile(filePath);
           const entry = formatOutput(result, Boolean(options.raw));
@@ -125,22 +139,38 @@ program
           if (result.errors?.length) {
             errorCount += 1;
           }
-          if (processedCount % 100 === 0) {
+          if (!options.quiet && processedCount % 100 === 0) {
             console.log(`Processed ${processedCount}/${files.length} images...`);
           }
         } catch (err) {
           console.error(`Error parsing ${filePath}:`, err);
           errorCount++;
         }
+      };
+
+      while (index < files.length || queue.length > 0) {
+        while (index < files.length && queue.length < concurrency) {
+          const filePath = files[index++];
+          const p = runWorker(filePath).finally(() => {
+            const idx = queue.indexOf(p);
+            if (idx !== -1) queue.splice(idx, 1);
+          });
+          queue.push(p);
+        }
+        if (queue.length > 0) {
+          await Promise.race(queue);
+        }
       }
 
       outputStream.end();
 
-      console.log('---');
-      console.log(`✅ Indexing complete!`);
-      console.log(`   Processed: ${processedCount} images`);
-      console.log(`   Errors: ${errorCount}`);
-      console.log(`   Output: ${outputPath}`);
+      if (!options.quiet) {
+        console.log('---');
+        console.log('✅ Indexing complete!');
+        console.log(`   Processed: ${processedCount} images`);
+        console.log(`   Errors: ${errorCount}`);
+        console.log(`   Output: ${outputPath}`);
+      }
     } catch (error) {
       console.error('Error indexing directory:', error);
       process.exit(1);

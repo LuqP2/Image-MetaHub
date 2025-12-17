@@ -4,7 +4,6 @@ import { createHash } from 'crypto';
 import exifr from 'exifr';
 import { BaseMetadata, ImageMetadata, isEasyDiffusionJson } from '../types';
 import { parseImageMetadata as normalizeMetadata } from './parsers/metadataParserFactory';
-import { parseEasyDiffusionJson } from './parsers/easyDiffusionParser';
 
 interface Dimensions {
   width: number;
@@ -19,7 +18,15 @@ export interface MetadataEngineResult {
   dimensions?: Dimensions | null;
   rawSource?: 'png' | 'jpeg' | 'sidecar' | 'unknown';
   errors?: string[];
+  schema_version: string;
+  _telemetry: {
+    parser: string | null;
+    raw_source: string | null;
+    normalize_time_ms: number;
+  };
 }
+
+export const SCHEMA_VERSION = '1.0.0';
 
 function sanitizeJson(jsonString: string): string {
   return jsonString.replace(/:\s*NaN/g, ': null');
@@ -297,6 +304,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   const absolutePath = path.resolve(filePath);
   const buffer = await fs.readFile(absolutePath);
   const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const startedAt = Date.now();
 
   let rawMetadata: ImageMetadata | null = null;
   let rawSource: MetadataEngineResult['rawSource'] = 'unknown';
@@ -342,6 +350,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   }
 
   const sha256 = await computeSha256(arrayBuffer);
+  const normalizeTime = Date.now() - startedAt;
 
   return {
     file: absolutePath,
@@ -351,6 +360,12 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
     dimensions,
     rawSource,
     errors: errors.length ? errors : undefined,
+    schema_version: SCHEMA_VERSION,
+    _telemetry: {
+      parser: metadata?.generator ?? null,
+      raw_source: rawSource ?? null,
+      normalize_time_ms: normalizeTime,
+    },
   };
 }
 
