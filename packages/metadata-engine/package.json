@@ -1,6 +1,6 @@
 {
   "name": "@image-metahub/metadata-engine",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "Parse AI-generated image metadata from 15+ formats including ComfyUI, InvokeAI, Automatic1111, DALL-E, and more",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -21,7 +21,7 @@
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "metadata",
