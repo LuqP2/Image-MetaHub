@@ -270,6 +270,15 @@ export interface SDNextMetadata {
 // Union type for all supported metadata formats
 export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata;
 
+// LoRA interface for detailed LoRA information
+export interface LoRAInfo {
+  name: string;
+  model_name?: string; // Alternative name field used in some parsers
+  weight?: number;
+  model_weight?: number; // Alternative weight field used in some parsers
+  clip_weight?: number; // CLIP weight used in some parsers
+}
+
 // Base normalized metadata interface for unified access
 export interface BaseMetadata {
   prompt: string;
@@ -283,7 +292,7 @@ export interface BaseMetadata {
   cfg_scale?: number;
   scheduler: string;
   sampler?: string;
-  loras?: string[];
+  loras?: (string | LoRAInfo)[]; // Support both string and detailed LoRA info
   generator?: string; // Name of the AI generator/parser used
   version?: string;
   module?: string;

@@ -1,12 +1,28 @@
 import React, { useEffect, useState, FC } from 'react';
 import { Clipboard, Sparkles, ChevronDown, Star, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import ProBadge from './ProBadge';
+
+// Helper function to format LoRA with weight
+const formatLoRA = (lora: string | LoRAInfo): string => {
+  if (typeof lora === 'string') {
+    return lora;
+  }
+
+  const name = lora.name || lora.model_name || 'Unknown LoRA';
+  const weight = lora.weight ?? lora.model_weight;
+
+  if (weight !== undefined && weight !== null) {
+    return `${name} (${weight})`;
+  }
+
+  return name;
+};
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -326,7 +342,7 @@ const ImagePreviewSidebar: React.FC = () => {
             {nMeta.loras && nMeta.loras.length > 0 && (
                <>
                   <h3 className="text-base font-semibold text-gray-300 pt-2 border-b border-gray-600 pb-2">LoRAs</h3>
-                  <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                  <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                </>
             )}
 

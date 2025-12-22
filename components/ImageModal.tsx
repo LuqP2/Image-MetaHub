@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC, useCallback } from 'react';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X } from 'lucide-react';
@@ -24,6 +24,22 @@ interface ImageModalProps {
   directoryPath?: string;
   isIndexing?: boolean;
 }
+
+// Helper function to format LoRA with weight
+const formatLoRA = (lora: string | LoRAInfo): string => {
+  if (typeof lora === 'string') {
+    return lora;
+  }
+
+  const name = lora.name || lora.model_name || 'Unknown LoRA';
+  const weight = lora.weight ?? lora.model_weight;
+
+  if (weight !== undefined && weight !== null) {
+    return `${name} (${weight})`;
+  }
+
+  return name;
+};
 
 // Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -666,7 +682,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
-                      <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                      <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />

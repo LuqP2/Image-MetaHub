@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.6] - 2025-12-22
+
+### Added
+
+- **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
+
+### Changed
+
+- **Enhanced LoRA Type Support**: Updated `BaseMetadata` interface to support both string and detailed LoRA info (`LoRAInfo`) with `name`, `model_name`, `weight`, `model_weight`, and `clip_weight` fields for comprehensive LoRA metadata handling.
+
 ## [0.10.5] - 2025-12-16
 
 ### Major Performance Improvements
