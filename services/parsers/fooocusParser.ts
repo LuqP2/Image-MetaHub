@@ -1,4 +1,5 @@
-import { FooocusMetadata, BaseMetadata } from '../../types';
+import { FooocusMetadata, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 /**
  * Fooocus Parser - Handles Fooocus metadata (SDXL or Flux backend)
@@ -49,24 +50,8 @@ export function parseFooocusMetadata(metadata: FooocusMetadata): BaseMetadata | 
     const width = sizeMatch ? parseInt(sizeMatch[1]) : 0;
     const height = sizeMatch ? parseInt(sizeMatch[2]) : 0;
 
-    // Extract LoRAs
-    const loras: string[] = [];
-    const loraMatches = [...params.matchAll(/<lora:([^:>]+):?([\d.]*)>/gi)];
-    for (const match of loraMatches) {
-      loras.push(match[2] ? `${match[1]}:${match[2]}` : match[1]);
-    }
-
-    // Extract LoRA hashes if present
-    const loraHashBlock = params.match(/Lora hashes:\s*"([^"]+)"/i)?.[1];
-    if (loraHashBlock) {
-      const pairs = loraHashBlock.split(',');
-      for (const pair of pairs) {
-        const [name] = pair.split(':').map(s => s.trim());
-        if (name && !loras.includes(name)) {
-          loras.push(name);
-        }
-      }
-    }
+    // Extract LoRAs with weights using shared helper
+    const loras = extractLoRAsWithWeights(params);
 
     const result: BaseMetadata = {
       prompt,

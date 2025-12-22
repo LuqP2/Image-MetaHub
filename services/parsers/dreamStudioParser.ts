@@ -1,4 +1,5 @@
-import { DreamStudioMetadata, isDreamStudioMetadata, BaseMetadata } from '../../types';
+import { DreamStudioMetadata, isDreamStudioMetadata, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 /**
  * DreamStudio Parser - Handles DreamStudio (Stability AI) metadata
@@ -139,9 +140,9 @@ function extractPrompts(parameters: string): { positivePrompt: string; negativeP
   return { positivePrompt, negativePrompt };
 }
 
-function extractLoRAs(parameters: string): string[] {
-  const loraMatches = parameters.matchAll(/<lora:([^:>]+):[^>]*>/gi);
-  return Array.from(loraMatches, match => match[1]);
+function extractLoRAs(parameters: string): (string | LoRAInfo)[] {
+  // Use shared helper to extract LoRAs with weights from <lora:name:weight> syntax
+  return extractLoRAsWithWeights(parameters);
 }
 
 function extractEmbeddings(parameters: string): string[] {

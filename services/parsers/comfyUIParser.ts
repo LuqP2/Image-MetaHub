@@ -1,6 +1,5 @@
 import { resolveAll } from './comfyui/traversalEngine';
 import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
-import { cleanPrompt, cleanLoraName } from '../../utils/promptCleaner';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
@@ -485,25 +484,12 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     params: ['prompt', 'negativePrompt', 'seed', 'steps', 'cfg', 'model', 'sampler_name', 'scheduler', 'lora', 'vae', 'denoise']
   });
 
-  // Apply prompt and LoRA cleaning using utility functions
-  const normalizedMetadata = {
-    prompt: cleanPrompt(results.prompt),
-    negativePrompt: cleanPrompt(results.negativePrompt),
-    loras: Array.isArray(results.lora)
-      ? results.lora.map(cleanLoraName).filter(l => l && l !== 'None')
-      : [],
-    // ... outros campos
-  };
-
-  // Merge normalized data back into results
-  Object.assign(results, normalizedMetadata);
-
-  // Post-processing: deduplicate arrays and clean up prompts
+  // Post-processing: deduplicate arrays BEFORE cleaning prompts
   if (results.lora && Array.isArray(results.lora)) {
     // Remove duplicates while preserving order of first appearance
     results.lora = Array.from(new Set(results.lora));
   }
-  
+
   // Fix duplicated prompts - check if prompt contains repeated segments
   if (results.prompt && typeof results.prompt === 'string') {
     const trimmedPrompt = results.prompt.trim();
@@ -599,10 +585,9 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   if (comfyVersion) {
     results.comfyui_version = comfyVersion;
   }
-  
 
   results.generator = 'ComfyUI';
-  
+
   return { ...results, _telemetry: telemetry };
 }
 
