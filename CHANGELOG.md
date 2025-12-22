@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Enhanced LoRA Type Support**: Updated `BaseMetadata` interface to support both string and detailed LoRA info (`LoRAInfo`) with `name`, `model_name`, `weight`, `model_weight`, and `clip_weight` fields for comprehensive LoRA metadata handling.
-- **LoRA Weight Extraction**: All parsers (Automatic1111, Forge, SDNext, Fooocus, EasyDiffusion, DreamStudio) now extract LoRA weights from `<lora:name:weight>` syntax and return structured `LoRAInfo` objects instead of plain strings.
+- **LoRA Weight Extraction**: All parsers (Automatic1111, Forge, SDNext, Fooocus, EasyDiffusion, DreamStudio, InvokeAI) now extract LoRA weights from `<lora:name:weight>` syntax and return structured `LoRAInfo` objects instead of plain strings.
+- **InvokeAI LoRA Weight Support**: InvokeAI parser now extracts weights from both prompt tags (`<lora:...>`, `<lyco:...>`) and InvokeAI's native metadata structure `{ model: { name }, weight }`.
 - **Preserve Original Prompts**: Removed automatic stripping of `<lora:...>` tags from prompts to preserve the user's original prompt text exactly as written. LoRAs are still extracted separately to the dedicated LoRAs field.
 
 ## [0.10.5] - 2025-12-16
