@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useImageComparison } from '../hooks/useImageComparison';
@@ -39,6 +39,44 @@ const formatLoRA = (lora: string | LoRAInfo): string => {
   }
 
   return name;
+};
+
+// Format generation time: 87ms, 1.5s, or 2m 15s
+const formatGenerationTime = (ms: number): string => {
+  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+// Format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
+const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
+  const vramGb = vramMb / 1024;
+
+  // Known GPU VRAM mappings
+  const gpuVramMap: Record<string, number> = {
+    '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
+    'A100': 40, 'A6000': 48, 'V100': 16,
+  };
+
+  let totalVramGb: number | null = null;
+  if (gpuDevice) {
+    for (const [model, vram] of Object.entries(gpuVramMap)) {
+      if (gpuDevice.includes(model)) {
+        totalVramGb = vram;
+        break;
+      }
+    }
+  }
+
+  if (totalVramGb !== null && vramGb <= totalVramGb) {
+    const percentage = ((vramGb / totalVramGb) * 100).toFixed(0);
+    return `${vramGb.toFixed(1)} GB / ${totalVramGb} GB (${percentage}%)`;
+  }
+
+  return `${vramGb.toFixed(1)} GB`;
 };
 
 // Helper component for consistently rendering metadata items
@@ -88,6 +126,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+  const [showPerformance, setShowPerformance] = useState(true);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   // A1111 integration hooks
@@ -695,6 +734,67 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Performance Section - Collapsible */}
+              {nMeta && metadata?._analytics && (
+                <div>
+                  <button
+                    onClick={() => setShowPerformance(!showPerformance)}
+                    className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                  >
+                    <span className="font-semibold flex items-center gap-2">
+                      <Zap size={16} className="text-yellow-400" />
+                      Performance
+                    </span>
+                    {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {showPerformance && (
+                    <div className="space-y-3 mt-3">
+                      {/* Tier 1: CRITICAL */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {metadata._analytics.generation_time_ms != null && metadata._analytics.generation_time_ms > 0 && (
+                          <MetadataItem
+                            label="Generation Time"
+                            value={formatGenerationTime(metadata._analytics.generation_time_ms)}
+                          />
+                        )}
+                        {metadata._analytics.vram_peak_mb != null && (
+                          <MetadataItem
+                            label="VRAM Peak"
+                            value={formatVRAM(metadata._analytics.vram_peak_mb, metadata._analytics.gpu_device)}
+                          />
+                        )}
+                      </div>
+
+                      {metadata._analytics.gpu_device && (
+                        <MetadataItem label="GPU Device" value={metadata._analytics.gpu_device} />
+                      )}
+
+                      {/* Tier 2: VERY USEFUL */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {metadata._analytics.steps_per_second != null && (
+                          <MetadataItem
+                            label="Speed"
+                            value={`${metadata._analytics.steps_per_second.toFixed(2)} steps/s`}
+                          />
+                        )}
+                        {metadata._analytics.comfyui_version && (
+                          <MetadataItem label="ComfyUI" value={metadata._analytics.comfyui_version} />
+                        )}
+                      </div>
+
+                      {/* Tier 3: NICE-TO-HAVE (small text) */}
+                      {(metadata._analytics.torch_version || metadata._analytics.python_version) && (
+                        <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
+                          {metadata._analytics.torch_version && <div>PyTorch: {metadata._analytics.torch_version}</div>}
+                          {metadata._analytics.python_version && <div>Python: {metadata._analytics.python_version}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
