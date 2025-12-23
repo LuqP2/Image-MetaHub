@@ -1,0 +1,27 @@
+{
+  "folders": [
+    {
+      "name": "App - Image MetaHub",
+      "path": "." 
+    },
+    {
+      "name": "Node - ComfyUI Save",
+      "path": "D:/ImageMetaHub-ComfyUI-Save"
+    }
+  ],
+  "settings": {
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "files.exclude": {
+      "**/.git": true,
+      "**/node_modules": true,
+      "**/dist": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "ms-python.python"
+    ]
+  }
+}
