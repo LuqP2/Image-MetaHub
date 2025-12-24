@@ -4,7 +4,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
-import { resolvePromptFromGraph } from './parsers/comfyUIParser';
+import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
@@ -191,7 +191,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword)) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
@@ -220,7 +220,18 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     offset += 12 + length;
   }
 
-  // Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
+  // PRIORITY 0: MetaHub Save Node chunk (highest priority)
+  if (chunks.imagemetahub_data) {
+    try {
+      const metahubData = JSON.parse(chunks.imagemetahub_data);
+      return { imagemetahub_data: metahubData };
+    } catch (e) {
+      console.warn('[PNG Parser] Failed to parse imagemetahub_data chunk:', e);
+      // Fall through to other parsers
+    }
+  }
+
+  // PRIORITY 1: Prioritize workflow for ComfyUI, then parameters for A1111, then InvokeAI
   if (chunks.workflow) {
     const comfyMetadata: ComfyUIMetadata = {};
     if (chunks.workflow) comfyMetadata.workflow = chunks.workflow;
@@ -586,9 +597,38 @@ async function processSingleFileOptimized(
 
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
-  
+
+  // Priority 0: Check for MetaHub Save Node chunk (iTXt imagemetahub_data)
+  // This has highest priority as it contains pre-extracted, validated metadata
+  if ('imagemetahub_data' in rawMetadata) {
+    try {
+      const enhancedResult = await parseComfyUIMetadataEnhanced(rawMetadata);
+      normalizedMetadata = {
+        prompt: enhancedResult.prompt || '',
+        negativePrompt: enhancedResult.negativePrompt || '',
+        model: enhancedResult.model || '',
+        models: enhancedResult.model ? [enhancedResult.model] : [],
+        width: 0, // Will be set from actual image dimensions below
+        height: 0,
+        seed: enhancedResult.seed,
+        steps: enhancedResult.steps || 0,
+        cfg_scale: enhancedResult.cfg,
+        scheduler: enhancedResult.scheduler || '',
+        sampler: enhancedResult.sampler_name || '',
+        loras: enhancedResult.loras || [],
+        _analytics: enhancedResult._analytics || null,
+        _metahub_pro: enhancedResult._metahub_pro || null,
+        _detection_method: enhancedResult._detection_method,
+        generator: 'ComfyUI',
+      };
+    } catch (e) {
+      console.error('[FileIndexer] Failed to parse MetaHub chunk:', e);
+      // Fall through to other parsers
+    }
+  }
+
   // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
-  if (isComfyUIMetadata(rawMetadata)) {
+  else if (isComfyUIMetadata(rawMetadata)) {
     const comfyMetadata = rawMetadata as ComfyUIMetadata;
     let workflow = comfyMetadata.workflow;
     let prompt = comfyMetadata.prompt;

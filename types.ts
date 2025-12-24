@@ -296,6 +296,21 @@ export interface BaseMetadata {
   generator?: string; // Name of the AI generator/parser used
   version?: string;
   module?: string;
+  // Performance/benchmark metrics (from MetaHub Save Node analytics chunk)
+  analytics?: {
+    // Tier 1: CRITICAL metrics
+    vram_peak_mb?: number | null;
+    gpu_device?: string | null;
+    generation_time_ms?: number | null;
+    // Tier 2: VERY USEFUL metrics
+    steps_per_second?: number | null;
+    comfyui_version?: string | null;
+    // Tier 3: NICE-TO-HAVE metrics
+    torch_version?: string | null;
+    python_version?: string | null;
+    // Legacy
+    generation_time?: number | null;
+  };
   // Additional normalized fields
   [key: string]: any;
 }
