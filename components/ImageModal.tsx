@@ -121,7 +121,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -402,17 +402,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
               let dataUrl: string;
               if (typeof fileResult.data === 'string') {
                 // Assume base64 string
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${fileResult.data}`;
               } else if (fileResult.data instanceof Uint8Array) {
                 // Convert Uint8Array to base64
                 const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                 const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${base64}`;
               } else {
                 throw new Error('Unknown file data format.');
@@ -720,6 +726,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
+                    {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
+                      <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
+                    )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
                       <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                     )}
@@ -730,6 +739,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
                       <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
+                      {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
+                        <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                      )}
                     </div>
                   </div>
                 )}

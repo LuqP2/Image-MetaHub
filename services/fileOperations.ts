@@ -116,8 +116,8 @@ export class FileOperations {
    * Validate filename
    */
   static validateFilename(filename: string): { valid: boolean; error?: string } {
-    // Remove .png extension for validation
-    const nameWithoutExt = filename.replace(/\.png$/i, '');
+    // Remove common image extension for validation
+    const nameWithoutExt = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
     
     if (!nameWithoutExt.trim()) {
       return { valid: false, error: 'Filename cannot be empty' };

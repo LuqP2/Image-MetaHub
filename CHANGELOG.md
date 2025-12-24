@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
 - **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
-- **MetaHub Save Node Integration**: ComfyUI parser now prioritizes the `imagemetahub_data` iTXt chunk for instant metadata extraction when images are saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save), eliminating graph traversal and nodeRegistry dependencies.
+- **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:
+  - **PNG**: Reads `imagemetahub_data` iTXt chunk for instant metadata extraction
+  - **JPEG**: Detects MetaHub JSON in EXIF ImageDescription field with PRIORITY 0 check before UserComment parsing
+  - **WebP**: Implements manual RIFF container parsing with direct JSON extraction from EXIF chunk (byte-pattern search for `'{"'` with brace matching, bypassing exifr library limitations for PIL/piexif non-standard format)
+  - All formats correctly detect as "ComfyUI (MetaHub Save Node)" and display Performance metrics (analytics)
 
 ### Changed
 

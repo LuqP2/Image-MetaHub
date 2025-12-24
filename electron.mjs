@@ -683,9 +683,13 @@ async function getFilesRecursively(directory, baseDirectory) {
                 files.push(...await getFilesRecursively(fullPath, baseDirectory));
             } else if (entry.isFile()) {
                 const lowerName = entry.name.toLowerCase();
-                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
+                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp')) {
                     const stats = await fs.stat(fullPath);
-                    const fileType = lowerName.endsWith('.png') ? 'image/png' : 'image/jpeg';
+                    const fileType = lowerName.endsWith('.png')
+                      ? 'image/png'
+                      : lowerName.endsWith('.webp')
+                        ? 'image/webp'
+                        : 'image/jpeg';
                     files.push({
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
                         lastModified: stats.birthtimeMs,
@@ -1286,10 +1290,14 @@ function setupFileOperationHandlers() {
         for (const file of files) {
           if (file.isFile()) {
             const name = file.name.toLowerCase();
-            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')) {
               const filePath = path.join(dirPath, file.name);
               const stats = await fs.stat(filePath);
-              const fileType = name.endsWith('.png') ? 'image/png' : 'image/jpeg';
+              const fileType = name.endsWith('.png')
+                ? 'image/png'
+                : name.endsWith('.webp')
+                  ? 'image/webp'
+                  : 'image/jpeg';
               imageFiles.push({
                 name: file.name, // name is already relative for top-level
                 lastModified: stats.birthtimeMs,

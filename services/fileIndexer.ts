@@ -78,6 +78,33 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
+  if (view.byteLength < 12) {
+    return null;
+  }
+
+  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+    return 'png';
+  }
+
+  if (view.getUint16(0) === 0xFFD8) {
+    return 'jpeg';
+  }
+
+  if (view.getUint32(0) === 0x52494646 && view.getUint32(8) === 0x57454250) {
+    return 'webp';
+  }
+
+  return null;
+}
+
+function inferMimeTypeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
 // Decode iTXt text payload (supports uncompressed and deflate-compressed)
 async function decodeITXtText(
   data: Uint8Array,
@@ -127,7 +154,7 @@ async function decodeITXtText(
 async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyDiffusionJson | null> {
   try {
     // Generate JSON path by replacing extension with .json
-    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '.json');
+    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg|webp)$/i, '.json');
     
     // Check if path is absolute (has drive letter on Windows or starts with / on Unix)
     const isAbsolutePath = /^[a-zA-Z]:\\/.test(jsonPath) || jsonPath.startsWith('/');
@@ -278,21 +305,65 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       sanitize: false,
       reviveValues: true
     });
-    
+
     if (!exifData) return null;
-    
+
+    // PRIORITY 0: Check for MetaHub Save Node JSON in ImageDescription (JPEG/WebP save format)
+    // MetaHub Save Node stores the IMH metadata as JSON in EXIF ImageDescription for JPEG/WebP
+    if (exifData.ImageDescription) {
+      try {
+        const imageDesc = typeof exifData.ImageDescription === 'string'
+          ? exifData.ImageDescription
+          : new TextDecoder('utf-8').decode(exifData.ImageDescription);
+
+        // Try to parse as JSON
+        const parsed = JSON.parse(imageDesc);
+
+        // Check if it's MetaHub metadata (has "generator": "ComfyUI" and our custom fields)
+        if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
+          return { imagemetahub_data: parsed };
+        }
+      } catch {
+        // Not JSON or not MetaHub metadata, continue with normal parsing
+      }
+    }
+
     // Check all possible field names for UserComment (A1111 and SwarmUI store metadata here in JPEGs)
     // Also check XMP Description for Draw Things and other XMP-based metadata
-    let metadataText: string | Uint8Array | undefined = 
-      exifData.UserComment || 
+    let metadataText: string | Uint8Array | undefined =
+      exifData.UserComment ||
       exifData.userComment ||
       exifData['User Comment'] ||
-      exifData.ImageDescription || 
+      exifData.ImageDescription ||
       exifData.Parameters ||
       exifData.Description || // XMP Description
       null;
-    
-    if (!metadataText) return null;
+
+    if (!metadataText) {
+      if (exifData.imagemetahub_data) {
+        try {
+          const parsed = typeof exifData.imagemetahub_data === 'string'
+            ? JSON.parse(exifData.imagemetahub_data)
+            : exifData.imagemetahub_data;
+          return { imagemetahub_data: parsed };
+        } catch {
+          return { imagemetahub_data: exifData.imagemetahub_data };
+        }
+      }
+
+      const comfyMetadata: Partial<ComfyUIMetadata> = {};
+      if (exifData.workflow) {
+        comfyMetadata.workflow = exifData.workflow;
+      }
+      if (exifData.prompt) {
+        comfyMetadata.prompt = exifData.prompt;
+      }
+      if (comfyMetadata.workflow || comfyMetadata.prompt) {
+        return comfyMetadata;
+      }
+
+      return null;
+    }
     
     // Convert Uint8Array to string if needed (exifr returns UserComment as Uint8Array)
     if (metadataText instanceof Uint8Array) {
@@ -467,22 +538,241 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
+async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+  try {
+    console.log('[WebP DEBUG] Starting WebP metadata parsing...');
+
+    // WebP stores EXIF in an 'EXIF' chunk within the RIFF container
+    // We need to extract the EXIF chunk first, then parse it with exifr
+    const view = new DataView(buffer);
+    const decoder = new TextDecoder();
+
+    // Verify RIFF header
+    if (decoder.decode(buffer.slice(0, 4)) !== 'RIFF') {
+      console.log('[WebP DEBUG] Not a valid RIFF file');
+      return null;
+    }
+
+    // Verify WEBP format
+    if (decoder.decode(buffer.slice(8, 12)) !== 'WEBP') {
+      console.log('[WebP DEBUG] Not a valid WebP file');
+      return null;
+    }
+
+    // Search for EXIF chunk
+    let offset = 12; // Skip RIFF header and WEBP signature
+    let exifChunkData: ArrayBuffer | null = null;
+
+    while (offset + 8 <= view.byteLength) {
+      const chunkType = decoder.decode(buffer.slice(offset, offset + 4));
+      const chunkSize = view.getUint32(offset + 4, true); // Little-endian
+
+      console.log('[WebP DEBUG] Found chunk:', chunkType, 'size:', chunkSize);
+
+      if (chunkType === 'EXIF') {
+        // Found EXIF chunk!
+        // WebP EXIF chunk format: first 4 bytes are padding (0x00000000)
+        const exifStart = offset + 8; // Skip chunk header (type + size)
+        const rawExifData = buffer.slice(exifStart, exifStart + chunkSize);
+
+        // Skip the 4-byte padding at the beginning
+        const afterPadding = rawExifData.slice(4);
+
+        // Debug: Search for TIFF header (II or MM)
+        console.log('[WebP DEBUG] Searching for TIFF header in first 100 bytes...');
+        const searchBytes = new Uint8Array(afterPadding.slice(0, Math.min(100, afterPadding.byteLength)));
+        let tiffHeaderOffset = -1;
+        for (let i = 0; i < searchBytes.length - 1; i++) {
+          // Look for "II" (0x49 0x49) or "MM" (0x4d 0x4d)
+          if ((searchBytes[i] === 0x49 && searchBytes[i+1] === 0x49) ||
+              (searchBytes[i] === 0x4d && searchBytes[i+1] === 0x4d)) {
+            tiffHeaderOffset = i;
+            console.log('[WebP DEBUG] Found TIFF header at offset:', i, 'bytes:', searchBytes[i].toString(16), searchBytes[i+1].toString(16));
+            break;
+          }
+        }
+
+        if (tiffHeaderOffset >= 0) {
+          exifChunkData = afterPadding.slice(tiffHeaderOffset);
+          console.log('[WebP DEBUG] Extracted EXIF data from offset', tiffHeaderOffset, 'size:', exifChunkData.byteLength);
+        } else {
+          console.log('[WebP DEBUG] No TIFF header found! First 40 bytes (hex):',
+            Array.from(searchBytes.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+          // PIL/piexif WebP format doesn't use standard TIFF header
+          // Search for JSON directly (starts with '{' = 0x7b)
+          console.log('[WebP DEBUG] Searching for JSON in EXIF chunk...');
+          let jsonStartOffset = -1;
+          const fullChunk = new Uint8Array(afterPadding);
+          for (let i = 0; i < fullChunk.length - 1; i++) {
+            if (fullChunk[i] === 0x7b && fullChunk[i+1] === 0x22) { // '{"'
+              jsonStartOffset = i;
+              console.log('[WebP DEBUG] Found JSON at offset:', i);
+              break;
+            }
+          }
+
+          if (jsonStartOffset >= 0) {
+            // Found JSON! Extract and parse it directly
+            const jsonBytes = afterPadding.slice(jsonStartOffset);
+            const jsonString = decoder.decode(jsonBytes).trim();
+            // Find the end of JSON (matching closing brace)
+            let braceCount = 0;
+            let jsonEnd = -1;
+            for (let i = 0; i < jsonString.length; i++) {
+              if (jsonString[i] === '{') braceCount++;
+              if (jsonString[i] === '}') braceCount--;
+              if (braceCount === 0) {
+                jsonEnd = i + 1;
+                break;
+              }
+            }
+
+            if (jsonEnd > 0) {
+              const completeJson = jsonString.substring(0, jsonEnd);
+              console.log('[WebP DEBUG] Extracted JSON, length:', completeJson.length);
+              console.log('[WebP DEBUG] JSON preview:', completeJson.substring(0, 100));
+
+              try {
+                const parsed = JSON.parse(completeJson);
+                if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
+                  console.log('[WebP DEBUG] ✅ MetaHub Save Node detected from direct JSON parse!');
+                  return { imagemetahub_data: parsed };
+                }
+              } catch (e) {
+                console.log('[WebP DEBUG] Failed to parse extracted JSON:', e);
+              }
+            }
+          }
+
+          exifChunkData = afterPadding; // Try exifr anyway as fallback
+        }
+
+        const firstBytes = new Uint8Array(exifChunkData.slice(0, Math.min(20, exifChunkData.byteLength)));
+        const firstBytesHex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        console.log('[WebP DEBUG] Final EXIF data first 20 bytes (hex):', firstBytesHex);
+        break;
+      }
+
+      // Move to next chunk (align to even byte boundary)
+      offset += 8 + chunkSize;
+      if (chunkSize % 2 !== 0) offset += 1;
+    }
+
+    if (!exifChunkData) {
+      console.log('[WebP DEBUG] No EXIF chunk found in WebP file');
+      return null;
+    }
+
+    // Now parse the EXIF data with exifr
+    const exifData = await parse(exifChunkData, {
+      userComment: true,
+      xmp: true,
+      mergeOutput: true,
+      sanitize: false,
+      reviveValues: true
+    });
+
+    console.log('[WebP DEBUG] EXIF data:', exifData ? Object.keys(exifData) : 'null');
+
+    if (!exifData) {
+      console.log('[WebP DEBUG] No EXIF data found after parsing');
+      return null;
+    }
+
+    // PRIORITY 0: Check for MetaHub Save Node JSON in ImageDescription (WebP save format)
+    // MetaHub Save Node stores the IMH metadata as JSON in EXIF ImageDescription for WebP
+    if (exifData.ImageDescription) {
+      console.log('[WebP DEBUG] ImageDescription found, type:', typeof exifData.ImageDescription);
+      try {
+        const imageDesc = typeof exifData.ImageDescription === 'string'
+          ? exifData.ImageDescription
+          : new TextDecoder('utf-8').decode(exifData.ImageDescription);
+
+        console.log('[WebP DEBUG] ImageDescription preview:', imageDesc.substring(0, 100));
+
+        // Try to parse as JSON
+        const parsed = JSON.parse(imageDesc);
+
+        console.log('[WebP DEBUG] Parsed JSON successfully, generator:', parsed.generator);
+
+        // Check if it's MetaHub metadata (has "generator": "ComfyUI" and our custom fields)
+        if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
+          console.log('[WebP DEBUG] ✅ MetaHub Save Node detected! Returning imagemetahub_data');
+          return { imagemetahub_data: parsed };
+        } else {
+          console.log('[WebP DEBUG] Not MetaHub metadata (missing analytics/imh_pro/workflow)');
+        }
+      } catch (e) {
+        console.log('[WebP DEBUG] Failed to parse ImageDescription as JSON:', e);
+        // Not JSON or not MetaHub metadata, continue with normal parsing
+      }
+    } else {
+      console.log('[WebP DEBUG] No ImageDescription field found');
+    }
+
+    // Fall back to regular JPEG parsing logic (UserComment, etc.)
+    // Reuse the JPEG parsing by reconstructing metadataText
+    let metadataText: string | Uint8Array | undefined =
+      exifData.UserComment ||
+      exifData.userComment ||
+      exifData['User Comment'] ||
+      exifData.ImageDescription ||
+      exifData.Parameters ||
+      exifData.Description ||
+      null;
+
+    if (!metadataText) {
+      return null;
+    }
+
+    // Convert Uint8Array to string if needed
+    if (metadataText instanceof Uint8Array) {
+      let startOffset = 0;
+      for (let i = 0; i < Math.min(20, metadataText.length); i++) {
+        if (metadataText[i] === 0x7B) { // '{' character
+          startOffset = i;
+          break;
+        }
+      }
+      if (startOffset === 0 && metadataText.length > 8) {
+        startOffset = 8;
+      }
+      const cleanedData = Array.from(metadataText.slice(startOffset)).filter(byte => byte !== 0x00);
+      metadataText = new TextDecoder('utf-8').decode(new Uint8Array(cleanedData));
+    }
+
+    // Check for ComfyUI first
+    if (metadataText.includes('Version: ComfyUI')) {
+      return { parameters: metadataText };
+    }
+
+    // Check for A1111/other formats
+    return { parameters: metadataText };
+  } catch (e) {
+    console.error('[WebP DEBUG] Error in parseWebPMetadata:', e);
+    return null;
+  }
+}
+
 // Extract dimensions without decoding the full image
 function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; height: number } | null {
   const view = new DataView(buffer);
+  const type = detectImageType(view);
 
   // PNG signature + IHDR
-  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+  if (type === 'png') {
     // IHDR chunk starts at byte 16, big-endian
     const width = view.getUint32(16, false);
     const height = view.getUint32(20, false);
     if (width > 0 && height > 0) {
       return { width, height };
     }
+    return null;
   }
 
   // JPEG SOF markers
-  if (view.getUint16(0) === 0xFFD8) {
+  if (type === 'jpeg') {
     let offset = 2;
     const length = view.byteLength;
     while (offset < length) {
@@ -508,6 +798,62 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
       }
       offset += 2 + size;
     }
+    return null;
+  }
+
+  // WebP RIFF container
+  if (type === 'webp') {
+    let offset = 12;
+    while (offset + 8 <= view.byteLength) {
+      const chunkType = String.fromCharCode(
+        view.getUint8(offset),
+        view.getUint8(offset + 1),
+        view.getUint8(offset + 2),
+        view.getUint8(offset + 3)
+      );
+      const chunkSize = view.getUint32(offset + 4, true);
+      const chunkDataOffset = offset + 8;
+      const chunkDataEnd = chunkDataOffset + chunkSize;
+
+      if (chunkDataEnd > view.byteLength) {
+        break;
+      }
+
+      if (chunkType === 'VP8X' && chunkDataOffset + 10 <= view.byteLength) {
+        const widthMinusOne = view.getUint8(chunkDataOffset + 4) |
+          (view.getUint8(chunkDataOffset + 5) << 8) |
+          (view.getUint8(chunkDataOffset + 6) << 16);
+        const heightMinusOne = view.getUint8(chunkDataOffset + 7) |
+          (view.getUint8(chunkDataOffset + 8) << 8) |
+          (view.getUint8(chunkDataOffset + 9) << 16);
+        return { width: widthMinusOne + 1, height: heightMinusOne + 1 };
+      }
+
+      if (chunkType === 'VP8 ' && chunkDataOffset + 10 <= view.byteLength) {
+        const width = (view.getUint8(chunkDataOffset + 6) | (view.getUint8(chunkDataOffset + 7) << 8)) & 0x3FFF;
+        const height = (view.getUint8(chunkDataOffset + 8) | (view.getUint8(chunkDataOffset + 9) << 8)) & 0x3FFF;
+        if (width > 0 && height > 0) {
+          return { width, height };
+        }
+      }
+
+      if (chunkType === 'VP8L' && chunkDataOffset + 5 <= view.byteLength) {
+        const signature = view.getUint8(chunkDataOffset);
+        if (signature === 0x2f) {
+          const b1 = view.getUint8(chunkDataOffset + 1);
+          const b2 = view.getUint8(chunkDataOffset + 2);
+          const b3 = view.getUint8(chunkDataOffset + 3);
+          const b4 = view.getUint8(chunkDataOffset + 4);
+          const width = 1 + (b1 | ((b2 & 0x3F) << 8));
+          const height = 1 + (((b2 & 0xC0) >> 6) | (b3 << 2) | ((b4 & 0x0F) << 10));
+          if (width > 0 && height > 0) {
+            return { width, height };
+          }
+        }
+      }
+
+      offset = chunkDataEnd + (chunkSize % 2);
+    }
   }
 
   return null;
@@ -517,17 +863,19 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
 async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata | null; buffer: ArrayBuffer }> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
+  const detectedType = detectImageType(view);
   
   if (!isProduction) {
     console.log('[FILE DEBUG] Processing file:', {
       name: file.name,
       size: file.size,
-      isPNG: view.getUint32(0) === 0x89504E47,
-      isJPEG: view.getUint16(0) === 0xFFD8,
+      isPNG: detectedType === 'png',
+      isJPEG: detectedType === 'jpeg',
+      isWebP: detectedType === 'webp',
     });
   }
   
-  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+  if (detectedType === 'png') {
     const result = await parsePNGMetadata(buffer);
     if (!isProduction) {
       console.log('[FILE DEBUG] PNG metadata result:', {
@@ -538,8 +886,11 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
     }
     return { metadata: result, buffer };
   }
-  if (view.getUint16(0) === 0xFFD8) {
+  if (detectedType === 'jpeg') {
     return { metadata: await parseJPEGMetadata(buffer), buffer };
+  }
+  if (detectedType === 'webp') {
+    return { metadata: await parseWebPMetadata(buffer), buffer };
   }
   return { metadata: null, buffer };
 }
@@ -557,16 +908,19 @@ async function processSingleFileOptimized(
     let rawMetadata: ImageMetadata | null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
-    const inferredType = fileEntry.type ?? (fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
 
     // If file data is provided (from batch read), parse directly from buffer
     if (fileData) {
       // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
-      if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+      const detectedType = detectImageType(view);
+      if (detectedType === 'png') {
         rawMetadata = await parsePNGMetadata(fileData);
-      } else if (view.getUint16(0) === 0xFFD8) {
+      } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
+      } else if (detectedType === 'webp') {
+        rawMetadata = await parseWebPMetadata(fileData);
       } else {
         rawMetadata = null;
       }
@@ -616,6 +970,8 @@ if (rawMetadata) {
         scheduler: enhancedResult.scheduler || '',
         sampler: enhancedResult.sampler_name || '',
         loras: enhancedResult.loras || [],
+        vae: enhancedResult.vae,
+        denoise: enhancedResult.denoise,
         _analytics: enhancedResult._analytics || null,
         _metahub_pro: enhancedResult._metahub_pro || null,
         _detection_method: enhancedResult._detection_method,
@@ -656,6 +1012,8 @@ if (rawMetadata) {
       scheduler: resolvedParams.scheduler || '',
       sampler: resolvedParams.sampler_name || '',
       loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+      vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
+      denoise: resolvedParams.denoise,
     };
   }
   
@@ -765,7 +1123,7 @@ if (rawMetadata) {
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
 // deve permanecer como está
 // ==============================================================================
-    const fallbackType = fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const fallbackType = inferMimeTypeFromName(fileEntry.handle.name);
     const normalizedFileType = inferredType ?? fallbackType;
     const normalizedFileSize = fileSizeValue ?? 0;
 
@@ -1037,7 +1395,7 @@ export async function processFiles(
   ): IndexedImage => {
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
-    const inferredType = entry.type ?? stat?.type ?? (entry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const inferredType = entry.type ?? stat?.type ?? inferMimeTypeFromName(entry.handle.name);
     const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
     const catalogMetadata = {
       phase: 'catalog',
@@ -1100,7 +1458,7 @@ export async function processFiles(
     await pushUiBatch(true);
   }
 
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
+  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp)$/i.test(entry.handle.name));
 
   const asyncPool = async <T, R>(
     concurrency: number,
