@@ -66,6 +66,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     // InvokeAI (embedded JSON fields)
     if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
         return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
+    }
+
     // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)
     // Check for imagemetahub_data chunk (iTXt format from MetaHub Save Node)
     if ('imagemetahub_data' in metadata) {
