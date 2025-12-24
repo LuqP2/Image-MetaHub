@@ -121,7 +121,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -402,17 +402,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
               let dataUrl: string;
               if (typeof fileResult.data === 'string') {
                 // Assume base64 string
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${fileResult.data}`;
               } else if (fileResult.data instanceof Uint8Array) {
                 // Convert Uint8Array to base64
                 const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                 const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${base64}`;
               } else {
                 throw new Error('Unknown file data format.');

@@ -150,12 +150,22 @@ const ImagePreviewSidebar: React.FC = () => {
               if (fileResult.success && fileResult.data && isMounted) {
                 let dataUrl: string;
                 if (typeof fileResult.data === 'string') {
-                  const ext = previewImage.name.toLowerCase().endsWith('.jpg') || previewImage.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+                  const lowerName = previewImage.name.toLowerCase();
+                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
+                    ? 'jpeg'
+                    : lowerName.endsWith('.webp')
+                      ? 'webp'
+                      : 'png';
                   dataUrl = `data:image/${ext};base64,${fileResult.data}`;
                 } else if (fileResult.data instanceof Uint8Array) {
                   const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                   const base64 = btoa(binary);
-                  const ext = previewImage.name.toLowerCase().endsWith('.jpg') || previewImage.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+                  const lowerName = previewImage.name.toLowerCase();
+                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
+                    ? 'jpeg'
+                    : lowerName.endsWith('.webp')
+                      ? 'webp'
+                      : 'png';
                   dataUrl = `data:image/${ext};base64,${base64}`;
                 } else {
                   throw new Error('Unknown file data format.');

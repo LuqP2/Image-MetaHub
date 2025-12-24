@@ -78,6 +78,33 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
+  if (view.byteLength < 12) {
+    return null;
+  }
+
+  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+    return 'png';
+  }
+
+  if (view.getUint16(0) === 0xFFD8) {
+    return 'jpeg';
+  }
+
+  if (view.getUint32(0) === 0x52494646 && view.getUint32(8) === 0x57454250) {
+    return 'webp';
+  }
+
+  return null;
+}
+
+function inferMimeTypeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
 // Decode iTXt text payload (supports uncompressed and deflate-compressed)
 async function decodeITXtText(
   data: Uint8Array,
@@ -127,7 +154,7 @@ async function decodeITXtText(
 async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyDiffusionJson | null> {
   try {
     // Generate JSON path by replacing extension with .json
-    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '.json');
+    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg|webp)$/i, '.json');
     
     // Check if path is absolute (has drive letter on Windows or starts with / on Unix)
     const isAbsolutePath = /^[a-zA-Z]:\\/.test(jsonPath) || jsonPath.startsWith('/');
@@ -292,7 +319,31 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       exifData.Description || // XMP Description
       null;
     
-    if (!metadataText) return null;
+    if (!metadataText) {
+      if (exifData.imagemetahub_data) {
+        try {
+          const parsed = typeof exifData.imagemetahub_data === 'string'
+            ? JSON.parse(exifData.imagemetahub_data)
+            : exifData.imagemetahub_data;
+          return { imagemetahub_data: parsed };
+        } catch {
+          return { imagemetahub_data: exifData.imagemetahub_data };
+        }
+      }
+
+      const comfyMetadata: Partial<ComfyUIMetadata> = {};
+      if (exifData.workflow) {
+        comfyMetadata.workflow = exifData.workflow;
+      }
+      if (exifData.prompt) {
+        comfyMetadata.prompt = exifData.prompt;
+      }
+      if (comfyMetadata.workflow || comfyMetadata.prompt) {
+        return comfyMetadata;
+      }
+
+      return null;
+    }
     
     // Convert Uint8Array to string if needed (exifr returns UserComment as Uint8Array)
     if (metadataText instanceof Uint8Array) {
@@ -467,22 +518,28 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
+async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
+  return parseJPEGMetadata(buffer);
+}
+
 // Extract dimensions without decoding the full image
 function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; height: number } | null {
   const view = new DataView(buffer);
+  const type = detectImageType(view);
 
   // PNG signature + IHDR
-  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+  if (type === 'png') {
     // IHDR chunk starts at byte 16, big-endian
     const width = view.getUint32(16, false);
     const height = view.getUint32(20, false);
     if (width > 0 && height > 0) {
       return { width, height };
     }
+    return null;
   }
 
   // JPEG SOF markers
-  if (view.getUint16(0) === 0xFFD8) {
+  if (type === 'jpeg') {
     let offset = 2;
     const length = view.byteLength;
     while (offset < length) {
@@ -508,6 +565,62 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
       }
       offset += 2 + size;
     }
+    return null;
+  }
+
+  // WebP RIFF container
+  if (type === 'webp') {
+    let offset = 12;
+    while (offset + 8 <= view.byteLength) {
+      const chunkType = String.fromCharCode(
+        view.getUint8(offset),
+        view.getUint8(offset + 1),
+        view.getUint8(offset + 2),
+        view.getUint8(offset + 3)
+      );
+      const chunkSize = view.getUint32(offset + 4, true);
+      const chunkDataOffset = offset + 8;
+      const chunkDataEnd = chunkDataOffset + chunkSize;
+
+      if (chunkDataEnd > view.byteLength) {
+        break;
+      }
+
+      if (chunkType === 'VP8X' && chunkDataOffset + 10 <= view.byteLength) {
+        const widthMinusOne = view.getUint8(chunkDataOffset + 4) |
+          (view.getUint8(chunkDataOffset + 5) << 8) |
+          (view.getUint8(chunkDataOffset + 6) << 16);
+        const heightMinusOne = view.getUint8(chunkDataOffset + 7) |
+          (view.getUint8(chunkDataOffset + 8) << 8) |
+          (view.getUint8(chunkDataOffset + 9) << 16);
+        return { width: widthMinusOne + 1, height: heightMinusOne + 1 };
+      }
+
+      if (chunkType === 'VP8 ' && chunkDataOffset + 10 <= view.byteLength) {
+        const width = (view.getUint8(chunkDataOffset + 6) | (view.getUint8(chunkDataOffset + 7) << 8)) & 0x3FFF;
+        const height = (view.getUint8(chunkDataOffset + 8) | (view.getUint8(chunkDataOffset + 9) << 8)) & 0x3FFF;
+        if (width > 0 && height > 0) {
+          return { width, height };
+        }
+      }
+
+      if (chunkType === 'VP8L' && chunkDataOffset + 5 <= view.byteLength) {
+        const signature = view.getUint8(chunkDataOffset);
+        if (signature === 0x2f) {
+          const b1 = view.getUint8(chunkDataOffset + 1);
+          const b2 = view.getUint8(chunkDataOffset + 2);
+          const b3 = view.getUint8(chunkDataOffset + 3);
+          const b4 = view.getUint8(chunkDataOffset + 4);
+          const width = 1 + (b1 | ((b2 & 0x3F) << 8));
+          const height = 1 + (((b2 & 0xC0) >> 6) | (b3 << 2) | ((b4 & 0x0F) << 10));
+          if (width > 0 && height > 0) {
+            return { width, height };
+          }
+        }
+      }
+
+      offset = chunkDataEnd + (chunkSize % 2);
+    }
   }
 
   return null;
@@ -517,17 +630,19 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
 async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata | null; buffer: ArrayBuffer }> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
+  const detectedType = detectImageType(view);
   
   if (!isProduction) {
     console.log('[FILE DEBUG] Processing file:', {
       name: file.name,
       size: file.size,
-      isPNG: view.getUint32(0) === 0x89504E47,
-      isJPEG: view.getUint16(0) === 0xFFD8,
+      isPNG: detectedType === 'png',
+      isJPEG: detectedType === 'jpeg',
+      isWebP: detectedType === 'webp',
     });
   }
   
-  if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+  if (detectedType === 'png') {
     const result = await parsePNGMetadata(buffer);
     if (!isProduction) {
       console.log('[FILE DEBUG] PNG metadata result:', {
@@ -538,8 +653,11 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
     }
     return { metadata: result, buffer };
   }
-  if (view.getUint16(0) === 0xFFD8) {
+  if (detectedType === 'jpeg') {
     return { metadata: await parseJPEGMetadata(buffer), buffer };
+  }
+  if (detectedType === 'webp') {
+    return { metadata: await parseWebPMetadata(buffer), buffer };
   }
   return { metadata: null, buffer };
 }
@@ -557,16 +675,19 @@ async function processSingleFileOptimized(
     let rawMetadata: ImageMetadata | null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
-    const inferredType = fileEntry.type ?? (fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
 
     // If file data is provided (from batch read), parse directly from buffer
     if (fileData) {
       // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
-      if (view.getUint32(0) === 0x89504E47 && view.getUint32(4) === 0x0D0A1A0A) {
+      const detectedType = detectImageType(view);
+      if (detectedType === 'png') {
         rawMetadata = await parsePNGMetadata(fileData);
-      } else if (view.getUint16(0) === 0xFFD8) {
+      } else if (detectedType === 'jpeg') {
         rawMetadata = await parseJPEGMetadata(fileData);
+      } else if (detectedType === 'webp') {
+        rawMetadata = await parseWebPMetadata(fileData);
       } else {
         rawMetadata = null;
       }
@@ -765,7 +886,7 @@ if (rawMetadata) {
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
 // deve permanecer como está
 // ==============================================================================
-    const fallbackType = fileEntry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    const fallbackType = inferMimeTypeFromName(fileEntry.handle.name);
     const normalizedFileType = inferredType ?? fallbackType;
     const normalizedFileSize = fileSizeValue ?? 0;
 
@@ -1037,7 +1158,7 @@ export async function processFiles(
   ): IndexedImage => {
     const stat = statsLookup.get(entry.path);
     const fileSize = entry.size ?? stat?.size;
-    const inferredType = entry.type ?? stat?.type ?? (entry.handle.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const inferredType = entry.type ?? stat?.type ?? inferMimeTypeFromName(entry.handle.name);
     const sortDate = entry.birthtimeMs ?? stat?.birthtimeMs ?? entry.lastModified;
     const catalogMetadata = {
       phase: 'catalog',
@@ -1100,7 +1221,7 @@ export async function processFiles(
     await pushUiBatch(true);
   }
 
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg)$/i.test(entry.handle.name));
+  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp)$/i.test(entry.handle.name));
 
   const asyncPool = async <T, R>(
     concurrency: number,
