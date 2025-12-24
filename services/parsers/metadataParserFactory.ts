@@ -25,7 +25,7 @@ function getCaseInsensitive<T = any>(obj: Record<string, any>, key: string): T |
 }
 
 interface ParserModule {
-    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata;
+    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
     generator: string;
 }
 
