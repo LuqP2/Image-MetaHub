@@ -1,4 +1,5 @@
-import { SDNextMetadata, BaseMetadata } from '../../types';
+import { SDNextMetadata, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 // --- Extraction Functions ---
 
@@ -15,29 +16,11 @@ export function extractModelsFromSDNext(metadata: SDNextMetadata): string[] {
   return [];
 }
 
-export function extractLorasFromSDNext(metadata: SDNextMetadata): string[] {
-  const loras: Set<string> = new Set();
+export function extractLorasFromSDNext(metadata: SDNextMetadata): (string | LoRAInfo)[] {
   const params = metadata.parameters;
 
-  // Extract from <lora:name:weight> format
-  const loraPatterns = /<lora:([^:>]+):[^>]*>/gi;
-  let match;
-  while ((match = loraPatterns.exec(params)) !== null) {
-    if (match[1]) loras.add(match[1].trim());
-  }
-
-  // Also extract from "LoRA networks" field if present (clean version)
-  const loraNetworksMatch = params.match(/LoRA networks:\s*"([^"]+)"/i);
-  if (loraNetworksMatch) {
-    const networks = loraNetworksMatch[1].split(',').map(l => l.trim());
-    networks.forEach(network => {
-      // Remove version suffix if present (e.g., "name-000005" -> "name")
-      const cleanName = network.replace(/-\d+$/, '');
-      loras.add(cleanName);
-    });
-  }
-
-  return Array.from(loras);
+  // Use shared helper to extract LoRAs with weights from <lora:name:weight> syntax
+  return extractLoRAsWithWeights(params);
 }
 
 // --- Main Parser Function ---

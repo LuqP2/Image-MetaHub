@@ -1,6 +1,5 @@
 import { resolveAll } from './comfyui/traversalEngine';
 import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
-import { cleanPrompt, cleanLoraName } from '../../utils/promptCleaner';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
@@ -485,25 +484,12 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     params: ['prompt', 'negativePrompt', 'seed', 'steps', 'cfg', 'model', 'sampler_name', 'scheduler', 'lora', 'vae', 'denoise']
   });
 
-  // Apply prompt and LoRA cleaning using utility functions
-  const normalizedMetadata = {
-    prompt: cleanPrompt(results.prompt),
-    negativePrompt: cleanPrompt(results.negativePrompt),
-    loras: Array.isArray(results.lora)
-      ? results.lora.map(cleanLoraName).filter(l => l && l !== 'None')
-      : [],
-    // ... outros campos
-  };
-
-  // Merge normalized data back into results
-  Object.assign(results, normalizedMetadata);
-
-  // Post-processing: deduplicate arrays and clean up prompts
+  // Post-processing: deduplicate arrays BEFORE cleaning prompts
   if (results.lora && Array.isArray(results.lora)) {
     // Remove duplicates while preserving order of first appearance
     results.lora = Array.from(new Set(results.lora));
   }
-  
+
   // Fix duplicated prompts - check if prompt contains repeated segments
   if (results.prompt && typeof results.prompt === 'string') {
     const trimmedPrompt = results.prompt.trim();
@@ -599,16 +585,75 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   if (comfyVersion) {
     results.comfyui_version = comfyVersion;
   }
-  
 
   results.generator = 'ComfyUI';
-  
+
   return { ...results, _telemetry: telemetry };
+}
+
+/**
+ * Extract metadata from MetaHub Save Node chunk (imagemetahub_data)
+ * This chunk contains pre-extracted metadata, eliminating the need for graph traversal
+ */
+function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
+  try {
+    // Check if rawData is an object with imagemetahub_data field
+    if (typeof rawData === 'object' && rawData !== null && rawData.imagemetahub_data) {
+      const metahubData = rawData.imagemetahub_data;
+
+      // Verify it's valid MetaHub data (must have generator: "ComfyUI")
+      if (metahubData.generator === 'ComfyUI') {
+        // Map MetaHub chunk fields to expected format
+        return {
+          prompt: metahubData.prompt,
+          negativePrompt: metahubData.negativePrompt,
+          seed: metahubData.seed,
+          steps: metahubData.steps,
+          cfg: metahubData.cfg,
+          sampler_name: metahubData.sampler_name,
+          scheduler: metahubData.scheduler,
+          model: metahubData.model,
+          model_hash: metahubData.model_hash,
+          vae: metahubData.vae,
+          denoise: metahubData.denoise,
+          width: metahubData.width,
+          height: metahubData.height,
+          loras: metahubData.loras || [],
+          lora: metahubData.loras?.map((l: any) => l.name) || [], // Backward compatibility
+          generator: 'ComfyUI',
+          _detection_method: 'metahub_chunk',
+          _metahub_pro: metahubData.imh_pro || null,
+          _analytics: metahubData.analytics || null,
+        };
+      }
+    }
+
+    // Try parsing from string if rawData is a JSON string containing imagemetahub_data
+    if (typeof rawData === 'string') {
+      try {
+        const parsed = JSON.parse(rawData);
+        if (parsed.imagemetahub_data) {
+          return extractFromMetaHubChunk(parsed);
+        }
+      } catch {
+        // Not a JSON string, continue
+      }
+    }
+  } catch (error) {
+    console.warn('[ComfyUI Parser] Failed to extract from MetaHub chunk:', error);
+  }
+
+  return null;
 }
 
 /**
  * Enhanced parsing with aggressive payload detection and decompression
  * This is the new entry point that should be used for robust ComfyUI parsing
+ *
+ * Priority:
+ * 1. MetaHub Save Node chunk (imagemetahub_data) - fastest, no graph traversal needed
+ * 2. Graph traversal (workflow + prompt) - fallback for standard ComfyUI exports
+ * 3. Regex extraction - last resort for corrupted/partial data
  */
 export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record<string, any>> {
   const telemetry = {
@@ -617,7 +662,14 @@ export async function parseComfyUIMetadataEnhanced(rawData: any): Promise<Record
   };
 
   try {
-    // If already an object, try to parse it directly
+    // PRIORITY 1: Try MetaHub Save Node chunk first (fastest path)
+    const metahubData = extractFromMetaHubChunk(rawData);
+    if (metahubData) {
+      telemetry.detection_method = 'metahub_chunk';
+      return { ...metahubData, _parse_telemetry: telemetry };
+    }
+
+    // PRIORITY 2: If already an object, try to parse it directly via graph traversal
     if (typeof rawData === 'object' && rawData !== null) {
       const workflow = rawData.workflow;
       const prompt = rawData.prompt;

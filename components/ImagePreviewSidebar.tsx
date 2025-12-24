@@ -1,12 +1,66 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, Star, X } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import ProBadge from './ProBadge';
+
+// Helper function to format LoRA with weight
+const formatLoRA = (lora: string | LoRAInfo): string => {
+  if (typeof lora === 'string') {
+    return lora;
+  }
+
+  const name = lora.name || lora.model_name || 'Unknown LoRA';
+  const weight = lora.weight ?? lora.model_weight;
+
+  if (weight !== undefined && weight !== null) {
+    return `${name} (${weight})`;
+  }
+
+  return name;
+};
+
+// Helper function to format generation time: 87ms, 1.5s, or 2m 15s
+const formatGenerationTime = (ms: number): string => {
+  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+// Helper function to format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
+const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
+  const vramGb = vramMb / 1024;
+
+  // Known GPU VRAM mappings
+  const gpuVramMap: Record<string, number> = {
+    '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
+    'A100': 40, 'A6000': 48, 'V100': 16,
+  };
+
+  let totalVramGb: number | null = null;
+  if (gpuDevice) {
+    for (const [model, vram] of Object.entries(gpuVramMap)) {
+      if (gpuDevice.includes(model)) {
+        totalVramGb = vram;
+        break;
+      }
+    }
+  }
+
+  if (totalVramGb !== null && vramGb <= totalVramGb) {
+    const percentage = ((vramGb / totalVramGb) * 100).toFixed(0);
+    return `${vramGb.toFixed(1)} GB / ${totalVramGb} GB (${percentage}%)`;
+  }
+
+  return `${vramGb.toFixed(1)} GB`;
+};
 
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -49,6 +103,7 @@ const ImagePreviewSidebar: React.FC = () => {
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
+  const [showPerformance, setShowPerformance] = useState(true);
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -95,12 +150,22 @@ const ImagePreviewSidebar: React.FC = () => {
               if (fileResult.success && fileResult.data && isMounted) {
                 let dataUrl: string;
                 if (typeof fileResult.data === 'string') {
-                  const ext = previewImage.name.toLowerCase().endsWith('.jpg') || previewImage.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+                  const lowerName = previewImage.name.toLowerCase();
+                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
+                    ? 'jpeg'
+                    : lowerName.endsWith('.webp')
+                      ? 'webp'
+                      : 'png';
                   dataUrl = `data:image/${ext};base64,${fileResult.data}`;
                 } else if (fileResult.data instanceof Uint8Array) {
                   const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                   const base64 = btoa(binary);
-                  const ext = previewImage.name.toLowerCase().endsWith('.jpg') || previewImage.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+                  const lowerName = previewImage.name.toLowerCase();
+                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
+                    ? 'jpeg'
+                    : lowerName.endsWith('.webp')
+                      ? 'webp'
+                      : 'png';
                   dataUrl = `data:image/${ext};base64,${base64}`;
                 } else {
                   throw new Error('Unknown file data format.');
@@ -312,6 +377,9 @@ const ImagePreviewSidebar: React.FC = () => {
               <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
               <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
               <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+              {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
+                <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
+              )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Steps" value={nMeta.steps} />
@@ -320,14 +388,78 @@ const ImagePreviewSidebar: React.FC = () => {
                   <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}x${nMeta.height}` : undefined} />
                   <MetadataItem label="Sampler" value={nMeta.sampler} />
                   <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                  {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
+                    <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                  )}
               </div>
             </div>
 
             {nMeta.loras && nMeta.loras.length > 0 && (
                <>
                   <h3 className="text-base font-semibold text-gray-300 pt-2 border-b border-gray-600 pb-2">LoRAs</h3>
-                  <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                  <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                </>
+            )}
+
+            {/* Performance Section - Collapsible */}
+            {nMeta && nMeta._analytics && (
+              <div>
+                <button
+                  onClick={() => setShowPerformance(!showPerformance)}
+                  className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                >
+                  <span className="font-semibold flex items-center gap-2">
+                    <Zap size={16} className="text-yellow-400" />
+                    Performance
+                  </span>
+                  {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+
+                {showPerformance && (
+                  <div className="space-y-3 mt-3">
+                    {/* Tier 1: CRITICAL */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {nMeta._analytics.generation_time_ms != null && nMeta._analytics.generation_time_ms > 0 && (
+                        <MetadataItem
+                          label="Generation Time"
+                          value={formatGenerationTime(nMeta._analytics.generation_time_ms)}
+                        />
+                      )}
+                      {nMeta._analytics.vram_peak_mb != null && (
+                        <MetadataItem
+                          label="VRAM Peak"
+                          value={formatVRAM(nMeta._analytics.vram_peak_mb, nMeta._analytics.gpu_device)}
+                        />
+                      )}
+                    </div>
+
+                    {nMeta._analytics.gpu_device && (
+                      <MetadataItem label="GPU Device" value={nMeta._analytics.gpu_device} />
+                    )}
+
+                    {/* Tier 2: VERY USEFUL */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {nMeta._analytics.steps_per_second != null && (
+                        <MetadataItem
+                          label="Speed"
+                          value={`${nMeta._analytics.steps_per_second.toFixed(2)} steps/s`}
+                        />
+                      )}
+                      {nMeta._analytics.comfyui_version && (
+                        <MetadataItem label="ComfyUI" value={nMeta._analytics.comfyui_version} />
+                      )}
+                    </div>
+
+                    {/* Tier 3: NICE-TO-HAVE (small text) */}
+                    {(nMeta._analytics.torch_version || nMeta._analytics.python_version) && (
+                      <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
+                        {nMeta._analytics.torch_version && <div>PyTorch: {nMeta._analytics.torch_version}</div>}
+                        {nMeta._analytics.python_version && <div>Python: {nMeta._analytics.python_version}</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}

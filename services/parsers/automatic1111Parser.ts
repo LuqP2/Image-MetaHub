@@ -1,4 +1,5 @@
-import { Automatic1111Metadata, BaseMetadata } from '../../types';
+import { Automatic1111Metadata, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 // --- Extraction Functions ---
 
@@ -37,37 +38,11 @@ export function extractModelsFromAutomatic1111(metadata: Automatic1111Metadata):
   return [];
 }
 
-export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): string[] {
-  const loras: Set<string> = new Set();
+export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): (string | LoRAInfo)[] {
   const params = metadata.parameters;
 
-  // Try to extract LoRAs from Civitai resources JSON first
-  const civitaiMatch = params.match(/Civitai resources:\s*(\[[\s\S]*?\])/);
-  if (civitaiMatch) {
-    try {
-      const resources = JSON.parse(civitaiMatch[1]);
-      if (Array.isArray(resources)) {
-        resources.forEach((resource: any) => {
-          if (resource.type === 'lora' && resource.modelName) {
-            loras.add(resource.modelName);
-          }
-        });
-      }
-    } catch (e) {
-      // If JSON parsing fails, fall back to regex pattern
-    }
-  }
-
-  // Fall back to standard <lora:...> pattern if no Civitai resources found
-  if (loras.size === 0) {
-    const loraPatterns = /<lora:([^:>]+):[^>]*>/gi;
-    let match;
-    while ((match = loraPatterns.exec(params)) !== null) {
-      if (match[1]) loras.add(match[1].trim());
-    }
-  }
-
-  return Array.from(loras);
+  // Use shared helper to extract LoRAs with weights from <lora:name:weight> syntax
+  return extractLoRAsWithWeights(params);
 }
 
 // --- Detector de variantes ---

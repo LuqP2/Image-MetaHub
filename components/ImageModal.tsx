@@ -1,8 +1,8 @@
 import React, { useEffect, useState, FC, useCallback } from 'react';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useImageComparison } from '../hooks/useImageComparison';
@@ -24,6 +24,60 @@ interface ImageModalProps {
   directoryPath?: string;
   isIndexing?: boolean;
 }
+
+// Helper function to format LoRA with weight
+const formatLoRA = (lora: string | LoRAInfo): string => {
+  if (typeof lora === 'string') {
+    return lora;
+  }
+
+  const name = lora.name || lora.model_name || 'Unknown LoRA';
+  const weight = lora.weight ?? lora.model_weight;
+
+  if (weight !== undefined && weight !== null) {
+    return `${name} (${weight})`;
+  }
+
+  return name;
+};
+
+// Format generation time: 87ms, 1.5s, or 2m 15s
+const formatGenerationTime = (ms: number): string => {
+  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+// Format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
+const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
+  const vramGb = vramMb / 1024;
+
+  // Known GPU VRAM mappings
+  const gpuVramMap: Record<string, number> = {
+    '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
+    'A100': 40, 'A6000': 48, 'V100': 16,
+  };
+
+  let totalVramGb: number | null = null;
+  if (gpuDevice) {
+    for (const [model, vram] of Object.entries(gpuVramMap)) {
+      if (gpuDevice.includes(model)) {
+        totalVramGb = vram;
+        break;
+      }
+    }
+  }
+
+  if (totalVramGb !== null && vramGb <= totalVramGb) {
+    const percentage = ((vramGb / totalVramGb) * 100).toFixed(0);
+    return `${vramGb.toFixed(1)} GB / ${totalVramGb} GB (${percentage}%)`;
+  }
+
+  return `${vramGb.toFixed(1)} GB`;
+};
 
 // Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -67,11 +121,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
   const [showDetails, setShowDetails] = useState(true);
+  const [showPerformance, setShowPerformance] = useState(true);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
 
   // A1111 integration hooks
@@ -347,17 +402,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
               let dataUrl: string;
               if (typeof fileResult.data === 'string') {
                 // Assume base64 string
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${fileResult.data}`;
               } else if (fileResult.data instanceof Uint8Array) {
                 // Convert Uint8Array to base64
                 const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                 const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
+                const lowerName = image.name.toLowerCase();
+                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                   ? 'jpeg'
-                  : 'png';
+                  : lowerName.endsWith('.webp')
+                    ? 'webp'
+                    : 'png';
                 dataUrl = `data:image/${ext};base64,${base64}`;
               } else {
                 throw new Error('Unknown file data format.');
@@ -665,8 +726,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
+                    {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
+                      <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
+                    )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
-                      <MetadataItem label="LoRAs" value={nMeta.loras.map((lora: any) => typeof lora === 'string' ? lora : lora.model_name || 'Unknown LoRA').join(', ')} />
+                      <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />
@@ -675,10 +739,74 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
                       <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
+                      {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
+                        <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                      )}
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Performance Section - Collapsible */}
+              {nMeta && nMeta._analytics && (
+                <div>
+                  <button
+                    onClick={() => setShowPerformance(!showPerformance)}
+                    className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                  >
+                    <span className="font-semibold flex items-center gap-2">
+                      <Zap size={16} className="text-yellow-400" />
+                      Performance
+                    </span>
+                    {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {showPerformance && (
+                    <div className="space-y-3 mt-3">
+                      {/* Tier 1: CRITICAL */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {nMeta._analytics.generation_time_ms != null && nMeta._analytics.generation_time_ms > 0 && (
+                          <MetadataItem
+                            label="Generation Time"
+                            value={formatGenerationTime(nMeta._analytics.generation_time_ms)}
+                          />
+                        )}
+                        {nMeta._analytics.vram_peak_mb != null && (
+                          <MetadataItem
+                            label="VRAM Peak"
+                            value={formatVRAM(nMeta._analytics.vram_peak_mb, nMeta._analytics.gpu_device)}
+                          />
+                        )}
+                      </div>
+
+                      {nMeta._analytics.gpu_device && (
+                        <MetadataItem label="GPU Device" value={nMeta._analytics.gpu_device} />
+                      )}
+
+                      {/* Tier 2: VERY USEFUL */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {nMeta._analytics.steps_per_second != null && (
+                          <MetadataItem
+                            label="Speed"
+                            value={`${nMeta._analytics.steps_per_second.toFixed(2)} steps/s`}
+                          />
+                        )}
+                        {nMeta._analytics.comfyui_version && (
+                          <MetadataItem label="ComfyUI" value={nMeta._analytics.comfyui_version} />
+                        )}
+                      </div>
+
+                      {/* Tier 3: NICE-TO-HAVE (small text) */}
+                      {(nMeta._analytics.torch_version || nMeta._analytics.python_version) && (
+                        <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
+                          {nMeta._analytics.torch_version && <div>PyTorch: {nMeta._analytics.torch_version}</div>}
+                          {nMeta._analytics.python_version && <div>Python: {nMeta._analytics.python_version}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">

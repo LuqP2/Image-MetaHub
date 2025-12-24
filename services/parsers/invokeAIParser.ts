@@ -1,4 +1,5 @@
-import { InvokeAIMetadata, BaseMetadata } from '../../types';
+import { InvokeAIMetadata, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 // --- Helper Functions ---
 
@@ -93,31 +94,72 @@ export function extractModelsFromInvokeAI(metadata: InvokeAIMetadata): string[] 
   return Array.from(models);
 }
 
-export function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): string[] {
-  const loras: Set<string> = new Set();
+export function extractLorasFromInvokeAI(metadata: InvokeAIMetadata): (string | LoRAInfo)[] {
+  const loras: (string | LoRAInfo)[] = [];
+  const loraNames = new Set<string>();
+
+  // 1. Extract from prompt text with weights using shared helper
   const promptText = typeof metadata.prompt === 'string'
     ? metadata.prompt
     : Array.isArray(metadata.prompt)
       ? metadata.prompt.map(p => typeof p === 'string' ? p : p.prompt).join(' ')
       : '';
 
-  const loraPatterns = [/<lora:([^:>]+):[^>]*>/gi, /<lyco:([^:>]+):[^>]*>/gi];
-  loraPatterns.forEach(pattern => {
-    let match;
-    while ((match = pattern.exec(promptText)) !== null) {
-      if (match[1]) loras.add(match[1].trim());
-    }
-  });
+  if (promptText) {
+    const promptLoras = extractLoRAsWithWeights(promptText);
+    promptLoras.forEach(lora => {
+      const name = typeof lora === 'string' ? lora : lora.name;
+      if (!loraNames.has(name)) {
+        loraNames.add(name);
+        loras.push(lora);
+      }
+    });
 
+    // Also check for <lyco:...> format (LyCORIS)
+    const lycoPattern = /<lyco:([^:>]+):([^>]+)>/gi;
+    let match;
+    while ((match = lycoPattern.exec(promptText)) !== null) {
+      const name = match[1].trim();
+      const weightStr = match[2].trim();
+
+      if (name && !loraNames.has(name)) {
+        loraNames.add(name);
+        const weight = parseFloat(weightStr);
+
+        if (!isNaN(weight)) {
+          loras.push({ name, weight });
+        } else {
+          loras.push(name);
+        }
+      }
+    }
+  }
+
+  // 2. Extract from metadata.loras array (InvokeAI specific structure)
+  // InvokeAI structure: { model: { name: "LoRA Name" }, weight: 0.7 }
   if (Array.isArray(metadata.loras)) {
     metadata.loras.forEach((lora: any) => {
       const loraName = extractModelName(lora);
-      if (loraName && loraName !== '[object Object]') {
-        loras.add(loraName);
+
+      if (loraName && loraName !== '[object Object]' && !loraNames.has(loraName)) {
+        loraNames.add(loraName);
+
+        // Check if weight is available in InvokeAI structure
+        const weight = lora?.weight;
+
+        if (weight !== undefined && weight !== null && !isNaN(parseFloat(weight))) {
+          loras.push({
+            name: loraName,
+            weight: parseFloat(weight)
+          });
+        } else {
+          loras.push(loraName);
+        }
       }
     });
   }
-  return Array.from(loras);
+
+  return loras;
 }
 
 export function extractBoardFromInvokeAI(metadata: InvokeAIMetadata): string {
