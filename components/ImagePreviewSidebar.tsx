@@ -377,6 +377,9 @@ const ImagePreviewSidebar: React.FC = () => {
               <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
               <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
               <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
+              {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
+                <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
+              )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Steps" value={nMeta.steps} />
@@ -385,6 +388,9 @@ const ImagePreviewSidebar: React.FC = () => {
                   <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}x${nMeta.height}` : undefined} />
                   <MetadataItem label="Sampler" value={nMeta.sampler} />
                   <MetadataItem label="Scheduler" value={nMeta.scheduler} />
+                  {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
+                    <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                  )}
               </div>
             </div>
 

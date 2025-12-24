@@ -970,6 +970,8 @@ if (rawMetadata) {
         scheduler: enhancedResult.scheduler || '',
         sampler: enhancedResult.sampler_name || '',
         loras: enhancedResult.loras || [],
+        vae: enhancedResult.vae,
+        denoise: enhancedResult.denoise,
         _analytics: enhancedResult._analytics || null,
         _metahub_pro: enhancedResult._metahub_pro || null,
         _detection_method: enhancedResult._detection_method,
@@ -1010,6 +1012,8 @@ if (rawMetadata) {
       scheduler: resolvedParams.scheduler || '',
       sampler: resolvedParams.sampler_name || '',
       loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+      vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
+      denoise: resolvedParams.denoise,
     };
   }
   

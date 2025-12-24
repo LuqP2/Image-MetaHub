@@ -726,6 +726,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
                     )}
+                    {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
+                      <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
+                    )}
                     {nMeta.loras && nMeta.loras.length > 0 && (
                       <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                     )}
@@ -736,6 +739,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
                       <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
+                      {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
+                        <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
+                      )}
                     </div>
                   </div>
                 )}
