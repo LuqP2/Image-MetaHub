@@ -1,0 +1,10 @@
+src/
+tests/
+*.test.ts
+tsconfig.json
+vitest.config.ts
+.github/
+node_modules/
+.git/
+*.log
+.DS_Store
