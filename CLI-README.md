@@ -1,166 +1,87 @@
 # Image MetaHub CLI
 
-Command-line tool for parsing AI-generated image metadata.
+Command-line tool to extract and normalize AI image metadata (PNG/JPG) into JSON/JSONL for pipelines. Uses the same parser/normalizer as the app (MPL‑2.0 codebase).
 
-## Installation
+Schema/versioning: every record includes `schema_version: "1.0.0"` and `_telemetry` with parser info and timing.
 
+## Install locally
 ```bash
-npm install -g image-metahub
-```
-
-Or run directly with `npx`:
-
-```bash
-npx image-metahub parse image.png --json
+npm install
+npx tsx cli.ts parse ./sample.png --pretty
 ```
 
 ## Commands
-
-### Parse Single File
-
-Parse metadata from a single PNG file:
-
+### Parse one file
 ```bash
-imagemetahub-cli parse image.png --json
+imagemetahub-cli parse image.png --pretty --raw --quiet
 ```
+- `--pretty`: pretty-print JSON output  
+- `--raw`: include the raw metadata payload found (EXIF/PNG chunks/sidecar)
+- `--quiet`: suppress info logs
 
-**Options:**
-- `--json` - Output as JSON (default: true)
-- `--pretty` - Pretty-print JSON output
-
-**Example Output:**
+Example:
 ```json
 {
-  "file": "/path/to/image.png",
-  "format": "comfyui",
-  "metadata": {
-    "prompt": "beautiful landscape, mountains, sunset",
-    "negativePrompt": "blurry, low quality",
-    "seed": 12345,
-    "steps": 20,
-    "cfg": 8,
-    "sampler_name": "euler",
-    "model": "sd_xl_base_1.0.safetensors",
-    "loras": [
-      { "name": "style_lora_v1.safetensors", "weight": 0.8 }
-    ],
-    "_telemetry": {
-      "detection_method": "standard",
-      "unknown_nodes_count": 0,
-      "warnings": []
-    }
-  },
-  "parsed_at": "2025-01-12T23:00:00.000Z"
+  "file": "/data/image.png",
+  "format": "ComfyUI",
+  "raw_source": "png",
+  "sha256": "7f2d...",
+  "dimensions": { "width": 1024, "height": 1024 },
+  "metadata": { "prompt": "...", "model": "sd_xl_base", "sampler": "euler", "steps": 20, "loras": [] },
+  "schema_version": "1.0.0",
+  "_telemetry": { "parser": "ComfyUI", "raw_source": "png", "normalize_time_ms": 12 },
+  "parsed_at": "2025-01-12T23:00:00.000Z",
+  "errors": null
 }
 ```
 
-### Batch Index Directory
-
-Parse all images in a directory and output JSONL index:
-
+### Index a directory → JSONL
 ```bash
-imagemetahub-cli index ./images --out index.jsonl
+imagemetahub-cli index ./images --recursive --out index.jsonl --raw --concurrency 8 --quiet
 ```
+- `--concurrency <n>`: number of files processed in parallel (defaults to CPU count, max 64)
+- `--quiet`: suppress info logs
 
-**Options:**
-- `--out <file>` - Output JSONL file (default: `index.jsonl`)
-- `--recursive` - Scan subdirectories recursively
-
-**Example Output (index.jsonl):**
+Each line in `index.jsonl` is a JSON object:
 ```jsonl
-{"file":"/path/image1.png","format":"comfyui","metadata":{...},"parsed_at":"2025-01-12T23:00:00.000Z"}
-{"file":"/path/image2.png","format":"invokeai","metadata":{...},"parsed_at":"2025-01-12T23:00:00.000Z"}
-{"file":"/path/image3.png","format":"automatic1111","metadata":{...},"parsed_at":"2025-01-12T23:00:00.000Z"}
+{"file":"/data/image.png","format":"ComfyUI","sha256":"...","metadata":{...},"schema_version":"1.0.0","_telemetry":{"parser":"ComfyUI","raw_source":"png","normalize_time_ms":12},"parsed_at":"2025-01-12T23:00:00.000Z"}
 ```
 
-## Use Cases
-
-### 1. Quick Metadata Inspection
-
+## Docker (recommended for pipelines)
 ```bash
-# Check what metadata is embedded in an image
-imagemetahub-cli parse suspicious-image.png --json --pretty
+# Build
+docker build -t imagemetahub-cli:local .
+
+# Recursive index
+docker run --rm -v /host/images:/data -v /host/output:/out imagemetahub-cli:local index /data --out /out/index.jsonl --recursive --raw --concurrency 8 --quiet
+
+# Single parse
+docker run --rm -v /host/images:/data imagemetahub-cli:local parse /data/image.png --pretty --quiet
 ```
 
-### 2. Batch Processing for ML Pipelines
+## Supported formats (normalized)
+- ComfyUI (graph → facts, accumulated LoRAs)
+- Automatic1111 / Forge / Fooocus / SD.Next
+- InvokeAI
+- SwarmUI
+- Easy Diffusion (includes sidecar JSON)
+- Midjourney / Niji
+- DALL-E 3 (C2PA/EXIF)
+- Adobe Firefly (C2PA/EXIF)
+- DreamStudio
+- Draw Things
 
-```bash
-# Index all training images for a dataset
-imagemetahub-cli index ./training_data --recursive --out dataset_metadata.jsonl
-
-# Filter images by specific criteria
-cat dataset_metadata.jsonl | jq 'select(.metadata.steps > 50)'
-```
-
-### 3. Workflow Analysis
-
-```bash
-# Find all images using a specific LoRA
-cat index.jsonl | jq 'select(.metadata.loras[]? | .name == "style_lora_v1.safetensors")'
-
-# Find all ComfyUI workflows with unknown nodes
-cat index.jsonl | jq 'select(.metadata._telemetry.unknown_nodes_count > 0)'
-```
-
-### 4. Model/LoRA Audit
-
-```bash
-# List all models used in a collection
-cat index.jsonl | jq -r '.metadata.model' | sort -u
-
-# List all LoRAs with usage count
-cat index.jsonl | jq -r '.metadata.loras[]?.name' | sort | uniq -c | sort -rn
-```
-
-## Supported Formats
-
-- **ComfyUI** - Full workflow parsing with Phase 1, 2, 3 enhancements
-- **InvokeAI** - Complete metadata extraction
-- **Automatic1111** - PNG and JPEG support
-- **Forge** - A1111-compatible with hires parameters
-- **Easy Diffusion** - Sidecar JSON and embedded metadata
-- **SwarmUI** - sui_image_params structure
-- **Midjourney** - Parameter extraction from PNG
-- **DALL-E 3** - C2PA/EXIF metadata
-- **Adobe Firefly** - C2PA Content Credentials
-- **DreamStudio** - Stability AI formats
-- **Niji Journey** - Anime-focused parameters
-- **Draw Things** - iOS/Mac AI app metadata
+## Tips
+- Use `--raw` to audit the original payload.
+- Filter JSONL with `jq`, e.g. `jq 'select(.metadata.model == "sd_xl_base")' index.jsonl`.
+- LoRA audit: `jq -r '.metadata.loras[]?.name' index.jsonl | sort | uniq -c`.
+- For quiet CI logs, add `--quiet`.
 
 ## Development
-
-Run from source:
-
 ```bash
-npm run cli:parse -- image.png --json --pretty
-npm run cli:index -- ./images --out index.jsonl
+npm run cli:parse -- ./image.png --pretty --raw
+npm run cli:index -- ./images --out index.jsonl --recursive
 ```
-
-## Troubleshooting
-
-**Q: CLI command not found after global install?**
-
-A: Ensure npm global bin is in your PATH:
-```bash
-npm config get prefix
-# Add <prefix>/bin to your PATH
-```
-
-**Q: Getting "Unknown format" for my images?**
-
-A: Use `--json --pretty` to inspect raw metadata and check if format is supported. Open an issue with sample workflow if needed.
-
-**Q: Batch indexing is slow?**
-
-A: This is expected for large collections. The parser processes ~85 images/second. For 10,000 images, expect ~2 minutes.
-
-## Contributing
-
-See [COMFYUI-PARSER-GUIDE.md](./COMFYUI-PARSER-GUIDE.md) for:
-- How to add new node types
-- Common failure modes
-- Testing guidelines
 
 ## License
-
-MIT
+The app and parser code are MPL-2.0; the CLI uses the same codebase. Please keep the MPL notice when redistributing.
