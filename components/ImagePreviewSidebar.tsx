@@ -386,7 +386,7 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* Performance Section - Collapsible */}
-            {nMeta && previewImage.metadata?.normalizedMetadata?._analytics && (
+            {nMeta && nMeta._analytics && (
               <div>
                 <button
                   onClick={() => setShowPerformance(!showPerformance)}

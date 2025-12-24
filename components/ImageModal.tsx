@@ -736,7 +736,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
 
               {/* Performance Section - Collapsible */}
-              {nMeta && metadata?._analytics && (
+              {nMeta && nMeta._analytics && (
                 <div>
                   <button
                     onClick={() => setShowPerformance(!showPerformance)}
@@ -753,42 +753,42 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <div className="space-y-3 mt-3">
                       {/* Tier 1: CRITICAL */}
                       <div className="grid grid-cols-2 gap-2">
-                        {metadata._analytics.generation_time_ms != null && metadata._analytics.generation_time_ms > 0 && (
+                        {nMeta._analytics.generation_time_ms != null && nMeta._analytics.generation_time_ms > 0 && (
                           <MetadataItem
                             label="Generation Time"
-                            value={formatGenerationTime(metadata._analytics.generation_time_ms)}
+                            value={formatGenerationTime(nMeta._analytics.generation_time_ms)}
                           />
                         )}
-                        {metadata._analytics.vram_peak_mb != null && (
+                        {nMeta._analytics.vram_peak_mb != null && (
                           <MetadataItem
                             label="VRAM Peak"
-                            value={formatVRAM(metadata._analytics.vram_peak_mb, metadata._analytics.gpu_device)}
+                            value={formatVRAM(nMeta._analytics.vram_peak_mb, nMeta._analytics.gpu_device)}
                           />
                         )}
                       </div>
 
-                      {metadata._analytics.gpu_device && (
-                        <MetadataItem label="GPU Device" value={metadata._analytics.gpu_device} />
+                      {nMeta._analytics.gpu_device && (
+                        <MetadataItem label="GPU Device" value={nMeta._analytics.gpu_device} />
                       )}
 
                       {/* Tier 2: VERY USEFUL */}
                       <div className="grid grid-cols-2 gap-2">
-                        {metadata._analytics.steps_per_second != null && (
+                        {nMeta._analytics.steps_per_second != null && (
                           <MetadataItem
                             label="Speed"
-                            value={`${metadata._analytics.steps_per_second.toFixed(2)} steps/s`}
+                            value={`${nMeta._analytics.steps_per_second.toFixed(2)} steps/s`}
                           />
                         )}
-                        {metadata._analytics.comfyui_version && (
-                          <MetadataItem label="ComfyUI" value={metadata._analytics.comfyui_version} />
+                        {nMeta._analytics.comfyui_version && (
+                          <MetadataItem label="ComfyUI" value={nMeta._analytics.comfyui_version} />
                         )}
                       </div>
 
                       {/* Tier 3: NICE-TO-HAVE (small text) */}
-                      {(metadata._analytics.torch_version || metadata._analytics.python_version) && (
+                      {(nMeta._analytics.torch_version || nMeta._analytics.python_version) && (
                         <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
-                          {metadata._analytics.torch_version && <div>PyTorch: {metadata._analytics.torch_version}</div>}
-                          {metadata._analytics.python_version && <div>Python: {metadata._analytics.python_version}</div>}
+                          {nMeta._analytics.torch_version && <div>PyTorch: {nMeta._analytics.torch_version}</div>}
+                          {nMeta._analytics.python_version && <div>Python: {nMeta._analytics.python_version}</div>}
                         </div>
                       )}
                     </div>
