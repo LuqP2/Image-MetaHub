@@ -44,9 +44,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const toggleA1111AutoStart = useSettingsStore((state) => state.toggleA1111AutoStart);
   const setA1111ConnectionStatus = useSettingsStore((state) => state.setA1111ConnectionStatus);
 
+  // ComfyUI Integration settings
+  const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
+  const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
+  const setComfyUIServerUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
+  const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
+
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [isTestingComfyUIConnection, setIsTestingComfyUIConnection] = useState(false);
   const hardwareConcurrency = typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
     ? navigator.hardwareConcurrency
     : null;
@@ -131,6 +138,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       alert(`Error testing connection: ${error.message}`);
     } finally {
       setIsTestingConnection(false);
+    }
+  };
+
+  const handleTestComfyUIConnection = async () => {
+    if (!comfyUIServerUrl) {
+      alert('Please enter a server URL');
+      return;
+    }
+
+    setIsTestingComfyUIConnection(true);
+    setComfyUIConnectionStatus('unknown');
+
+    try {
+      const { ComfyUIApiClient } = await import('../services/comfyUIApiClient');
+      const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
+      const result = await client.testConnection();
+
+      if (result.success) {
+        setComfyUIConnectionStatus('connected');
+      } else {
+        setComfyUIConnectionStatus('error');
+        alert(`Connection failed: ${result.error}`);
+      }
+    } catch (error: any) {
+      setComfyUIConnectionStatus('error');
+      alert(`Error testing connection: ${error.message}`);
+    } finally {
+      setIsTestingComfyUIConnection(false);
     }
   };
 
@@ -393,6 +428,61 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
+            </div>
+          </div>
+
+          {/* ComfyUI Integration */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">ComfyUI Integration</h3>
+            <p className="text-sm text-gray-400 mb-3">
+              Configure connection to your local ComfyUI instance.
+              <br />
+              <span className="text-xs text-yellow-400">
+                Requires MetaHub Save Node installed in ComfyUI.
+              </span>
+            </p>
+
+            {/* Server URL Input */}
+            <div className="space-y-2 mb-3">
+              <label className="text-sm text-gray-300">Server URL</label>
+              <input
+                type="text"
+                value={comfyUIServerUrl}
+                onChange={(e) => setComfyUIServerUrl(e.target.value)}
+                placeholder="http://127.0.0.1:8188"
+                className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* Test Connection Button */}
+            <div className="flex items-center space-x-2 mb-3">
+              <button
+                onClick={handleTestComfyUIConnection}
+                disabled={isTestingComfyUIConnection}
+                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium"
+              >
+                {isTestingComfyUIConnection ? 'Testing...' : 'Test Connection'}
+              </button>
+              {comfyUILastConnectionStatus === 'connected' && (
+                <span className="text-green-400 text-sm">✓ Connected</span>
+              )}
+              {comfyUILastConnectionStatus === 'error' && (
+                <span className="text-red-400 text-sm">✗ Connection failed</span>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-blue-900/20 border border-blue-700 rounded p-3 text-xs text-blue-200">
+              <strong>Installation:</strong> Install the MetaHub Save Node in ComfyUI from:
+              <br />
+              <a
+                href="https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline"
+              >
+                github.com/LuqP2/ImageMetaHub-ComfyUI-Save
+              </a>
             </div>
           </div>
 

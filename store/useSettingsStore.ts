@@ -68,6 +68,10 @@ interface SettingsState {
   a1111AutoStart: boolean;
   a1111LastConnectionStatus: 'unknown' | 'connected' | 'error';
 
+  // ComfyUI Integration settings
+  comfyUIServerUrl: string;
+  comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
+
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
   setItemsPerPage: (count: number) => void;
@@ -86,6 +90,8 @@ interface SettingsState {
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setComfyUIServerUrl: (url: string) => void;
+  setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   resetState: () => void;
 }
 
@@ -116,6 +122,10 @@ export const useSettingsStore = create<SettingsState>()(
       a1111ServerUrl: 'http://127.0.0.1:7860',
       a1111AutoStart: false,
       a1111LastConnectionStatus: 'unknown',
+
+      // ComfyUI Integration initial state
+      comfyUIServerUrl: 'http://127.0.0.1:8188',
+      comfyUILastConnectionStatus: 'unknown',
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -156,6 +166,10 @@ export const useSettingsStore = create<SettingsState>()(
       toggleA1111AutoStart: () => set((state) => ({ a1111AutoStart: !state.a1111AutoStart })),
       setA1111ConnectionStatus: (status) => set({ a1111LastConnectionStatus: status }),
 
+      // ComfyUI Integration actions
+      setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
+      setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
+
       resetState: () => set({
         sortOrder: 'desc',
         itemsPerPage: 20,
@@ -173,6 +187,8 @@ export const useSettingsStore = create<SettingsState>()(
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
         a1111LastConnectionStatus: 'unknown',
+        comfyUIServerUrl: 'http://127.0.0.1:8188',
+        comfyUILastConnectionStatus: 'unknown',
       }),
     }),
     {
