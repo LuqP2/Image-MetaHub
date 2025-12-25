@@ -540,8 +540,6 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
 async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | null> {
   try {
-    console.log('[WebP DEBUG] Starting WebP metadata parsing...');
-
     // WebP stores EXIF in an 'EXIF' chunk within the RIFF container
     // We need to extract the EXIF chunk first, then parse it with exifr
     const view = new DataView(buffer);
@@ -549,13 +547,11 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
     // Verify RIFF header
     if (decoder.decode(buffer.slice(0, 4)) !== 'RIFF') {
-      console.log('[WebP DEBUG] Not a valid RIFF file');
       return null;
     }
 
     // Verify WEBP format
     if (decoder.decode(buffer.slice(8, 12)) !== 'WEBP') {
-      console.log('[WebP DEBUG] Not a valid WebP file');
       return null;
     }
 
@@ -567,8 +563,6 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       const chunkType = decoder.decode(buffer.slice(offset, offset + 4));
       const chunkSize = view.getUint32(offset + 4, true); // Little-endian
 
-      console.log('[WebP DEBUG] Found chunk:', chunkType, 'size:', chunkSize);
-
       if (chunkType === 'EXIF') {
         // Found EXIF chunk!
         // WebP EXIF chunk format: first 4 bytes are padding (0x00000000)
@@ -578,8 +572,7 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
         // Skip the 4-byte padding at the beginning
         const afterPadding = rawExifData.slice(4);
 
-        // Debug: Search for TIFF header (II or MM)
-        console.log('[WebP DEBUG] Searching for TIFF header in first 100 bytes...');
+        // Search for TIFF header (II or MM)
         const searchBytes = new Uint8Array(afterPadding.slice(0, Math.min(100, afterPadding.byteLength)));
         let tiffHeaderOffset = -1;
         for (let i = 0; i < searchBytes.length - 1; i++) {
@@ -587,27 +580,20 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           if ((searchBytes[i] === 0x49 && searchBytes[i+1] === 0x49) ||
               (searchBytes[i] === 0x4d && searchBytes[i+1] === 0x4d)) {
             tiffHeaderOffset = i;
-            console.log('[WebP DEBUG] Found TIFF header at offset:', i, 'bytes:', searchBytes[i].toString(16), searchBytes[i+1].toString(16));
             break;
           }
         }
 
         if (tiffHeaderOffset >= 0) {
           exifChunkData = afterPadding.slice(tiffHeaderOffset);
-          console.log('[WebP DEBUG] Extracted EXIF data from offset', tiffHeaderOffset, 'size:', exifChunkData.byteLength);
         } else {
-          console.log('[WebP DEBUG] No TIFF header found! First 40 bytes (hex):',
-            Array.from(searchBytes.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-
           // PIL/piexif WebP format doesn't use standard TIFF header
           // Search for JSON directly (starts with '{' = 0x7b)
-          console.log('[WebP DEBUG] Searching for JSON in EXIF chunk...');
           let jsonStartOffset = -1;
           const fullChunk = new Uint8Array(afterPadding);
           for (let i = 0; i < fullChunk.length - 1; i++) {
             if (fullChunk[i] === 0x7b && fullChunk[i+1] === 0x22) { // '{"'
               jsonStartOffset = i;
-              console.log('[WebP DEBUG] Found JSON at offset:', i);
               break;
             }
           }
@@ -630,17 +616,14 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
             if (jsonEnd > 0) {
               const completeJson = jsonString.substring(0, jsonEnd);
-              console.log('[WebP DEBUG] Extracted JSON, length:', completeJson.length);
-              console.log('[WebP DEBUG] JSON preview:', completeJson.substring(0, 100));
 
               try {
                 const parsed = JSON.parse(completeJson);
                 if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
-                  console.log('[WebP DEBUG] ✅ MetaHub Save Node detected from direct JSON parse!');
                   return { imagemetahub_data: parsed };
                 }
               } catch (e) {
-                console.log('[WebP DEBUG] Failed to parse extracted JSON:', e);
+                // Failed to parse JSON, continue
               }
             }
           }
@@ -648,9 +631,6 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           exifChunkData = afterPadding; // Try exifr anyway as fallback
         }
 
-        const firstBytes = new Uint8Array(exifChunkData.slice(0, Math.min(20, exifChunkData.byteLength)));
-        const firstBytesHex = Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
-        console.log('[WebP DEBUG] Final EXIF data first 20 bytes (hex):', firstBytesHex);
         break;
       }
 
@@ -660,7 +640,6 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     }
 
     if (!exifChunkData) {
-      console.log('[WebP DEBUG] No EXIF chunk found in WebP file');
       return null;
     }
 
@@ -673,42 +652,28 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       reviveValues: true
     });
 
-    console.log('[WebP DEBUG] EXIF data:', exifData ? Object.keys(exifData) : 'null');
-
     if (!exifData) {
-      console.log('[WebP DEBUG] No EXIF data found after parsing');
       return null;
     }
 
     // PRIORITY 0: Check for MetaHub Save Node JSON in ImageDescription (WebP save format)
     // MetaHub Save Node stores the IMH metadata as JSON in EXIF ImageDescription for WebP
     if (exifData.ImageDescription) {
-      console.log('[WebP DEBUG] ImageDescription found, type:', typeof exifData.ImageDescription);
       try {
         const imageDesc = typeof exifData.ImageDescription === 'string'
           ? exifData.ImageDescription
           : new TextDecoder('utf-8').decode(exifData.ImageDescription);
 
-        console.log('[WebP DEBUG] ImageDescription preview:', imageDesc.substring(0, 100));
-
         // Try to parse as JSON
         const parsed = JSON.parse(imageDesc);
 
-        console.log('[WebP DEBUG] Parsed JSON successfully, generator:', parsed.generator);
-
         // Check if it's MetaHub metadata (has "generator": "ComfyUI" and our custom fields)
         if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
-          console.log('[WebP DEBUG] ✅ MetaHub Save Node detected! Returning imagemetahub_data');
           return { imagemetahub_data: parsed };
-        } else {
-          console.log('[WebP DEBUG] Not MetaHub metadata (missing analytics/imh_pro/workflow)');
         }
       } catch (e) {
-        console.log('[WebP DEBUG] Failed to parse ImageDescription as JSON:', e);
         // Not JSON or not MetaHub metadata, continue with normal parsing
       }
-    } else {
-      console.log('[WebP DEBUG] No ImageDescription field found');
     }
 
     // Fall back to regular JPEG parsing logic (UserComment, etc.)
