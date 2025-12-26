@@ -286,6 +286,316 @@ webui.bat --api --cors-allow-origins=http://localhost:5173
 # 4. Verify all fields populated correctly
 ```
 
+## ComfyUI Integration
+
+The application includes bidirectional workflow with ComfyUI, allowing users to generate image variations by sending workflow data to ComfyUI via API. Unlike A1111's polling approach, ComfyUI integration uses real-time WebSocket communication for progress tracking.
+
+**Location:** `services/comfyUIApiClient.ts`, `hooks/useCopyToComfyUI.ts`, `hooks/useGenerateWithComfyUI.ts`, `contexts/ComfyUIProgressContext.tsx`, `utils/telemetryDetection.ts`
+
+**Key Components:**
+
+1. **ComfyUI API Client** (`services/comfyUIApiClient.ts`)
+   - REST API client for ComfyUI backend
+   - Connection testing (`/system_stats`)
+   - WebSocket connection for real-time progress tracking (`ws://127.0.0.1:8188/ws`)
+   - Workflow submission endpoint (`POST /prompt`)
+   - Image generation with progress callbacks
+   - 5-minute timeout for long generations
+   - Graceful error handling with connection state tracking
+
+2. **Workflow Builder** (`services/comfyUIApiClient.ts` - `buildWorkflowFromMetadata()`)
+   - Converts `BaseMetadata` to simple txt2img ComfyUI workflow
+   - **Does NOT attempt to recreate original workflow** - generates minimal working workflow
+   - Linear pipeline structure:
+     ```
+     CheckpointLoader → MetaHub Timer → CLIPTextEncode (positive/negative)
+                                       ↓
+     EmptyLatent → KSampler → VAEDecode → MetaHub Save Node
+     ```
+   - **Preserved Parameters:**
+     - Positive and negative prompts
+     - Model name (checkpoint)
+     - Seed, steps, CFG scale
+     - Sampler and scheduler
+     - Image dimensions (width/height)
+   - **MetaHub Timer Node Integration:**
+     - Automatically included in generated workflows
+     - Records timestamp when it executes
+     - Save Node calculates elapsed time from timestamp
+     - Ensures accurate `generation_time_ms` and `steps_per_second` metrics
+   - **Not Preserved (Advanced Features):**
+     - ControlNet inputs and preprocessing
+     - Upscalers and high-res fixes
+     - Refiner models and switch points
+     - Custom node configurations
+     - Multi-stage workflows
+     - Advanced LoRA configurations beyond basic weights
+   - **Approach Rationale:**
+     - Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
+     - Consistent parameter extraction across different formats
+     - Compatibility across different ComfyUI setups and versions
+     - Fast workflow execution with minimal overhead
+     - No dependency on complex custom nodes
+
+3. **Progress Tracking** (`contexts/ComfyUIProgressContext.tsx`)
+   - Real-time WebSocket-based progress tracking (unlike A1111's polling)
+   - Context provider wraps entire app (see `index.tsx`)
+   - Tracks: current node, total nodes, progress percentage, current image
+   - Preview image updates during generation
+   - Automatic cleanup on completion/error
+   - Connection state management
+
+4. **Copy to Clipboard Hook** (`hooks/useCopyToComfyUI.ts`)
+   - Formats metadata as JSON workflow
+   - Copies complete workflow to clipboard
+   - Toast notification: "Workflow copied! Load it in ComfyUI."
+   - Error handling for clipboard API failures
+   - Use case: Manual workflow customization in ComfyUI
+
+5. **Background Generation Hook** (`hooks/useGenerateWithComfyUI.ts`)
+   - Builds workflow from metadata
+   - Sends workflow directly to ComfyUI API via `POST /prompt`
+   - Real-time progress tracking via WebSocket
+   - Toast notifications for success/failure
+   - Generated images automatically saved by MetaHub Save Node with full metadata
+   - Modal UI with customizable generation parameters:
+     - Seed (randomize or specify)
+     - Steps (1-100 range)
+     - CFG scale (0-20 range)
+     - Prompt editing (positive/negative)
+   - Primary workflow for quick image variations
+
+**MetaHub Save Node (Official Companion Node):**
+
+The ComfyUI integration relies on the [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) custom node for complete metadata support.
+
+**Repository:** `d:\ImageMetaHub-ComfyUI-Save` (additional working directory)
+
+**Features:**
+- **Auto-Extraction:** Detects sampler params, prompts, model/VAE, and LoRAs directly from workflow
+- **Performance Metrics:** Auto-tracks GPU usage, VRAM peak, generation time, and software versions
+- **Dual Metadata Format:**
+  - PNG tEXt "parameters" (A1111/Civitai compatible)
+  - PNG iTXt "imagemetahub_data" (extended JSON with full workflow)
+- **Model Hashes:** Calculates SHA256 hashes (AutoV2 format) for models and LoRAs
+- **Never Fails:** Silent fallback on errors - generation never stops
+
+**Performance Metrics Structure:**
+```json
+{
+  "_analytics": {
+    "vram_peak_mb": 3165.44,           // CUDA GPUs only
+    "gpu_device": "NVIDIA GeForce RTX 3060 Ti",
+    "generation_time_ms": 1523,        // Requires MetaHub Timer node
+    "steps_per_second": 13.2,          // Calculated from time + steps
+    "comfyui_version": "0.1.0",        // Can be null (Colab environments)
+    "torch_version": "2.6.0+cu124",
+    "python_version": "3.10.6"
+  }
+}
+```
+
+**Installation:**
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
+cd ImageMetaHub-ComfyUI-Save
+pip install -r requirements.txt
+```
+
+**Verified Telemetry System:**
+
+The app includes a visual badge and filter system to distinguish images generated with MetaHub Save Node from images saved with default ComfyUI Save Image node.
+
+**Location:** `utils/telemetryDetection.ts`, `components/ImageModal.tsx`, `components/ImagePreviewSidebar.tsx`, `components/AdvancedFilters.tsx`, `store/useImageStore.ts`
+
+**Detection Logic (`hasVerifiedTelemetry()`):**
+
+Images are considered to have "verified telemetry" if they contain:
+- **VRAM Peak** (`vram_peak_mb`): Must be number > 0
+- **GPU Device** (`gpu_device`): Must be non-empty string
+- **Software Versions**: At least one of:
+  - `comfyui_version` (can be null for Colab)
+  - `torch_version`
+  - `python_version`
+
+**Optional Metrics (Not Required):**
+- `generation_time_ms`: Only present if MetaHub Timer node in workflow
+- `steps_per_second`: Only present if MetaHub Timer node in workflow
+
+**Metadata Field Access Pattern:**
+```typescript
+// Try both analytics and _analytics (underscore version used in normalizedMetadata)
+const analytics = image.metadata?.normalizedMetadata?.analytics ||
+                  (image.metadata?.normalizedMetadata as any)?._analytics;
+```
+
+**Badge UI Implementation:**
+
+**ImageModal.tsx (lines 592-602):**
+```tsx
+{hasVerifiedTelemetry(image) && (
+  <span
+    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+    title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+  >
+    <CheckCircle size={14} className="flex-shrink-0" />
+    <span className="whitespace-nowrap">Verified Telemetry</span>
+  </span>
+)}
+```
+
+**ImagePreviewSidebar.tsx (lines 275-286):**
+- Same badge design with shorter text: "Verified" instead of "Verified Telemetry"
+
+**AdvancedFilters.tsx (lines 362-382):**
+- Checkbox filter with green styling
+- Label: "Verified Telemetry Only (MetaHub Save Node)"
+- Explanation text about complete performance metrics
+
+**Filter Implementation (`store/useImageStore.ts`, lines 603-605):**
+```typescript
+if (advancedFilters.hasVerifiedTelemetry === true) {
+  results = results.filter(image => hasVerifiedTelemetry(image));
+}
+```
+
+**Design Intent:**
+- Create "desire for completeness" encouraging users to use MetaHub Save Node
+- Visual distinction between images with/without complete metrics
+- Easy filtering to find images with verified telemetry data
+
+**UI Integration:**
+
+- **ImagePreviewSidebar**: Split button (Copy to ComfyUI primary, Generate in dropdown)
+- **ImageModal**: Split button (same design) + Generate Variation modal
+- **ComfyUIGenerateModal**: Full-screen modal with parameter customization
+  - Seed input with randomize button
+  - Steps slider (1-100)
+  - CFG slider (0-20)
+  - Positive/negative prompt text areas
+  - Real-time progress bar with node tracking
+  - Preview image updates during generation
+
+**User Workflows:**
+
+1. **Copy for Manual Editing**:
+   - Click "Copy to ComfyUI"
+   - Open ComfyUI web interface
+   - Load workflow from clipboard (Ctrl+V or Load button)
+   - Customize workflow with additional nodes (ControlNet, upscalers, etc.)
+   - Generate manually
+
+2. **Quick Generate** (Primary):
+   - Click "Generate with ComfyUI" button
+   - Modal opens with pre-filled parameters
+   - Customize seed, steps, CFG, prompts as needed
+   - Click "Generate"
+   - Real-time progress tracking via WebSocket
+   - Generated image automatically saved by MetaHub Save Node
+   - Image includes verified telemetry badge
+
+**Configuration:**
+
+Settings in `store/useSettingsStore.ts`:
+- `comfyUIServerUrl`: Default `http://127.0.0.1:8188`
+- `comfyUIConnectionStatus`: Connection state tracking ('connected' | 'disconnected' | 'checking')
+- Connection test button in Settings modal (tests `/system_stats` endpoint)
+
+**ComfyUI Setup Requirements:**
+
+User must:
+1. Install ComfyUI locally
+2. Install MetaHub Save Node custom node
+3. Install MetaHub Timer node (included with Save Node package)
+4. ComfyUI API runs by default on `http://127.0.0.1:8188` (no flags needed)
+5. Ensure CORS is configured if using non-default ports
+
+**Common Issues:**
+
+- **Connection timeout**: ComfyUI not running or wrong port
+  - Check ComfyUI is running: `http://127.0.0.1:8188` should load web interface
+  - Verify port in Settings → ComfyUI Integration
+
+- **"MetaHub Save Node not found" error**: Custom node not installed
+  - Clone repo to `ComfyUI/custom_nodes/ImageMetaHub-ComfyUI-Save`
+  - Run `pip install -r requirements.txt`
+  - Restart ComfyUI
+
+- **Generation works but no verified telemetry badge**: Old workflow without Timer node
+  - This is expected for images generated before Timer node was added to workflow builder
+  - Badge requires: VRAM, GPU device, software versions (timing metrics optional)
+  - Update to latest version for Timer node integration
+
+- **WebSocket connection fails**: CORS or firewall issue
+  - Check browser console for WebSocket errors
+  - Verify ComfyUI allows WebSocket connections
+  - Try disabling browser extensions
+
+- **Workflow fails with "node type not found"**: Model or sampler not available
+  - Check that model referenced in metadata exists in `ComfyUI/models/checkpoints/`
+  - Workflow builder may fall back to default model if specified model not found
+
+- **Generated images missing LoRAs**: Workflow builder limitation
+  - Current implementation preserves basic LoRA info but doesn't include in generated workflow
+  - Load generated workflow in ComfyUI and manually add LoRA Loader nodes
+
+- **Images from Google Colab show `comfyui_version: null`**: Expected behavior
+  - Colab environments don't report ComfyUI version
+  - Detection still works via torch_version and python_version
+  - Badge will still appear
+
+**Testing ComfyUI Integration:**
+
+```bash
+# Start ComfyUI (default port 8188)
+python main.py
+
+# In app:
+# 1. Settings → ComfyUI Integration → Test Connection
+# 2. Verify "Connected" status
+# 3. Open image with metadata → Click "Generate with ComfyUI"
+# 4. Customize parameters in modal
+# 5. Click Generate and watch real-time progress
+# 6. Verify generated image appears with verified telemetry badge
+# 7. Check image metadata includes _analytics field with performance metrics
+
+# Test verified telemetry filter:
+# 1. Advanced Filters → Check "Verified Telemetry Only"
+# 2. Verify only images with MetaHub Save Node metadata appear
+# 3. Verify badge appears on all visible images
+```
+
+**MetaHub Timer Node Integration:**
+
+Generated workflows automatically include the MetaHub Timer node for accurate timing:
+- Placed between CheckpointLoader and CLIPTextEncode nodes
+- Records timestamp when it executes
+- Save Node calculates elapsed time from this timestamp
+- Ensures `generation_time_ms` and `steps_per_second` are populated
+- Required for complete verified telemetry (VRAM + GPU device + timing + software versions)
+
+**Workflow Generation vs Original Workflow:**
+
+IMPORTANT: Image MetaHub does NOT attempt to recreate the original workflow used to generate an image. Instead, it:
+1. Extracts normalized parameters from metadata (regardless of source: A1111, ComfyUI, Fooocus, etc.)
+2. Generates a **minimal txt2img workflow** with those parameters
+3. Focuses on core parameters: prompts, model, seed, steps, CFG, sampler, dimensions
+4. Omits advanced features like ControlNet, upscalers, refiner models, custom nodes
+
+**Why This Approach:**
+- Universal compatibility: works with images from any AI generator
+- Consistent behavior: same workflow structure every time
+- Reliability: no dependency on custom nodes or complex setups
+- Performance: fast execution with minimal overhead
+- Starting point: users can load and enhance workflow in ComfyUI if needed
+
+For advanced workflows (ControlNet, upscaling, multi-stage), users should:
+1. Use "Copy to ComfyUI" to get basic workflow
+2. Load in ComfyUI web interface
+3. Manually add advanced nodes (ControlNet, upscaler, etc.)
+4. Save custom workflow template for reuse
+
 ## Common Tasks
 
 ### Adding New Metadata Format Support
