@@ -87,7 +87,7 @@ For more detailed options (CLI, dev setup, advanced config), see the sections be
 Image MetaHub parses metadata from:
 
 * Stable Diffusion / Automatic1111 images (PNG info, etc.)
-* ComfyUI (partial coverage; parser is actively being extended)
+* ComfyUI (**full coverage** with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save); partial coverage for legacy workflows)
 * Fooocus
 * SD.Next
 * Forge
@@ -96,9 +96,9 @@ Image MetaHub parses metadata from:
 * Online services like Midjourney / Nijijourney (when prompts/settings are saved into the downloaded files)
 * Other tools that store generation parameters in PNG/JPG metadata
 
-> Note: ComfyUI support is still evolving and may not cover every custom node or complex workflow yet.
+> **Recommended for ComfyUI users:** Install the [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) custom node for guaranteed full metadata compatibility. The node auto-extracts all generation parameters and saves them in both A1111 and Image MetaHub formats.
 >
-> If Image MetaHub does not read the metadata from your ComfyUI images yet, please open an issue with your workflow / sample images and that format will be added in the next update whenever possible.
+> For legacy ComfyUI images without MetaHub Save Node, Image MetaHub attempts to parse metadata from standard workflow formats, though coverage may vary depending on custom nodes and workflow complexity.
 
 If a tool writes prompt / settings in a consistent way, Image MetaHub can usually read it. The parsers are extensible and can be updated as new formats appear.
 
@@ -176,11 +176,11 @@ The **MetaHub Timer** node is automatically included to ensure accurate `generat
 **Why This Approach?**
 
 This simplified workflow approach ensures:
-- ✅ Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
-- ✅ Consistent parameter extraction across different formats
-- ✅ Compatibility across different ComfyUI setups and versions
-- ✅ Fast workflow execution with minimal overhead
-- ✅ No dependency on complex custom nodes
+-  Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
+-  Consistent parameter extraction across different formats
+-  Compatibility across different ComfyUI setups and versions
+-  Fast workflow execution with minimal overhead
+-  No dependency on complex custom nodes
 
 **Setup:**
 
