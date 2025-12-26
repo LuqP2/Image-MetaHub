@@ -5,6 +5,7 @@ import App from './App.tsx';
 import './src/index.css';
 import './src/styles/themes.css';
 import { A1111ProgressProvider } from './contexts/A1111ProgressContext.tsx';
+import { ComfyUIProgressProvider } from './contexts/ComfyUIProgressContext.tsx';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
@@ -26,7 +27,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <A1111ProgressProvider>
-      <App />
+      <ComfyUIProgressProvider>
+        <App />
+      </ComfyUIProgressProvider>
     </A1111ProgressProvider>
   </React.StrictMode>
 );
