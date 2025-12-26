@@ -260,6 +260,7 @@ interface ImageState {
   setShowFavoritesOnly: (show: boolean) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
+  importMetadataTags: (images: IndexedImage[]) => Promise<void>;
   flushPendingImages: () => void;
 
   // Navigation Actions
@@ -847,6 +848,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             pendingImagesQueue.push(...newImages);
             scheduleFlush();
+            // Import tags from metadata asynchronously (doesn't block indexing)
+            get().importMetadataTags(newImages);
         },
 
         replaceDirectoryImages: (directoryId, newImages) => {
@@ -1422,6 +1425,70 @@ export const useImageStore = create<ImageState>((set, get) => {
         refreshAvailableTags: async () => {
             const tags = await getAllTags();
             set({ availableTags: tags });
+        },
+
+        importMetadataTags: async (images) => {
+            if (!images || images.length === 0) return;
+
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            // Collect all tags to import from metadata
+            for (const image of images) {
+                const metadataTags = image.metadata?.normalizedMetadata?.tags;
+                if (!metadataTags || metadataTags.length === 0) continue;
+
+                const currentAnnotation = annotations.get(image.id);
+                const existingTags = currentAnnotation?.tags ?? [];
+
+                // Normalize and filter out duplicates
+                const newTags = metadataTags
+                    .map(tag => tag.trim().toLowerCase())
+                    .filter(tag => tag && !existingTags.includes(tag));
+
+                if (newTags.length === 0) continue;
+
+                const updatedAnnotation: ImageAnnotations = {
+                    imageId: image.id,
+                    isFavorite: currentAnnotation?.isFavorite ?? false,
+                    tags: [...existingTags, ...newTags],
+                    addedAt: currentAnnotation?.addedAt ?? Date.now(),
+                    updatedAt: Date.now(),
+                };
+
+                updatedAnnotations.push(updatedAnnotation);
+            }
+
+            if (updatedAnnotations.length === 0) return;
+
+            // Update state
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const updatedImages = state.images.map(img => {
+                    const annotation = newAnnotations.get(img.id);
+                    return annotation ? { ...img, tags: annotation.tags } : img;
+                });
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            // Persist annotations
+            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+                console.error('Failed to import metadata tags:', error);
+            });
+
+            // Refresh available tags
+            get().refreshAvailableTags();
         },
 
         flushPendingImages: () => {

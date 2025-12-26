@@ -374,9 +374,12 @@ The ComfyUI integration relies on the [MetaHub Save Node](https://github.com/Luq
 **Features:**
 - **Auto-Extraction:** Detects sampler params, prompts, model/VAE, and LoRAs directly from workflow
 - **Performance Metrics:** Auto-tracks GPU usage, VRAM peak, generation time, and software versions
+- **User Inputs:** Supports custom tags and notes fields that are automatically imported into Image MetaHub
+  - **Tags**: Automatically added to ImageAnnotations system, available for filtering and search
+  - **Notes**: Displayed in ImageModal and ImagePreviewSidebar as read-only metadata
 - **Dual Metadata Format:**
   - PNG tEXt "parameters" (A1111/Civitai compatible)
-  - PNG iTXt "imagemetahub_data" (extended JSON with full workflow)
+  - PNG iTXt "imagemetahub_data" (extended JSON with full workflow, tags, and notes)
 - **Model Hashes:** Calculates SHA256 hashes (AutoV2 format) for models and LoRAs
 - **Never Fails:** Silent fallback on errors - generation never stops
 
@@ -402,6 +405,23 @@ git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
 cd ImageMetaHub-ComfyUI-Save
 pip install -r requirements.txt
 ```
+
+**Tags and Notes Integration:**
+
+When images are generated with the MetaHub Save Node and contain tags or notes:
+
+1. **Tags Automatic Import**:
+   - During indexing, tags from the `imagemetahub_data` metadata are automatically imported into the ImageAnnotations system
+   - Tags become immediately available for filtering in Advanced Filters
+   - Tags appear in the autocomplete suggestions when adding tags to other images
+   - Users can add additional tags or remove imported tags just like manually added tags
+   - Tags are normalized (lowercase, trimmed) to maintain consistency
+
+2. **Notes Display**:
+   - Notes are displayed as read-only metadata in both ImageModal and ImagePreviewSidebar
+   - Appear in a dedicated section with purple styling to indicate MetaHub Save Node origin
+   - Formatted as pre-formatted text to preserve line breaks and spacing
+   - Cannot be edited within Image MetaHub (must be changed in ComfyUI workflow)
 
 **Verified Telemetry System:**
 

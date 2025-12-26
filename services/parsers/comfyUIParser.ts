@@ -620,6 +620,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           height: metahubData.height,
           loras: metahubData.loras || [],
           lora: metahubData.loras?.map((l: any) => l.name) || [], // Backward compatibility
+          tags: metahubData.tags || [],
+          notes: metahubData.notes || '',
           generator: 'ComfyUI',
           _detection_method: 'metahub_chunk',
           _metahub_pro: metahubData.imh_pro || null,

@@ -721,6 +721,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           </div>
 
+          {/* MetaHub Save Node Notes - Only if present */}
+          {nMeta?.notes && (
+            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
+              </div>
+              <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+            </div>
+          )}
+
           {nMeta ? (
             <div className="space-y-4">
               {/* Prompt Section - Always Visible */}

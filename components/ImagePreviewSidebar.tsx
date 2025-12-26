@@ -419,6 +419,14 @@ const ImagePreviewSidebar: React.FC = () => {
                </>
             )}
 
+            {/* MetaHub Save Node Notes */}
+            {nMeta.notes && (
+              <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                <p className="font-semibold text-purple-300 text-xs uppercase tracking-wider mb-2">Notes (MetaHub Save Node)</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+              </div>
+            )}
+
             {/* Performance Section - Collapsible */}
             {nMeta && nMeta._analytics && (
               <div>

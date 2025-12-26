@@ -296,6 +296,9 @@ export interface BaseMetadata {
   generator?: string; // Name of the AI generator/parser used
   version?: string;
   module?: string;
+  // MetaHub Save Node user inputs
+  tags?: string[]; // User-defined tags from MetaHub Save Node
+  notes?: string; // User notes from MetaHub Save Node
   // Performance/benchmark metrics (from MetaHub Save Node analytics chunk)
   analytics?: {
     // Tier 1: CRITICAL metrics
