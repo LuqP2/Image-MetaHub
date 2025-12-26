@@ -308,6 +308,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             pendingFlushTimer = null;
         }
 
+        let addedImages: IndexedImage[] = [];
         set(state => {
             const deduped = new Map<string, IndexedImage>();
             for (const img of imagesToAdd) {
@@ -321,9 +322,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (uniqueNewImages.length === 0) {
                 return state;
             }
+            addedImages = uniqueNewImages;
             const allImages = [...state.images, ...uniqueNewImages];
             return _updateState(state, allImages);
         });
+
+        // Import tags from metadata after images are added to store
+        if (addedImages.length > 0) {
+            get().importMetadataTags(addedImages);
+        }
     };
 
     const scheduleFlush = () => {
@@ -848,8 +855,6 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             pendingImagesQueue.push(...newImages);
             scheduleFlush();
-            // Import tags from metadata asynchronously (doesn't block indexing)
-            get().importMetadataTags(newImages);
         },
 
         replaceDirectoryImages: (directoryId, newImages) => {
