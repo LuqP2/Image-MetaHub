@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -14,6 +14,7 @@ import { ComfyUIGenerateModal } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -588,18 +589,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded-lg">Cancel</button>
               </div>
             ) : (
-              <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2">
-                {image.name}
-                <button 
-                  onClick={() => setIsRenaming(true)} 
+              <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2 flex-wrap">
+                <span className="break-all">{image.name}</span>
+                {hasVerifiedTelemetry(image) && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+                    title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                  >
+                    <CheckCircle size={14} className="flex-shrink-0" />
+                    <span className="whitespace-nowrap">Verified Telemetry</span>
+                  </span>
+                )}
+                <button
+                  onClick={() => setIsRenaming(true)}
                   disabled={isIndexing}
                   className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
                   title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
                 >
                   <Pencil size={16} />
                 </button>
-                <button 
-                  onClick={handleDelete} 
+                <button
+                  onClick={handleDelete}
                   disabled={isIndexing}
                   className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
                   title={isIndexing ? "Cannot delete during indexing" : "Delete image"}

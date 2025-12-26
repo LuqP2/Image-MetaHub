@@ -7,6 +7,7 @@ import {
   bulkSaveAnnotations,
   getAllTags,
 } from '../services/imageAnnotationsStorage';
+import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 type SelectionState = StoredSelectionState;
 
@@ -598,6 +599,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     
                     return true;
                 });
+            }
+            if (advancedFilters.hasVerifiedTelemetry === true) {
+                results = results.filter(image => hasVerifiedTelemetry(image));
             }
         }
 

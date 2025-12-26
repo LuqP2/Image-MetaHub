@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -10,6 +10,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
 import { ComfyUIGenerateModal } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
+import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 // Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
@@ -271,7 +272,18 @@ const ImagePreviewSidebar: React.FC = () => {
 
         {/* Metadata */}
         <div>
-          <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
+            {hasVerifiedTelemetry(previewImage) && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+                title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+              >
+                <CheckCircle size={12} className="flex-shrink-0" />
+                <span className="whitespace-nowrap">Verified</span>
+              </span>
+            )}
+          </div>
           <p className="text-xs text-blue-400 font-mono break-all">{new Date(previewImage.lastModified).toLocaleString()}</p>
         </div>
 
