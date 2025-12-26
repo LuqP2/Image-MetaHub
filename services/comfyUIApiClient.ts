@@ -170,20 +170,26 @@ export class ComfyUIApiClient {
         }
       },
       "2": {
-        "class_type": "CLIPTextEncode",
+        "class_type": "MetaHubTimer",
         "inputs": {
-          "text": metadata.prompt || "",
           "clip": ["1", 1]
         }
       },
       "3": {
         "class_type": "CLIPTextEncode",
         "inputs": {
-          "text": metadata.negativePrompt || "",
-          "clip": ["1", 1]
+          "text": metadata.prompt || "",
+          "clip": ["2", 0]
         }
       },
       "4": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": metadata.negativePrompt || "",
+          "clip": ["2", 0]
+        }
+      },
+      "5": {
         "class_type": "EmptyLatentImage",
         "inputs": {
           "width": metadata.width || 1024,
@@ -191,7 +197,7 @@ export class ComfyUIApiClient {
           "batch_size": 1
         }
       },
-      "5": {
+      "6": {
         "class_type": "KSampler",
         "inputs": {
           "seed": metadata.seed !== undefined ? metadata.seed : Math.floor(Math.random() * 1000000000),
@@ -201,24 +207,25 @@ export class ComfyUIApiClient {
           "scheduler": metadata.scheduler || "normal",
           "denoise": 1.0,
           "model": ["1", 0],
-          "positive": ["2", 0],
-          "negative": ["3", 0],
-          "latent_image": ["4", 0]
-        }
-      },
-      "6": {
-        "class_type": "VAEDecode",
-        "inputs": {
-          "samples": ["5", 0],
-          "vae": ["1", 2]
+          "positive": ["3", 0],
+          "negative": ["4", 0],
+          "latent_image": ["5", 0]
         }
       },
       "7": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": ["6", 0],
+          "vae": ["1", 2]
+        }
+      },
+      "8": {
         "class_type": "MetaHubSaveNode",
         "inputs": {
-          "images": ["6", 0],
+          "images": ["7", 0],
           "filename_pattern": "MetaHub_%date%_%time%_%counter%",
-          "file_format": "PNG"
+          "file_format": "PNG",
+          "generation_time_override": ["2", 1]
         }
       }
     };
