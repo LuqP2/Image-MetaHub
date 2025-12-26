@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, X, Calendar, Settings } from 'lucide-react';
+import { ChevronDown, ChevronRight, X, Calendar, Settings, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AdvancedFiltersProps {
@@ -357,6 +357,28 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Verified Telemetry Checkbox */}
+              <div className="pt-2 border-t border-gray-700">
+                <label className="flex items-center cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={localFilters.hasVerifiedTelemetry === true}
+                    onChange={(e) => updateFilter('hasVerifiedTelemetry', e.target.checked ? true : null)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800 cursor-pointer"
+                  />
+                  <span className="ml-3 flex items-center gap-2 text-sm text-gray-300 group-hover:text-green-400 transition-colors">
+                    <CheckCircle size={16} className="text-green-500" />
+                    <span>
+                      Verified Telemetry Only
+                      <span className="ml-2 text-xs text-gray-500">(MetaHub Save Node)</span>
+                    </span>
+                  </span>
+                </label>
+                <p className="mt-1 ml-7 text-xs text-gray-500">
+                  Show only images with complete performance metrics (generation time, VRAM, GPU device, software versions)
+                </p>
               </div>
 
             </div>

@@ -2,15 +2,19 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
+import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useImageComparison } from '../hooks/useImageComparison';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import { ComfyUIGenerateModal } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -128,16 +132,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
 
   // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
 
+  // ComfyUI integration hooks
+  const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
+  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
+
   // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
 
   // Feature access (license/trial gating)
-  const { canUseA1111, canUseComparison, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
 
   // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -580,18 +589,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded-lg">Cancel</button>
               </div>
             ) : (
-              <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2">
-                {image.name}
-                <button 
-                  onClick={() => setIsRenaming(true)} 
+              <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2 flex-wrap">
+                <span className="break-all">{image.name}</span>
+                {hasVerifiedTelemetry(image) && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+                    title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                  >
+                    <CheckCircle size={14} className="flex-shrink-0" />
+                    <span className="whitespace-nowrap">Verified Telemetry</span>
+                  </span>
+                )}
+                <button
+                  onClick={() => setIsRenaming(true)}
                   disabled={isIndexing}
                   className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
                   title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
                 >
                   <Pencil size={16} />
                 </button>
-                <button 
-                  onClick={handleDelete} 
+                <button
+                  onClick={handleDelete}
                   disabled={isIndexing}
                   className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
                   title={isIndexing ? "Cannot delete during indexing" : "Delete image"}
@@ -702,6 +720,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* MetaHub Save Node Notes - Only if present */}
+          {nMeta?.notes && (
+            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
+              </div>
+              <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+            </div>
+          )}
 
           {nMeta ? (
             <div className="space-y-4">
@@ -935,6 +963,103 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ComfyUI Integration */}
+          {nMeta && (
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+
+              {/* Generate Button */}
+              <button
+                onClick={() => {
+                  if (!canUseComfyUI) {
+                    showProModal('comfyui');
+                    return;
+                  }
+                  setIsComfyUIGenerateModalOpen(true);
+                }}
+                disabled={canUseComfyUI && !nMeta.prompt}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl mb-2"
+              >
+                {isGeneratingComfyUI && canUseComfyUI ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate with ComfyUI</span>
+                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Copy Workflow Button */}
+              <button
+                onClick={() => {
+                  if (!canUseComfyUI) {
+                    showProModal('comfyui');
+                    return;
+                  }
+                  copyToComfyUI(image);
+                }}
+                disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
+                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+              >
+                {isCopyingComfyUI && canUseComfyUI ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Copying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3 h-3" />
+                    <span>Copy Workflow JSON</span>
+                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Status messages */}
+              {(copyStatusComfyUI || generateStatusComfyUI) && (
+                <div className={`mt-2 p-2 rounded text-xs ${
+                  (copyStatusComfyUI?.success || generateStatusComfyUI?.success)
+                    ? 'bg-green-900/50 border border-green-700 text-green-300'
+                    : 'bg-red-900/50 border border-red-700 text-red-300'
+                }`}>
+                  {copyStatusComfyUI?.message || generateStatusComfyUI?.message}
+                </div>
+              )}
+
+              {/* ComfyUI Generate Modal */}
+              {isComfyUIGenerateModalOpen && nMeta && (
+                <ComfyUIGenerateModal
+                  isOpen={isComfyUIGenerateModalOpen}
+                  onClose={() => setIsComfyUIGenerateModalOpen(false)}
+                  image={image}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithComfyUI(image, customMetadata);
+                    setIsComfyUIGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGeneratingComfyUI}
                 />
               )}
             </div>

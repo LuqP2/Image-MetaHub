@@ -302,7 +302,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   const errors: string[] = [];
   const absolutePath = path.resolve(filePath);
   const buffer = await fs.readFile(absolutePath);
-  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
   const startedAt = Date.now();
 
   let rawMetadata: ImageMetadata | null = null;

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comparison' | 'analytics';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics';
 
 type ProModalState = {
   proModalOpen: boolean;
@@ -72,6 +72,7 @@ export const useFeatureAccess = () => {
 
   // Feature flags (all Pro features have same access requirements)
   const canUseA1111 = allowDuringInit || canUseDuringTrialOrPro;
+  const canUseComfyUI = allowDuringInit || canUseDuringTrialOrPro;
   const canUseComparison = allowDuringInit || canUseDuringTrialOrPro;
   const canUseAnalytics = allowDuringInit || canUseDuringTrialOrPro;
 
@@ -108,6 +109,7 @@ export const useFeatureAccess = () => {
   return {
     // Feature flags
     canUseA1111,
+    canUseComfyUI,
     canUseComparison,
     canUseAnalytics,
 
