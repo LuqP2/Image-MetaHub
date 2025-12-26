@@ -24,10 +24,9 @@ export function hasVerifiedTelemetry(image: IndexedImage): boolean {
     return false;
   }
 
-  // Critical metrics that must be present
-  const hasGenerationTime = typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0;
+  // Core metrics that must be present (VRAM and GPU device are always tracked by MetaHub Save Node)
+  const hasVramPeak = typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0;
   const hasGpuDevice = typeof analytics.gpu_device === 'string' && analytics.gpu_device.length > 0;
-  const hasStepsPerSecond = typeof analytics.steps_per_second === 'number' && !isNaN(analytics.steps_per_second);
 
   // Software versions (at least one should be present and not null/empty)
   const hasComfyVersion = analytics.comfyui_version !== null && analytics.comfyui_version !== undefined &&
@@ -39,8 +38,10 @@ export function hasVerifiedTelemetry(image: IndexedImage): boolean {
 
   const hasSoftwareVersions = hasComfyVersion || hasTorchVersion || hasPythonVersion;
 
-  // Verified telemetry requires critical metrics + software versions
-  return hasGenerationTime && hasGpuDevice && hasStepsPerSecond && hasSoftwareVersions;
+  // Verified telemetry = MetaHub Save Node detected
+  // Requires: VRAM peak, GPU device, and at least one software version
+  // Note: generation_time and steps_per_second are optional (require MetaHub Timer node)
+  return hasVramPeak && hasGpuDevice && hasSoftwareVersions;
 }
 
 /**
