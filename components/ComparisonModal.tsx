@@ -18,6 +18,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   const [sharedZoom, setSharedZoom] = useState<ZoomState>({ zoom: 1, x: 0, y: 0 });
   const [metadataExpanded, setMetadataExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<ComparisonViewMode>('side-by-side');
+  const [metadataViewMode, setMetadataViewMode] = useState<'standard' | 'diff'>('standard');
 
   // Handlers
   const updateSharedZoom = (zoom: number, x: number, y: number) => {
@@ -204,17 +205,50 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
 
       {/* Metadata Panels */}
       <div className="bg-gray-900/50 border-t border-gray-700 p-4 overflow-y-auto max-h-[40vh]">
+        {/* Metadata View Mode Toggle */}
+        <div className="flex justify-between items-center mb-4 max-w-7xl mx-auto">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Metadata</h3>
+          <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMetadataViewMode('standard')}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40
+                         ${metadataViewMode === 'standard'
+                           ? 'bg-blue-600 text-white border-blue-500/60'
+                           : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+                         }`}
+              title="Show all metadata in standard format"
+            >
+              Standard View
+            </button>
+            <button
+              onClick={() => setMetadataViewMode('diff')}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors
+                         ${metadataViewMode === 'diff'
+                           ? 'bg-blue-600 text-white border-blue-500/60'
+                           : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+                         }`}
+              title="Highlight differences between metadata"
+            >
+              Diff View
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-4 max-w-7xl mx-auto">
           <ComparisonMetadataPanel
             image={comparisonImages[0]}
             isExpanded={metadataExpanded}
             onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
+            viewMode={metadataViewMode}
+            otherImageMetadata={comparisonImages[1]?.metadata?.normalizedMetadata}
           />
 
           <ComparisonMetadataPanel
             image={comparisonImages[1]}
             isExpanded={metadataExpanded}
             onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
+            viewMode={metadataViewMode}
+            otherImageMetadata={comparisonImages[0]?.metadata?.normalizedMetadata}
           />
         </div>
       </div>

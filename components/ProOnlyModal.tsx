@@ -27,6 +27,17 @@ const featureInfo = {
       'Batch generation support',
     ],
   },
+  comfyui: {
+    name: 'ComfyUI Integration',
+    icon: Sparkles,
+    description: 'Generate variations or copy workflows to ComfyUI',
+    benefits: [
+      'Quick generation from metadata',
+      'Real-time WebSocket progress tracking',
+      'Workflow copy for manual editing',
+      'Automatic metadata-rich saves',
+    ],
+  },
   comparison: {
     name: 'Image Comparison',
     icon: GitCompare,
@@ -64,7 +75,12 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const info = featureInfo[feature];
+  const info = featureInfo[feature] ?? {
+    name: 'Pro Feature',
+    icon: Sparkles,
+    description: 'Unlock additional features with Pro access',
+    benefits: ['Pro-only functionality'],
+  };
   const Icon = info.icon;
 
   const trialCopy = (() => {
