@@ -126,9 +126,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Image MetaHub 0.10.5 is here — a dedicated performance release.</strong></p>
+                  <p><strong className="text-white">Image MetaHub 0.11.0 is here — bringing major improvements to metadata parsing and display.</strong></p>
 
-                  <p>After the major feature drops in the 0.10.x line, I spent this cycle strictly "under the hood." The goal was to make the app feel significantly lighter and snappier, especially for large libraries. <strong>0.10.5</strong> brings a new prioritized loading queue (no more laggy thumbnails when scrolling fast), optimized IPC communication (much less CPU overhead), and smoother rendering across the grid and table views.</p>
+                  <p>After the performance-focused 0.10.x releases, <strong>0.11.0</strong> introduces comprehensive LoRA weight support across all parsers, seamless MetaHub Save Node integration for instant ComfyUI metadata extraction, and enhanced WebP EXIF parsing. This release significantly improves how you view and analyze your AI-generated images, making metadata more detailed and accessible.</p>
 
                   <p>If you have a massive collection, you should feel the difference immediately: less stutter, cleaner scrolling, and smarter resource usage.</p>
 

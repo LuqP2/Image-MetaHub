@@ -21,7 +21,7 @@ const StatusBar: React.FC<StatusBarProps> = ({
         <span>
           Displaying <span className="font-semibold text-gray-100">{filteredCount}</span> of <span className="font-semibold text-gray-100">{totalCount}</span> images across <span className="font-semibold text-gray-100">{directoryCount}</span> {folderText}
         </span>
-        <span className="text-xs text-gray-500">v0.10.5</span>
+        <span className="text-xs text-gray-500">v0.11.0</span>
       </div>
 
       {/* Metadata Enrichment Progress Bar */}

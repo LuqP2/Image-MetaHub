@@ -5,7 +5,7 @@
 **Image MetaHub** is a React + Electron desktop application for browsing large collections of AI generated images. The app focuses on fast indexing, rich metadata filters, and fully local processing so that libraries remain private.
 
 ### Current Version
-- **Version:** 0.10.5
+- **Version:** 0.11.0
 - **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
 - **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
 - **State Management:** Zustand stores for both image data and application settings
@@ -128,3 +128,77 @@ The application provides bidirectional workflow with Automatic1111 WebUI, enabli
 - **Vitest** powers unit tests for the parser suite and utility layers.
 - **ESLint** enforces consistent code style, especially across the large parser surface.
 - **Pre-release scripts** (`generate-release.js`, `auto-release.js`, etc.) automate changelog syncing and release packaging.
+
+## Version Update Guide
+
+When updating the application version, the following files must be updated to ensure consistency across all components:
+
+### Required Version Updates
+
+1. **package.json** (line 6)
+   - Update the `"version"` field to the new version number
+   - This is the canonical version used by Electron's `app.getVersion()`
+
+2. **components/Header.tsx** (around line 67)
+   - Update the header title: `Image MetaHub v{VERSION}`
+   - This displays in the main application header
+
+3. **components/StatusBar.tsx** (around line 24)
+   - Update the status bar version: `v{VERSION}`
+   - Appears in the footer status bar
+
+4. **components/FolderSelector.tsx** (around lines 20-21)
+   - Update welcome screen title: `Welcome to Image MetaHub v{VERSION}`
+   - Update version display: `v{VERSION}`
+
+5. **index.html** (line 10)
+   - Update page title: `<title>Image MetaHub v{VERSION}</title>`
+
+6. **electron.mjs** (around lines 520 and 1230-1231)
+   - Update window title fallback: `Image MetaHub v{VERSION}`
+   - Update mockUpdateInfo version and release notes header
+
+7. **cli.ts** (around line 15)
+   - Update CLI version: `.version('{VERSION}')`
+
+8. **CHANGELOG.md**
+   - Add or update the version section header: `## [{VERSION}] - YYYY-MM-DD`
+   - Document all changes in appropriate sections (Added, Changed, Fixed, etc.)
+
+9. **components/ChangelogModal.tsx** (around lines 129-131)
+   - Update "Message from the Dev" section with new version number
+   - Update description text to reflect changes in the new version
+
+10. **public/CHANGELOG.md**
+    - Synchronize with main CHANGELOG.md using: `cp CHANGELOG.md public/CHANGELOG.md`
+    - This file is used by the build process and GitHub releases
+
+11. **ARCHITECTURE.md** (line 8)
+    - Update "Current Version" section to reflect new version
+
+### Version Update Checklist
+
+- [ ] Update package.json version
+- [ ] Update all UI component version displays (Header, StatusBar, FolderSelector)
+- [ ] Update index.html page title
+- [ ] Update electron.mjs window title and mock update info
+- [ ] Update cli.ts version
+- [ ] Update or add CHANGELOG.md section for new version
+- [ ] Update ChangelogModal.tsx message from dev
+- [ ] Synchronize public/CHANGELOG.md
+- [ ] Update ARCHITECTURE.md current version
+- [ ] Verify all changes with search: `grep -r "OLD_VERSION" .`
+
+### Automated Search Command
+
+To find all occurrences of a version number:
+```bash
+grep -r "0\.10\.5" . --include="*.ts" --include="*.tsx" --include="*.html" --include="*.json" --include="*.md" --include="*.mjs"
+```
+
+### Release Workflow
+
+After updating all version references:
+1. Commit changes with message: `chore: bump version to {VERSION}`
+2. Create release using GitHub workflow or `npm run auto-release`
+3. GitHub Actions will build binaries and create release with CHANGELOG.md content
