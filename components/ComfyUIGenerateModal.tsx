@@ -62,6 +62,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     loras: [],
   });
 
+  const [modelSearch, setModelSearch] = useState('');
   const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
   const [validationError, setValidationError] = useState<string>('');
 
@@ -82,6 +83,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   useEffect(() => {
     if (isOpen && image.metadata?.normalizedMetadata) {
       const meta = image.metadata.normalizedMetadata;
+      const storedModel =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('IMH_COMFYUI_LAST_MODEL')
+          : null;
+      const preferredModel = storedModel || meta.model || undefined;
       setParams({
         prompt: meta.prompt || '',
         negativePrompt: meta.negativePrompt || '',
@@ -91,10 +97,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
         randomSeed: false,
         width: meta.width || 1024,
         height: meta.height || 1024,
-        model: meta.model || undefined,
+        model: preferredModel,
         loras: [],
       });
       setSelectedLoras([]);
+      setModelSearch('');
       setValidationError('');
     }
   }, [isOpen, image]);
@@ -242,6 +249,13 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               <label className="block text-sm font-medium text-gray-300">
                 Model
               </label>
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search model..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
               {isLoadingResources ? (
                 <div className="text-xs text-gray-400">Loading models...</div>
               ) : resourcesError ? (
@@ -249,12 +263,20 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               ) : (
                 <select
                   value={params.model || ''}
-                  onChange={(e) => setParams(prev => ({ ...prev, model: e.target.value }))}
+                  onChange={(e) => {
+                    const selected = e.target.value || undefined;
+                    if (selected) {
+                      localStorage.setItem('IMH_COMFYUI_LAST_MODEL', selected);
+                    }
+                    setParams(prev => ({ ...prev, model: selected }));
+                  }}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   disabled={!resources?.checkpoints || resources.checkpoints.length === 0}
                 >
                   {!params.model && <option value="">Select a model...</option>}
-                  {resources?.checkpoints.map(checkpoint => (
+                  {resources?.checkpoints
+                    .filter(checkpoint => checkpoint.toLowerCase().includes(modelSearch.trim().toLowerCase()))
+                    .map(checkpoint => (
                     <option key={checkpoint} value={checkpoint}>
                       {checkpoint}
                     </option>

@@ -59,6 +59,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     loras: [],
   });
 
+  const [modelSearch, setModelSearch] = useState('');
   const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
   const [validationError, setValidationError] = useState<string>('');
 
@@ -79,6 +80,11 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   useEffect(() => {
     if (isOpen && image.metadata?.normalizedMetadata) {
       const meta = image.metadata.normalizedMetadata;
+      const storedModel =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('IMH_A1111_LAST_MODEL')
+          : null;
+      const preferredModel = storedModel || meta.model || undefined;
       setParams({
         prompt: meta.prompt || '',
         negativePrompt: meta.negativePrompt || '',
@@ -89,10 +95,11 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         numberOfImages: 1,
         width: meta.width || 512,
         height: meta.height || 512,
-        model: meta.model || undefined,
+        model: preferredModel,
         loras: [],
       });
       setSelectedLoras([]);
+      setModelSearch('');
       setValidationError('');
     }
   }, [isOpen, image]);
@@ -224,7 +231,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
       >
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Generate Variation</h2>
+          <h2 className="text-2xl font-bold">Generate with A1111</h2>
           <button
             onClick={handleClose}
             className="p-1 rounded-full hover:bg-gray-700 transition-colors"
@@ -272,6 +279,13 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               <label className="block text-sm font-medium text-gray-300">
                 Model
               </label>
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search model..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               {isLoadingResources ? (
                 <div className="text-xs text-gray-400">Loading models...</div>
               ) : resourcesError ? (
@@ -279,12 +293,20 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               ) : (
                 <select
                   value={params.model || ''}
-                  onChange={(e) => setParams(prev => ({ ...prev, model: e.target.value || undefined }))}
+                  onChange={(e) => {
+                    const selected = e.target.value || undefined;
+                    if (selected) {
+                      localStorage.setItem('IMH_A1111_LAST_MODEL', selected);
+                    }
+                    setParams(prev => ({ ...prev, model: selected }));
+                  }}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!resources?.models || resources.models.length === 0}
                 >
                   {!params.model && <option value="">Select a model...</option>}
-                  {resources?.models.map(model => (
+                  {resources?.models
+                    .filter(model => model.toLowerCase().includes(modelSearch.trim().toLowerCase()))
+                    .map(model => (
                     <option key={model} value={model}>
                       {model}
                     </option>
