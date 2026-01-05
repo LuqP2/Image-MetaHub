@@ -11,6 +11,16 @@ export interface ComfyUIConfig {
   timeout?: number;
 }
 
+export interface LoRAConfig {
+  name: string;
+  strength: number;
+}
+
+export interface WorkflowOverrides {
+  model?: string;
+  loras?: LoRAConfig[];
+}
+
 export interface ComfyUIWorkflow {
   prompt: {
     [nodeId: string]: {
@@ -157,78 +167,148 @@ export class ComfyUIApiClient {
   /**
    * Build a basic txt2img workflow from BaseMetadata
    * Uses MetaHub Save Node for automatic metadata saving
+   * Supports model and LoRA overrides for customization
    */
-  buildWorkflowFromMetadata(metadata: BaseMetadata): ComfyUIWorkflow {
+  buildWorkflowFromMetadata(metadata: BaseMetadata, overrides?: WorkflowOverrides): ComfyUIWorkflow {
     // Extract CFG scale - handle both cfgScale and cfg_scale
     const cfgScale = (metadata as any).cfgScale || metadata.cfg_scale || 7.0;
 
-    const workflow = {
-      "1": {
-        "class_type": "CheckpointLoaderSimple",
-        "inputs": {
-          "ckpt_name": metadata.model || "sd_xl_base_1.0.safetensors"
-        }
-      },
-      "2": {
-        "class_type": "MetaHubTimerNode",
-        "inputs": {
-          "clip": ["1", 1]
-        }
-      },
-      "3": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "text": metadata.prompt || "",
-          "clip": ["2", 0]
-        }
-      },
-      "4": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {
-          "text": metadata.negativePrompt || "",
-          "clip": ["2", 0]
-        }
-      },
-      "5": {
-        "class_type": "EmptyLatentImage",
-        "inputs": {
-          "width": metadata.width || 1024,
-          "height": metadata.height || 1024,
-          "batch_size": 1
-        }
-      },
-      "6": {
-        "class_type": "KSampler",
-        "inputs": {
-          "seed": metadata.seed !== undefined ? metadata.seed : Math.floor(Math.random() * 1000000000),
-          "steps": metadata.steps || 20,
-          "cfg": cfgScale,
-          "sampler_name": metadata.sampler || "euler",
-          "scheduler": metadata.scheduler || "normal",
-          "denoise": 1.0,
-          "model": ["1", 0],
-          "positive": ["3", 0],
-          "negative": ["4", 0],
-          "latent_image": ["5", 0]
-        }
-      },
-      "7": {
-        "class_type": "VAEDecode",
-        "inputs": {
-          "samples": ["6", 0],
-          "vae": ["1", 2]
-        }
-      },
-      "8": {
-        "class_type": "MetaHubSaveNode",
-        "inputs": {
-          "images": ["7", 0],
-          "filename_pattern": "MetaHub_%date%_%time%_%counter%",
-          "file_format": "PNG",
-          "generation_time_override": ["2", 4]
-        }
+    // Use override model if provided, otherwise use metadata model or default
+    const modelName = overrides?.model || metadata.model || "sd_xl_base_1.0.safetensors";
+
+    // Dynamic node numbering based on LoRAs
+    const loras = overrides?.loras || [];
+    let currentNodeId = 1;
+
+    const workflow: any = {};
+
+    // Node 1: CheckpointLoader
+    workflow["1"] = {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": modelName
       }
     };
+    currentNodeId = 2;
+
+    // Node 2: MetaHub Timer
+    workflow["2"] = {
+      "class_type": "MetaHubTimerNode",
+      "inputs": {
+        "clip": ["1", 1]
+      }
+    };
+    currentNodeId = 3;
+
+    // Track last MODEL and CLIP outputs for chaining
+    let lastModelOutput: [string, number] = ["1", 0];  // From CheckpointLoader
+    let lastClipOutput: [string, number] = ["2", 0];   // From Timer
+
+    // Inject LoRA Loader nodes if LoRAs are provided
+    if (loras.length > 0) {
+      loras.forEach((lora) => {
+        const nodeId = currentNodeId.toString();
+        workflow[nodeId] = {
+          "class_type": "LoraLoader",
+          "inputs": {
+            "lora_name": lora.name,
+            "strength_model": lora.strength,
+            "strength_clip": lora.strength,
+            "model": lastModelOutput,
+            "clip": lastClipOutput
+          }
+        };
+
+        // Update outputs for next node in chain
+        lastModelOutput = [nodeId, 0];
+        lastClipOutput = [nodeId, 1];
+        currentNodeId++;
+      });
+    }
+
+    // Node N: CLIPTextEncode (positive)
+    const positiveNodeId = currentNodeId.toString();
+    const positivePrompt = metadata.prompt || "";
+    workflow[positiveNodeId] = {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": positivePrompt,
+        "clip": lastClipOutput
+      }
+    };
+    currentNodeId++;
+
+    // Node N+1: CLIPTextEncode (negative)
+    const negativeNodeId = currentNodeId.toString();
+    const negativePrompt = metadata.negativePrompt || "";
+    workflow[negativeNodeId] = {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": negativePrompt,
+        "clip": lastClipOutput
+      }
+    };
+    currentNodeId++;
+
+    // Node N+2: EmptyLatentImage
+    const latentNodeId = currentNodeId.toString();
+    workflow[latentNodeId] = {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": metadata.width || 1024,
+        "height": metadata.height || 1024,
+        "batch_size": 1
+      }
+    };
+    currentNodeId++;
+
+    // Node N+3: KSampler
+    const samplerNodeId = currentNodeId.toString();
+    workflow[samplerNodeId] = {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": metadata.seed !== undefined ? metadata.seed : Math.floor(Math.random() * 1000000000),
+        "steps": metadata.steps || 20,
+        "cfg": cfgScale,
+        "sampler_name": metadata.sampler || "euler",
+        "scheduler": metadata.scheduler || "normal",
+        "denoise": 1.0,
+        "model": lastModelOutput,
+        "positive": [positiveNodeId, 0],
+        "negative": [negativeNodeId, 0],
+        "latent_image": [latentNodeId, 0]
+      }
+    };
+    currentNodeId++;
+
+    // Node N+4: VAEDecode
+    const vaeDecodeNodeId = currentNodeId.toString();
+    workflow[vaeDecodeNodeId] = {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [samplerNodeId, 0],
+        "vae": ["1", 2]  // Always from CheckpointLoader
+      }
+    };
+    currentNodeId++;
+
+    // Node N+5: MetaHubSaveNode
+    const saveNodeId = currentNodeId.toString();
+    workflow[saveNodeId] = {
+      "class_type": "MetaHubSaveNode",
+      "inputs": {
+        "images": [vaeDecodeNodeId, 0],
+        "filename_pattern": "MetaHub_%date%_%time%_%counter%",
+        "file_format": "PNG",
+        "generation_time_override": ["2", 4]  // Always from Timer node
+      }
+    };
+
+    console.log('[ComfyUI] Built workflow:', {
+      nodes: Object.keys(workflow).length,
+      model: modelName,
+      loras: loras.length
+    });
 
     return {
       prompt: workflow,

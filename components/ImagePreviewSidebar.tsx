@@ -572,6 +572,8 @@ const ImagePreviewSidebar: React.FC = () => {
                       cfg_scale: params.cfgScale,
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
                     };
                     await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
@@ -668,7 +670,13 @@ const ImagePreviewSidebar: React.FC = () => {
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
                     };
-                    await generateWithComfyUI(previewImage, customMetadata);
+                    await generateWithComfyUI(previewImage, {
+                      customMetadata,
+                      overrides: {
+                        model: params.model,
+                        loras: params.loras,
+                      },
+                    });
                     setIsComfyUIGenerateModalOpen(false);
                   }}
                   isGenerating={isGeneratingComfyUI}

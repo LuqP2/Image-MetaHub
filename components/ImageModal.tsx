@@ -958,6 +958,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       cfg_scale: params.cfgScale,
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
                     };
                     await generateWithA1111(image, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
@@ -1056,7 +1058,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
                     };
-                    await generateWithComfyUI(image, customMetadata);
+                    await generateWithComfyUI(image, {
+                      customMetadata,
+                      overrides: {
+                        model: params.model,
+                        loras: params.loras,
+                      },
+                    });
                     setIsComfyUIGenerateModalOpen(false);
                   }}
                   isGenerating={isGeneratingComfyUI}
