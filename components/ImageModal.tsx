@@ -911,7 +911,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate Variation</span>
+                    <span>Generate with A1111</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
