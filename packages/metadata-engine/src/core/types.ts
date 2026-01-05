@@ -610,4 +610,6 @@ export interface ComparisonMetadataPanelProps {
   image: IndexedImage;
   isExpanded: boolean;
   onToggleExpanded: () => void;
+  viewMode?: 'standard' | 'diff';
+  otherImageMetadata?: BaseMetadata | null;
 }

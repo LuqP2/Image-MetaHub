@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Metadata Comparison Diff View**: Enhanced comparison modal with intelligent difference highlighting for iterating through generation variations:
+  - **Toggle between Standard and Diff views**: New view mode button in comparison metadata panel
+  - **Word-level diff for prompts**: Only changed words are highlighted (e.g., "brick" vs "wooden" or "yellow" vs "red")
+  - **Smart field comparison**: Automatically detects differences in models, LoRAs, seeds, CFG, clip skip, steps, sampler, and other generation parameters
+  - **Neutral visual design**: Subtle blue highlighting for differences, no intrusive badges
+  - **Clip Skip field added**: Now displays clip_skip values in comparison view (previously missing)
+  - **Array comparison**: Deep comparison for LoRAs arrays with weights
 - **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
 - **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
 - **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:
