@@ -852,6 +852,60 @@ export function useImageLoader() {
         }
     }, []);
 
+    const processNewWatchedFiles = useCallback(async (
+        directory: Directory,
+        files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }>
+    ) => {
+        try {
+            // Filtrar arquivos que já existem
+            const images = useImageStore.getState().images;
+            const existingIds = new Set(images.map(img => img.id));
+            const newFiles = files.filter(file => {
+                const imageId = `${directory.id}::${file.name}`;
+                return !existingIds.has(imageId);
+            });
+
+            if (newFiles.length === 0) {
+                return; // Todos os arquivos já foram indexados
+            }
+
+            // Obter configuração de concorrência
+            const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
+
+            // Criar file stats map
+            const fileStatsMap = new Map(
+                newFiles.map(f => [f.path, { size: f.size, type: f.type, birthtimeMs: f.lastModified }])
+            );
+
+            // Callback para processar batches de imagens
+            const handleBatchProcessed = (batch: IndexedImage[]) => {
+                if (batch.length > 0) {
+                    addImages(batch);
+                }
+            };
+
+            // Processar novos arquivos usando o pipeline existente
+            await processFiles(
+                newFiles as any, // Cast to match expected type
+                () => {}, // setProgress - silent
+                handleBatchProcessed,
+                directory.id,
+                directory.name,
+                false, // scanSubfolders
+                () => {}, // onDeletion
+                undefined, // abortSignal
+                undefined, // waitWhilePaused
+                {
+                    concurrency: indexingConcurrency,
+                    fileStats: fileStatsMap,
+                }
+            );
+
+        } catch (error) {
+            console.error('Error processing watched files:', error);
+        }
+    }, [addImages]);
+
     return {
         handleSelectFolder,
         handleUpdateFolder,
@@ -859,6 +913,7 @@ export function useImageLoader() {
         handleRemoveDirectory,
         loadDirectory,
         loadDirectoryFromCache,
+        processNewWatchedFiles,
         cancelIndexing: () => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
