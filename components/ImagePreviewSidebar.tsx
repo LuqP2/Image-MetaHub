@@ -7,8 +7,8 @@ import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
-import { A1111GenerateModal } from './A1111GenerateModal';
-import { ComfyUIGenerateModal } from './ComfyUIGenerateModal';
+import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
+import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
@@ -565,7 +565,7 @@ const ImagePreviewSidebar: React.FC = () => {
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
                   image={previewImage}
-                  onGenerate={async (params) => {
+                  onGenerate={async (params: A1111GenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
                       negativePrompt: params.negativePrompt,
@@ -660,15 +660,23 @@ const ImagePreviewSidebar: React.FC = () => {
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
                   image={previewImage}
-                  onGenerate={async (params) => {
-                    const customMetadata: Partial<BaseMetadata> = {
-                      prompt: params.prompt,
-                      negativePrompt: params.negativePrompt,
-                      cfg_scale: params.cfgScale,
-                      steps: params.steps,
-                      seed: params.randomSeed ? -1 : params.seed,
-                    };
-                    await generateWithComfyUI(previewImage, customMetadata);
+                    onGenerate={async (params: ComfyUIGenerationParams) => {
+                      const customMetadata: Partial<BaseMetadata> = {
+                        prompt: params.prompt,
+                        negativePrompt: params.negativePrompt,
+                        cfg_scale: params.cfgScale,
+                        steps: params.steps,
+                        seed: params.randomSeed ? -1 : params.seed,
+                        width: params.width,
+                        height: params.height,
+                      };
+                    await generateWithComfyUI(previewImage, {
+                      customMetadata,
+                      overrides: {
+                        model: params.model,
+                        loras: params.loras,
+                      },
+                    });
                     setIsComfyUIGenerateModalOpen(false);
                   }}
                   isGenerating={isGeneratingComfyUI}

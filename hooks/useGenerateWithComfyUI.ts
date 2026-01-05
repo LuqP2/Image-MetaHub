@@ -5,13 +5,18 @@
 
 import { useState, useCallback } from 'react';
 import { IndexedImage, BaseMetadata } from '../types';
-import { ComfyUIApiClient } from '../services/comfyUIApiClient';
+import { ComfyUIApiClient, WorkflowOverrides } from '../services/comfyUIApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useComfyUIProgressContext } from '../contexts/ComfyUIProgressContext';
 
 interface GenerateStatus {
   success: boolean;
   message: string;
+}
+
+export interface GenerateParams {
+  customMetadata?: Partial<BaseMetadata>;
+  overrides?: WorkflowOverrides;
 }
 
 export function useGenerateWithComfyUI() {
@@ -22,10 +27,10 @@ export function useGenerateWithComfyUI() {
   const { startTracking, stopTracking } = useComfyUIProgressContext();
 
   const generateWithComfyUI = useCallback(
-    async (image: IndexedImage, customParams?: Partial<BaseMetadata>) => {
+    async (image: IndexedImage, params?: GenerateParams) => {
       // Merge custom params with original metadata if provided
-      const metadata = customParams
-        ? { ...image.metadata?.normalizedMetadata, ...customParams }
+      const metadata = params?.customMetadata
+        ? { ...image.metadata?.normalizedMetadata, ...params.customMetadata }
         : image.metadata?.normalizedMetadata;
 
       if (!metadata || !metadata.prompt) {
@@ -52,8 +57,8 @@ export function useGenerateWithComfyUI() {
       try {
         const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
 
-        // Build workflow from metadata
-        const workflow = client.buildWorkflowFromMetadata(metadata);
+        // Build workflow from metadata with overrides (model, loras)
+        const workflow = client.buildWorkflowFromMetadata(metadata, params?.overrides);
 
         // Queue prompt
         const result = await client.queuePrompt(workflow);
