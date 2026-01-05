@@ -34,6 +34,8 @@ export interface GenerationParams {
   height: number;
   model?: string;
   loras?: LoRAConfig[];
+  sampler?: string;
+  scheduler?: string;
 }
 
 export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
@@ -60,8 +62,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     height: 1024,
     model: undefined,
     loras: [],
+    sampler: undefined,
+    scheduler: undefined,
   });
 
+  const [modelSearch, setModelSearch] = useState('');
   const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
   const [validationError, setValidationError] = useState<string>('');
 
@@ -82,6 +87,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   useEffect(() => {
     if (isOpen && image.metadata?.normalizedMetadata) {
       const meta = image.metadata.normalizedMetadata;
+      const storedModel =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('IMH_COMFYUI_LAST_MODEL')
+          : null;
+      const preferredModel = storedModel || meta.model || undefined;
       setParams({
         prompt: meta.prompt || '',
         negativePrompt: meta.negativePrompt || '',
@@ -91,10 +101,13 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
         randomSeed: false,
         width: meta.width || 1024,
         height: meta.height || 1024,
-        model: meta.model || undefined,
+        model: preferredModel,
         loras: [],
+        sampler: meta.sampler || undefined,
+        scheduler: meta.scheduler || undefined,
       });
       setSelectedLoras([]);
+      setModelSearch('');
       setValidationError('');
     }
   }, [isOpen, image]);
@@ -242,6 +255,13 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               <label className="block text-sm font-medium text-gray-300">
                 Model
               </label>
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search model..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
               {isLoadingResources ? (
                 <div className="text-xs text-gray-400">Loading models...</div>
               ) : resourcesError ? (
@@ -249,12 +269,20 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               ) : (
                 <select
                   value={params.model || ''}
-                  onChange={(e) => setParams(prev => ({ ...prev, model: e.target.value }))}
+                  onChange={(e) => {
+                    const selected = e.target.value || undefined;
+                    if (selected) {
+                      localStorage.setItem('IMH_COMFYUI_LAST_MODEL', selected);
+                    }
+                    setParams(prev => ({ ...prev, model: selected }));
+                  }}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   disabled={!resources?.checkpoints || resources.checkpoints.length === 0}
                 >
                   {!params.model && <option value="">Select a model...</option>}
-                  {resources?.checkpoints.map(checkpoint => (
+                  {resources?.checkpoints
+                    .filter(checkpoint => checkpoint.toLowerCase().includes(modelSearch.trim().toLowerCase()))
+                    .map(checkpoint => (
                     <option key={checkpoint} value={checkpoint}>
                       {checkpoint}
                     </option>
@@ -333,6 +361,64 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               {resources?.loras.length === 0 && (
                 <p className="text-xs text-gray-400">No LoRAs found in ComfyUI</p>
               )}
+            </div>
+
+            {/* Sampler / Scheduler Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Sampler / Scheduler
+              </label>
+              {isLoadingResources ? (
+                <div className="text-xs text-gray-400">Loading samplers and schedulers...</div>
+              ) : resourcesError ? (
+                <div className="text-xs text-red-400">Error loading samplers or schedulers</div>
+              ) : (
+                <select
+                  value={params.sampler || params.scheduler || ''}
+                  onChange={(e) => {
+                    const selected = e.target.value || undefined;
+                    if (!selected) {
+                      setParams(prev => ({ ...prev, sampler: undefined, scheduler: undefined }));
+                      return;
+                    }
+                    const isScheduler = resources?.schedulers?.includes(selected);
+                    setParams(prev => ({
+                      ...prev,
+                      sampler: isScheduler ? undefined : selected,
+                      scheduler: isScheduler ? selected : undefined,
+                    }));
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  disabled={
+                    (!resources?.samplers || resources.samplers.length === 0) &&
+                    (!resources?.schedulers || resources.schedulers.length === 0)
+                  }
+                >
+                  {!(params.sampler || params.scheduler) && <option value="">Select a sampler or scheduler...</option>}
+                  {resources?.samplers && resources.samplers.length > 0 && (
+                    <optgroup label="Samplers">
+                      {resources.samplers.map((sampler) => (
+                        <option key={`sampler-${sampler}`} value={sampler}>
+                          {sampler}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {resources?.schedulers && resources.schedulers.length > 0 && (
+                    <optgroup label="Schedulers">
+                      {resources.schedulers.map((scheduler) => (
+                        <option key={`scheduler-${scheduler}`} value={scheduler}>
+                          {scheduler}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              )}
+              {!isLoadingResources && !resourcesError &&
+                (resources?.samplers?.length === 0 && resources?.schedulers?.length === 0) && (
+                  <p className="text-xs text-gray-400">No samplers or schedulers found in ComfyUI</p>
+                )}
             </div>
 
             {/* Image Size */}

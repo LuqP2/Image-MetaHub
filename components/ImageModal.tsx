@@ -911,7 +911,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate Variation</span>
+                    <span>Generate with A1111</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -970,6 +970,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       cfg_scale: params.cfgScale,
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
+                      model: params.model || nMeta?.model,
+                      sampler: params.sampler,
                     };
                     await generateWithA1111(image, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
@@ -1060,16 +1064,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
                   image={image}
-                    onGenerate={async (params: ComfyUIGenerationParams) => {
-                      const customMetadata: Partial<BaseMetadata> = {
-                        prompt: params.prompt,
-                        negativePrompt: params.negativePrompt,
-                        cfg_scale: params.cfgScale,
-                        steps: params.steps,
-                        seed: params.randomSeed ? -1 : params.seed,
-                        width: params.width,
-                        height: params.height,
-                      };
+                  onGenerate={async (params: ComfyUIGenerationParams) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
+                      sampler: params.sampler,
+                      scheduler: params.scheduler,
+                    };
                     await generateWithComfyUI(image, {
                       customMetadata,
                       overrides: {

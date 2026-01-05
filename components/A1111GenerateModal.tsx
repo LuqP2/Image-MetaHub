@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { IndexedImage } from '../types';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useA1111Models } from '../hooks/useA1111Models';
 import hotkeyManager from '../services/hotkeyManager';
+import { cleanLoraName, extractLoRAsWithWeights } from '../utils/promptCleaner';
 
 interface A1111GenerateModalProps {
   isOpen: boolean;
@@ -20,6 +22,16 @@ export interface GenerationParams {
   seed: number;
   randomSeed: boolean;
   numberOfImages: number;
+  width: number;
+  height: number;
+  model?: string;
+  loras?: LoRAConfig[];
+  sampler?: string;
+}
+
+export interface LoRAConfig {
+  name: string;
+  strength: number;
 }
 
 export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
@@ -32,6 +44,8 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   // Feature access safety check
   const { canUseA1111 } = useFeatureAccess();
 
+  const { resources, isLoading: isLoadingResources, error: resourcesError } = useA1111Models();
+
   const [params, setParams] = useState<GenerationParams>({
     prompt: '',
     negativePrompt: '',
@@ -40,8 +54,15 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     seed: -1,
     randomSeed: false,
     numberOfImages: 1,
+    width: 512,
+    height: 512,
+    model: undefined,
+    loras: [],
+    sampler: undefined,
   });
 
+  const [modelSearch, setModelSearch] = useState('');
+  const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
   const [validationError, setValidationError] = useState<string>('');
 
   // Pause hotkeys when modal is open
@@ -61,6 +82,11 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   useEffect(() => {
     if (isOpen && image.metadata?.normalizedMetadata) {
       const meta = image.metadata.normalizedMetadata;
+      const storedModel =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('IMH_A1111_LAST_MODEL')
+          : null;
+      const preferredModel = storedModel || meta.model || undefined;
       setParams({
         prompt: meta.prompt || '',
         negativePrompt: meta.negativePrompt || '',
@@ -69,10 +95,44 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         seed: meta.seed !== undefined ? meta.seed : -1,
         randomSeed: false,
         numberOfImages: 1,
+        width: meta.width || 512,
+        height: meta.height || 512,
+        model: preferredModel,
+        loras: [],
+        sampler: meta.sampler || meta.scheduler || undefined,
       });
+      setSelectedLoras([]);
+      setModelSearch('');
       setValidationError('');
     }
   }, [isOpen, image]);
+
+  const buildPromptWithLoras = (prompt: string, loras: LoRAConfig[]) => {
+    if (loras.length === 0) {
+      return prompt;
+    }
+
+    const existingLoras = extractLoRAsWithWeights(prompt);
+    const existingNames = new Set(
+      existingLoras
+        .map((lora) => (typeof lora === 'string' ? lora : lora.name))
+        .map((name) => cleanLoraName(name).toLowerCase())
+    );
+
+    const loraTags = loras
+      .map((lora) => ({
+        ...lora,
+        name: cleanLoraName(lora.name),
+      }))
+      .filter((lora) => lora.name && !existingNames.has(lora.name.toLowerCase()))
+      .map((lora) => `<lora:${lora.name}:${lora.strength}>`);
+
+    if (loraTags.length === 0) {
+      return prompt;
+    }
+
+    return `${prompt.trim()} ${loraTags.join(' ')}`.trim();
+  };
 
   const handleGenerate = async () => {
     // Validation
@@ -98,13 +158,36 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
 
     setValidationError('');
 
+    const generationParams: GenerationParams = {
+      ...params,
+      prompt: buildPromptWithLoras(params.prompt, selectedLoras),
+      loras: selectedLoras.length > 0 ? selectedLoras : undefined,
+    };
+
     // Call parent handler
-    await onGenerate(params);
+    await onGenerate(generationParams);
   };
 
   const handleClose = () => {
     // Allow closing even during generation (non-blocking)
     onClose();
+  };
+
+  const handleAddLora = (loraName: string) => {
+    if (!loraName || selectedLoras.some(l => l.name === loraName)) {
+      return;
+    }
+    setSelectedLoras(prev => [...prev, { name: loraName, strength: 1.0 }]);
+  };
+
+  const handleRemoveLora = (index: number) => {
+    setSelectedLoras(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateLoraStrength = (index: number, strength: number) => {
+    setSelectedLoras(prev => prev.map((lora, i) =>
+      i === index ? { ...lora, strength } : lora
+    ));
   };
 
   if (!isOpen) {
@@ -151,7 +234,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
       >
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Generate Variation</h2>
+          <h2 className="text-2xl font-bold">Generate with A1111</h2>
           <button
             onClick={handleClose}
             className="p-1 rounded-full hover:bg-gray-700 transition-colors"
@@ -193,6 +276,180 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
           {/* Generation Parameters */}
           <div className="bg-gray-900 p-4 rounded-md border border-gray-700 space-y-4">
             <h3 className="text-sm font-semibold text-gray-300">Generation Parameters</h3>
+
+            {/* Model Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Model
+              </label>
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search model..."
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {isLoadingResources ? (
+                <div className="text-xs text-gray-400">Loading models...</div>
+              ) : resourcesError ? (
+                <div className="text-xs text-red-400">Error loading models: {resourcesError}</div>
+              ) : (
+                <select
+                  value={params.model || ''}
+                  onChange={(e) => {
+                    const selected = e.target.value || undefined;
+                    if (selected) {
+                      localStorage.setItem('IMH_A1111_LAST_MODEL', selected);
+                    }
+                    setParams(prev => ({ ...prev, model: selected }));
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!resources?.models || resources.models.length === 0}
+                >
+                  {!params.model && <option value="">Select a model...</option>}
+                  {resources?.models
+                    .filter(model => model.toLowerCase().includes(modelSearch.trim().toLowerCase()))
+                    .map(model => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {resources?.models.length === 0 && (
+                <p className="text-xs text-gray-400">No models found in A1111</p>
+              )}
+            </div>
+
+            {/* LoRA Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                LoRAs
+              </label>
+              {isLoadingResources ? (
+                <div className="text-xs text-gray-400">Loading LoRAs...</div>
+              ) : resourcesError ? (
+                <div className="text-xs text-red-400">Error loading LoRAs</div>
+              ) : (
+                <>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddLora(e.target.value);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={!resources?.loras || resources.loras.length === 0}
+                  >
+                    <option value="">Add a LoRA...</option>
+                    {resources?.loras
+                      .filter(lora => !selectedLoras.some(selected => selected.name === lora))
+                      .map(lora => (
+                        <option key={lora} value={lora}>
+                          {lora}
+                        </option>
+                      ))}
+                  </select>
+
+                  {selectedLoras.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {selectedLoras.map((lora, index) => (
+                        <div
+                          key={`${lora.name}-${index}`}
+                          className="flex items-center gap-2 bg-blue-900/30 border border-blue-700/50 rounded-full px-3 py-1.5 text-xs"
+                        >
+                          <span className="text-blue-200 font-medium">{lora.name}</span>
+                          <input
+                            type="number"
+                            value={lora.strength}
+                            onChange={(e) => handleUpdateLoraStrength(index, parseFloat(e.target.value) || 0)}
+                            step="0.1"
+                            min="-2.0"
+                            max="2.0"
+                            className="w-14 bg-blue-950/50 border border-blue-700/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => handleRemoveLora(index)}
+                            className="text-blue-300 hover:text-blue-100 transition-colors"
+                            title="Remove LoRA"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic mt-2">No LoRAs selected</p>
+                  )}
+                </>
+              )}
+              {resources?.loras.length === 0 && (
+                <p className="text-xs text-gray-400">No LoRAs found in A1111</p>
+              )}
+            </div>
+
+            {/* Sampler Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Sampler
+              </label>
+              {isLoadingResources ? (
+                <div className="text-xs text-gray-400">Loading samplers...</div>
+              ) : resourcesError ? (
+                <div className="text-xs text-red-400">Error loading samplers</div>
+              ) : (
+                <select
+                  value={params.sampler || ''}
+                  onChange={(e) => setParams(prev => ({ ...prev, sampler: e.target.value || undefined }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!resources?.samplers || resources.samplers.length === 0}
+                >
+                  {!params.sampler && <option value="">Select a sampler...</option>}
+                  {resources?.samplers.map((sampler) => (
+                    <option key={sampler} value={sampler}>
+                      {sampler}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {resources?.samplers.length === 0 && (
+                <p className="text-xs text-gray-400">No samplers found in A1111</p>
+              )}
+            </div>
+
+            {/* Image Size */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Image Size
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-xs text-gray-400">Width</label>
+                  <input
+                    type="number"
+                    value={params.width}
+                    onChange={(e) => setParams(prev => ({ ...prev, width: parseInt(e.target.value) || 512 }))}
+                    step="64"
+                    min="64"
+                    max="2048"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs text-gray-400">Height</label>
+                  <input
+                    type="number"
+                    value={params.height}
+                    onChange={(e) => setParams(prev => ({ ...prev, height: parseInt(e.target.value) || 512 }))}
+                    step="64"
+                    min="64"
+                    max="2048"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* CFG Scale and Steps - Side by side */}
             <div className="grid grid-cols-2 gap-4">
