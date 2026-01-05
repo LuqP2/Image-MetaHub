@@ -935,6 +935,8 @@ if (rawMetadata) {
         scheduler: enhancedResult.scheduler || '',
         sampler: enhancedResult.sampler_name || '',
         loras: enhancedResult.loras || [],
+        tags: enhancedResult.tags || [],
+        notes: enhancedResult.notes || '',
         vae: enhancedResult.vae,
         denoise: enhancedResult.denoise,
         _analytics: enhancedResult._analytics || null,

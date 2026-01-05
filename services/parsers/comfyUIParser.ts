@@ -603,6 +603,14 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
 
       // Verify it's valid MetaHub data (must have generator: "ComfyUI")
       if (metahubData.generator === 'ComfyUI') {
+        // Extract tags from imh_pro.user_tags (comma-separated string)
+        const userTags = metahubData.imh_pro?.user_tags
+          ? metahubData.imh_pro.user_tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag)
+          : [];
+
+        // Extract notes from imh_pro.notes
+        const userNotes = metahubData.imh_pro?.notes || '';
+
         // Map MetaHub chunk fields to expected format
         return {
           prompt: metahubData.prompt,
@@ -620,6 +628,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           height: metahubData.height,
           loras: metahubData.loras || [],
           lora: metahubData.loras?.map((l: any) => l.name) || [], // Backward compatibility
+          tags: userTags,
+          notes: userNotes,
           generator: 'ComfyUI',
           _detection_method: 'metahub_chunk',
           _metahub_pro: metahubData.imh_pro || null,

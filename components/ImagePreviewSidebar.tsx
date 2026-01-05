@@ -1,12 +1,16 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
+import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { A1111GenerateModal } from './A1111GenerateModal';
+import { ComfyUIGenerateModal } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
+import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 // Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
@@ -101,15 +105,18 @@ const ImagePreviewSidebar: React.FC = () => {
   } = useImageStore();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [showPerformance, setShowPerformance] = useState(true);
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
+  const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
+  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
   // Feature access (license/trial gating)
-  const { canUseA1111, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
 
   useEffect(() => {
     let isMounted = true;
@@ -265,7 +272,18 @@ const ImagePreviewSidebar: React.FC = () => {
 
         {/* Metadata */}
         <div>
-          <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
+            {hasVerifiedTelemetry(previewImage) && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+                title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+              >
+                <CheckCircle size={12} className="flex-shrink-0" />
+                <span className="whitespace-nowrap">Verified</span>
+              </span>
+            )}
+          </div>
           <p className="text-xs text-blue-400 font-mono break-all">{new Date(previewImage.lastModified).toLocaleString()}</p>
         </div>
 
@@ -399,6 +417,14 @@ const ImagePreviewSidebar: React.FC = () => {
                   <h3 className="text-base font-semibold text-gray-300 pt-2 border-b border-gray-600 pb-2">LoRAs</h3>
                   <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                </>
+            )}
+
+            {/* MetaHub Save Node Notes */}
+            {nMeta.notes && (
+              <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                <p className="font-semibold text-purple-300 text-xs uppercase tracking-wider mb-2">Notes (MetaHub Save Node)</p>
+                <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+              </div>
             )}
 
             {/* Performance Section - Collapsible */}
@@ -551,6 +577,101 @@ const ImagePreviewSidebar: React.FC = () => {
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
+                />
+              )}
+            </div>
+
+            {/* ComfyUI Actions */}
+            <div className="mt-3 pt-3 border-t border-gray-700">
+              <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+
+              {/* Generate Button */}
+              <button
+                onClick={() => {
+                  if (!canUseComfyUI) {
+                    showProModal('comfyui');
+                    return;
+                  }
+                  setIsComfyUIGenerateModalOpen(true);
+                }}
+                disabled={canUseComfyUI && !nMeta.prompt}
+                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-md text-sm font-semibold flex items-center justify-center gap-2 mb-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                {isGeneratingComfyUI && canUseComfyUI ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate with ComfyUI</span>
+                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Copy Workflow Button */}
+              <button
+                onClick={() => {
+                  if (!canUseComfyUI) {
+                    showProModal('comfyui');
+                    return;
+                  }
+                  copyToComfyUI(previewImage);
+                }}
+                disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
+                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+              >
+                {isCopyingComfyUI && canUseComfyUI ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Copying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Clipboard className="w-3 h-3" />
+                    <span>Copy Workflow JSON</span>
+                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+                  </>
+                )}
+              </button>
+
+              {/* Status messages */}
+              {(copyStatusComfyUI || generateStatusComfyUI) && (
+                <div className={`mt-2 p-2 rounded text-xs ${
+                  (copyStatusComfyUI?.success || generateStatusComfyUI?.success)
+                    ? 'bg-green-900/50 border border-green-700 text-green-300'
+                    : 'bg-red-900/50 border border-red-700 text-red-300'
+                }`}>
+                  {copyStatusComfyUI?.message || generateStatusComfyUI?.message}
+                </div>
+              )}
+
+              {/* ComfyUI Generate Modal */}
+              {isComfyUIGenerateModalOpen && nMeta && (
+                <ComfyUIGenerateModal
+                  isOpen={isComfyUIGenerateModalOpen}
+                  onClose={() => setIsComfyUIGenerateModalOpen(false)}
+                  image={previewImage}
+                  onGenerate={async (params) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                    };
+                    await generateWithComfyUI(previewImage, customMetadata);
+                    setIsComfyUIGenerateModalOpen(false);
+                  }}
+                  isGenerating={isGeneratingComfyUI}
                 />
               )}
             </div>

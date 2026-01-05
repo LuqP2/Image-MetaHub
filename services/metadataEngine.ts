@@ -303,7 +303,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   const errors: string[] = [];
   const absolutePath = path.resolve(filePath);
   const buffer = await fs.readFile(absolutePath);
-  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
   const startedAt = Date.now();
 
   let rawMetadata: ImageMetadata | null = null;
@@ -340,7 +340,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
       errors.push(`Failed to parse workflow/prompt JSON: ${err?.message ?? 'unknown error'}`);
     }
 
-    metadata = normalizeMetadata(rawMetadata, arrayBuffer);
+    metadata = await normalizeMetadata(rawMetadata, arrayBuffer);
   }
 
   const dimensions = extractDimensionsFromBuffer(arrayBuffer);
@@ -387,6 +387,12 @@ export async function parseFiles(filePaths: string[]): Promise<MetadataEngineRes
         rawSource: 'unknown',
         errors: [`Failed to parse file: ${err?.message ?? 'unknown error'}`],
         dimensions: null,
+        schema_version: SCHEMA_VERSION,
+        _telemetry: {
+          parser: null,
+          raw_source: null,
+          normalize_time_ms: 0,
+        },
       });
     }
   }
