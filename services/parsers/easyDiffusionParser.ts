@@ -1,4 +1,5 @@
-import { EasyDiffusionMetadata, EasyDiffusionJson, BaseMetadata } from '../../types';
+import { EasyDiffusionMetadata, EasyDiffusionJson, BaseMetadata, LoRAInfo } from '../../types';
+import { extractLoRAsWithWeights } from '../../utils/promptCleaner';
 
 // --- Extraction Functions ---
 
@@ -11,16 +12,10 @@ export function extractModelsFromEasyDiffusion(metadata: EasyDiffusionMetadata):
   return [];
 }
 
-export function extractLorasFromEasyDiffusion(metadata: EasyDiffusionMetadata): string[] {
-  const loras: Set<string> = new Set();
+export function extractLorasFromEasyDiffusion(metadata: EasyDiffusionMetadata): (string | LoRAInfo)[] {
   const params = metadata.parameters;
-  // Easy Diffusion might use similar LoRA syntax as A1111
-  const loraPatterns = /<lora:([^:>]+):[^>]*>/gi;
-  let match;
-  while ((match = loraPatterns.exec(params)) !== null) {
-    if (match[1]) loras.add(match[1].trim());
-  }
-  return Array.from(loras);
+  // Use shared helper to extract LoRAs with weights from <lora:name:weight> syntax
+  return extractLoRAsWithWeights(params);
 }
 
 // --- Main Parser Function ---

@@ -2,9 +2,12 @@
 
 ## Overview
 
-This document provides comprehensive guidance for developing and maintaining the ComfyUI metadata parser. The parser uses a **rule-based, declarative architecture** that handles graph complexities natively, outperforming legacy string-based parsers.
+This document provides comprehensive guidance for developing and maintaining the ComfyUI metadata parser. The parser uses a **hybrid architecture** with two extraction methods:
 
-**Current Status (v0.9.6)**: Production-ready with robust handling of complex workflows including efficiency-nodes, custom samplers, and multi-path prompt tracing. **Recent architectural refactoring (v0.9.6)** separates data extraction from presentation logic for better maintainability and type safety.
+1. **Direct chunk extraction** (Primary, v0.10.6+) - Reads pre-extracted metadata from MetaHub Save Node
+2. **Graph traversal** (Fallback) - Rule-based traversal for standard ComfyUI exports
+
+**Current Status (v0.10.6)**: Production-ready with optimized metadata extraction. The parser now prioritizes the `imagemetahub_data` chunk from MetaHub Save Node, eliminating the need for nodeRegistry updates and graph traversal in most cases.
 
 **Location**: `services/parsers/comfyui/`
 
@@ -23,15 +26,40 @@ This document provides comprehensive guidance for developing and maintaining the
 
 ## Architecture Overview
 
+### Parsing Strategy
+
+The parser uses a **priority-based extraction system**:
+
+**Priority 1: MetaHub Chunk Extraction (v0.10.6+)** ⚡ FASTEST
+- Looks for `imagemetahub_data` iTXt chunk in PNG metadata
+- Contains pre-extracted, validated metadata from [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
+- **Advantages**: No graph traversal, no nodeRegistry dependency, instant results
+- **Detection**: Checks for `generator: "ComfyUI"` field in chunk
+
+**Priority 2: Graph Traversal (Fallback)**
+- Used when MetaHub chunk is not present (standard ComfyUI exports)
+- Traverses workflow graph using nodeRegistry definitions
+- **Limitation**: Requires nodeRegistry updates for new custom nodes
+
+**Priority 3: Regex Extraction (Last Resort)**
+- Extracts partial metadata from corrupted/incomplete data
+- Used only when both chunk and graph traversal fail
+
 ### Core Components
 
-**1. Graph Construction (`comfyUIParser.ts`)**
+**1. Chunk Extraction (`comfyUIParser.ts::extractFromMetaHubChunk`)**
+- Reads `imagemetahub_data` iTXt chunk from PNG
+- Maps chunk fields to expected parser format
+- Includes IMH Pro fields (user_tags, notes, project_name)
+- Zero dependency on nodeRegistry
+
+**2. Graph Construction (`comfyUIParser.ts::createNodeMap`)** (Fallback)
 - Merges `workflow` (UI data with widgets_values) and `prompt` (execution data with inputs)
 - Handles NaN sanitization in exported JSON
 - Overlays workflow.nodes onto prompt data for complete graph representation
 - Populates inputs from workflow.links for incomplete prompts
 
-**2. Traversal Engine (`traversalEngine.ts`)**
+**3. Traversal Engine (`traversalEngine.ts`)** (Fallback)
 - Graph traversal from terminal SINK nodes backwards through connections
 - Mode-aware: skips muted nodes (mode 2/4)
 - State-aware: maintains traversal context for complex parameter resolution
@@ -44,7 +72,7 @@ This document provides comprehensive guidance for developing and maintaining the
   - Replaces hardcoded LoRA collection with declarative parameter rules
   - `resolveFacts()`: Returns structured `WorkflowFacts` object with type-safe metadata
 
-**3. Node Registry (`nodeRegistry.ts`)**
+**4. Node Registry (`nodeRegistry.ts`)** (Fallback)
 - Declarative node definitions with:
   - **Roles**: SOURCE, SINK, TRANSFORM, PASS_THROUGH, ROUTING
   - **Inputs/Outputs**: Typed connections (MODEL, CONDITIONING, LATENT, etc.)
@@ -54,8 +82,9 @@ This document provides comprehensive guidance for developing and maintaining the
 - **NEW (v0.9.6)**: `WorkflowFacts` interface for structured metadata extraction
   - Type-safe objects instead of loose `any` values
   - Fields: prompts, model, loras, sampling, dimensions
+- **NOTE (v0.10.6)**: nodeRegistry is now only used as fallback. Images saved with MetaHub Save Node bypass this entirely.
 
-**4. Reusable Extractors (`extractors.ts`) - NEW in v0.9.6**
+**5. Reusable Extractors (`extractors.ts`) - NEW in v0.9.6** (Fallback)
 - Composable extraction functions for common patterns:
   - `concatTextExtractor`: Combine multiple text inputs with delimiter
   - `extractLorasFromText`: Parse `<lora:name>` tags from prompt text
@@ -67,7 +96,17 @@ This document provides comprehensive guidance for developing and maintaining the
 
 ### Key Design Decisions
 
-**✅ Why Rule-Based Architecture?**
+**✅ Why Hybrid Architecture (v0.10.6)?**
+- **MetaHub chunk first**: Eliminates nodeRegistry maintenance burden
+  - No need to reverse-engineer widget_order for new custom nodes
+  - Instant extraction with zero dependencies
+  - Future-proof: works with any ComfyUI custom node
+- **Graph traversal fallback**: Maintains compatibility with standard ComfyUI exports
+  - Supports images saved with default Save Image node
+  - Works with community workflows
+  - Extensible: add new nodes by registering definitions
+
+**✅ Why Rule-Based Architecture? (Fallback mode)**
 - ComfyUI workflows are graphs, not linear sequences
 - Different node types require different extraction strategies
 - Extensible: add new nodes by registering definitions
@@ -79,7 +118,7 @@ This document provides comprehensive guidance for developing and maintaining the
 - Reading from PNG properties is more accurate and reliable
 - **Implementation**: `fileIndexer.ts` uses Image API to read actual width/height
 
-**✅ Why Separate widgets_values and inputs?**
+**✅ Why Separate widgets_values and inputs? (Fallback mode)**
 - **widgets_values**: UI widget data (flat array, position-based)
 - **inputs**: Execution connections (object with link references)
 - PNG exports may contain both or only one
@@ -87,7 +126,105 @@ This document provides comprehensive guidance for developing and maintaining the
 
 ---
 
-## Node Registry Reference
+## MetaHub Save Node Integration (v0.10.6)
+
+### Chunk Format
+
+The [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) saves a comprehensive metadata chunk in PNG iTXt format:
+
+**Chunk Name**: `imagemetahub_data`
+**Format**: JSON (UTF-8)
+**Structure**:
+
+```json
+{
+  "generator": "ComfyUI",           // Required for detection
+  "prompt": "...",                  // Positive prompt
+  "negativePrompt": "...",          // Negative prompt
+  "seed": 12345,                    // Generation seed
+  "steps": 20,                      // Sampling steps
+  "cfg": 7.0,                       // CFG scale
+  "sampler_name": "euler",          // Sampler algorithm
+  "scheduler": "normal",            // Scheduler type
+  "model": "model.safetensors",     // Model filename
+  "model_hash": "abc1234567",       // SHA256 hash (AutoV2 format)
+  "vae": "vae.safetensors",         // VAE filename
+  "denoise": 1.0,                   // Denoise strength
+  "width": 512,                     // Image width
+  "height": 768,                    // Image height
+  "loras": [                        // LoRA stack
+    {"name": "detail.safetensors", "weight": 0.8}
+  ],
+  "imh_pro": {                      // IMH Pro fields (optional)
+    "user_tags": "portrait, fantasy",
+    "notes": "Experimental composition",
+    "project_name": "Character Design"
+  },
+  "analytics": {                    // Analytics (optional)
+    "generation_time": 45.2
+  },
+  "workflow": {...},                // Full workflow JSON
+  "prompt_api": {...}               // Full prompt JSON
+}
+```
+
+### Advantages over Graph Traversal
+
+| Aspect | MetaHub Chunk | Graph Traversal |
+|--------|--------------|-----------------|
+| **Speed** | Instant (direct read) | Slow (recursive traversal) |
+| **NodeRegistry** | Not needed | **Required, must be updated** |
+| **Custom Nodes** | Always works | Only if registered |
+| **Maintenance** | Zero | High (widget_order updates) |
+| **Reliability** | 100% (pre-extracted) | ~95% (depends on registry) |
+
+### When MetaHub Chunk is NOT Present
+
+The parser automatically falls back to graph traversal for:
+- Images saved with default ComfyUI Save Image node
+- Community workflows without MetaHub Save Node
+- Legacy images (pre-v0.10.6)
+
+### Recommended Workflow
+
+**For New ComfyUI Users** (v0.10.6+):
+
+1. Install [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) in ComfyUI
+   ```bash
+   cd ComfyUI/custom_nodes
+   git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
+   pip install -r ImageMetaHub-ComfyUI-Save/requirements.txt
+   ```
+
+2. Replace default `Save Image` nodes with `MetaHub Save Image` in your workflows
+
+3. **Benefits**:
+   - ✅ Zero maintenance: No nodeRegistry updates needed
+   - ✅ Future-proof: Works with any custom nodes
+   - ✅ Faster parsing: Instant metadata extraction
+   - ✅ More accurate: Pre-validated data
+   - ✅ Extra features: User tags, notes, project names
+
+**For Existing Workflows**:
+
+No changes required. The parser automatically detects and falls back to graph traversal for standard ComfyUI exports.
+
+**Detecting Extraction Method**:
+
+Check the `_detection_method` field in parsed results:
+```typescript
+const metadata = await parseComfyUIMetadataEnhanced(pngData);
+
+if (metadata._detection_method === 'metahub_chunk') {
+  console.log('✅ Used MetaHub chunk (fast path)');
+} else if (metadata._detection_method === 'standard') {
+  console.log('⚠️ Used graph traversal (slower, requires nodeRegistry)');
+}
+```
+
+---
+
+## Node Registry Reference (Fallback Mode)
 
 ### Node Definition Structure
 
@@ -514,17 +651,20 @@ test('UltimateSDUpscale extracts upscale_factor correctly', () => {
 
 ## Future Enhancements
 
-### Priority 1: Auto-Discovery
+### ~~Priority 1: Eliminate NodeRegistry Maintenance~~ ✅ COMPLETED (v0.10.6)
 
-**Goal**: Automatically detect widget_order from ComfyUI node definitions
+**Status**: Solved with MetaHub Save Node integration
+- No longer need to update nodeRegistry for new custom nodes
+- Parser automatically uses pre-extracted metadata when available
+- Graph traversal maintained as fallback for compatibility
 
 ### Priority 2: Multi-Prompt Handling
 
-**Goal**: Handle workflows with multiple CLIPTextEncode nodes
+**Goal**: Handle workflows with multiple CLIPTextEncode nodes (graph traversal mode)
 
 ### Priority 3: Export Interoperability
 
-**Goal**: Export parsed metadata to standard formats
+**Goal**: Export parsed metadata to standard formats (A1111, Civitai, etc.)
 
 ---
 
@@ -539,7 +679,13 @@ To contribute improvements to the ComfyUI parser:
 
 ---
 
-**Version**: 0.9.5  
-**Last Updated**: November 10, 2025  
-**Maintainer**: Image MetaHub Development Team  
+**Version**: 0.10.6
+**Last Updated**: December 23, 2025
+**Maintainer**: Image MetaHub Development Team
 **Status**: Production Ready ✅
+
+**Major Changes in v0.10.6**:
+- ✨ MetaHub Save Node integration (primary extraction method)
+- ⚡ Instant metadata parsing with zero nodeRegistry dependency
+- 🔄 Automatic fallback to graph traversal for standard exports
+- 📦 Bundled with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) companion

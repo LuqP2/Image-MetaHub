@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install)",
+      "Bash(find:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm pack)",
+      "Bash(node test.mjs:*)"
+    ]
+  }
+}

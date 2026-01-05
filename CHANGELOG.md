@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2025-12-23
+
+### Added
+
+- **Metadata Comparison Diff View**: Enhanced comparison modal with intelligent difference highlighting for iterating through generation variations:
+  - **Toggle between Standard and Diff views**: New view mode button in comparison metadata panel
+  - **Word-level diff for prompts**: Only changed words are highlighted (e.g., "brick" vs "wooden" or "yellow" vs "red")
+  - **Smart field comparison**: Automatically detects differences in models, LoRAs, seeds, CFG, clip skip, steps, sampler, and other generation parameters
+  - **Neutral visual design**: Subtle blue highlighting for differences, no intrusive badges
+  - **Clip Skip field added**: Now displays clip_skip values in comparison view (previously missing)
+  - **Array comparison**: Deep comparison for LoRAs arrays with weights
+- **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
+- **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
+- **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:
+  - **PNG**: Reads `imagemetahub_data` iTXt chunk for instant metadata extraction
+  - **JPEG**: Detects MetaHub JSON in EXIF ImageDescription field with PRIORITY 0 check before UserComment parsing
+  - **WebP**: Implements manual RIFF container parsing with direct JSON extraction from EXIF chunk (byte-pattern search for `'{"'` with brace matching, bypassing exifr library limitations for PIL/piexif non-standard format)
+  - All formats correctly detect as "ComfyUI (MetaHub Save Node)" and display Performance metrics (analytics)
+
+### Changed
+
+- **Enhanced LoRA Type Support**: Updated `BaseMetadata` interface to support both string and detailed LoRA info (`LoRAInfo`) with `name`, `model_name`, `weight`, `model_weight`, and `clip_weight` fields for comprehensive LoRA metadata handling.
+- **LoRA Weight Extraction**: All parsers (Automatic1111, Forge, SDNext, Fooocus, EasyDiffusion, DreamStudio, InvokeAI) now extract LoRA weights from `<lora:name:weight>` syntax and return structured `LoRAInfo` objects instead of plain strings.
+- **InvokeAI LoRA Weight Support**: InvokeAI parser now extracts weights from both prompt tags (`<lora:...>`, `<lyco:...>`) and InvokeAI's native metadata structure `{ model: { name }, weight }`.
+- **Preserve Original Prompts**: Removed automatic stripping of `<lora:...>` tags from prompts to preserve the user's original prompt text exactly as written. LoRAs are still extracted separately to the dedicated LoRAs field.
+- **ComfyUI Hybrid Parser Architecture**: Parser now uses a priority-based extraction system: (1) MetaHub chunk (instant, zero dependencies), (2) Graph traversal (fallback for standard ComfyUI exports), (3) Regex extraction (last resort). This eliminates the maintenance burden of updating nodeRegistry for new custom nodes.
+
+### Improved
+
+- **ComfyUI Parsing Performance**: Images saved with MetaHub Save Node now parse instantly without graph traversal, reducing parsing time from ~50-100ms to <5ms per image.
+- **Future-Proof ComfyUI Support**: Parser works with ANY ComfyUI custom node when using MetaHub Save Node, no nodeRegistry updates required.
+- **Zero NodeRegistry Maintenance**: MetaHub chunk extraction bypasses the need to reverse-engineer `widget_order` for new custom nodes, solving the long-standing maintenance burden documented in DEVELOPMENT.md.
+
 ## [0.10.5] - 2025-12-16
 
 ### Major Performance Improvements

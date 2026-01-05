@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, isInvokeAIMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -11,7 +11,7 @@ import { parseFireflyMetadata } from './fireflyParser';
 import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { parseDrawThingsMetadata } from './drawThingsParser';
 import { parseFooocusMetadata } from './fooocusParser';
-import { resolvePromptFromGraph } from './comfyUIParser';
+import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './comfyUIParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -25,7 +25,7 @@ function getCaseInsensitive<T = any>(obj: Record<string, any>, key: string): T |
 }
 
 interface ParserModule {
-    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata;
+    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
     generator: string;
 }
 
@@ -57,16 +57,50 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     if ('firefly_version' in metadata || ('ai_generated' in metadata && metadata.ai_generated === true)) {
         return { parse: (data: FireflyMetadata, fileBuffer?: ArrayBuffer) => parseFireflyMetadata(data, fileBuffer!), generator: 'Adobe Firefly' };
     }
-    
+
     if ('sui_image_params' in metadata ||
         ('parameters' in metadata && typeof metadata.parameters === 'string' && metadata.parameters.includes('sui_image_params'))) {
         return { parse: (data: SwarmUIMetadata) => parseSwarmUIMetadata(data), generator: 'SwarmUI' };
     }
 
+    // InvokeAI (embedded JSON fields)
+    if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
+        return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
+    }
+
+    // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)
+    // Check for imagemetahub_data chunk (iTXt format from MetaHub Save Node)
+    if ('imagemetahub_data' in metadata) {
+        console.log('🎯 Selected parser: ComfyUI (MetaHub Save Node)');
+        return {
+            parse: async (data: ComfyUIMetadata) => {
+                const result = await parseComfyUIMetadataEnhanced(data);
+                return {
+                    prompt: result.prompt || '',
+                    negativePrompt: result.negativePrompt || '',
+                    model: result.model || '',
+                    models: result.model ? [result.model] : [],
+                    width: result.width || 0,
+                    height: result.height || 0,
+                    seed: result.seed,
+                    steps: result.steps || 0,
+                    cfg_scale: result.cfg,
+                    scheduler: result.scheduler || '',
+                    sampler: result.sampler_name || '',
+                    loras: result.loras || [],
+                    _analytics: result._analytics || null,
+                    _metahub_pro: result._metahub_pro || null,
+                    _detection_method: result._detection_method,
+                } as BaseMetadata;
+            },
+            generator: 'ComfyUI'
+        };
+    }
+
     // ComfyUI detection (case-insensitive, accepts stringified prompt/workflow)
     const workflowCI = getCaseInsensitive<any>(metadata as any, 'workflow');
     const promptCI = getCaseInsensitive<any>(metadata as any, 'prompt');
-    const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|\"inputs\"/.test(promptCI);
+    const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
 
     if (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph) {
         return {
@@ -102,9 +136,6 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
             },
             generator: 'ComfyUI'
         };
-    }
-    if ('invokeai_metadata' in metadata) {
-        return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
     }
     // Check for Fooocus (before general A1111 detection)
     if ('parameters' in metadata && 
@@ -201,10 +232,10 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     return null;
 }
 
-export function parseImageMetadata(metadata: ImageMetadata, fileBuffer?: ArrayBuffer): BaseMetadata | null {
+export async function parseImageMetadata(metadata: ImageMetadata, fileBuffer?: ArrayBuffer): Promise<BaseMetadata | null> {
     const parser = getMetadataParser(metadata);
     if (parser) {
-        const result = parser.parse(metadata, fileBuffer);
+        const result = await parser.parse(metadata, fileBuffer);
         result.generator = parser.generator;
         return result;
     }
