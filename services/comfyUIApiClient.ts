@@ -268,6 +268,20 @@ export class ComfyUIApiClient {
       ? randomSeed
       : seedValue;
 
+    const allowedSchedulers = new Set([
+      'simple',
+      'sgm_uniform',
+      'karras',
+      'exponential',
+      'ddim_uniform',
+      'beta',
+      'normal',
+      'linear_quadratic',
+      'kl_optimal',
+    ]);
+    const schedulerRaw = (metadata.scheduler || '').toString();
+    const schedulerValue = allowedSchedulers.has(schedulerRaw) ? schedulerRaw : 'normal';
+
     // Node N+3: KSampler
     const samplerNodeId = currentNodeId.toString();
     workflow[samplerNodeId] = {
@@ -277,7 +291,7 @@ export class ComfyUIApiClient {
         "steps": metadata.steps || 20,
         "cfg": cfgScale,
         "sampler_name": metadata.sampler || "euler",
-        "scheduler": metadata.scheduler || "normal",
+        "scheduler": schedulerValue,
         "denoise": 1.0,
         "model": lastModelOutput,
         "positive": [positiveNodeId, 0],
