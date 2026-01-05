@@ -575,6 +575,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       width: params.width,
                       height: params.height,
                       model: params.model || nMeta?.model,
+                      sampler: params.sampler,
                     };
                     await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
@@ -663,16 +664,18 @@ const ImagePreviewSidebar: React.FC = () => {
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
                   image={previewImage}
-                    onGenerate={async (params: ComfyUIGenerationParams) => {
-                      const customMetadata: Partial<BaseMetadata> = {
-                        prompt: params.prompt,
-                        negativePrompt: params.negativePrompt,
-                        cfg_scale: params.cfgScale,
-                        steps: params.steps,
-                        seed: params.randomSeed ? -1 : params.seed,
-                        width: params.width,
-                        height: params.height,
-                      };
+                  onGenerate={async (params: ComfyUIGenerationParams) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
+                      sampler: params.sampler,
+                      scheduler: params.scheduler,
+                    };
                     await generateWithComfyUI(previewImage, {
                       customMetadata,
                       overrides: {

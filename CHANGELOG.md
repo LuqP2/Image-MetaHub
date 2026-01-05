@@ -5,10 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.0] - 2025-12-23
+## [0.11.0] - 2025-01-XX
 
 ### Added
 
+- **ComfyUI Generation Integration**: Complete workflow-based image generation directly from Image MetaHub:
+  - "Generate with ComfyUI" button in ImageModal for creating variations
+  - Full parameter customization (model, LoRAs, seed, steps, CFG, size)
+  - Real-time WebSocket-based progress tracking during generation
+  - Copy workflow JSON to clipboard functionality
+  - Automatic integration with MetaHub Save Node for metadata preservation
+  - Purple-themed UI distinct from A1111 integration
+  - Connection testing and settings persistence
+- **Enhanced A1111 Generation**: Major improvements to Automatic1111 integration:
+  - Model and LoRA selection with search filters in generation modal
+  - Image size controls (width/height inputs)
+  - "Remember last selected model" - automatically selects previously used model
+  - Renamed "Generate Variation" to "Generate with A1111" for clarity
+- **WebP Image Support**: Full support for WebP format across the application:
+  - WebP indexing, parsing, and preview generation
+  - MetaHub Save Node metadata detection in WebP files
+  - Extends compatibility beyond PNG and JPEG
+- **MetaHub Save Node Extended Support**: Enhanced integration with ComfyUI MetaHub Save Node:
+  - **Automatic Tags Import**: Tags from `imh_pro.user_tags` are automatically imported into ImageAnnotations system for filtering
+  - **Notes Display**: Notes from `imh_pro.notes` shown as read-only metadata in ImageModal and sidebar
+  - **Performance Metrics**: GPU/performance analytics display with three-tier metric system:
+    - Tier 1: VRAM peak usage, GPU device, generation time
+    - Tier 2: Steps/second, ComfyUI version
+    - Tier 3: PyTorch and Python versions
+  - **Verified Telemetry Badges**: Visual badges and filter for images with verified analytics data
+  - **Timer Node Support**: Integration with MetaHub Timer Node for accurate performance tracking
+  - Support for both `analytics` and `_analytics` field naming conventions
+- **Standalone Metadata Engine Package**: Extracted `@image-metahub/metadata-engine` v1.0.0-beta.1 as publishable npm package:
+  - Parse metadata from 15+ AI generators (ComfyUI, InvokeAI, A1111, DALL-E, Adobe Firefly, Midjourney, etc.)
+  - Dual build: CommonJS + ESM with TypeScript declarations
+  - Normalized BaseMetadata schema for all formats
+  - SHA-256 hashing and dimension extraction
+  - Apache-2.0 license, ready for ecosystem adoption
+  - Package size: 65.6 KB compressed, 353.1 KB unpacked
+- **CLI Enhancements**: Improved command-line interface capabilities:
+  - `--concurrency <n>` flag for parallel processing (defaults to CPU cores)
+  - `--quiet` flag to suppress informational logs during bulk operations
+  - Schema versioning (`schema_version: "1.0.0"`) in output
+  - Standardized telemetry blocks in metadata output
+  - JSONL indexing support
+- **VAE and Denoise Display**: Added visual display of VAE model and denoise strength in metadata panels
 - **Metadata Comparison Diff View**: Enhanced comparison modal with intelligent difference highlighting for iterating through generation variations:
   - **Toggle between Standard and Diff views**: New view mode button in comparison metadata panel
   - **Word-level diff for prompts**: Only changed words are highlighted (e.g., "brick" vs "wooden" or "yellow" vs "red")
@@ -16,30 +57,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Neutral visual design**: Subtle blue highlighting for differences, no intrusive badges
   - **Clip Skip field added**: Now displays clip_skip values in comparison view (previously missing)
   - **Array comparison**: Deep comparison for LoRAs arrays with weights
-- **Generate with ComfyUI**: New ComfyUI generation modal with configurable prompts, model, LoRAs, seed, steps, CFG, and image size.
-- **A1111 Generate Modal Upgrades**: Added model selection, LoRA selection with strength controls, and image size inputs to match ComfyUI options.
-- **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
-- **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
-- **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:
-  - **PNG**: Reads `imagemetahub_data` iTXt chunk for instant metadata extraction
-  - **JPEG**: Detects MetaHub JSON in EXIF ImageDescription field with PRIORITY 0 check before UserComment parsing
-  - **WebP**: Implements manual RIFF container parsing with direct JSON extraction from EXIF chunk (byte-pattern search for `'{"'` with brace matching, bypassing exifr library limitations for PIL/piexif non-standard format)
-  - All formats correctly detect as "ComfyUI (MetaHub Save Node)" and display Performance metrics (analytics)
+- **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation
+- **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers
 
 ### Changed
 
-- **Enhanced LoRA Type Support**: Updated `BaseMetadata` interface to support both string and detailed LoRA info (`LoRAInfo`) with `name`, `model_name`, `weight`, `model_weight`, and `clip_weight` fields for comprehensive LoRA metadata handling.
-- **LoRA Weight Extraction**: All parsers (Automatic1111, Forge, SDNext, Fooocus, EasyDiffusion, DreamStudio, InvokeAI) now extract LoRA weights from `<lora:name:weight>` syntax and return structured `LoRAInfo` objects instead of plain strings.
-- **InvokeAI LoRA Weight Support**: InvokeAI parser now extracts weights from both prompt tags (`<lora:...>`, `<lyco:...>`) and InvokeAI's native metadata structure `{ model: { name }, weight }`.
-- **Preserve Original Prompts**: Removed automatic stripping of `<lora:...>` tags from prompts to preserve the user's original prompt text exactly as written. LoRAs are still extracted separately to the dedicated LoRAs field.
-- **ComfyUI Hybrid Parser Architecture**: Parser now uses a priority-based extraction system: (1) MetaHub chunk (instant, zero dependencies), (2) Graph traversal (fallback for standard ComfyUI exports), (3) Regex extraction (last resort). This eliminates the maintenance burden of updating nodeRegistry for new custom nodes.
-- **A1111 API Resource Fetching**: A1111 client now fetches and caches model and LoRA lists to power selection in the generation UI.
+- **Enhanced LoRA Type Support**: Updated `BaseMetadata` interface to support both string and detailed LoRA info (`LoRAInfo`) with `name`, `model_name`, `weight`, `model_weight`, and `clip_weight` fields for comprehensive LoRA metadata handling
+- **LoRA Weight Extraction**: All parsers (Automatic1111, Forge, SDNext, Fooocus, EasyDiffusion, DreamStudio, InvokeAI) now extract LoRA weights from `<lora:name:weight>` syntax and return structured `LoRAInfo` objects instead of plain strings
+- **InvokeAI LoRA Weight Support**: InvokeAI parser now extracts weights from both prompt tags (`<lora:...>`, `<lyco:...>`) and InvokeAI's native metadata structure `{ model: { name }, weight }`
+- **Preserve Original Prompts**: Removed automatic stripping of `<lora:...>` tags from prompts to preserve the user's original prompt text exactly as written. LoRAs are still extracted separately to the dedicated LoRAs field
+- **ComfyUI Hybrid Parser Architecture**: Parser now uses a priority-based extraction system: (1) MetaHub chunk (instant, zero dependencies), (2) Graph traversal (fallback for standard ComfyUI exports), (3) Regex extraction (last resort). This eliminates the maintenance burden of updating nodeRegistry for new custom nodes
+- **A1111 API Resource Fetching**: A1111 client now fetches and caches model and LoRA lists to power selection in the generation UI
+- **Prioritized MetaHub Chunk Detection**: PNG parser now prioritizes MetaHub chunk detection for faster parsing of images saved with MetaHub Save Node
+- **Async Parser Support**: Updated ParserModule interface to support asynchronous parsers for better performance
 
 ### Improved
 
-- **ComfyUI Parsing Performance**: Images saved with MetaHub Save Node now parse instantly without graph traversal, reducing parsing time from ~50-100ms to <5ms per image.
-- **Future-Proof ComfyUI Support**: Parser works with ANY ComfyUI custom node when using MetaHub Save Node, no nodeRegistry updates required.
-- **Zero NodeRegistry Maintenance**: MetaHub chunk extraction bypasses the need to reverse-engineer `widget_order` for new custom nodes, solving the long-standing maintenance burden documented in DEVELOPMENT.md.
+- **ComfyUI Parsing Performance**: Images saved with MetaHub Save Node now parse instantly without graph traversal, reducing parsing time from ~50-100ms to <5ms per image (10-20x faster)
+- **Future-Proof ComfyUI Support**: Parser works with ANY ComfyUI custom node when using MetaHub Save Node, no nodeRegistry updates required
+- **Zero NodeRegistry Maintenance**: MetaHub chunk extraction bypasses the need to reverse-engineer `widget_order` for new custom nodes, solving the long-standing maintenance burden documented in DEVELOPMENT.md
+
+### Technical Improvements
+
+- Created `utils/metadataComparison.ts` with LCS-based word-level diff algorithm for intelligent prompt comparison
+- Enhanced metadata display helpers: `formatGenerationTime()`, `formatVRAM()` with GPU percentage calculation
+- Improved tag normalization and deduplication before import from MetaHub Save Node
+- Fixed timing issues: tags now imported after images are added to store (flushPendingImages)
+- Docker build improvements with LICENSE file inclusion and normalized image tags
+- Updated CLI documentation with new output contracts and performance usage examples
 
 ## [0.10.5] - 2025-12-16
 

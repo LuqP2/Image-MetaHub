@@ -10,6 +10,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 export interface A1111Resources {
   models: string[];
   loras: string[];
+  samplers: string[];
 }
 
 interface UseA1111ModelsReturn {
@@ -31,12 +32,13 @@ export function useA1111Models(): UseA1111ModelsReturn {
 
     try {
       const client = new A1111ApiClient({ serverUrl: a1111ServerUrl });
-      const [models, loras] = await Promise.all([
+      const [models, loras, samplers] = await Promise.all([
         client.getModelList(),
         client.getLoraList(),
+        client.getSamplerList(),
       ]);
 
-      setResources({ models, loras });
+      setResources({ models, loras, samplers });
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to fetch A1111 resources';
       setError(errorMessage);

@@ -26,6 +26,7 @@ export interface GenerationParams {
   height: number;
   model?: string;
   loras?: LoRAConfig[];
+  sampler?: string;
 }
 
 export interface LoRAConfig {
@@ -57,6 +58,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     height: 512,
     model: undefined,
     loras: [],
+    sampler: undefined,
   });
 
   const [modelSearch, setModelSearch] = useState('');
@@ -97,6 +99,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         height: meta.height || 512,
         model: preferredModel,
         loras: [],
+        sampler: meta.sampler || meta.scheduler || undefined,
       });
       setSelectedLoras([]);
       setModelSearch('');
@@ -383,6 +386,35 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               )}
               {resources?.loras.length === 0 && (
                 <p className="text-xs text-gray-400">No LoRAs found in A1111</p>
+              )}
+            </div>
+
+            {/* Sampler Selection */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Sampler
+              </label>
+              {isLoadingResources ? (
+                <div className="text-xs text-gray-400">Loading samplers...</div>
+              ) : resourcesError ? (
+                <div className="text-xs text-red-400">Error loading samplers</div>
+              ) : (
+                <select
+                  value={params.sampler || ''}
+                  onChange={(e) => setParams(prev => ({ ...prev, sampler: e.target.value || undefined }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!resources?.samplers || resources.samplers.length === 0}
+                >
+                  {!params.sampler && <option value="">Select a sampler...</option>}
+                  {resources?.samplers.map((sampler) => (
+                    <option key={sampler} value={sampler}>
+                      {sampler}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {resources?.samplers.length === 0 && (
+                <p className="text-xs text-gray-400">No samplers found in A1111</p>
               )}
             </div>
 
