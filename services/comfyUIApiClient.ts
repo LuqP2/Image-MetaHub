@@ -262,12 +262,18 @@ export class ComfyUIApiClient {
     };
     currentNodeId++;
 
+    const randomSeed = Math.floor(Math.random() * 1000000000);
+    const seedValue = typeof metadata.seed === 'number' ? metadata.seed : undefined;
+    const resolvedSeed = seedValue === undefined || !Number.isFinite(seedValue) || seedValue < 0
+      ? randomSeed
+      : seedValue;
+
     // Node N+3: KSampler
     const samplerNodeId = currentNodeId.toString();
     workflow[samplerNodeId] = {
       "class_type": "KSampler",
       "inputs": {
-        "seed": metadata.seed !== undefined ? metadata.seed : Math.floor(Math.random() * 1000000000),
+        "seed": resolvedSeed,
         "steps": metadata.steps || 20,
         "cfg": cfgScale,
         "sampler_name": metadata.sampler || "euler",

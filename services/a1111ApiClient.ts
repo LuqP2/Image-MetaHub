@@ -32,6 +32,8 @@ interface SamplerCache {
 export class A1111ApiClient {
   private config: A1111Config;
   private samplerCache: SamplerCache | null = null;
+  private modelCache: SamplerCache | null = null;
+  private loraCache: SamplerCache | null = null;
   private readonly CACHE_DURATION = 300000; // 5 minutes in milliseconds
 
   constructor(config: A1111Config) {
@@ -112,6 +114,80 @@ export class A1111ApiClient {
       return list;
     } catch (error: any) {
       console.warn('Failed to fetch samplers list:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get list of available models from A1111 server
+   */
+  async getModelList(): Promise<string[]> {
+    if (this.modelCache && Date.now() - this.modelCache.timestamp < this.CACHE_DURATION) {
+      return this.modelCache.list;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+      const response = await fetch(`${this.config.serverUrl}/sdapi/v1/sd-models`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn('Failed to fetch model list, using empty list');
+        return [];
+      }
+
+      const models = await response.json();
+      const list = models
+        .map((m: any) => m.title || m.model_name || m.name)
+        .filter((value: any) => typeof value === 'string' && value.length > 0);
+
+      this.modelCache = { list, timestamp: Date.now() };
+      return list;
+    } catch (error: any) {
+      console.warn('Failed to fetch model list:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get list of available LoRAs from A1111 server
+   */
+  async getLoraList(): Promise<string[]> {
+    if (this.loraCache && Date.now() - this.loraCache.timestamp < this.CACHE_DURATION) {
+      return this.loraCache.list;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+      const response = await fetch(`${this.config.serverUrl}/sdapi/v1/loras`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn('Failed to fetch LoRA list, using empty list');
+        return [];
+      }
+
+      const loras = await response.json();
+      const list = loras
+        .map((l: any) => l.name || l.alias || l.filename)
+        .filter((value: any) => typeof value === 'string' && value.length > 0);
+
+      this.loraCache = { list, timestamp: Date.now() };
+      return list;
+    } catch (error: any) {
+      console.warn('Failed to fetch LoRA list:', error.message);
       return [];
     }
   }

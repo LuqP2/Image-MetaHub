@@ -3,7 +3,7 @@ import { TransformWrapper, TransformComponent, ReactZoomPanPinchRef } from 'reac
 import { ZoomIn, ZoomOut, RotateCcw, AlertCircle, Sparkles } from 'lucide-react';
 import { ComparisonPaneProps, BaseMetadata } from '../types';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
-import { A1111GenerateModal } from './A1111GenerateModal';
+import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import useComparisonImageSource from '../hooks/useComparisonImageSource';
 
 const ComparisonPane: FC<ComparisonPaneProps> = ({
@@ -132,14 +132,17 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
           isOpen={isGenerateModalOpen}
           onClose={() => setIsGenerateModalOpen(false)}
           image={image}
-          onGenerate={async (params) => {
-            const customMetadata: Partial<BaseMetadata> = {
-              prompt: params.prompt,
-              negativePrompt: params.negativePrompt,
-              cfg_scale: params.cfgScale,
-              steps: params.steps,
-              seed: params.randomSeed ? -1 : params.seed,
-            };
+            onGenerate={async (params: A1111GenerationParams) => {
+              const customMetadata: Partial<BaseMetadata> = {
+                prompt: params.prompt,
+                negativePrompt: params.negativePrompt,
+                cfg_scale: params.cfgScale,
+                steps: params.steps,
+                seed: params.randomSeed ? -1 : params.seed,
+                width: params.width,
+                height: params.height,
+                model: params.model || image.metadata?.normalizedMetadata?.model,
+              };
             await generateWithA1111(image, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);
           }}

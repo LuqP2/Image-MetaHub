@@ -572,6 +572,9 @@ const ImagePreviewSidebar: React.FC = () => {
                       cfg_scale: params.cfgScale,
                       steps: params.steps,
                       seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
+                      model: params.model || nMeta?.model,
                     };
                     await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);

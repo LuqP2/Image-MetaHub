@@ -6,7 +6,7 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
-import { A1111GenerateModal } from './A1111GenerateModal';
+import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import Toast from './Toast';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
@@ -759,14 +759,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             setSelectedImageForGeneration(null);
           }}
           image={selectedImageForGeneration}
-          onGenerate={async (params) => {
-            const customMetadata: Partial<BaseMetadata> = {
-              prompt: params.prompt,
-              negativePrompt: params.negativePrompt,
-              cfg_scale: params.cfgScale,
-              steps: params.steps,
-              seed: params.randomSeed ? -1 : params.seed,
-            };
+            onGenerate={async (params: A1111GenerationParams) => {
+              const customMetadata: Partial<BaseMetadata> = {
+                prompt: params.prompt,
+                negativePrompt: params.negativePrompt,
+                cfg_scale: params.cfgScale,
+                steps: params.steps,
+                seed: params.randomSeed ? -1 : params.seed,
+                width: params.width,
+                height: params.height,
+                model: params.model || selectedImageForGeneration.metadata?.normalizedMetadata?.model,
+              };
             await generateWithA1111(selectedImageForGeneration, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);
             setSelectedImageForGeneration(null);

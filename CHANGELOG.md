@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Neutral visual design**: Subtle blue highlighting for differences, no intrusive badges
   - **Clip Skip field added**: Now displays clip_skip values in comparison view (previously missing)
   - **Array comparison**: Deep comparison for LoRAs arrays with weights
+- **Generate with ComfyUI**: New ComfyUI generation modal with configurable prompts, model, LoRAs, seed, steps, CFG, and image size.
+- **A1111 Generate Modal Upgrades**: Added model selection, LoRA selection with strength controls, and image size inputs to match ComfyUI options.
 - **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
 - **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
 - **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **InvokeAI LoRA Weight Support**: InvokeAI parser now extracts weights from both prompt tags (`<lora:...>`, `<lyco:...>`) and InvokeAI's native metadata structure `{ model: { name }, weight }`.
 - **Preserve Original Prompts**: Removed automatic stripping of `<lora:...>` tags from prompts to preserve the user's original prompt text exactly as written. LoRAs are still extracted separately to the dedicated LoRAs field.
 - **ComfyUI Hybrid Parser Architecture**: Parser now uses a priority-based extraction system: (1) MetaHub chunk (instant, zero dependencies), (2) Graph traversal (fallback for standard ComfyUI exports), (3) Regex extraction (last resort). This eliminates the maintenance burden of updating nodeRegistry for new custom nodes.
+- **A1111 API Resource Fetching**: A1111 client now fetches and caches model and LoRA lists to power selection in the generation UI.
 
 ### Improved
 
