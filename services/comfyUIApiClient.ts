@@ -170,7 +170,7 @@ export class ComfyUIApiClient {
         }
       },
       "2": {
-        "class_type": "MetaHubTimer",
+        "class_type": "MetaHubTimerNode",
         "inputs": {
           "clip": ["1", 1]
         }
@@ -225,7 +225,7 @@ export class ComfyUIApiClient {
           "images": ["7", 0],
           "filename_pattern": "MetaHub_%date%_%time%_%counter%",
           "file_format": "PNG",
-          "generation_time_override": ["2", 1]
+          "generation_time_override": ["2", 4]
         }
       }
     };
