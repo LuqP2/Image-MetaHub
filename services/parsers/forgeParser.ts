@@ -14,9 +14,13 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
 
   const parameters = metadata.parameters as string;
 
-  // Extract basic parameters using regex patterns similar to A1111
+  // Extract prompts (positive and negative) - Lógica atualizada para suportar linhas únicas
+  const { positivePrompt, negativePrompt } = extractPrompts(parameters);
+
+  // Extract basic parameters
   const steps = extractSteps(parameters);
   const sampler = extractSampler(parameters);
+  const scheduleType = extractScheduleType(parameters); // Novo campo adicionado
   const cfgScale = extractCFGScale(parameters);
   const seed = extractSeed(parameters);
   const size = extractSize(parameters);
@@ -24,9 +28,6 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
   const model = extractModel(parameters);
   const denoising = extractDenoising(parameters);
   const clipSkip = extractClipSkip(parameters);
-
-  // Extract prompts (positive and negative)
-  const { positivePrompt, negativePrompt } = extractPrompts(parameters);
 
   // Extract LoRAs and embeddings
   const loras = extractLoRAs(parameters);
@@ -59,7 +60,7 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
     seed,
     steps: steps || 0,
     cfg_scale: cfgScale,
-    scheduler: sampler || '',
+    scheduler: scheduleType || sampler || '', // Usa Schedule type se existir (correção do teste)
     sampler,
     loras,
     // Forge-specific fields
@@ -73,7 +74,36 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
   };
 }
 
-// Helper functions for parameter extraction (similar to A1111 but with Forge-specific patterns)
+// Helper functions
+
+function extractPrompts(parameters: string): { positivePrompt: string; negativePrompt: string } {
+  // 1. Encontra onde começam os parâmetros técnicos (geralmente "Steps:")
+  // Isso serve como um "muro" para parar de ler o prompt
+  const settingsMatch = parameters.match(/\s*Steps:\s*\d+/i);
+  const settingsIndex = settingsMatch ? settingsMatch.index : -1;
+  
+  // Isola a parte do texto (tudo antes dos Steps)
+  // Usando const para evitar erro do ESLint
+  const promptText = settingsIndex !== -1 
+    ? parameters.substring(0, settingsIndex).trim() 
+    : parameters;
+
+  // 2. Procura pelo divisor "Negative prompt:" dentro da parte de texto
+  // O regex pega "Negative prompt:" mesmo que não tenha quebra de linha antes
+  const negativeMatch = promptText.match(/Negative prompt:/i);
+  
+  let positivePrompt = '';
+  let negativePrompt = '';
+
+  if (negativeMatch && negativeMatch.index !== undefined) {
+    positivePrompt = promptText.substring(0, negativeMatch.index).trim();
+    negativePrompt = promptText.substring(negativeMatch.index + negativeMatch[0].length).trim();
+  } else {
+    positivePrompt = promptText.trim();
+  }
+
+  return { positivePrompt, negativePrompt };
+}
 
 function extractSteps(parameters: string): number | undefined {
   const match = parameters.match(/Steps:\s*(\d+)/i);
@@ -82,6 +112,12 @@ function extractSteps(parameters: string): number | undefined {
 
 function extractSampler(parameters: string): string | undefined {
   const match = parameters.match(/Sampler:\s*([^,\n]+)/i);
+  return match ? match[1].trim() : undefined;
+}
+
+// Função nova para extrair Schedule type
+function extractScheduleType(parameters: string): string | undefined {
+  const match = parameters.match(/Schedule type:\s*([^,\n]+)/i);
   return match ? match[1].trim() : undefined;
 }
 
@@ -120,37 +156,17 @@ function extractClipSkip(parameters: string): number | undefined {
   return match ? parseInt(match[1]) : undefined;
 }
 
-function extractPrompts(parameters: string): { positivePrompt: string; negativePrompt: string } {
-    // Split by common separators used in A1111/Forge
-  const parts = parameters.split(/\n\n|\nNegative prompt:/i);
-
-  let positivePrompt = '';
-  let negativePrompt = '';
-
-  if (parts.length >= 2) {
-    positivePrompt = parts[0].trim();
-    negativePrompt = parts[1].trim();
-  } else {
-    // Fallback: look for "Negative prompt:" within the text
-    const negMatch = parameters.match(/Negative prompt:\s*(.+)$/i);
-    if (negMatch) {
-      positivePrompt = parameters.substring(0, negMatch.index).trim();
-      negativePrompt = negMatch[1].trim();
-    } else {
-      positivePrompt = parameters.trim();
-    }
-  }  return { positivePrompt, negativePrompt };
-}
-
 function extractLoRAs(parameters: string): (string | LoRAInfo)[] {
-  // Use shared helper to extract LoRAs with weights from <lora:name:weight> syntax
   return extractLoRAsWithWeights(parameters);
 }
 
 function extractEmbeddings(parameters: string): string[] {
   const embeddingMatches = parameters.matchAll(/\b([A-Z][a-zA-Z0-9_]*)\b/g);
-  // Filter for likely embeddings (capitalized words that aren't common parameters)
-  const commonWords = new Set(['Steps', 'Sampler', 'CFG', 'Seed', 'Size', 'Model', 'Hash', 'Denoising', 'Clip', 'Negative', 'Prompt', 'Forge', 'Gradio']);
+  const commonWords = new Set([
+    'Steps', 'Sampler', 'CFG', 'Seed', 'Size', 'Model', 'Hash', 
+    'Denoising', 'Clip', 'Negative', 'Prompt', 'Forge', 'Gradio', 
+    'Schedule', 'Type', 'Hires', 'Upscale', 'Upscaler', 'Version'
+  ]);
   return Array.from(embeddingMatches, match => match[1])
     .filter(word => !commonWords.has(word) && word.length > 2);
 }
