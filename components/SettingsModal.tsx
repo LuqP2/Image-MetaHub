@@ -35,6 +35,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setIndexingConcurrency = useSettingsStore((state) => state.setIndexingConcurrency);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
+  const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
+  const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
 
   // A1111 Integration settings
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
@@ -356,22 +358,41 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
           {/* Display */}
           <div>
             <h3 className="text-lg font-semibold mb-2">Display</h3>
-            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
-              <div>
-                <p className="text-sm">Show filenames under thumbnails</p>
-                <p className="text-xs text-gray-400">
-                  Always display file names below each thumbnail in the grid.
-                </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                <div>
+                  <p className="text-sm">Show filenames under thumbnails</p>
+                  <p className="text-xs text-gray-400">
+                    Always display file names below each thumbnail in the grid.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showFilenames}
+                    onChange={(event) => setShowFilenames(event.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showFilenames}
-                  onChange={(event) => setShowFilenames(event.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
+              <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                <div>
+                  <p className="text-sm">Show full file path</p>
+                  <p className="text-xs text-gray-400">
+                    Display complete relative path instead of just filename (e.g., "subfolder/image.png" vs "image.png").
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showFullFilePath}
+                    onChange={(event) => setShowFullFilePath(event.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
             </div>
           </div>
 
