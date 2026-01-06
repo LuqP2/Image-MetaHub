@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "cbor-js": "^0.1.0",
+    "chokidar": "^5.0.0",
     "commander": "^14.0.1",
     "electron-updater": "^6.6.2",
     "exifr": "^7.1.3",

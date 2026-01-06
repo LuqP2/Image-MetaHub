@@ -141,6 +141,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteCacheFolder: () => ipcRenderer.invoke('delete-cache-folder'),
   restartApp: () => ipcRenderer.invoke('restart-app'),
 
+  // File watching
+  startWatchingDirectory: (args) => ipcRenderer.invoke('start-watching-directory', args),
+  stopWatchingDirectory: (args) => ipcRenderer.invoke('stop-watching-directory', args),
+  getWatcherStatus: (args) => ipcRenderer.invoke('get-watcher-status', args),
+  onNewImagesDetected: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('new-images-detected', subscription);
+    return () => ipcRenderer.removeListener('new-images-detected', subscription);
+  },
 
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')

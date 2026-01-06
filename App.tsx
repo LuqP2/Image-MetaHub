@@ -35,7 +35,7 @@ export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
 
   // --- Zustand Store State (Granular Selectors for Performance) ---
@@ -86,6 +86,7 @@ export default function App() {
   const removeImage = useImageStore((state) => state.removeImage);
   const updateImage = useImageStore((state) => state.updateImage);
   const toggleDirectoryVisibility = useImageStore((state) => state.toggleDirectoryVisibility);
+  const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const setFolderSelectionState = useImageStore((state) => state.setFolderSelectionState);
   const getFolderSelectionState = useImageStore((state) => state.getFolderSelectionState);
   const resetState = useImageStore((state) => state.resetState);
@@ -270,16 +271,16 @@ export default function App() {
   // Handler for loading directory from a path
   const handleLoadFromPath = useCallback(async (path: string) => {
     try {
-      
+
       // Check if directory already exists in the store
       const existingDir = safeDirectories.find(d => d.path === path);
       if (existingDir) {
         return;
       }
-      
+
       // Create directory object for Electron environment
       const dirName = path.split(/[\\/]/).pop() || path;
-      const mockHandle = { 
+      const mockHandle = {
         name: dirName,
         kind: 'directory' as const
       };
@@ -290,14 +291,50 @@ export default function App() {
         path: path,
         handle: mockHandle as unknown as FileSystemDirectoryHandle
       };
-      
+
       // Load the directory using the hook's loadDirectory function
       await loadDirectory(newDirectory, false);
-      
+
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
   }, [loadDirectory, safeDirectories]);
+
+  // Handler for toggling auto-watch on directories
+  const handleToggleAutoWatch = useCallback(async (directoryId: string) => {
+    const directory = directories.find(d => d.id === directoryId);
+    if (!directory) return;
+
+    const newAutoWatchState = !directory.autoWatch;
+
+    // Atualizar estado no store primeiro
+    toggleAutoWatch(directoryId);
+
+    // Chamar IPC para start/stop watcher
+    if (window.electronAPI) {
+      try {
+        if (newAutoWatchState) {
+          const result = await window.electronAPI.startWatchingDirectory({
+            directoryId: directory.id,
+            dirPath: directory.path
+          });
+          if (!result.success) {
+            setError(`Failed to start auto-watch: ${result.error}`);
+            // Reverter o toggle se falhou
+            toggleAutoWatch(directoryId);
+          }
+        } else {
+          await window.electronAPI.stopWatchingDirectory({
+            directoryId: directory.id
+          });
+        }
+      } catch (err: any) {
+        setError(`Error toggling auto-watch: ${err.message}`);
+        // Reverter o toggle se falhou
+        toggleAutoWatch(directoryId);
+      }
+    }
+  }, [directories, toggleAutoWatch, setError]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
@@ -318,6 +355,48 @@ export default function App() {
       return unsubscribe;
     }
   }, [handleLoadFromPath]);
+
+  // Listen for new images from file watcher
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubscribe = window.electronAPI.onNewImagesDetected(async (data) => {
+      const { directoryId, files } = data;
+      const directory = directories.find(d => d.id === directoryId);
+
+      if (!directory || !files || files.length === 0) return;
+
+      // Processar novos arquivos usando a função do useImageLoader
+      await processNewWatchedFiles(directory, files);
+    });
+
+    return () => unsubscribe();
+  }, [directories, processNewWatchedFiles]);
+
+  // Restore auto-watchers on app start
+  useEffect(() => {
+    if (!window.electronAPI || directories.length === 0) return;
+
+    const restoreWatchers = async () => {
+      for (const dir of directories) {
+        if (dir.autoWatch) {
+          try {
+            await window.electronAPI.startWatchingDirectory({
+              directoryId: dir.id,
+              dirPath: dir.path
+            });
+          } catch (err) {
+            console.error(`Failed to restore watcher for ${dir.path}:`, err);
+          }
+        }
+      }
+    };
+
+    // Delay para garantir que todas as pastas foram carregadas
+    const timeoutId = setTimeout(restoreWatchers, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [directories.length]); // Trigger apenas quando o número de pastas mudar
 
   // Get app version and check if we should show changelog
   useEffect(() => {
@@ -503,6 +582,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
+            onToggleAutoWatch={handleToggleAutoWatch}
             onUpdateSelection={setFolderSelectionState}
             getSelectionState={getFolderSelectionState}
             folderSelection={folderSelection}

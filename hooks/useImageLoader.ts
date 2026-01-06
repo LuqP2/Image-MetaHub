@@ -58,6 +58,13 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
             }
         } else if (entry.kind === 'directory') {
             try {
+            const normalizedFiles = files.map(file => {
+                const relativePath = toRelativeWatchPath(file.path, directory.path);
+                const normalizedName = relativePath || file.name;
+                const normalizedType = file.type && file.type.includes('/') ? file.type : undefined;
+                return { ...file, relativePath, normalizedName, normalizedType };
+            });
+
                 const subFiles = await getFilesRecursivelyWeb(entry, entryPath);
                 files.push(...subFiles);
             } catch (e) {
@@ -186,6 +193,24 @@ async function getFileHandles(
     }
     return handles;
 }
+
+const normalizeWatchPath = (path: string) => {
+    if (!path) return '';
+    return path.replace(/\\/g, '/').replace(/\/+$/, '');
+};
+
+const toRelativeWatchPath = (filePath: string, rootPath: string) => {
+    const normalizedFilePath = normalizeWatchPath(filePath);
+    const normalizedRootPath = normalizeWatchPath(rootPath);
+    if (!normalizedFilePath) return '';
+    if (!normalizedRootPath) return normalizedFilePath;
+    if (normalizedFilePath === normalizedRootPath) return '';
+    const prefix = `${normalizedRootPath}/`;
+    if (normalizedFilePath.startsWith(prefix)) {
+        return normalizedFilePath.slice(prefix.length);
+    }
+    return normalizedFilePath;
+};
 
 export function useImageLoader() {
     const {
@@ -344,7 +369,7 @@ export function useImageLoader() {
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
         
         if (finalDirectoryImages.length === 0) {
-            console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
+            console.warn(`ÔÜá´©Å No images found for directory ${directory.name}, skipping cache save`);
             setSuccess(`Loaded 0 images from ${directory.name}.`);
             setLoading(false);
             return;
@@ -353,7 +378,7 @@ export function useImageLoader() {
         // Calculate and log indexing time
         if (indexingStartTimeRef.current !== null) {
             const elapsedSeconds = ((performance.now() - indexingStartTimeRef.current) / 1000).toFixed(2);
-            console.log(`⏱️ Indexed in ${elapsedSeconds} seconds`);
+            console.log(`ÔÅ▒´©Å Indexed in ${elapsedSeconds} seconds`);
             indexingStartTimeRef.current = null;
         }
 
@@ -702,13 +727,13 @@ export function useImageLoader() {
 
     // Show confirmation dialog for root disk scanning
     const confirmRootDiskScan = async (path: string): Promise<boolean> => {
-        const message = `⚠️ WARNING: Root Disk Detected\n\n` +
+        const message = `ÔÜá´©Å WARNING: Root Disk Detected\n\n` +
             `You are attempting to scan "${path}" which appears to be a root disk or system directory.\n\n` +
             `This could:\n` +
-            `• Take hours or days to complete\n` +
-            `• Freeze or crash the application\n` +
-            `• Index thousands of unrelated files\n` +
-            `• Use significant system resources\n\n` +
+            `ÔÇó Take hours or days to complete\n` +
+            `ÔÇó Freeze or crash the application\n` +
+            `ÔÇó Index thousands of unrelated files\n` +
+            `ÔÇó Use significant system resources\n\n` +
             `Are you absolutely sure you want to continue?`;
         
         return window.confirm(message);
@@ -852,6 +877,113 @@ export function useImageLoader() {
         }
     }, []);
 
+    const processNewWatchedFiles = useCallback(async (
+        directory: Directory,
+        files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }>
+    ) => {
+        try {
+            const normalizedFiles = files.map(file => {
+                const relativePath = toRelativeWatchPath(file.path, directory.path);
+                const normalizedName = relativePath || file.name;
+                const normalizedType = file.type && file.type.includes('/') ? file.type : undefined;
+                return { ...file, relativePath, normalizedName, normalizedType };
+            });
+            // Filtrar arquivos que j├í existem
+            const images = useImageStore.getState().images;
+            const existingIds = new Set(images.map(img => img.id));
+            const newFiles = normalizedFiles.filter(file => {
+                const imageId = `${directory.id}::${file.relativePath || file.normalizedName}`;
+                return !existingIds.has(imageId);
+            });
+
+            if (newFiles.length === 0) {
+                return; // Todos os arquivos j├í foram indexados
+            }
+
+            // Obter configura├º├úo de concorr├¬ncia
+            const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
+
+            // Criar mock handles para os arquivos (necess├írio para processFiles)
+            // Inclu├¡mos _filePath para que o Electron possa ler os arquivos via IPC batch
+            const fileEntries = newFiles.map(file => ({
+                handle: {
+                    name: file.normalizedName,
+                    kind: 'file' as const,
+                    _filePath: file.path, // IMPORTANTE: Path para leitura via IPC no Electron
+                    getFile: async () => {
+                        // Read file directly when needed (during processFiles)
+                        if (getIsElectron()) {
+                            const fileResult = await window.electronAPI.readFile(file.path);
+                            if (fileResult.success && fileResult.data) {
+                                const freshData = new Uint8Array(fileResult.data);
+                                const lowerName = file.normalizedName.toLowerCase();
+                                const type = lowerName.endsWith('.png')
+                                    ? 'image/png'
+                                    : lowerName.endsWith('.webp')
+                                        ? 'image/webp'
+                                        : 'image/jpeg';
+                                return new File([freshData as any], file.normalizedName, { type });
+                            }
+                            throw new Error(`Failed to read file: ${file.normalizedName}`);
+                        }
+                        throw new Error(`Failed to read file: ${file.path}`);
+                    }
+                } as any,
+                path: file.relativePath || file.normalizedName,
+                lastModified: file.lastModified,
+                size: file.size,
+                type: file.normalizedType,
+                birthtimeMs: file.lastModified
+            }));
+
+            // Criar file stats map
+            const fileStatsMap = new Map(
+                newFiles.map(f => [f.relativePath || f.normalizedName, { size: f.size, type: f.normalizedType, birthtimeMs: f.lastModified }])
+            );
+
+            // Callback para processar batches de imagens
+            const handleBatchProcessed = (batch: IndexedImage[]) => {
+                console.log('[auto-watch] Phase A processed', batch.length, 'images (not adding yet, waiting for Phase B)');
+            };
+
+            // Processar novos arquivos usando o pipeline existente
+            const { phaseB } = await processFiles(
+                fileEntries,
+                () => {}, // setProgress - silent
+                handleBatchProcessed,
+                directory.id,
+                directory.name,
+                false, // scanSubfolders
+                () => {}, // onDeletion
+                undefined, // abortSignal
+                undefined, // waitWhilePaused
+                {
+                    concurrency: indexingConcurrency,
+                    fileStats: fileStatsMap,
+                    onEnrichmentBatch: (enrichedBatch) => {
+                        // Phase B: Enriquecimento completo - adicionar as imagens agora
+                        console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        addImages(enrichedBatch);
+                        // Force flush imediatamente
+                        const flushPendingImages = useImageStore.getState().flushPendingImages;
+                        setTimeout(() => {
+                            console.log('[auto-watch] Flushing enriched images');
+                            flushPendingImages();
+                        }, 0);
+                    },
+                }
+            );
+
+            // Aguardar Phase B completar
+            console.log('[auto-watch] Waiting for Phase B to complete...');
+            await phaseB;
+            console.log('[auto-watch] Phase B completed!');
+
+        } catch (error) {
+            console.error('Error processing watched files:', error);
+        }
+    }, [addImages]);
+
     return {
         handleSelectFolder,
         handleUpdateFolder,
@@ -859,6 +991,7 @@ export function useImageLoader() {
         handleRemoveDirectory,
         loadDirectory,
         loadDirectoryFromCache,
+        processNewWatchedFiles,
         cancelIndexing: () => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();

@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import * as fileWatcher from './services/fileWatcher.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1317,6 +1318,51 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // ============================================================
+  // File Watching Handlers
+  // ============================================================
+
+  ipcMain.handle('start-watching-directory', async (event, args) => {
+    const { directoryId, dirPath } = args;
+
+    if (!directoryId || !dirPath) {
+      return { success: false, error: 'Missing required parameters' };
+    }
+
+    // Validar se o path está permitido
+    if (!isPathAllowed(dirPath)) {
+      return { success: false, error: 'Path not allowed' };
+    }
+
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (!mainWindow) {
+      return { success: false, error: 'No window available' };
+    }
+
+    return fileWatcher.startWatching(directoryId, dirPath, mainWindow);
+  });
+
+  ipcMain.handle('stop-watching-directory', async (event, args) => {
+    const { directoryId } = args;
+
+    if (!directoryId) {
+      return { success: false, error: 'Missing directoryId' };
+    }
+
+    return fileWatcher.stopWatching(directoryId);
+  });
+
+  ipcMain.handle('get-watcher-status', async (event, args) => {
+    const { directoryId } = args;
+
+    if (!directoryId) {
+      return { success: false, active: false };
+    }
+
+    const status = fileWatcher.getWatcherStatus(directoryId);
+    return { success: true, ...status };
+  });
+
   // Handle reading file content
   ipcMain.handle('read-file', async (event, filePath) => {
     try {
@@ -1530,6 +1576,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  // Stop all file watchers before quitting
+  fileWatcher.stopAllWatchers();
 });
 
 app.on('activate', () => {

@@ -184,11 +184,13 @@ interface ImageState {
   selectedTags: string[];
   showFavoritesOnly: boolean;
   isAnnotationsLoaded: boolean;
+  activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
 
   // Actions
   addDirectory: (directory: Directory) => void;
   removeDirectory: (directoryId: string) => void;
   toggleDirectoryVisibility: (directoryId: string) => void;
+  toggleAutoWatch: (directoryId: string) => void;
   initializeFolderSelection: () => Promise<void>;
   setFolderSelectionState: (
     path: string,
@@ -320,11 +322,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             const existingIds = new Set(state.images.map(img => img.id));
             const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
             if (uniqueNewImages.length === 0) {
+                console.log('[store] No new images to flush (all duplicates)');
                 return state;
             }
             addedImages = uniqueNewImages;
             const allImages = [...state.images, ...uniqueNewImages];
-            return _updateState(state, allImages);
+            console.log('[store] Flushing', uniqueNewImages.length, 'new images. Total images:', allImages.length);
+            const newState = _updateState(state, allImages);
+            console.log('[store] After update - filteredImages:', newState.filteredImages.length);
+            return newState;
         });
 
         // Import tags from metadata after images are added to store
@@ -704,6 +710,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedTags: [],
         showFavoritesOnly: false,
         isAnnotationsLoaded: false,
+        activeWatchers: new Set(),
 
         // --- ACTIONS ---
 
@@ -723,6 +730,30 @@ export const useImageStore = create<ImageState>((set, get) => {
             const newState = { ...state, directories: updatedDirectories };
             return { ...newState, ...filterAndSort(newState) };
         }),
+
+        toggleAutoWatch: (directoryId) => {
+            set((state) => {
+                const directories = state.directories.map((dir) =>
+                    dir.id === directoryId
+                        ? { ...dir, autoWatch: !dir.autoWatch }
+                        : dir
+                );
+
+                // Persistir directories no localStorage
+                if (typeof window !== 'undefined') {
+                    const paths = directories.map(d => d.path);
+                    localStorage.setItem('image-metahub-directories', JSON.stringify(paths));
+
+                    // Persistir estado de autoWatch separadamente para manter sincronizado
+                    const watchStates = Object.fromEntries(
+                        directories.map(d => [d.id, { enabled: !!d.autoWatch, path: d.path }])
+                    );
+                    localStorage.setItem('image-metahub-directory-watchers', JSON.stringify(watchStates));
+                }
+
+                return { directories };
+            });
+        },
 
         initializeFolderSelection: async () => {
             const persisted = await loadFolderSelection();

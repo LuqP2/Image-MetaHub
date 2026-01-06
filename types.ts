@@ -50,6 +50,12 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
+
+  // File watching
+  startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;
+  stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
+  getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
+  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
 }
 
 declare global {
@@ -580,6 +586,7 @@ export interface Directory {
   path: string;
   handle: FileSystemDirectoryHandle;
   visible?: boolean; // Whether images from this directory should be shown (default: true)
+  autoWatch?: boolean; // Whether to automatically watch this directory for new images (default: false)
 }
 
 export interface FilterOptions {
