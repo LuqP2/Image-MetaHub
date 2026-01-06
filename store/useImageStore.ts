@@ -322,11 +322,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             const existingIds = new Set(state.images.map(img => img.id));
             const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
             if (uniqueNewImages.length === 0) {
+                console.log('[store] No new images to flush (all duplicates)');
                 return state;
             }
             addedImages = uniqueNewImages;
             const allImages = [...state.images, ...uniqueNewImages];
-            return _updateState(state, allImages);
+            console.log('[store] Flushing', uniqueNewImages.length, 'new images. Total images:', allImages.length);
+            const newState = _updateState(state, allImages);
+            console.log('[store] After update - filteredImages:', newState.filteredImages.length);
+            return newState;
         });
 
         // Import tags from metadata after images are added to store

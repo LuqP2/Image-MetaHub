@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auto-Watch Functionality**: Automatic folder monitoring for real-time image detection:
+  - Individual toggle per directory with eye icon in directory list
+  - Real-time file monitoring using chokidar for instant detection
+  - Intelligent debouncing (500ms) and batch processing for optimal performance
+  - Silent background processing without notifications or interruptions
+  - State persistence - watchers automatically restored on app restart
+  - Support for PNG, JPG, JPEG, and WEBP formats
+  - Filters cache folders and system directories automatically
+  - Perfect for monitoring ComfyUI/A1111 output folders during generation
 - **ComfyUI Generation Integration**: Complete workflow-based image generation directly from Image MetaHub:
   - "Generate with ComfyUI" button in ImageModal for creating variations
   - Full parameter customization (model, LoRAs, seed, steps, CFG, size)
