@@ -675,6 +675,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       height: params.height,
                       sampler: params.sampler,
                       scheduler: params.scheduler,
+                      batch_size: params.numberOfImages,
                     };
                     await generateWithComfyUI(previewImage, {
                       customMetadata,

@@ -30,6 +30,7 @@ export interface GenerationParams {
   steps: number;
   seed: number;
   randomSeed: boolean;
+  numberOfImages: number;
   width: number;
   height: number;
   model?: string;
@@ -58,6 +59,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     steps: 20,
     seed: -1,
     randomSeed: false,
+    numberOfImages: 1,
     width: 1024,
     height: 1024,
     model: undefined,
@@ -99,6 +101,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
         steps: meta.steps || 20,
         seed: meta.seed !== undefined ? meta.seed : -1,
         randomSeed: false,
+        numberOfImages: 1,
         width: meta.width || 1024,
         height: meta.height || 1024,
         model: preferredModel,
@@ -126,6 +129,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
 
     if (params.steps <= 0) {
       setValidationError('Steps must be greater than 0');
+      return;
+    }
+
+    if (params.numberOfImages <= 0 || params.numberOfImages > 10) {
+      setValidationError('Number of images must be between 1 and 10');
       return;
     }
 
@@ -507,6 +515,22 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                 />
                 Random seed
               </label>
+            </div>
+
+            {/* Number of Images */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-300">
+                Number of Images
+              </label>
+              <input
+                type="number"
+                value={params.numberOfImages}
+                onChange={(e) => setParams(prev => ({ ...prev, numberOfImages: parseInt(e.target.value) || 1 }))}
+                min="1"
+                max="10"
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <p className="text-xs text-gray-500">Max: 10 images</p>
             </div>
           </div>
 

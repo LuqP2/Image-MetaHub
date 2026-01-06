@@ -250,6 +250,11 @@ export class ComfyUIApiClient {
     };
     currentNodeId++;
 
+    const batchSizeRaw = (metadata as any).batch_size ?? (metadata as any).numberOfImages;
+    const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0
+      ? Math.min(10, Math.floor(batchSizeRaw))
+      : 1;
+
     // Node N+2: EmptyLatentImage
     const latentNodeId = currentNodeId.toString();
     workflow[latentNodeId] = {
@@ -257,7 +262,7 @@ export class ComfyUIApiClient {
       "inputs": {
         "width": metadata.width || 1024,
         "height": metadata.height || 1024,
-        "batch_size": 1
+        "batch_size": batchSize
       }
     };
     currentNodeId++;

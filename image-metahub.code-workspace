@@ -2,11 +2,14 @@
   "folders": [
     {
       "name": "App - Image MetaHub",
-      "path": "." 
+      "path": "."
     },
     {
       "name": "Node - ComfyUI Save",
       "path": "D:/ImageMetaHub-ComfyUI-Save"
+    },
+    {
+      "path": "../imagemetahub.com"
     }
   ],
   "settings": {
