@@ -19,13 +19,15 @@ export function useComfyUIProgress() {
   const [progressState, setProgressState] = useState<ComfyUIProgressState | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const promptIdRef = useRef<string>('');
+  const clientIdRef = useRef<string>('');
 
-  const startTracking = useCallback((serverUrl: string, promptId: string) => {
+  const startTracking = useCallback((serverUrl: string, promptId: string, clientId?: string) => {
     // Store prompt ID for reference
     promptIdRef.current = promptId;
+    clientIdRef.current = clientId || generateClientId();
 
     // Convert http:// to ws://
-    const wsUrl = serverUrl.replace(/^http/, 'ws') + `/ws?clientId=${generateClientId()}`;
+    const wsUrl = serverUrl.replace(/^http/, 'ws') + `/ws?clientId=${clientIdRef.current}`;
 
     console.log('[ComfyUI Progress] Connecting to WebSocket:', wsUrl);
 
@@ -46,6 +48,9 @@ export function useComfyUIProgress() {
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as ComfyUIProgressUpdate;
+        if (message.data?.prompt_id && message.data.prompt_id !== promptIdRef.current) {
+          return;
+        }
 
         // Progress update
         if (message.type === 'progress') {
@@ -132,6 +137,7 @@ export function useComfyUIProgress() {
     }
     setProgressState(null);
     promptIdRef.current = '';
+    clientIdRef.current = '';
   }, []);
 
   return { progressState, startTracking, stopTracking };

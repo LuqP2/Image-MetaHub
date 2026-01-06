@@ -59,7 +59,12 @@ export function useGenerateWithA1111() {
       });
       const { activeJobs } = useGenerationQueueStore.getState();
       if (activeJobs.a1111 && activeJobs.a1111 !== jobId) {
-        setJobStatus(activeJobs.a1111, 'done', { progress: 1 });
+        setGenerateStatus({
+          success: true,
+          message: 'Generation queued. Waiting for current A1111 job to finish.',
+        });
+        setTimeout(() => setGenerateStatus(null), 5000);
+        return;
       }
       setActiveJob('a1111', jobId);
       setJobStatus(jobId, 'processing');

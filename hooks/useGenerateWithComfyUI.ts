@@ -78,7 +78,12 @@ export function useGenerateWithComfyUI() {
       });
       const { activeJobs } = useGenerationQueueStore.getState();
       if (activeJobs.comfyui && activeJobs.comfyui !== jobId) {
-        setJobStatus(activeJobs.comfyui, 'done', { progress: 1 });
+        setGenerateStatus({
+          success: true,
+          message: 'Generation queued. Waiting for current ComfyUI job to finish.',
+        });
+        setTimeout(() => setGenerateStatus(null), 5000);
+        return;
       }
       setActiveJob('comfyui', jobId);
       setJobStatus(jobId, 'processing');
@@ -97,8 +102,8 @@ export function useGenerateWithComfyUI() {
 
         if (result.success && result.prompt_id) {
           updateQueueJob(jobId, result.prompt_id);
-          // Start WebSocket progress tracking
-          startTracking(comfyUIServerUrl, result.prompt_id);
+          // Start WebSocket progress tracking with matching client id
+          startTracking(comfyUIServerUrl, result.prompt_id, workflow.client_id);
 
           setGenerateStatus({
             success: true,
