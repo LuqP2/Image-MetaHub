@@ -872,6 +872,25 @@ export function useImageLoader() {
             // Obter configuração de concorrência
             const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
 
+            // Criar mock handles para os arquivos (necessário para processFiles)
+            // Incluímos _filePath para que o Electron possa ler os arquivos via IPC batch
+            const fileEntries = newFiles.map(file => ({
+                handle: {
+                    name: file.name,
+                    kind: 'file' as const,
+                    _filePath: file.path, // IMPORTANTE: Path para leitura via IPC no Electron
+                    getFile: async () => {
+                        // Mock getFile - será lido via IPC no fileIndexer
+                        return null as any;
+                    }
+                } as any,
+                path: file.path,
+                lastModified: file.lastModified,
+                size: file.size,
+                type: file.type,
+                birthtimeMs: file.lastModified
+            }));
+
             // Criar file stats map
             const fileStatsMap = new Map(
                 newFiles.map(f => [f.path, { size: f.size, type: f.type, birthtimeMs: f.lastModified }])
@@ -886,7 +905,7 @@ export function useImageLoader() {
 
             // Processar novos arquivos usando o pipeline existente
             await processFiles(
-                newFiles as any, // Cast to match expected type
+                fileEntries,
                 () => {}, // setProgress - silent
                 handleBatchProcessed,
                 directory.id,
