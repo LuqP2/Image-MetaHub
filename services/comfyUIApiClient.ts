@@ -506,6 +506,32 @@ export class ComfyUIApiClient {
   }
 
   /**
+   * Interrupt current ComfyUI generation
+   */
+  async interrupt(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+      const response = await fetch(`${this.config.serverUrl}/interrupt`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: errorText };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Get client ID used for WebSocket connection
    */
   getClientId(): string {

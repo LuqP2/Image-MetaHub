@@ -23,16 +23,20 @@ import Footer from './components/Footer';
 import cacheManager from './services/cacheManager';
 import DirectoryList from './components/DirectoryList';
 import ImagePreviewSidebar from './components/ImagePreviewSidebar';
+import GenerationQueueSidebar from './components/GenerationQueueSidebar';
 import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
+import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
+import { useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
 
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
+  useGenerationQueueSync();
   
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
@@ -127,6 +131,11 @@ export default function App() {
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+
+  const queueCount = useGenerationQueueStore((state) =>
+    state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
+  );
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -592,9 +601,13 @@ export default function App() {
         </Sidebar>
       )}
       
-      <ImagePreviewSidebar />
+      {isQueueOpen ? (
+        <GenerationQueueSidebar onClose={() => setIsQueueOpen(false)} />
+      ) : (
+        <ImagePreviewSidebar />
+      )}
 
-      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${previewImage ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${(previewImage || isQueueOpen) ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
         <Header
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
@@ -662,6 +675,9 @@ export default function App() {
                 directoryCount={selectionDirectoryCount}
                 enrichmentProgress={enrichmentProgress}
                 a1111Progress={a1111Progress}
+                queueCount={queueCount}
+                isQueueOpen={isQueueOpen}
+                onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
               />
             </>
           )}

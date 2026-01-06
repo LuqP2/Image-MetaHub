@@ -8,6 +8,7 @@ import { IndexedImage, BaseMetadata } from '../types';
 import { ComfyUIApiClient, WorkflowOverrides } from '../services/comfyUIApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useComfyUIProgressContext } from '../contexts/ComfyUIProgressContext';
+import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 
 interface GenerateStatus {
   success: boolean;
@@ -25,6 +26,13 @@ export function useGenerateWithComfyUI() {
 
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const { startTracking, stopTracking } = useComfyUIProgressContext();
+  const createJob = useGenerationQueueStore((state) => state.createJob);
+  const setJobStatus = useGenerationQueueStore((state) => state.setJobStatus);
+  const setActiveJob = useGenerationQueueStore((state) => state.setActiveJob);
+
+  const updateQueueJob = useCallback((jobId: string, promptId: string) => {
+    useGenerationQueueStore.getState().updateJob(jobId, { providerJobId: promptId });
+  }, []);
 
   const generateWithComfyUI = useCallback(
     async (image: IndexedImage, params?: GenerateParams) => {
@@ -51,6 +59,35 @@ export function useGenerateWithComfyUI() {
         return;
       }
 
+      const numberOfImages =
+        (params?.customMetadata as any)?.batch_size ||
+        (params?.customMetadata as any)?.numberOfImages ||
+        1;
+
+      const jobId = createJob({
+        provider: 'comfyui',
+        imageId: image.id,
+        imageName: image.name,
+        prompt: metadata.prompt,
+        totalImages: numberOfImages,
+        payload: {
+          provider: 'comfyui',
+          customMetadata: params?.customMetadata,
+          overrides: params?.overrides,
+        },
+      });
+      const { activeJobs } = useGenerationQueueStore.getState();
+      if (activeJobs.comfyui && activeJobs.comfyui !== jobId) {
+        setGenerateStatus({
+          success: true,
+          message: 'Generation queued. Waiting for current ComfyUI job to finish.',
+        });
+        setTimeout(() => setGenerateStatus(null), 5000);
+        return;
+      }
+      setActiveJob('comfyui', jobId);
+      setJobStatus(jobId, 'processing');
+
       setIsGenerating(true);
       setGenerateStatus(null);
 
@@ -64,8 +101,9 @@ export function useGenerateWithComfyUI() {
         const result = await client.queuePrompt(workflow);
 
         if (result.success && result.prompt_id) {
-          // Start WebSocket progress tracking
-          startTracking(comfyUIServerUrl, result.prompt_id);
+          updateQueueJob(jobId, result.prompt_id);
+          // Start WebSocket progress tracking with matching client id
+          startTracking(comfyUIServerUrl, result.prompt_id, workflow.client_id);
 
           setGenerateStatus({
             success: true,
@@ -76,6 +114,11 @@ export function useGenerateWithComfyUI() {
             success: false,
             message: result.error || 'Failed to queue workflow',
           });
+          setJobStatus(jobId, 'failed', { error: result.error || 'Failed to queue workflow' });
+          const { activeJobs } = useGenerationQueueStore.getState();
+          if (activeJobs.comfyui === jobId) {
+            setActiveJob('comfyui', null);
+          }
         }
 
         // Clear status after 5 seconds
@@ -86,6 +129,12 @@ export function useGenerateWithComfyUI() {
           message: `Error: ${error.message}`,
         });
 
+        setJobStatus(jobId, 'failed', { error: error.message });
+        const { activeJobs } = useGenerationQueueStore.getState();
+        if (activeJobs.comfyui === jobId) {
+          setActiveJob('comfyui', null);
+        }
+
         // Stop progress tracking on error
         stopTracking();
 
@@ -94,7 +143,7 @@ export function useGenerateWithComfyUI() {
         setIsGenerating(false);
       }
     },
-    [comfyUIServerUrl, startTracking, stopTracking]
+    [comfyUIServerUrl, createJob, setActiveJob, setJobStatus, startTracking, stopTracking, updateQueueJob]
   );
 
   return {

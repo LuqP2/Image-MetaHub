@@ -8,7 +8,7 @@ import { useComfyUIProgress, ComfyUIProgressState } from '../hooks/useComfyUIPro
 
 interface ComfyUIProgressContextType {
   progressState: ComfyUIProgressState | null;
-  startTracking: (serverUrl: string, promptId: string) => void;
+  startTracking: (serverUrl: string, promptId: string, clientId?: string) => void;
   stopTracking: () => void;
 }
 

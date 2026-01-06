@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unified Generation Queue**: Track A1111 and ComfyUI jobs in a dedicated queue sidebar:
+  - Footer toggle with badge count for queued/running items
+  - Per-item progress (steps/images) and overall progress bar
+  - Actions for cancel, retry, remove, clear finished, and clear all
 - **LoRA Weight Display**: ImageModal and ImagePreviewSidebar now display LoRA weights when available (e.g., `style_lora_v1.safetensors (0.8)`), providing better visibility of LoRA strength used in generation.
 - **Shared LoRA Extraction Helper**: Added `extractLoRAsWithWeights()` utility function in `promptCleaner.ts` to standardize LoRA extraction with weight parsing across all parsers.
 - **MetaHub Save Node Integration**: Full support for images saved with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) across all formats:

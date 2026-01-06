@@ -575,7 +575,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       width: params.width,
                       height: params.height,
                       model: params.model || nMeta?.model,
-                      sampler: params.sampler,
+                      ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
                     await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
@@ -673,9 +673,9 @@ const ImagePreviewSidebar: React.FC = () => {
                       seed: params.randomSeed ? -1 : params.seed,
                       width: params.width,
                       height: params.height,
-                      sampler: params.sampler,
-                      scheduler: params.scheduler,
                       batch_size: params.numberOfImages,
+                      ...(params.sampler ? { sampler: params.sampler } : {}),
+                      ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
                     await generateWithComfyUI(previewImage, {
                       customMetadata,

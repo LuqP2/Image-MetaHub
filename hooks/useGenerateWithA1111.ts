@@ -3,6 +3,7 @@ import { IndexedImage, BaseMetadata } from '../types';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
+import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 
 interface GenerateStatus {
   success: boolean;
@@ -15,6 +16,9 @@ export function useGenerateWithA1111() {
 
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const { startPolling, stopPolling } = useA1111ProgressContext();
+  const createJob = useGenerationQueueStore((state) => state.createJob);
+  const setJobStatus = useGenerationQueueStore((state) => state.setJobStatus);
+  const setActiveJob = useGenerationQueueStore((state) => state.setActiveJob);
 
   const generateWithA1111 = useCallback(
     async (image: IndexedImage, customParams?: Partial<BaseMetadata>, numberOfImages?: number) => {
@@ -41,6 +45,30 @@ export function useGenerateWithA1111() {
         return;
       }
 
+      const jobId = createJob({
+        provider: 'a1111',
+        imageId: image.id,
+        imageName: image.name,
+        prompt: metadata.prompt,
+        totalImages: numberOfImages || 1,
+        payload: {
+          provider: 'a1111',
+          customMetadata: customParams,
+          numberOfImages: numberOfImages || 1,
+        },
+      });
+      const { activeJobs } = useGenerationQueueStore.getState();
+      if (activeJobs.a1111 && activeJobs.a1111 !== jobId) {
+        setGenerateStatus({
+          success: true,
+          message: 'Generation queued. Waiting for current A1111 job to finish.',
+        });
+        setTimeout(() => setGenerateStatus(null), 5000);
+        return;
+      }
+      setActiveJob('a1111', jobId);
+      setJobStatus(jobId, 'processing');
+
       setIsGenerating(true);
       setGenerateStatus(null);
 
@@ -63,6 +91,14 @@ export function useGenerateWithA1111() {
             : (result.error || 'Generation failed'),
         });
 
+        if (!result.success) {
+          setJobStatus(jobId, 'failed', { error: result.error || 'Generation failed' });
+          const { activeJobs } = useGenerationQueueStore.getState();
+          if (activeJobs.a1111 === jobId) {
+            setActiveJob('a1111', null);
+          }
+        }
+
         // Stop progress polling
         stopPolling();
 
@@ -74,6 +110,12 @@ export function useGenerateWithA1111() {
           message: `Error: ${error.message}`,
         });
 
+        setJobStatus(jobId, 'failed', { error: error.message });
+        const { activeJobs } = useGenerationQueueStore.getState();
+        if (activeJobs.a1111 === jobId) {
+          setActiveJob('a1111', null);
+        }
+
         // Stop progress polling on error
         stopPolling();
 
@@ -82,7 +124,7 @@ export function useGenerateWithA1111() {
         setIsGenerating(false);
       }
     },
-    [a1111ServerUrl, startPolling, stopPolling]
+    [a1111ServerUrl, createJob, setActiveJob, setJobStatus, startPolling, stopPolling]
   );
 
   return {
