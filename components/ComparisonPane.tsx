@@ -142,7 +142,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
                 width: params.width,
                 height: params.height,
                 model: params.model || image.metadata?.normalizedMetadata?.model,
-                sampler: params.sampler,
+                ...(params.sampler ? { sampler: params.sampler } : {}),
               };
             await generateWithA1111(image, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);

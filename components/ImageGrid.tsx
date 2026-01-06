@@ -769,7 +769,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 width: params.width,
                 height: params.height,
                 model: params.model || selectedImageForGeneration.metadata?.normalizedMetadata?.model,
-                sampler: params.sampler,
+                ...(params.sampler ? { sampler: params.sampler } : {}),
               };
             await generateWithA1111(selectedImageForGeneration, customMetadata, params.numberOfImages);
             setIsGenerateModalOpen(false);

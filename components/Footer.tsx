@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, GitCompare } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, GitCompare, ListChecks } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -23,6 +23,9 @@ interface FooterProps {
   directoryCount?: number;
   enrichmentProgress?: { processed: number; total: number } | null;
   a1111Progress?: A1111ProgressState | null;
+  queueCount?: number;
+  isQueueOpen?: boolean;
+  onToggleQueue?: () => void;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -49,7 +52,10 @@ const Footer: React.FC<FooterProps> = ({
   totalCount,
   directoryCount,
   enrichmentProgress,
-  a1111Progress
+  a1111Progress,
+  queueCount = 0,
+  isQueueOpen = false,
+  onToggleQueue
 }) => {
   const { selectedImages, filteredImages, setComparisonImages, openComparisonModal } = useImageStore();
   const { canUseA1111, canUseComparison, showProModal } = useFeatureAccess();
@@ -181,6 +187,24 @@ const Footer: React.FC<FooterProps> = ({
         <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-1.5 hover:bg-gray-800 text-gray-400 hover:text-gray-300 rounded transition-colors" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
           {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
         </button>
+        {onToggleQueue && (
+          <button
+            onClick={onToggleQueue}
+            className={`relative p-1.5 rounded transition-colors ${
+              isQueueOpen
+                ? 'bg-blue-500/20 text-blue-300'
+                : 'hover:bg-gray-800 text-gray-400 hover:text-gray-300'
+            }`}
+            title="Toggle Queue"
+          >
+            <ListChecks className="h-4 w-4" />
+            {queueCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center">
+                {queueCount}
+              </span>
+            )}
+          </button>
+        )}
         {selectedCount > 0 && (
           <>
             <span className="text-gray-600">•</span>

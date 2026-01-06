@@ -325,4 +325,30 @@ export class A1111ApiClient {
       };
     }
   }
+
+  /**
+   * Interrupt current A1111 generation
+   */
+  async interrupt(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+
+      const response = await fetch(`${this.config.serverUrl}/sdapi/v1/interrupt`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return { success: false, error: errorText };
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
 }
