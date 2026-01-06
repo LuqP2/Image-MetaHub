@@ -18,19 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Support for PNG, JPG, JPEG, and WEBP formats
   - Filters cache folders and system directories automatically
   - Perfect for monitoring ComfyUI/A1111 output folders during generation
-- **ComfyUI Generation Integration**: Complete workflow-based image generation directly from Image MetaHub:
-  - "Generate with ComfyUI" button in ImageModal for creating variations
-  - Full parameter customization (model, LoRAs, seed, steps, CFG, size)
-  - Real-time WebSocket-based progress tracking during generation
-  - Copy workflow JSON to clipboard functionality
-  - Automatic integration with MetaHub Save Node for metadata preservation
-  - Purple-themed UI distinct from A1111 integration
-  - Connection testing and settings persistence
-- **Enhanced A1111 Generation**: Major improvements to Automatic1111 integration:
-  - Model and LoRA selection with search filters in generation modal
-  - Image size controls (width/height inputs)
-  - "Remember last selected model" - automatically selects previously used model
-  - Renamed "Generate Variation" to "Generate with A1111" for clarity
+  - **ComfyUI Generation Integration**: Complete workflow-based image generation directly from Image MetaHub:
+    - "Generate with ComfyUI" button in ImageModal for creating variations
+    - Full parameter customization (model, LoRAs, seed, steps, CFG, size)
+    - Real-time WebSocket-based progress tracking during generation
+    - Copy workflow JSON to clipboard functionality
+    - Automatic integration with MetaHub Save Node for metadata preservation
+    - Purple-themed UI distinct from A1111 integration
+    - Connection testing and settings persistence
+  - **Unified Generation Queue**: New queue sidebar for tracking A1111 and ComfyUI jobs:
+    - Toggle queue from footer with badge count
+    - Per-item progress with steps/images and overall progress bar
+    - Actions for cancel, retry, remove, clear finished, and clear all
+  - **Enhanced A1111 Generation**: Major improvements to Automatic1111 integration:
+    - Model and LoRA selection with search filters in generation modal
+    - Image size controls (width/height inputs)
+    - "Remember last selected model" - automatically selects previously used model
+    - Renamed "Generate Variation" to "Generate with A1111" for clarity
 - **WebP Image Support**: Full support for WebP format across the application:
   - WebP indexing, parsing, and preview generation
   - MetaHub Save Node metadata detection in WebP files
