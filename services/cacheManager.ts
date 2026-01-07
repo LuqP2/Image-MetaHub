@@ -72,6 +72,48 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
   }));
 }
 
+const isCloneError = (error: unknown): boolean => {
+  if (!error) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /clone|deserialize|DataCloneError/i.test(message);
+};
+
+const safeJsonClone = (value: unknown): any => {
+  try {
+    return JSON.parse(JSON.stringify(value, (_key, val) => {
+      if (typeof val === 'bigint') {
+        return val.toString();
+      }
+      if (val instanceof Map) {
+        return Object.fromEntries(val);
+      }
+      if (val instanceof Set) {
+        return Array.from(val);
+      }
+      if (val instanceof Date) {
+        return val.toISOString();
+      }
+      if (ArrayBuffer.isView(val)) {
+        const view = val as ArrayBufferView;
+        return Array.from(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+      }
+      if (val instanceof ArrayBuffer) {
+        return Array.from(new Uint8Array(val));
+      }
+      return val;
+    }));
+  } catch {
+    return null;
+  }
+};
+
+const sanitizeCacheMetadata = (metadata: CacheImageMetadata[]): CacheImageMetadata[] => {
+  return metadata.map(entry => ({
+    ...entry,
+    metadata: safeJsonClone(entry.metadata),
+  }));
+};
+
 class IncrementalCacheWriter {
   private chunkIndex = 0;
   private totalImages = 0;
@@ -103,18 +145,34 @@ class IncrementalCacheWriter {
       return [];
     }
 
-    const metadata = precomputed ?? toCacheMetadata(images);
+    let metadata = precomputed ?? toCacheMetadata(images);
     const chunkNumber = this.chunkIndex++;
     this.totalImages += images.length;
 
     this.writeQueue = this.writeQueue.then(async () => {
-      const result = await window.electronAPI?.writeCacheChunk?.({
-        cacheId: this.cacheId,
-        chunkIndex: chunkNumber,
-        data: metadata,
-      });
-      if (result && !result.success) {
-        throw new Error(result.error || 'Failed to write cache chunk');
+      try {
+        const result = await window.electronAPI?.writeCacheChunk?.({
+          cacheId: this.cacheId,
+          chunkIndex: chunkNumber,
+          data: metadata,
+        });
+        if (result && !result.success) {
+          throw new Error(result.error || 'Failed to write cache chunk');
+        }
+      } catch (err) {
+        if (isCloneError(err)) {
+          metadata = sanitizeCacheMetadata(metadata);
+          const retry = await window.electronAPI?.writeCacheChunk?.({
+            cacheId: this.cacheId,
+            chunkIndex: chunkNumber,
+            data: metadata,
+          });
+          if (retry && !retry.success) {
+            throw new Error(retry.error || 'Failed to write cache chunk');
+          }
+          return;
+        }
+        throw err;
       }
     });
 
@@ -128,13 +186,30 @@ class IncrementalCacheWriter {
     }
 
     this.writeQueue = this.writeQueue.then(async () => {
-      const result = await window.electronAPI?.writeCacheChunk?.({
-        cacheId: this.cacheId,
-        chunkIndex,
-        data: metadata,
-      });
-      if (result && !result.success) {
-        throw new Error(result.error || 'Failed to rewrite cache chunk');
+      try {
+        const result = await window.electronAPI?.writeCacheChunk?.({
+          cacheId: this.cacheId,
+          chunkIndex,
+          data: metadata,
+        });
+        if (result && !result.success) {
+          throw new Error(result.error || 'Failed to rewrite cache chunk');
+        }
+      } catch (err) {
+        if (isCloneError(err)) {
+          const sanitized = sanitizeCacheMetadata(metadata);
+          metadata.splice(0, metadata.length, ...sanitized);
+          const retry = await window.electronAPI?.writeCacheChunk?.({
+            cacheId: this.cacheId,
+            chunkIndex,
+            data: sanitized,
+          });
+          if (retry && !retry.success) {
+            throw new Error(retry.error || 'Failed to rewrite cache chunk');
+          }
+          return;
+        }
+        throw err;
       }
     });
 

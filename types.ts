@@ -56,6 +56,7 @@ export interface ElectronAPI {
   stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
   onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
+  onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
 
 declare global {

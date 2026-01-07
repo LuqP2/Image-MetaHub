@@ -195,6 +195,7 @@ interface ImageState {
   showFavoritesOnly: boolean;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
+  refreshingDirectories: Set<string>;
 
   // Actions
   addDirectory: (directory: Directory) => void;
@@ -274,6 +275,7 @@ interface ImageState {
   refreshAvailableTags: () => Promise<void>;
   importMetadataTags: (images: IndexedImage[]) => Promise<void>;
   flushPendingImages: () => void;
+  setDirectoryRefreshing: (directoryId: string, isRefreshing: boolean) => void;
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -503,8 +505,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             const folderPath = getImageFolderPath(img, parentPath);
+            const rootState = normalizedSelection.get(parentPath);
             if (folderPath === parentPath) {
-                const rootState = normalizedSelection.get(parentPath);
                 return rootState ? rootState === 'checked' : true;
             }
 
@@ -520,7 +522,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 current = getParentPath(current);
             }
 
-            return false;
+            if (rootState === 'unchecked') {
+                return false;
+            }
+
+            return true;
         });
 
         let results = selectionFiltered;
@@ -734,6 +740,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         showFavoritesOnly: false,
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
+        refreshingDirectories: new Set(),
 
         // --- ACTIONS ---
 
@@ -852,12 +859,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return selection.get(normalizedPath)!;
             }
 
-            const rootPaths = new Set(directories.map(dir => normalizePath(dir.path)));
-            if (rootPaths.has(normalizedPath)) {
-                return 'checked';
+            const rootPaths = directories.map(dir => normalizePath(dir.path));
+            const matchedRoot = rootPaths.find(rootPath => isSameOrDescendantPath(normalizedPath, rootPath));
+            if (!matchedRoot) {
+                return 'unchecked';
             }
 
-            return 'unchecked';
+            const rootState = selection.get(matchedRoot);
+            if (rootState === 'unchecked') {
+                return 'unchecked';
+            }
+
+            return 'checked';
         },
 
         removeDirectory: (directoryId) => {
@@ -1554,6 +1567,18 @@ export const useImageStore = create<ImageState>((set, get) => {
             flushPendingImages();
         },
 
+        setDirectoryRefreshing: (directoryId, isRefreshing) => {
+            set(state => {
+                const next = new Set(state.refreshingDirectories);
+                if (isRefreshing) {
+                    next.add(directoryId);
+                } else {
+                    next.delete(directoryId);
+                }
+                return { refreshingDirectories: next };
+            });
+        },
+
         toggleImageSelection: (imageId) => {
             set(state => {
                 const newSelection = new Set(state.selectedImages);
@@ -1639,6 +1664,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedTags: [],
             showFavoritesOnly: false,
             isAnnotationsLoaded: false,
+            activeWatchers: new Set(),
+            refreshingDirectories: new Set(),
         }),
 
         cleanupInvalidImages: () => {

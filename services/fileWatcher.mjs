@@ -2,24 +2,53 @@ import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
 
-// Map de watchers ativos: directoryId -> instância do watcher
+// Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
 
-// Arquivos pendentes para processar (batching)
+// Pending files for batching
 const pendingFiles = new Map();
 const processingTimeouts = new Map();
 
+const WATCHER_READY_TIMEOUT_MS = 10000;
+
+const shouldUsePolling = (dirPath) => {
+  if (process.env.IMH_FORCE_POLLING === 'true') {
+    return true;
+  }
+  return dirPath.startsWith('\\\\');
+};
+
+const isPermissionError = (error) => {
+  const code = error?.code;
+  return code === 'EPERM' || code === 'EACCES';
+};
+
+const sendWatcherDebug = (mainWindow, message) => {
+  console.log(message);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('watcher-debug', { message });
+  }
+};
+
 /**
- * Inicia o monitoramento de uma pasta
+ * Start watching a directory.
  */
 export function startWatching(directoryId, dirPath, mainWindow) {
-  // Se já está sendo monitorada, retorna sucesso
   if (activeWatchers.has(directoryId)) {
     return { success: true };
   }
 
   try {
-    // Configuração do chokidar
+    sendWatcherDebug(mainWindow, `[FileWatcher] startWatching called - ID: ${directoryId}, Path: ${dirPath}`);
+    sendWatcherDebug(mainWindow, `[FileWatcher] Creating new watcher for ${directoryId} with depth: 99`);
+
+    const usePolling = shouldUsePolling(dirPath);
+    if (usePolling) {
+      const driveMatch = /^[a-zA-Z]:/.exec(dirPath);
+      const driveLabel = driveMatch ? driveMatch[0].toLowerCase() : 'network';
+      sendWatcherDebug(mainWindow, `[FileWatcher] Using polling for ${directoryId} (${driveLabel})`);
+    }
+
     const watcher = chokidar.watch(dirPath, {
       ignored: [
         '**/.thumbnails/**',
@@ -29,54 +58,69 @@ export function startWatching(directoryId, dirPath, mainWindow) {
         '**/.git/**',
       ],
       persistent: true,
-      ignoreInitial: true, // Não processar arquivos já existentes
+      ignoreInitial: true,
+      ignorePermissionErrors: true,
       awaitWriteFinish: {
-        stabilityThreshold: 2000, // Aguardar 2s de estabilidade
+        stabilityThreshold: 2000,
         pollInterval: 100
       },
-      depth: 99, // Monitorar subpastas
+      depth: 99,
+      ...(usePolling ? { usePolling: true, interval: 1000, binaryInterval: 1000 } : {})
     });
 
-    // Handler para novos arquivos
+    const readyTimeout = setTimeout(() => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] Watcher timeout - assuming active for ${directoryId}`);
+    }, WATCHER_READY_TIMEOUT_MS);
+
+    sendWatcherDebug(mainWindow, `[FileWatcher] Watcher created for ${directoryId} - waiting for ready event...`);
+
+    watcher.on('ready', () => {
+      clearTimeout(readyTimeout);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
+    });
+
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-
-      // Filtrar apenas imagens
-      if (['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-        // Adicionar ao batch
-        if (!pendingFiles.has(directoryId)) {
-          pendingFiles.set(directoryId, new Set());
-        }
-        pendingFiles.get(directoryId).add(filePath);
-
-        // Debounce: processar após 500ms de inatividade
-        if (processingTimeouts.has(directoryId)) {
-          clearTimeout(processingTimeouts.get(directoryId));
-        }
-
-        processingTimeouts.set(directoryId, setTimeout(() => {
-          processBatch(directoryId, dirPath, mainWindow);
-        }, 500));
+      if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+        return;
       }
+
+      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${filePath}`);
+      if (!pendingFiles.has(directoryId)) {
+        pendingFiles.set(directoryId, new Set());
+      }
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${filePath}`);
+      pendingFiles.get(directoryId).add(filePath);
+
+      if (processingTimeouts.has(directoryId)) {
+        clearTimeout(processingTimeouts.get(directoryId));
+      }
+
+      processingTimeouts.set(directoryId, setTimeout(() => {
+        processBatch(directoryId, dirPath, mainWindow);
+      }, 500));
     });
 
-    // Handler de erros
     watcher.on('error', (error) => {
-      console.error(`Watcher error for ${directoryId}:`, error);
+      if (isPermissionError(error)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
+        return;
+      }
 
-      // Notificar renderer sobre o erro
+      console.error(`Watcher error for ${directoryId}:`, error);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Watcher error for ${directoryId}: ${error.message || error}`);
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       mainWindow.webContents.send('watcher-error', {
         directoryId,
         error: errorMessage
       });
 
-      // Parar o watcher com problemas
       stopWatching(directoryId);
     });
 
-    // Armazenar watcher
     activeWatchers.set(directoryId, watcher);
+    sendWatcherDebug(mainWindow, `[FileWatcher] Watcher successfully created and stored for ${directoryId}`);
 
     return { success: true };
   } catch (error) {
@@ -86,7 +130,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 }
 
 /**
- * Para o monitoramento de uma pasta
+ * Stop watching a directory.
  */
 export function stopWatching(directoryId) {
   const watcher = activeWatchers.get(directoryId);
@@ -95,7 +139,6 @@ export function stopWatching(directoryId) {
     watcher.close();
     activeWatchers.delete(directoryId);
 
-    // Limpar batches pendentes
     if (processingTimeouts.has(directoryId)) {
       clearTimeout(processingTimeouts.get(directoryId));
       processingTimeouts.delete(directoryId);
@@ -107,7 +150,7 @@ export function stopWatching(directoryId) {
 }
 
 /**
- * Para todos os watchers (chamado no app quit)
+ * Stop all watchers (called on app quit).
  */
 export function stopAllWatchers() {
   for (const [directoryId] of activeWatchers) {
@@ -116,21 +159,22 @@ export function stopAllWatchers() {
 }
 
 /**
- * Retorna status de um watcher
+ * Get watcher status.
  */
 export function getWatcherStatus(directoryId) {
   return { active: activeWatchers.has(directoryId) };
 }
 
 /**
- * Processa batch de arquivos detectados
+ * Process a batch of detected files.
  */
 function processBatch(directoryId, dirPath, mainWindow) {
   const files = pendingFiles.get(directoryId);
 
   if (!files || files.size === 0) return;
 
-  // Converter para array e preparar payload
+  sendWatcherDebug(mainWindow, `[FileWatcher] Processing batch for ${directoryId}, ${files.size} files`);
+
   const filePaths = Array.from(files);
 
   const fileInfos = filePaths.map(filePath => {
@@ -141,7 +185,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
         path: filePath,
         lastModified: stats.mtimeMs,
         size: stats.size,
-        type: path.extname(filePath).slice(1) // Remove o "."
+        type: path.extname(filePath).slice(1)
       };
     } catch (err) {
       console.error(`Error getting stats for ${filePath}:`, err);
@@ -149,15 +193,14 @@ function processBatch(directoryId, dirPath, mainWindow) {
     }
   }).filter(Boolean);
 
-  // Enviar para o renderer
   if (fileInfos.length > 0) {
+    sendWatcherDebug(mainWindow, `[FileWatcher] Sending ${fileInfos.length} files to renderer for directory ${directoryId}`);
     mainWindow.webContents.send('new-images-detected', {
       directoryId,
       files: fileInfos
     });
   }
 
-  // Limpar batch
   pendingFiles.delete(directoryId);
   processingTimeouts.delete(directoryId);
 }

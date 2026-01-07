@@ -1267,8 +1267,22 @@ export async function processFiles(
     }
 
     const chunkImages = chunkBuffer.splice(0, chunkBuffer.length);
-    const metadataChunk = chunkImages.map(mapIndexedImageToCache);
+    let metadataChunk = chunkImages.map(mapIndexedImageToCache);
     const chunkIndex = chunkRecords.length;
+
+    if (cacheWriter) {
+      const flushStart = performance.now();
+      metadataChunk = await cacheWriter.append(chunkImages, metadataChunk);
+      const duration = performance.now() - flushStart;
+      const bytesWritten = JSON.stringify(metadataChunk).length;
+      phaseAStats.bytesWritten += bytesWritten;
+      phaseAStats.diskWrites += 1;
+      phaseAStats.ipcCalls += 1;
+      performance.mark('indexing:phaseA:chunk-flush', {
+        detail: { chunkIndex, durationMs: duration, bytesWritten }
+      });
+    }
+
     chunkRecords.push(metadataChunk);
 
     chunkImages.forEach((img, offset) => {
@@ -1279,19 +1293,6 @@ export async function processFiles(
         entry.chunkOffset = offset;
       }
     });
-
-    if (cacheWriter) {
-      const flushStart = performance.now();
-      await cacheWriter.append(chunkImages, metadataChunk);
-      const duration = performance.now() - flushStart;
-      const bytesWritten = JSON.stringify(metadataChunk).length;
-      phaseAStats.bytesWritten += bytesWritten;
-      phaseAStats.diskWrites += 1;
-      phaseAStats.ipcCalls += 1;
-      performance.mark('indexing:phaseA:chunk-flush', {
-        detail: { chunkIndex, durationMs: duration, bytesWritten }
-      });
-    }
   };
 
   const maybeLogPhaseA = () => {
