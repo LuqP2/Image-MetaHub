@@ -126,7 +126,17 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
         segments.push(image.models.filter(model => typeof model === 'string').map(model => model.toLowerCase()).join(' '));
     }
     if (image.loras?.length) {
-        segments.push(image.loras.filter(lora => typeof lora === 'string').map(lora => lora.toLowerCase()).join(' '));
+        const loraNames = image.loras.map(lora => {
+            if (typeof lora === 'string') {
+                return lora.toLowerCase();
+            } else if (lora && typeof lora === 'object' && lora.name) {
+                return lora.name.toLowerCase();
+            }
+            return '';
+        }).filter(Boolean);
+        if (loraNames.length > 0) {
+            segments.push(loraNames.join(' '));
+        }
     }
     if (image.scheduler) {
         segments.push(image.scheduler.toLowerCase());
@@ -361,7 +371,13 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         for (const image of visibleImages) {
             image.models?.forEach(model => { if(typeof model === 'string' && model) models.add(model) });
-            image.loras?.forEach(lora => { if(typeof lora === 'string' && lora) loras.add(lora) });
+            image.loras?.forEach(lora => {
+                if (typeof lora === 'string' && lora) {
+                    loras.add(lora);
+                } else if (lora && typeof lora === 'object' && lora.name) {
+                    loras.add(lora.name);
+                }
+            });
             if (image.scheduler) schedulers.add(image.scheduler);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
@@ -554,9 +570,16 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         if (selectedLoras.length > 0) {
-            results = results.filter(image =>
-                image.loras?.length > 0 && selectedLoras.some(sl => image.loras.includes(sl))
-            );
+            results = results.filter(image => {
+                if (!image.loras || image.loras.length === 0) return false;
+
+                // Extract LoRA names from both strings and LoRAInfo objects
+                const loraNames = image.loras.map(lora =>
+                    typeof lora === 'string' ? lora : (lora?.name || '')
+                ).filter(Boolean);
+
+                return selectedLoras.some(sl => loraNames.includes(sl));
+            });
         }
 
         if (selectedSchedulers.length > 0) {
