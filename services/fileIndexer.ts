@@ -605,6 +605,45 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     const view = new DataView(buffer);
     const decoder = new TextDecoder();
 
+    const findExifTiffHeaderOffset = (bytes: Uint8Array): number => {
+      if (bytes.length < 4) {
+        return -1;
+      }
+
+      // JPEG-style EXIF header ("Exif\0\0") prefix
+      if (bytes.length >= 6 &&
+          bytes[0] === 0x45 && bytes[1] === 0x78 && bytes[2] === 0x69 && bytes[3] === 0x66 &&
+          bytes[4] === 0x00 && bytes[5] === 0x00) {
+        return 6;
+      }
+
+      // TIFF header at start
+      if ((bytes[0] === 0x49 && bytes[1] === 0x49) || (bytes[0] === 0x4d && bytes[1] === 0x4d)) {
+        return 0;
+      }
+
+      // Scan for TIFF header within the first 64 bytes (handles extra padding)
+      const limit = Math.min(64, bytes.length - 4);
+      for (let i = 0; i <= limit; i++) {
+        if (bytes[i] === 0x49 && bytes[i + 1] === 0x49 && bytes[i + 2] === 0x2a && bytes[i + 3] === 0x00) {
+          return i;
+        }
+        if (bytes[i] === 0x4d && bytes[i + 1] === 0x4d && bytes[i + 2] === 0x00 && bytes[i + 3] === 0x2a) {
+          return i;
+        }
+      }
+
+      // Fallback: find II/MM without the 0x2a marker (last resort)
+      const fallbackLimit = Math.min(64, bytes.length - 2);
+      for (let i = 0; i <= fallbackLimit; i++) {
+        if ((bytes[i] === 0x49 && bytes[i + 1] === 0x49) || (bytes[i] === 0x4d && bytes[i + 1] === 0x4d)) {
+          return i;
+        }
+      }
+
+      return -1;
+    };
+
     // Verify RIFF header
     if (decoder.decode(buffer.slice(0, 4)) !== 'RIFF') {
       return null;
@@ -625,44 +664,26 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
       if (chunkType === 'EXIF') {
         // Found EXIF chunk!
-        // WebP EXIF chunk format: first 4 bytes are padding (0x00000000)
         const exifStart = offset + 8; // Skip chunk header (type + size)
         const rawExifData = buffer.slice(exifStart, exifStart + chunkSize);
-
-        // Skip the 4-byte padding at the beginning
-        const afterPadding = rawExifData.slice(4);
-
-        // Search for TIFF header (II or MM)
-        const searchBytes = new Uint8Array(afterPadding.slice(0, Math.min(100, afterPadding.byteLength)));
-        let tiffHeaderOffset = -1;
-        for (let i = 0; i < searchBytes.length - 1; i++) {
-          // Look for "II" (0x49 0x49) or "MM" (0x4d 0x4d)
-          if ((searchBytes[i] === 0x49 && searchBytes[i+1] === 0x49) ||
-              (searchBytes[i] === 0x4d && searchBytes[i+1] === 0x4d)) {
-            tiffHeaderOffset = i;
-            break;
-          }
-        }
+        const rawBytes = new Uint8Array(rawExifData);
+        const tiffHeaderOffset = findExifTiffHeaderOffset(rawBytes);
 
         if (tiffHeaderOffset >= 0) {
-          exifChunkData = afterPadding.slice(tiffHeaderOffset);
+          exifChunkData = rawExifData.slice(tiffHeaderOffset);
         } else {
-          // PIL/piexif WebP format doesn't use standard TIFF header
-          // Search for JSON directly (starts with '{' = 0x7b)
+          // No TIFF header detected; attempt JSON extraction (MetaHub Save Node payloads)
           let jsonStartOffset = -1;
-          const fullChunk = new Uint8Array(afterPadding);
-          for (let i = 0; i < fullChunk.length - 1; i++) {
-            if (fullChunk[i] === 0x7b && fullChunk[i+1] === 0x22) { // '{"'
+          for (let i = 0; i < rawBytes.length - 1; i++) {
+            if (rawBytes[i] === 0x7b && rawBytes[i + 1] === 0x22) { // '{"'
               jsonStartOffset = i;
               break;
             }
           }
 
           if (jsonStartOffset >= 0) {
-            // Found JSON! Extract and parse it directly
-            const jsonBytes = afterPadding.slice(jsonStartOffset);
+            const jsonBytes = rawExifData.slice(jsonStartOffset);
             const jsonString = decoder.decode(jsonBytes).trim();
-            // Find the end of JSON (matching closing brace)
             let braceCount = 0;
             let jsonEnd = -1;
             for (let i = 0; i < jsonString.length; i++) {
@@ -676,20 +697,19 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
             if (jsonEnd > 0) {
               const completeJson = jsonString.substring(0, jsonEnd);
-
               try {
                 const parsed = JSON.parse(completeJson);
                 const metaHubData = wrapMetaHubData(parsed);
                 if (metaHubData) {
                   return metaHubData;
                 }
-              } catch (e) {
+              } catch {
                 // Failed to parse JSON, continue
               }
             }
           }
 
-          exifChunkData = afterPadding; // Try exifr anyway as fallback
+          exifChunkData = rawExifData; // Try exifr anyway as fallback
         }
 
         break;
