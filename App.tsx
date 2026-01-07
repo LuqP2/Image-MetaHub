@@ -81,6 +81,7 @@ export default function App() {
   // Modal state selectors
   const isComparisonModalOpen = useImageStore((state) => state.isComparisonModalOpen);
   const isAnnotationsLoaded = useImageStore((state) => state.isAnnotationsLoaded);
+  const refreshingDirectories = useImageStore((state) => state.refreshingDirectories);
 
   // Action selectors
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
@@ -377,10 +378,30 @@ export default function App() {
 
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
+
+      if (sortOrder === 'date-desc') {
+        setCurrentPage(1);
+      }
     });
 
     return () => unsubscribe();
-  }, [directories, processNewWatchedFiles]);
+  }, [directories, processNewWatchedFiles, sortOrder]);
+
+  // Watcher debug logs
+  useEffect(() => {
+    if (!window.electronAPI?.onWatcherDebug) return;
+
+    console.log('[App] Setting up watcher-debug listener');
+    const unsubscribe = window.electronAPI.onWatcherDebug(({ message }) => {
+      console.log('[WATCHER-DEBUG]', message);
+    });
+    console.log('[App] watcher-debug listener registered successfully');
+
+    return () => {
+      console.log('[App] Cleaning up watcher-debug listener');
+      unsubscribe();
+    };
+  }, []);
 
   // Restore auto-watchers on app start
   useEffect(() => {
@@ -592,6 +613,7 @@ export default function App() {
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
             onToggleAutoWatch={handleToggleAutoWatch}
+            refreshingDirectories={refreshingDirectories}
             onUpdateSelection={setFolderSelectionState}
             getSelectionState={getFolderSelectionState}
             folderSelection={folderSelection}

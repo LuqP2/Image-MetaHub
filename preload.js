@@ -150,6 +150,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('new-images-detected', subscription);
     return () => ipcRenderer.removeListener('new-images-detected', subscription);
   },
+  onWatcherDebug: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('watcher-debug', subscription);
+    return () => ipcRenderer.removeListener('watcher-debug', subscription);
+  },
 
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')

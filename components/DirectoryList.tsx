@@ -8,6 +8,7 @@ interface DirectoryListProps {
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
   onToggleAutoWatch: (directoryId: string) => void;
+  refreshingDirectories?: Set<string>;
   onUpdateSelection?: (
     path: string,
     state: 'checked' | 'unchecked',
@@ -50,6 +51,7 @@ export default function DirectoryList({
   onUpdateDirectory,
   onToggleVisibility,
   onToggleAutoWatch,
+  refreshingDirectories,
   onUpdateSelection,
   getSelectionState,
   folderSelection = new Map<string, 'checked' | 'unchecked'>(),
@@ -276,6 +278,7 @@ export default function DirectoryList({
               const isRootLoading = loadingNodes.has(rootKey);
               const rootChildren = subfolderCache.get(rootKey) || [];
               const rootChildPaths = rootChildren.map(child => child.path);
+              const isRefreshing = refreshingDirectories?.has(dir.id) ?? false;
 
               return (
                 <li key={dir.id}>
@@ -309,11 +312,23 @@ export default function DirectoryList({
                     <div className="flex items-center space-x-2 flex-shrink-0">
                       <button
                         onClick={() => onUpdateDirectory(dir.id)}
-                        disabled={isIndexing}
-                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-50'}`}
-                        title={isIndexing ? 'Cannot refresh during indexing' : 'Refresh folder'}
+                        disabled={isIndexing || isRefreshing}
+                        className={`transition-colors ${
+                          isRefreshing
+                            ? 'text-blue-400'
+                            : isIndexing
+                              ? 'text-gray-600 cursor-not-allowed'
+                              : 'text-gray-400 hover:text-gray-50'
+                        }`}
+                        title={
+                          isRefreshing
+                            ? 'Refreshing folder'
+                            : isIndexing
+                              ? 'Cannot refresh during indexing'
+                              : 'Refresh folder'
+                        }
                       >
-                        <RotateCcw className="w-4 h-4" />
+                        <RotateCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                       </button>
                       <button
                         onClick={() => onToggleAutoWatch(dir.id)}
@@ -337,9 +352,19 @@ export default function DirectoryList({
                       </button>
                       <button
                         onClick={() => onRemoveDirectory(dir.id)}
-                        disabled={isIndexing}
-                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
-                        title={isIndexing ? 'Cannot remove during indexing' : 'Remove folder'}
+                        disabled={isIndexing || isRefreshing}
+                        className={`transition-colors ${
+                          isRefreshing || isIndexing
+                            ? 'text-gray-600 cursor-not-allowed'
+                            : 'text-gray-400 hover:text-red-500'
+                        }`}
+                        title={
+                          isRefreshing
+                            ? 'Cannot remove while refreshing'
+                            : isIndexing
+                              ? 'Cannot remove during indexing'
+                              : 'Remove folder'
+                        }
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

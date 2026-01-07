@@ -215,7 +215,7 @@ const toRelativeWatchPath = (filePath: string, rootPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState, setEnrichmentProgress
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -228,10 +228,16 @@ export function useImageLoader() {
     const indexingStartTimeRef = useRef<number | null>(null);
 
     // Helper function to check if indexing should be cancelled
-    const shouldCancelIndexing = useCallback(() => {
+    const shouldCancelIndexing = useCallback((allowIdle = false) => {
         // Always get the latest state from the store to avoid stale closures
         const currentState = useImageStore.getState().indexingState;
-        return abortControllerRef.current?.signal.aborted || currentState === 'idle';
+        if (abortControllerRef.current?.signal.aborted) {
+            return true;
+        }
+        if (!allowIdle && currentState === 'idle') {
+            return true;
+        }
+        return false;
     }, []); // No dependencies - always reads latest state
 
     // Function to wait while paused - monitors state changes in real-time
@@ -348,7 +354,11 @@ export function useImageLoader() {
         };
     }, [addImages, setProgress, setError, setLoading]);
 
-    const finalizeDirectoryLoad = useCallback(async (directory: Directory) => {
+    const finalizeDirectoryLoad = useCallback(async (
+        directory: Directory,
+        options: { suppressIndexingState?: boolean } = {}
+    ) => {
+        const suppressIndexingState = options.suppressIndexingState ?? false;
 
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
@@ -369,22 +379,35 @@ export function useImageLoader() {
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
         
         if (finalDirectoryImages.length === 0) {
-            console.warn(`ÔÜá´©Å No images found for directory ${directory.name}, skipping cache save`);
+            console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
             setSuccess(`Loaded 0 images from ${directory.name}.`);
-            setLoading(false);
+            if (!suppressIndexingState) {
+                setLoading(false);
+            } else {
+                setDirectoryRefreshing(directory.id, false);
+                setProgress(null);
+                delete (window as any)[finalizationKey];
+            }
             return;
         }
 
         // Calculate and log indexing time
         if (indexingStartTimeRef.current !== null) {
             const elapsedSeconds = ((performance.now() - indexingStartTimeRef.current) / 1000).toFixed(2);
-            console.log(`ÔÅ▒´©Å Indexed in ${elapsedSeconds} seconds`);
+            console.log(`⏱️ Indexed in ${elapsedSeconds} seconds`);
             indexingStartTimeRef.current = null;
         }
 
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
-        setLoading(false);
-        setIndexingState('completed');
+        if (!suppressIndexingState) {
+            setLoading(false);
+            setIndexingState('completed');
+        } else {
+            setDirectoryRefreshing(directory.id, false);
+            setProgress(null);
+            delete (window as any)[finalizationKey];
+            return;
+        }
         
         // Clear any existing timeout
         if (completedTimeoutRef.current) {
@@ -399,7 +422,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [setSuccess, setLoading, setIndexingState, setProgress]);
+    }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing]);
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
@@ -504,11 +527,18 @@ export function useImageLoader() {
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
         console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}`);
-        setLoading(true);
-        setError(null);
-        setSuccess(null);
-        setIndexingState('indexing');
-        console.log(`[loadDirectory] State set to 'indexing'`);
+        const suppressIndexingState = isUpdate;
+        if (suppressIndexingState) {
+            setDirectoryRefreshing(directory.id, true);
+            setError(null);
+            setSuccess(null);
+        } else {
+            setLoading(true);
+            setError(null);
+            setSuccess(null);
+            setIndexingState('indexing');
+            console.log(`[loadDirectory] State set to 'indexing'`);
+        }
 
         // Start performance timer
         indexingStartTimeRef.current = performance.now();
@@ -647,9 +677,15 @@ export function useImageLoader() {
             const shouldProcessPipeline = (fileHandles.length > 0) || !!cacheWriter || (shouldHydratePreloadedImages && preloadedImages.length > 0);
 
             if (shouldProcessPipeline) {
-                if (shouldCancelIndexing()) {
-                    setIndexingState('idle');
-                    setLoading(false);
+                if (shouldCancelIndexing(suppressIndexingState)) {
+                    if (suppressIndexingState) {
+                        setDirectoryRefreshing(directory.id, false);
+                        setProgress(null);
+                    } else {
+                        setIndexingState('idle');
+                        setLoading(false);
+                        setProgress(null);
+                    }
                     return;
                 }
 
@@ -689,14 +725,14 @@ export function useImageLoader() {
                         setTimeout(() => setEnrichmentProgress(null), 2000);
                     });
 
-                if (!shouldCancelIndexing()) {
-                    finalizeDirectoryLoad(directory);
+                if (!shouldCancelIndexing(suppressIndexingState)) {
+                    finalizeDirectoryLoad(directory, { suppressIndexingState });
                 }
             } else {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
                 }
-                finalizeDirectoryLoad(directory);
+                finalizeDirectoryLoad(directory, { suppressIndexingState });
             }
 
         } catch (err) {
@@ -704,11 +740,16 @@ export function useImageLoader() {
                 console.error(err);
                 setError(`Failed to load directory ${directory.name}. Check console for details.`);
             }
-             setLoading(false);
-             setIndexingState('idle');
-             setProgress(null);
+            if (suppressIndexingState) {
+                setDirectoryRefreshing(directory.id, false);
+                setProgress(null);
+            } else {
+                setLoading(false);
+                setIndexingState('idle');
+                setProgress(null);
+            }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, finalizeDirectoryLoad]);
+    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad]);
 
 
     // Helper function to detect if a path is a root disk
