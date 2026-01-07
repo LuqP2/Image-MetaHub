@@ -105,6 +105,59 @@ function inferMimeTypeFromName(name: string): string {
   return 'image/jpeg';
 }
 
+function isMetaHubSaveNodePayload(payload: any): payload is Record<string, any> {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const data = payload as Record<string, any>;
+  const generator = data.generator ?? data.Generator;
+  const hasMetaHubMarkers = Boolean(
+    data.imh_pro ||
+    data._metahub_pro ||
+    data.analytics ||
+    data._analytics ||
+    data.workflow ||
+    data.prompt_api
+  );
+  const hasCoreFields = Boolean(
+    data.prompt ||
+    data.negativePrompt ||
+    data.seed !== undefined ||
+    data.steps !== undefined ||
+    data.sampler_name ||
+    data.model
+  );
+
+  return (generator === 'ComfyUI' && (hasMetaHubMarkers || hasCoreFields)) || (hasMetaHubMarkers && hasCoreFields);
+}
+
+function wrapMetaHubData(payload: any): ImageMetadata | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const data = payload as Record<string, any>;
+  if (data.imagemetahub_data) {
+    return { imagemetahub_data: data.imagemetahub_data };
+  }
+
+  if (isMetaHubSaveNodePayload(data)) {
+    return { imagemetahub_data: data };
+  }
+
+  return null;
+}
+
+function tryParseMetaHubJson(text: string): ImageMetadata | null {
+  try {
+    const parsed = JSON.parse(text);
+    return wrapMetaHubData(parsed);
+  } catch {
+    return null;
+  }
+}
+
 // Decode iTXt text payload (supports uncompressed and deflate-compressed)
 async function decodeITXtText(
   data: Uint8Array,
@@ -316,12 +369,9 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           ? exifData.ImageDescription
           : new TextDecoder('utf-8').decode(exifData.ImageDescription);
 
-        // Try to parse as JSON
-        const parsed = JSON.parse(imageDesc);
-
-        // Check if it's MetaHub metadata (has "generator": "ComfyUI" and our custom fields)
-        if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
-          return { imagemetahub_data: parsed };
+        const metaHubData = tryParseMetaHubJson(imageDesc);
+        if (metaHubData) {
+          return metaHubData;
         }
       } catch {
         // Not JSON or not MetaHub metadata, continue with normal parsing
@@ -394,6 +444,11 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return null;
     }
 
+    const metaHubFromText = tryParseMetaHubJson(metadataText);
+    if (metaHubFromText) {
+      return metaHubFromText;
+    }
+
     // ========== CRITICAL FIX: Check for ComfyUI FIRST (before other patterns) ==========
     // ComfyUI images stored as JPEG with A1111-style parameters in EXIF
     if (metadataText.includes('Version: ComfyUI')) {
@@ -463,6 +518,11 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
     // Try to parse as JSON for other formats like SwarmUI, InvokeAI, ComfyUI, or DALL-E
     try {
       const parsedMetadata = JSON.parse(metadataText);
+
+      const wrappedMetaHub = wrapMetaHubData(parsedMetadata);
+      if (wrappedMetaHub) {
+        return wrappedMetaHub;
+      }
 
       // Check for DALL-E C2PA manifest
       if (parsedMetadata.c2pa_manifest ||
@@ -619,8 +679,9 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
 
               try {
                 const parsed = JSON.parse(completeJson);
-                if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
-                  return { imagemetahub_data: parsed };
+                const metaHubData = wrapMetaHubData(parsed);
+                if (metaHubData) {
+                  return metaHubData;
                 }
               } catch (e) {
                 // Failed to parse JSON, continue
@@ -656,6 +717,23 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       return null;
     }
 
+    if ((exifData as any).imagemetahub_data) {
+      try {
+        const parsed = typeof (exifData as any).imagemetahub_data === 'string'
+          ? JSON.parse((exifData as any).imagemetahub_data)
+          : (exifData as any).imagemetahub_data;
+        const wrapped = wrapMetaHubData({ imagemetahub_data: parsed });
+        if (wrapped) {
+          return wrapped;
+        }
+      } catch {
+        const wrapped = wrapMetaHubData({ imagemetahub_data: (exifData as any).imagemetahub_data });
+        if (wrapped) {
+          return wrapped;
+        }
+      }
+    }
+
     // PRIORITY 0: Check for MetaHub Save Node JSON in ImageDescription (WebP save format)
     // MetaHub Save Node stores the IMH metadata as JSON in EXIF ImageDescription for WebP
     if (exifData.ImageDescription) {
@@ -664,12 +742,9 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
           ? exifData.ImageDescription
           : new TextDecoder('utf-8').decode(exifData.ImageDescription);
 
-        // Try to parse as JSON
-        const parsed = JSON.parse(imageDesc);
-
-        // Check if it's MetaHub metadata (has "generator": "ComfyUI" and our custom fields)
-        if (parsed.generator === 'ComfyUI' && (parsed.analytics || parsed.imh_pro || parsed.workflow)) {
-          return { imagemetahub_data: parsed };
+        const metaHubData = tryParseMetaHubJson(imageDesc);
+        if (metaHubData) {
+          return metaHubData;
         }
       } catch (e) {
         // Not JSON or not MetaHub metadata, continue with normal parsing
@@ -705,6 +780,11 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       }
       const cleanedData = Array.from(metadataText.slice(startOffset)).filter(byte => byte !== 0x00);
       metadataText = new TextDecoder('utf-8').decode(new Uint8Array(cleanedData));
+    }
+
+    const metaHubFromText = tryParseMetaHubJson(metadataText);
+    if (metaHubFromText) {
+      return metaHubFromText;
     }
 
     // Check for ComfyUI first
