@@ -105,6 +105,57 @@ function inferMimeTypeFromName(name: string): string {
   return 'image/jpeg';
 }
 
+function extractJpegComment(buffer: ArrayBuffer): string | null {
+  const view = new DataView(buffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xFFD8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 4 <= view.byteLength) {
+    if (view.getUint8(offset) !== 0xFF) {
+      offset += 1;
+      continue;
+    }
+
+    let marker = view.getUint8(offset + 1);
+    while (marker === 0xFF && offset + 2 < view.byteLength) {
+      offset += 1;
+      marker = view.getUint8(offset + 1);
+    }
+
+    if (marker === 0xDA || marker === 0xD9) {
+      break;
+    }
+
+    // Standalone markers without length
+    if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+      offset += 2;
+      continue;
+    }
+
+    const size = view.getUint16(offset + 2, false);
+    if (size < 2 || offset + 2 + size > view.byteLength) {
+      break;
+    }
+
+    if (marker === 0xFE) {
+      const start = offset + 4;
+      const end = offset + 2 + size;
+      const bytes = new Uint8Array(buffer.slice(start, end));
+      const utf8 = new TextDecoder('utf-8').decode(bytes).trim();
+      if (utf8.includes('\uFFFD')) {
+        return new TextDecoder('latin1').decode(bytes).trim();
+      }
+      return utf8;
+    }
+
+    offset += 2 + size;
+  }
+
+  return null;
+}
+
 function isMetaHubSaveNodePayload(payload: any): payload is Record<string, any> {
   if (!payload || typeof payload !== 'object') {
     return false;
@@ -359,7 +410,18 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       reviveValues: true
     });
 
-    if (!exifData) return null;
+    const commentText = extractJpegComment(buffer);
+
+    if (!exifData) {
+      if (commentText) {
+        const metaHubFromComment = tryParseMetaHubJson(commentText);
+        if (metaHubFromComment) {
+          return metaHubFromComment;
+        }
+        return { parameters: commentText };
+      }
+      return null;
+    }
 
     // PRIORITY 0: Check for MetaHub Save Node JSON in ImageDescription (JPEG/WebP save format)
     // MetaHub Save Node stores the IMH metadata as JSON in EXIF ImageDescription for JPEG/WebP
@@ -387,6 +449,7 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
       exifData.ImageDescription ||
       exifData.Parameters ||
       exifData.Description || // XMP Description
+      commentText ||
       null;
 
     if (!metadataText) {
