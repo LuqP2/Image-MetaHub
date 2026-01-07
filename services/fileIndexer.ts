@@ -1113,42 +1113,8 @@ if (rawMetadata) {
     }
   }
 
-  // Priority 1: Check for ComfyUI (has unique 'workflow' structure)
-  else if (isComfyUIMetadata(rawMetadata)) {
-    const comfyMetadata = rawMetadata as ComfyUIMetadata;
-    let workflow = comfyMetadata.workflow;
-    let prompt = comfyMetadata.prompt;
-    try {
-      if (typeof workflow === 'string') {
-        workflow = JSON.parse(sanitizeJson(workflow));
-      }
-      if (typeof prompt === 'string') {
-        prompt = JSON.parse(sanitizeJson(prompt));
-      }
-    } catch (e) {
-      // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
-    }
-    const resolvedParams = resolvePromptFromGraph(workflow, prompt);
-    normalizedMetadata = {
-      prompt: resolvedParams.prompt || '',
-      negativePrompt: resolvedParams.negativePrompt || '',
-      model: resolvedParams.model || '',
-      models: resolvedParams.model ? [resolvedParams.model] : [],
-      width: 0,
-      height: 0,
-      seed: resolvedParams.seed,
-      steps: resolvedParams.steps || 0,
-      cfg_scale: resolvedParams.cfg,
-      scheduler: resolvedParams.scheduler || '',
-      sampler: resolvedParams.sampler_name || '',
-      loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
-      vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
-      denoise: resolvedParams.denoise,
-    };
-  }
-  
-  // Priority 2: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
-  else if ('parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
+  // Priority 1: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
+  if (!normalizedMetadata && 'parameters' in rawMetadata && typeof rawMetadata.parameters === 'string') {
     const params = rawMetadata.parameters;
     
     // Sub-priority 2.0: Check if parameters contains SwarmUI JSON format
@@ -1218,33 +1184,67 @@ if (rawMetadata) {
     }
   }
   
+  // Priority 2: Check for ComfyUI (has unique 'workflow' structure)
+  if (!normalizedMetadata && isComfyUIMetadata(rawMetadata)) {
+    const comfyMetadata = rawMetadata as ComfyUIMetadata;
+    let workflow = comfyMetadata.workflow;
+    let prompt = comfyMetadata.prompt;
+    try {
+      if (typeof workflow === 'string') {
+        workflow = JSON.parse(sanitizeJson(workflow));
+      }
+      if (typeof prompt === 'string') {
+        prompt = JSON.parse(sanitizeJson(prompt));
+      }
+    } catch (e) {
+      // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
+    }
+    const resolvedParams = resolvePromptFromGraph(workflow, prompt);
+    normalizedMetadata = {
+      prompt: resolvedParams.prompt || '',
+      negativePrompt: resolvedParams.negativePrompt || '',
+      model: resolvedParams.model || '',
+      models: resolvedParams.model ? [resolvedParams.model] : [],
+      width: 0,
+      height: 0,
+      seed: resolvedParams.seed,
+      steps: resolvedParams.steps || 0,
+      cfg_scale: resolvedParams.cfg,
+      scheduler: resolvedParams.scheduler || '',
+      sampler: resolvedParams.sampler_name || '',
+      loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
+      vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
+      denoise: resolvedParams.denoise,
+    };
+  }
+
   // Priority 3: SwarmUI (has unique 'sui_image_params' structure)
-  else if (isSwarmUIMetadata(rawMetadata)) {
+  if (!normalizedMetadata && isSwarmUIMetadata(rawMetadata)) {
     normalizedMetadata = parseSwarmUIMetadata(rawMetadata as SwarmUIMetadata);
   }
   
   // Priority 4: Easy Diffusion JSON (simple JSON with 'prompt' field)
-  else if (isEasyDiffusionJson(rawMetadata)) {
+  if (!normalizedMetadata && isEasyDiffusionJson(rawMetadata)) {
     normalizedMetadata = parseEasyDiffusionJson(rawMetadata as EasyDiffusionJson);
   }
   
   // Priority 5: DALL-E (has C2PA manifest)
-  else if (isDalleMetadata(rawMetadata)) {
+  if (!normalizedMetadata && isDalleMetadata(rawMetadata)) {
     normalizedMetadata = parseDalleMetadata(rawMetadata);
   }
   
   // Priority 6: Firefly (has C2PA with Adobe signatures)
-  else if (isFireflyMetadata(rawMetadata)) {
+  if (!normalizedMetadata && isFireflyMetadata(rawMetadata)) {
     normalizedMetadata = parseFireflyMetadata(rawMetadata, fileData!);
   }
   
   // Priority 7: InvokeAI (fallback for remaining metadata)
-  else if (isInvokeAIMetadata(rawMetadata)) {
+  if (!normalizedMetadata && isInvokeAIMetadata(rawMetadata)) {
     normalizedMetadata = parseInvokeAIMetadata(rawMetadata as InvokeAIMetadata);
   }
   
   // Priority 8: Unknown format
-  else {
+  if (!normalizedMetadata) {
     // Unknown metadata format, no parser applied
   }
 }
