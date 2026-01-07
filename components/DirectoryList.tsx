@@ -352,9 +352,19 @@ export default function DirectoryList({
                       </button>
                       <button
                         onClick={() => onRemoveDirectory(dir.id)}
-                        disabled={isIndexing}
-                        className={`transition-colors ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-500'}`}
-                        title={isIndexing ? 'Cannot remove during indexing' : 'Remove folder'}
+                        disabled={isIndexing || isRefreshing}
+                        className={`transition-colors ${
+                          isRefreshing || isIndexing
+                            ? 'text-gray-600 cursor-not-allowed'
+                            : 'text-gray-400 hover:text-red-500'
+                        }`}
+                        title={
+                          isRefreshing
+                            ? 'Cannot remove while refreshing'
+                            : isIndexing
+                              ? 'Cannot remove during indexing'
+                              : 'Remove folder'
+                        }
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
