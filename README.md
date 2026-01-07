@@ -21,13 +21,15 @@ It is open‑source (MPL 2.0) and free to use, with optional **Pro features** fo
 ## Key features (overview)
 
 * **Fast local browser** for AI images (no accounts, no cloud, no telemetry)
-* **Rich metadata parsing** for Stable Diffusion / A1111 / ComfyUI and other tools
+* **Rich metadata parsing** for Stable Diffusion / A1111 / ComfyUI and other tools, including WebP format
+* **Auto-Watch functionality** for real-time monitoring of output folders during generation
 * **Powerful search & filters** by prompt text, model, steps, CFG, sampler, seed, etc.
 * **Tagging & organization** to build your own curated libraries
-* **Compare tools** to inspect variations side‑by‑side (Pro)
-* **Analytics dashboard** to see how you actually generate and use your models (Pro)
-* **Automatic1111 integration** to send images/settings back to A1111 directly (Pro)
-* **ComfyUI integration** to generate variations via workflow API (Pro)
+* **Compare tools** with diff view to inspect variations side-by-side (Pro)
+* **Analytics dashboard** with performance metrics and verified telemetry badges (Pro)
+* **Automatic1111 integration** with model/LoRA selection and image size controls (Pro)
+* **ComfyUI integration** with full workflow-based generation and real-time progress tracking (Pro)
+* **Unified generation queue** for tracking both A1111 and ComfyUI jobs in one place (Pro)
 
 Below sections go into more detail – but if you just want to try it, jump to **Getting started**.
 
@@ -48,10 +50,11 @@ Image MetaHub is developed as a hybrid model:
 
 **Pro currently unlocks:**
 
-* Automatic1111 integration (send prompts/settings back and forth)
-* ComfyUI integration (generate variations via workflow API)
-* Compare panel
-* Analytics dashboard
+* Automatic1111 integration with model/LoRA selection and image size controls
+* ComfyUI integration with full workflow-based generation and real-time progress
+* Unified generation queue for tracking both A1111 and ComfyUI jobs
+* Compare panel with intelligent diff view for variations
+* Analytics dashboard with performance metrics and verified telemetry
 
 The goal is to keep the core tool open and useful for everyone, while making heavy‑duty workflow features help sustain the project.
 
@@ -82,23 +85,48 @@ For more detailed options (CLI, dev setup, advanced config), see the sections be
 
 ---
 
+## Auto-Watch: Real-time folder monitoring
+
+Image MetaHub can automatically monitor your output folders and detect new images in real-time as they're generated:
+
+* **Individual folder toggles** - Enable/disable watching per directory with eye icon
+* **Real-time detection** - Instant image detection using intelligent file monitoring
+* **Background processing** - Silent updates without notifications or interruptions
+* **State persistence** - Watchers automatically restored on app restart
+* **Multiple formats** - Supports PNG, JPG, JPEG, and WEBP
+* **Smart filtering** - Automatically filters cache folders and system directories
+
+Perfect for monitoring ComfyUI or Automatic1111 output folders during active generation sessions.
+
+---
+
 ## Metadata support
 
 Image MetaHub parses metadata from:
 
-* Stable Diffusion / Automatic1111 images (PNG info, etc.)
-* ComfyUI (**full coverage** with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save); partial coverage for legacy workflows)
+* Stable Diffusion / Automatic1111 images (PNG, JPEG, WebP)
+* ComfyUI (**full coverage** with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) - [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save); partial coverage for legacy workflows)
 * Fooocus
 * SD.Next
 * Forge
 * SwarmUI
 * DrawThings
 * Online services like Midjourney / Nijijourney (when prompts/settings are saved into the downloaded files)
-* Other tools that store generation parameters in PNG/JPG metadata
+* Other tools that store generation parameters in PNG/JPG/WebP metadata
 
-> **Recommended for ComfyUI users:** Install the [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) custom node for guaranteed full metadata compatibility. The node auto-extracts all generation parameters and saves them in both A1111 and Image MetaHub formats.
+> **NEW in v0.11.0 - Official MetaHub Save Node for ComfyUI:** We've released an [official companion custom node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) ([ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)) designed specifically for Image MetaHub. This node guarantees full metadata compatibility by auto-extracting all generation parameters and saving them in both A1111 and Image MetaHub formats.
 >
 > For legacy ComfyUI images without MetaHub Save Node, Image MetaHub attempts to parse metadata from standard workflow formats, though coverage may vary depending on custom nodes and workflow complexity.
+
+### Enhanced MetaHub Save Node Integration
+
+When using the MetaHub Save Node, Image MetaHub automatically provides:
+
+* **Auto-import tags** - Tags from `imh_pro.user_tags` are automatically imported for filtering
+* **Notes display** - Notes from `imh_pro.notes` shown as read-only metadata
+* **Performance metrics** - GPU analytics including VRAM usage, generation time, steps/second, and system versions
+* **Verified telemetry badges** - Visual badges and filters for images with verified performance data
+* **LoRA weights** - Complete LoRA information with weights (e.g., "style_lora_v1.safetensors (0.8)")
 
 If a tool writes prompt / settings in a consistent way, Image MetaHub can usually read it. The parsers are extensible and can be updated as new formats appear.
 
@@ -108,30 +136,35 @@ If a tool writes prompt / settings in a consistent way, Image MetaHub can usuall
 
 ## Automatic1111 integration (Pro)
 
-With Pro enabled, Image MetaHub can talk directly to a running Automatic1111 instance:
+With Pro enabled, Image MetaHub can talk directly to a running Automatic1111 instance with full-featured generation controls:
 
-* Send prompts / params from an image back into A1111
-* Quickly re‑generate, tweak or upscale based on previous images
+* **Model and LoRA selection** - Browse and select from your installed models and LoRAs with search filters
+* **Image size controls** - Set custom width and height for generation
+* **Smart model memory** - "Remember last selected model" automatically selects your previously used model
+* **Full parameter control** - Adjust prompts, negative prompts, CFG scale, steps, and seed
+* **Real-time progress** - Live generation tracking with step-by-step progress updates
 
-Basic flow:
+Basic setup:
 
 1. Enable the API flag in your A1111 setup (`--api`).
 2. Configure the A1111 endpoint in Image MetaHub settings.
-3. Use the integration actions from image details / context menus.
+3. Use "Generate with A1111" from image details / context menus.
 
-For step‑by‑step instructions, see the dedicated docs in this repo.
+For step-by-step instructions, see the dedicated docs in this repo.
 
 ---
 
 ## ComfyUI integration (Pro)
 
-With Pro enabled, Image MetaHub can generate variations of your images by sending workflows directly to your ComfyUI instance via API.
+With Pro enabled, Image MetaHub can generate variations of your images by sending workflows directly to your ComfyUI instance via API with complete workflow-based generation.
 
 **Requirements:**
 
 * ComfyUI running locally (default: `http://127.0.0.1:8188`)
-* [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) installed in ComfyUI (official companion node)
-* [MetaHub Timer](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) node (included with Save Node, for accurate timing metrics)
+* [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) installed in ComfyUI - [Get it on ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)
+  * Official companion node released with v0.11.0
+  * Ensures full metadata preservation for generated images
+* [MetaHub Timer Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) (included with Save Node, for accurate timing metrics)
 
 **How It Works:**
 
@@ -140,8 +173,17 @@ With Pro enabled, Image MetaHub can generate variations of your images by sendin
 3. Customize generation parameters (prompt, seed, steps, CFG, etc.)
 4. Image MetaHub creates a simple txt2img workflow from the metadata
 5. Workflow is sent to ComfyUI via `POST /prompt` API
-6. Real-time progress tracking via WebSocket
+6. **Real-time WebSocket-based progress tracking** during generation
 7. Generated images are automatically saved by MetaHub Save Node with full metadata
+
+**Key Features:**
+
+* **Full parameter customization** - Model, LoRAs, seed, steps, CFG, image size
+* **Real-time progress tracking** - Live WebSocket updates during generation
+* **Copy workflow JSON** - Export workflow to clipboard for manual tweaking
+* **Unified generation queue** - Track both A1111 and ComfyUI jobs in one sidebar
+* **Queue management** - Cancel, retry, remove items, clear finished/all jobs
+* **Automatic metadata preservation** - MetaHub Save Node ensures all generation data is saved
 
 **Important: The workflow doesn't need to match your original workflow.**
 
@@ -186,6 +228,12 @@ This simplified workflow approach ensures:
 
 1. Enable ComfyUI API (enabled by default, runs on port 8188)
 2. Install MetaHub Save Node in ComfyUI:
+
+   **Via ComfyUI Manager (Recommended):**
+   - Search for "ImageMetaHub Save Node" in ComfyUI Manager
+   - Or visit [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)
+
+   **Manual Installation:**
    ```bash
    cd ComfyUI/custom_nodes
    git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
@@ -214,9 +262,12 @@ This simplified workflow approach ensures:
 
 The compare panel lets you:
 
-* Pin multiple images and inspect them side‑by‑side
+* Pin multiple images and inspect them side-by-side
 * Use synchronized zoom and pan to align details across images
 * View prompts and key generation settings for each image at the same time
+* **Toggle between Standard and Diff views** - Intelligent difference highlighting with word-level diff for prompts
+* **Smart field comparison** - Automatically detects differences in models, LoRAs, seeds, CFG, steps, sampler, and clip skip
+* **Neutral visual design** - Subtle highlighting for differences without intrusive badges
 * Study subtle differences between variations (lighting, composition, models, seeds, etc.)
 
 ![Compare panel](assets/screenshot-compare.webp)
@@ -225,13 +276,16 @@ The compare panel lets you:
 
 ## Analytics dashboard (Pro)
 
-The analytics dashboard gives you a high‑level view of your generation patterns, such as:
+The analytics dashboard gives you a high-level view of your generation patterns, such as:
 
 * Most used models / samplers
 * Resolution / aspect ratio distributions
 * Trends over time
+* **Performance metrics** - GPU analytics with VRAM usage, generation time, and steps/second
+* **Verified telemetry badges** - Visual indicators and filters for images with verified performance data
+* **System insights** - GPU device, ComfyUI version, PyTorch and Python versions
 
-It’s built to help you understand how you actually work with your tools, based on your existing images.
+It's built to help you understand how you actually work with your tools, based on your existing images and their performance characteristics.
 
 ![Analytics dashboard](assets/screenshot-analytics.webp)
 
@@ -270,37 +324,36 @@ Image MetaHub is designed to be **local‑first**:
 
 * Your libraries and metadata stay on your machine.
 * No mandatory account, no remote server dependency.
-* Network calls are limited to features that explicitly need them (e.g. A1111 integration, update checks).
+* Network calls are limited to features that explicitly need them (e.g. A1111 integration, update checks that can be disabled).
 
 ---
 
-## Roadmap
-
-High‑level focus areas:
-
-* Better ComfyUI coverage and parser improvements
-* More robust tagging and library organization tools
-* Quality‑of‑life improvements in browsing / filtering / compare
-* More flexible analytics for power users
 
 **ComfyUI Integration Roadmap:**
 
 *Short-term*
 * Custom workflow templates - Define your own workflow templates that preserve ControlNet, upscalers, and other advanced features
 * LoRA auto-loading - Automatically include LoRAs from metadata in generated workflows
-* Batch generation - Generate multiple variations with different seeds in one request
 * Workflow presets - Save and reuse custom workflow configurations
 
 *Medium-term*
 * Advanced node support - Detect and preserve ControlNet, upscaler, and refiner configurations
 * Workflow diffing - Visual comparison between original and generated workflows
 * Parameter hints - Smart suggestions for parameter modifications based on image content
-* Generation queue management - Track multiple generations and their status
 
 *Long-term*
 * AI-powered workflow optimization - Automatic workflow enhancement suggestions
 * Cross-generator translation - Convert A1111 parameters to optimized ComfyUI workflows
 * Community workflow library - Share and download workflow templates
+
+**Recently Completed (v0.11.0):**
+
+* Real-time WebSocket-based progress tracking
+* Unified generation queue for A1111 and ComfyUI
+* Complete workflow-based image generation from metadata
+* Auto-watch functionality for real-time folder monitoring
+* Enhanced metadata comparison with diff view
+* Performance metrics and verified telemetry badges
 
 For detailed issues and planned work, check the [Issues](https://github.com/LuqP2/Image-MetaHub/issues) and project board.
 

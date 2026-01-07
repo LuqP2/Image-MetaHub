@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MetaHub Save Node for ComfyUI**: Official companion custom node released alongside this version:
+  - Custom node that auto-extracts all generation parameters from ComfyUI workflows
+  - Saves metadata in both A1111 and Image MetaHub formats for maximum compatibility
+  - Includes MetaHub Timer Node for accurate performance tracking
+  - Available on [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save) and [GitHub](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
+  - Enables instant parsing (10-20x faster) and future-proof ComfyUI support without nodeRegistry maintenance
 - **Auto-Watch Functionality**: Automatic folder monitoring for real-time image detection:
   - Individual toggle per directory with eye icon in directory list
   - Real-time file monitoring using chokidar for instant detection
