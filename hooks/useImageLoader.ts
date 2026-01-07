@@ -58,13 +58,6 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
             }
         } else if (entry.kind === 'directory') {
             try {
-            const normalizedFiles = files.map(file => {
-                const relativePath = toRelativeWatchPath(file.path, directory.path);
-                const normalizedName = relativePath || file.name;
-                const normalizedType = file.type && file.type.includes('/') ? file.type : undefined;
-                return { ...file, relativePath, normalizedName, normalizedType };
-            });
-
                 const subFiles = await getFilesRecursivelyWeb(entry, entryPath);
                 files.push(...subFiles);
             } catch (e) {
@@ -276,7 +269,15 @@ export function useImageLoader() {
 
             for (const image of allImages) {
                 if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                if (image.loras && image.loras.length > 0) image.loras.forEach(lora => loras.add(lora));
+                if (image.loras && image.loras.length > 0) {
+                    image.loras.forEach(lora => {
+                        if (typeof lora === 'string') {
+                            loras.add(lora);
+                        } else if (lora && typeof lora === 'object' && lora.name) {
+                            loras.add(lora.name);
+                        }
+                    });
+                }
                 if (image.scheduler) schedulers.add(image.scheduler);
             }
 

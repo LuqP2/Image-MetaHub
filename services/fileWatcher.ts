@@ -108,14 +108,14 @@ export function startWatching(
 
     watcher.on('error', (error) => {
       if (isPermissionError(error)) {
-        sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${errorMsg}`);
         return;
       }
 
       console.error(`Watcher error for ${directoryId}:`, error);
-      sendWatcherDebug(mainWindow, `[FileWatcher] Watcher error for ${directoryId}: ${error.message || error}`);
-
       const errorMessage = error instanceof Error ? error.message : String(error);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Watcher error for ${directoryId}: ${errorMessage}`);
       mainWindow.webContents.send('watcher-error', {
         directoryId,
         error: errorMessage

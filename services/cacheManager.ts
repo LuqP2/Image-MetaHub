@@ -14,7 +14,7 @@ export interface CacheImageMetadata {
   metadata: any;
   lastModified: number;
   models: string[];
-  loras: string[];
+  loras: string[] | (string | { name: string; model_name?: string; weight?: number; model_weight?: number; clip_weight?: number })[]; // Support both formats for backward compatibility
   scheduler: string;
   board?: string;
   prompt?: string;
