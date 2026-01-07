@@ -183,7 +183,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
       return {
         name: path.basename(filePath),
         path: filePath,
-        lastModified: stats.mtimeMs,
+        lastModified: stats.birthtimeMs ?? stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1)
       };
