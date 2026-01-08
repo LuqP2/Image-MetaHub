@@ -276,16 +276,51 @@ The compare panel lets you:
 
 ## Analytics dashboard (Pro)
 
-The analytics dashboard gives you a high-level view of your generation patterns, such as:
+The analytics dashboard gives you a high-level view of your generation patterns and performance metrics:
+
+**Generation Insights:**
 
 * Most used models / samplers
 * Resolution / aspect ratio distributions
 * Trends over time
-* **Performance metrics** - GPU analytics with VRAM usage, generation time, and steps/second
-* **Verified telemetry badges** - Visual indicators and filters for images with verified performance data
-* **System insights** - GPU device, ComfyUI version, PyTorch and Python versions
 
-It's built to help you understand how you actually work with your tools, based on your existing images and their performance characteristics.
+**Performance Analytics Dashboard:**
+
+For images with [MetaHub Save Node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) telemetry data, the dashboard provides comprehensive performance visualizations:
+
+* **Overview Cards:**
+  * Average generation speed (it/s)
+  * Average VRAM usage (GB with percentage for known GPUs)
+  * Average generation time
+  * Telemetry coverage percentage across your library
+
+* **Generation Time Distribution:**
+  * Histogram showing the distribution of generation times across time buckets
+  * Buckets: < 1s, 1-5s, 5-10s, 10-30s, 30s-1m, 1-2m, > 2m
+  * Helps identify performance patterns and outliers
+
+* **Performance by GPU Device:**
+  * Dual-axis bar chart comparing average speed (it/s) and VRAM usage (GB)
+  * Side-by-side comparison across different GPU devices
+  * Automatic GPU model detection (RTX 4090, 3090, 3080, A100, etc.)
+
+* **Performance Over Time:**
+  * Timeline chart tracking generation speed and VRAM trends
+  * Group by day, week, or month
+  * Dual-axis visualization for speed and memory usage patterns
+
+* **MetaHub Save Node Promotion:**
+  * Dismissible top banner with links to [ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save) and [GitHub](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save)
+  * Subtle footer reminder for users without telemetry data
+  * localStorage-based banner dismissal preference
+
+**System Insights:**
+
+* GPU device information
+* ComfyUI version, PyTorch version, Python version
+* **Verified telemetry badges** - Visual indicators and filters for images with complete performance data
+
+The dashboard helps you understand your generation patterns, track performance across different hardware, and identify optimization opportunities based on real telemetry data.
 
 ![Analytics dashboard](assets/screenshot-analytics.webp)
 

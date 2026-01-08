@@ -130,6 +130,39 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
                   <p>This release brings <strong>Auto-Watch</strong> for real-time folder monitoring during generation, the official <strong>MetaHub Save Node for ComfyUI</strong> with instant metadata parsing (10-20x faster), complete <strong>ComfyUI generation integration</strong> with real-time WebSocket progress tracking, and a <strong>unified generation queue</strong> for both A1111 and ComfyUI jobs. The A1111 integration now includes model/LoRA selection with search filters and image size controls.</p>
 
+                  <div className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg">
+                    <p className="font-semibold text-purple-300 mb-2">🎉 Introducing MetaHub Custom Nodes for ComfyUI</p>
+                    <p className="mb-3">Two new custom nodes designed specifically for Image MetaHub:</p>
+                    <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
+                      <li><strong className="text-white">MetaHub Save Node</strong> - Guarantees full metadata compatibility with auto-extraction of all generation parameters</li>
+                      <li><strong className="text-white">MetaHub Timer Node</strong> - Provides accurate performance tracking (generation time, steps/second)</li>
+                    </ul>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-full transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
+                        </svg>
+                        ComfyUI Registry
+                      </a>
+                      <a
+                        href="https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white text-xs font-medium rounded-full transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                        </svg>
+                        GitHub
+                      </a>
+                    </div>
+                  </div>
+
                   <p>Plus: WebP format support, intelligent diff view for comparing variations, performance metrics with verified telemetry badges, and comprehensive LoRA weight display across all parsers.</p>
 
                   <p>Some of these new tools are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced features live behind the Pro toggle. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>

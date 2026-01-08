@@ -55,6 +55,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Verified Telemetry Badges**: Visual badges and filter for images with verified analytics data
   - **Timer Node Support**: Integration with MetaHub Timer Node for accurate performance tracking
   - Support for both `analytics` and `_analytics` field naming conventions
+- **Performance Analytics Dashboard**: New analytics visualizations for images with MetaHub Save Node telemetry data:
+  - **Overview Cards**: Average speed (it/s), VRAM usage (GB), generation time, and telemetry coverage percentage
+  - **Generation Time Distribution**: Histogram showing distribution of generation times across time buckets (< 1s, 1-5s, 5-10s, etc.)
+  - **Performance by GPU Device**: Dual-axis bar chart comparing average speed and VRAM usage across different GPU devices
+  - **Performance Over Time**: Timeline chart tracking generation speed and VRAM trends over days/weeks/months
+  - **Dismissible Promo Banner**: Top banner with links to MetaHub Save Node (ComfyUI Registry and GitHub) for users without telemetry data
+  - **Subtle Footer Reminder**: Always-visible footer link encouraging adoption of MetaHub Save Node
+  - **localStorage Persistence**: Banner dismissal preference saved to avoid repeated prompts
 - **Standalone Metadata Engine Package**: Extracted `@image-metahub/metadata-engine` v1.0.0-beta.1 as publishable npm package:
   - Parse metadata from 15+ AI generators (ComfyUI, InvokeAI, A1111, DALL-E, Adobe Firefly, Midjourney, etc.)
   - Dual build: CommonJS + ESM with TypeScript declarations
