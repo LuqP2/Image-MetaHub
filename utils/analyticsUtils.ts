@@ -471,3 +471,289 @@ export function formatVariation(variation: number): string {
   if (variation < 0) return `${variation.toFixed(0)}%`;
   return '0%';
 }
+
+// ========== PERFORMANCE ANALYTICS ==========
+
+export interface PerformanceAverages {
+  avgStepsPerSecond: number;
+  avgVramPeak: number; // in MB
+  avgGenerationTime: number; // in MS
+  imagesWithTelemetry: number;
+  totalImages: number;
+  telemetryPercentage: number;
+}
+
+export interface GPUPerformanceStats {
+  name: string;
+  shortName: string;
+  avgSpeed: number; // steps/s
+  avgVram: number; // GB
+  avgTime: number; // seconds
+  count: number;
+}
+
+export interface GenerationTimeBucket {
+  range: string;
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface PerformanceTimelinePoint {
+  date: string;
+  avgSpeed: number;
+  avgVram: number; // GB
+  avgTime: number; // seconds
+  count: number;
+}
+
+/**
+ * Calculate average performance metrics across images
+ */
+export function calculatePerformanceAverages(images: IndexedImage[]): PerformanceAverages {
+  let totalSpeed = 0;
+  let totalVram = 0;
+  let totalTime = 0;
+  let speedCount = 0;
+  let vramCount = 0;
+  let timeCount = 0;
+
+  images.forEach((img) => {
+    const analytics = img.metadata?.normalizedMetadata?.analytics ||
+                      (img.metadata?.normalizedMetadata as any)?._analytics;
+
+    if (analytics) {
+      if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
+        totalSpeed += analytics.steps_per_second;
+        speedCount++;
+      }
+      if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
+        totalVram += analytics.vram_peak_mb;
+        vramCount++;
+      }
+      if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
+        totalTime += analytics.generation_time_ms;
+        timeCount++;
+      }
+    }
+  });
+
+  const imagesWithTelemetry = Math.max(speedCount, vramCount, timeCount);
+
+  return {
+    avgStepsPerSecond: speedCount > 0 ? totalSpeed / speedCount : 0,
+    avgVramPeak: vramCount > 0 ? totalVram / vramCount : 0,
+    avgGenerationTime: timeCount > 0 ? totalTime / timeCount : 0,
+    imagesWithTelemetry,
+    totalImages: images.length,
+    telemetryPercentage: images.length > 0 ? (imagesWithTelemetry / images.length) * 100 : 0,
+  };
+}
+
+/**
+ * Calculate performance metrics grouped by GPU device
+ */
+export function calculatePerformanceByGPU(images: IndexedImage[]): GPUPerformanceStats[] {
+  const gpuStats = new Map<string, {
+    totalTime: number;
+    totalSpeed: number;
+    totalVram: number;
+    speedCount: number;
+    vramCount: number;
+    timeCount: number;
+  }>();
+
+  images.forEach((img) => {
+    const analytics = img.metadata?.normalizedMetadata?.analytics ||
+                      (img.metadata?.normalizedMetadata as any)?._analytics;
+
+    if (analytics?.gpu_device && typeof analytics.gpu_device === 'string') {
+      const stats = gpuStats.get(analytics.gpu_device) || {
+        totalTime: 0,
+        totalSpeed: 0,
+        totalVram: 0,
+        speedCount: 0,
+        vramCount: 0,
+        timeCount: 0,
+      };
+
+      if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
+        stats.totalTime += analytics.generation_time_ms;
+        stats.timeCount++;
+      }
+      if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
+        stats.totalSpeed += analytics.steps_per_second;
+        stats.speedCount++;
+      }
+      if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
+        stats.totalVram += analytics.vram_peak_mb;
+        stats.vramCount++;
+      }
+
+      gpuStats.set(analytics.gpu_device, stats);
+    }
+  });
+
+  return Array.from(gpuStats.entries())
+    .map(([gpu, stats]) => {
+      const count = Math.max(stats.speedCount, stats.vramCount, stats.timeCount);
+      return {
+        name: gpu,
+        shortName: truncateName(gpu, 25),
+        avgSpeed: stats.speedCount > 0 ? stats.totalSpeed / stats.speedCount : 0,
+        avgVram: stats.vramCount > 0 ? stats.totalVram / stats.vramCount / 1024 : 0, // Convert to GB
+        avgTime: stats.timeCount > 0 ? stats.totalTime / stats.timeCount / 1000 : 0, // Convert to seconds
+        count,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Calculate distribution of generation times into buckets
+ */
+export function calculateGenerationTimeDistribution(images: IndexedImage[]): GenerationTimeBucket[] {
+  const buckets: GenerationTimeBucket[] = [
+    { range: '< 1s', min: 0, max: 1000, count: 0 },
+    { range: '1-5s', min: 1000, max: 5000, count: 0 },
+    { range: '5-10s', min: 5000, max: 10000, count: 0 },
+    { range: '10-30s', min: 10000, max: 30000, count: 0 },
+    { range: '30s-1m', min: 30000, max: 60000, count: 0 },
+    { range: '1-2m', min: 60000, max: 120000, count: 0 },
+    { range: '> 2m', min: 120000, max: Infinity, count: 0 },
+  ];
+
+  images.forEach((img) => {
+    const analytics = img.metadata?.normalizedMetadata?.analytics ||
+                      (img.metadata?.normalizedMetadata as any)?._analytics;
+
+    if (analytics?.generation_time_ms && typeof analytics.generation_time_ms === 'number') {
+      const bucket = buckets.find(
+        (b) => analytics.generation_time_ms >= b.min && analytics.generation_time_ms < b.max
+      );
+      if (bucket) {
+        bucket.count++;
+      }
+    }
+  });
+
+  return buckets.filter(b => b.count > 0);
+}
+
+/**
+ * Calculate performance metrics over time (timeline)
+ */
+export function calculatePerformanceTimeline(
+  images: IndexedImage[],
+  groupBy: 'day' | 'week' | 'month' = 'day'
+): PerformanceTimelinePoint[] {
+  const timelineMap = new Map<string, {
+    totalSpeed: number;
+    totalVram: number;
+    totalTime: number;
+    speedCount: number;
+    vramCount: number;
+    timeCount: number;
+  }>();
+
+  images.forEach((img) => {
+    if (!img.lastModified) return;
+
+    const date = new Date(img.lastModified);
+    let key: string;
+
+    if (groupBy === 'day') {
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    } else if (groupBy === 'week') {
+      const weekNum = getWeekNumber(date);
+      key = `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    } else {
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    const analytics = img.metadata?.normalizedMetadata?.analytics ||
+                      (img.metadata?.normalizedMetadata as any)?._analytics;
+
+    if (analytics) {
+      const entry = timelineMap.get(key) || {
+        totalSpeed: 0,
+        totalVram: 0,
+        totalTime: 0,
+        speedCount: 0,
+        vramCount: 0,
+        timeCount: 0,
+      };
+
+      if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
+        entry.totalSpeed += analytics.steps_per_second;
+        entry.speedCount++;
+      }
+      if (typeof analytics.vram_peak_mb === 'number' && analytics.vram_peak_mb > 0) {
+        entry.totalVram += analytics.vram_peak_mb;
+        entry.vramCount++;
+      }
+      if (typeof analytics.generation_time_ms === 'number' && analytics.generation_time_ms > 0) {
+        entry.totalTime += analytics.generation_time_ms;
+        entry.timeCount++;
+      }
+
+      timelineMap.set(key, entry);
+    }
+  });
+
+  return Array.from(timelineMap.entries())
+    .map(([date, stats]) => {
+      const count = Math.max(stats.speedCount, stats.vramCount, stats.timeCount);
+      return {
+        date,
+        avgSpeed: stats.speedCount > 0 ? stats.totalSpeed / stats.speedCount : 0,
+        avgVram: stats.vramCount > 0 ? stats.totalVram / stats.vramCount / 1024 : 0, // Convert to GB
+        avgTime: stats.timeCount > 0 ? stats.totalTime / stats.timeCount / 1000 : 0, // Convert to seconds
+        count,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Format generation time in milliseconds to human readable
+ */
+export function formatGenerationTime(ms: number): string {
+  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+/**
+ * Format VRAM in MB with optional GPU device context
+ */
+export function formatVRAM(vramMb: number, gpuDevice?: string | null): string {
+  const vramGb = vramMb / 1024;
+
+  // Known GPU VRAM mappings
+  const gpuVramMap: Record<string, number> = {
+    '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12, '3060 Ti': 8,
+    'A100': 40, 'A6000': 48, 'V100': 16, 'A4000': 16,
+    '4080': 16, '4070': 12, '4060': 8,
+  };
+
+  let totalVramGb: number | null = null;
+  if (gpuDevice) {
+    for (const [model, vram] of Object.entries(gpuVramMap)) {
+      if (gpuDevice.includes(model)) {
+        totalVramGb = vram;
+        break;
+      }
+    }
+  }
+
+  if (totalVramGb !== null && vramGb <= totalVramGb) {
+    const percentage = ((vramGb / totalVramGb) * 100).toFixed(0);
+    return `${vramGb.toFixed(1)} GB / ${totalVramGb} GB (${percentage}%)`;
+  }
+
+  return `${vramGb.toFixed(1)} GB`;
+}
