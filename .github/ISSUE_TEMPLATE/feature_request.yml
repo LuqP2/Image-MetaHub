@@ -1,0 +1,92 @@
+name: "✨ Feature request (Image MetaHub)"
+description: "Suggest an improvement or new feature"
+title: "[FR]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please be as specific as possible. Clear examples and mockups help a lot.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Viewer / Image modal (zoom, fullscreen, navigation, close)
+        - Thumbnails / Grid (layout, hover/slider mode, loading)
+        - Folders & Library (browse/add/delete folders, startup folder)
+        - Search / Filter / Sort
+        - Metadata (parsing, display, compare, edit)
+        - Tags / Collections / Organization
+        - Import / Watch / Sync
+        - Export / Share / Clipboard
+        - Settings / UX
+        - Performance / Memory
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: "What are you trying to do, and what's currently missing or annoying?"
+      placeholder: "Example: I review similar images and want to compare metadata side-by-side to spot differences quickly."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: "Describe the feature and how it should work."
+      placeholder: |
+        Example:
+        - Add a 'Compare metadata' action when selecting 2 images
+        - Show a diff view highlighting changed fields (prompt, sampler, steps, seed, LoRAs, etc.)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority (your perspective)
+      options:
+        - Nice to have
+        - Would use often
+        - Must-have / blocking
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: "Any workaround or other approach you thought about?"
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples / references
+      description: "Screenshots, mockups, links to similar apps, sample files, etc."
+
+  - type: input
+    id: version
+    attributes:
+      label: Image MetaHub version
+      placeholder: "e.g. 0.10.5"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: false
