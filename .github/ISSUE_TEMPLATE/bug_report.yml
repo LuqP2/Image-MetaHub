@@ -1,7 +1,4 @@
-from pathlib import Path
-
-content = """\
-name: "🐛 Bug report (Image MetaHub)"
+name: "Bug report (Image MetaHub)"
 description: "Report a bug with Image MetaHub"
 title: "[Bug]: "
 labels: ["bug"]
