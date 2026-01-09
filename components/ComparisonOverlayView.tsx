@@ -116,7 +116,12 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
-            <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full">
+            <TransformComponent
+              wrapperClass="w-full h-full"
+              contentClass="w-full h-full"
+              wrapperStyle={{ width: '100%', height: '100%' }}
+              contentStyle={{ width: '100%', height: '100%' }}
+            >
               <div
                 className="relative w-full h-full overflow-hidden bg-black"
                 onMouseEnter={mode === 'hover' ? () => setIsHovering(true) : undefined}
