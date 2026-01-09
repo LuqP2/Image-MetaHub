@@ -219,12 +219,13 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         metadata.parameters.includes('--niji')) {
         return { parse: (data: NijiMetadata) => parseNijiMetadata(data.parameters), generator: 'Niji' };
     }
-    if ('parameters' in metadata && 
-        typeof metadata.parameters === 'string' && 
-        (metadata.parameters.includes('Forge') || 
+    if ('parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
+        (metadata.parameters.includes('Forge') ||
          metadata.parameters.includes('Gradio') ||
-         (metadata.parameters.includes('Steps:') && 
-          metadata.parameters.includes('Sampler:') && 
+         /Version:\s*f\d+\./i.test(metadata.parameters) ||
+         (metadata.parameters.includes('Steps:') &&
+          metadata.parameters.includes('Sampler:') &&
           metadata.parameters.includes('Model hash:')))) {
         return { parse: (data: ForgeMetadata) => parseForgeMetadata(data), generator: 'Forge' };
     }

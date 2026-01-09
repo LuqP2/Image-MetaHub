@@ -1135,8 +1135,10 @@ if (rawMetadata) {
       normalizedMetadata = parseSDNextMetadata(params);
     }
     
-    // Sub-priority 2.2: Forge (most specific - has Model hash + Forge/Gradio)
-    else if (!normalizedMetadata && (params.includes('Forge') || params.includes('Gradio')) && 
+    // Sub-priority 2.2: Forge (most specific - has Model hash + Forge/Gradio OR Forge version pattern)
+    // Forge versions follow pattern: f2.0.1, f1.10.0, etc.
+    else if (!normalizedMetadata &&
+        (params.includes('Forge') || params.includes('Gradio') || /Version:\s*f\d+\./i.test(params)) &&
         params.includes('Steps:') && params.includes('Sampler:') && params.includes('Model hash:')) {
       normalizedMetadata = parseForgeMetadata(rawMetadata);
     }
@@ -1149,10 +1151,10 @@ if (rawMetadata) {
     }
     
     // Sub-priority 2.4: A1111/ComfyUI hybrid (has Model hash or Version indicators, or Civitai resources)
-    // This catches: standard A1111, ComfyUI with A1111 format, Forge variants, and A1111 with Civitai resources
+    // This catches: standard A1111, ComfyUI with A1111 format, and A1111 with Civitai resources
+    // NOTE: Forge versions (f2.0.1, etc.) are now handled by Forge parser above
     else if (!normalizedMetadata && (params.includes('Model hash:') ||
              params.includes('Version: ComfyUI') ||
-             /Version:\s*f\d+\./i.test(params) ||  // Forge versions like f2.0.1
              params.includes('Distilled CFG Scale') ||
              /Module\s*\d+:/i.test(params) ||
              params.includes('Civitai resources:'))) {
