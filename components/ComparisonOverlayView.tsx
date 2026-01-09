@@ -82,7 +82,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   const isLoading = isLeftLoading || isRightLoading;
   const overlayStyle =
     mode === 'slider'
-      ? { clipPath: `inset(0 ${100 - sliderValue}% 0 0)`, transition: 'clip-path 180ms ease' }
+      ? { clipPath: `inset(0 ${100 - sliderValue}% 0 0)`, transition: isDraggingHandle ? 'none' : 'clip-path 180ms ease' }
       : { opacity: isHovering ? 0 : 1, transition: 'opacity 200ms ease' };
   const baseStyle =
     mode === 'hover'
@@ -154,8 +154,8 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                 {ready && mode === 'slider' && (
                   <>
                     <div
-                      className="absolute inset-y-0 cursor-ew-resize select-none touch-none"
-                      style={{ left: `${sliderValue}%` }}
+                      className="absolute inset-y-0 cursor-ew-resize select-none touch-none flex items-center justify-center"
+                      style={{ left: `${sliderValue}%`, width: '40px', marginLeft: '-20px' }}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -164,7 +164,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
                       }}
                     >
                       <div className="w-px h-full bg-white/70 shadow-[0_0_12px_rgba(0,0,0,0.45)] pointer-events-none" />
-                      <div className="absolute -left-3 top-1/2 -translate-y-1/2 h-12 w-6 rounded-full bg-white/95 text-gray-800 shadow-xl flex items-center justify-center border border-gray-200 pointer-events-none">
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-6 rounded-full bg-white/95 text-gray-800 shadow-xl flex items-center justify-center border border-gray-200 pointer-events-none">
                         <div className="w-1 h-8 bg-gray-500 rounded-full" />
                       </div>
                       <div className="absolute left-1/2 -translate-x-1/2 top-3 text-[11px] text-gray-200 px-2 py-0.5 rounded-full bg-black/70 border border-white/10 pointer-events-none">
