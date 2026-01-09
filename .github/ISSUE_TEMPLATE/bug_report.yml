@@ -1,0 +1,231 @@
+name: "Bug report (Image MetaHub)"
+description: "Report a bug with Image MetaHub"
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The fastest way to fix most issues is: **exact steps + app version + OS + (when relevant) a sample file/workflow/logs**.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: "Where does the problem happen?"
+      options:
+        - Viewer / Image modal (zoom, fullscreen, navigation, close)
+        - Thumbnails / Grid (blank thumbs, hover/slider mode, loading)
+        - Folders & Library (add/browse/delete folders, startup folder)
+        - Search / Filter / Sort
+        - Metadata parsing (A1111/Forge/ComfyUI/etc.)
+        - Copy / Clipboard / Export
+        - Performance / Memory (slow, freezes, OOM)
+        - Crash
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Image MetaHub version
+      placeholder: "e.g. 0.10.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS version
+      placeholder: "e.g. Windows 11 23H2 / macOS 14.2 / Ubuntu 22.04"
+
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Install / build type
+      options:
+        - Release build
+        - Portable build
+        - AppImage (Linux)
+        - Dev build (npm/yarn/pnpm)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: "A short, concrete description."
+      placeholder: "Example: After startup, thumbnails are blank gray rectangles and never resolve."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots / recordings / sample files
+      description: "Drag & drop here. For metadata issues, attaching 1 sample image is extremely helpful."
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / console output
+      description: "Paste any relevant logs. If you have a log file, paste the relevant excerpt."
+      placeholder: |
+        ```
+        paste logs here
+        ```
+      render: shell
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Metadata details (fill if your issue is about metadata)
+
+  - type: dropdown
+    id: generator
+    attributes:
+      label: Generator / source
+      description: "Where the affected image(s) were produced."
+      options:
+        - Forge
+        - Automatic1111 (A1111)
+        - ComfyUI
+        - SD.Next
+        - SwarmUI
+        - InvokeAI
+        - Fooocus
+        - DrawThings
+        - DreamStudio
+        - Other / Unknown
+    validations:
+      required: false
+
+  - type: dropdown
+    id: file_format
+    attributes:
+      label: File format
+      options:
+        - PNG
+        - JPEG
+        - WebP
+        - Other
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: metadata_context
+    attributes:
+      label: Metadata context
+      options:
+        - label: The file was not re-saved/edited by another app (Photoshop, upscaler, Discord, etc.)
+          required: false
+        - label: I can attach at least 1 sample image that reproduces the issue
+          required: false
+
+  - type: textarea
+    id: comfyui_workflow
+    attributes:
+      label: ComfyUI workflow JSON (only if generator is ComfyUI)
+      description: "Attach workflow.json or paste it. If it's embedded in the PNG, say so."
+      placeholder: |
+        - Attach workflow.json
+        - or paste JSON here
+        - or write: "workflow embedded in PNG"
+
+  - type: textarea
+    id: a1111_pnginfo
+    attributes:
+      label: A1111/Forge/SD.Next info (only if generator is A1111/Forge/SD.Next)
+      description: "Paste the full PNG Info / parameters text."
+      placeholder: |
+        Paste the exact text here.
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ## Performance / Library scale (fill if your issue is slow startup, freezes, OOM, etc.)
+
+  - type: input
+    id: library_size
+    attributes:
+      label: Approx. number of images in your library/folder(s)
+      placeholder: "e.g. 5k / 21k / 120k"
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      placeholder: "e.g. RTX 3060 Ti 8GB / Intel iGPU"
+
+  - type: input
+    id: ram
+    attributes:
+      label: RAM
+      placeholder: "e.g. 32GB"
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage type (where the library lives)
+      options:
+        - NVMe SSD
+        - SATA SSD
+        - HDD
+        - Network drive
+        - Other
+
+  - type: checkboxes
+    id: final_checks
+    attributes:
+      label: Final checks
+      options:
+        - label: I searched existing issues to avoid duplicates
+          required: true
+        - label: I included enough info to reproduce (steps + version + OS)
+          required: true
+"""
+path = Path("/mnt/data/bug_report.yml")
+path.write_text(content, encoding="utf-8")
+str(path), path.stat().st_size
