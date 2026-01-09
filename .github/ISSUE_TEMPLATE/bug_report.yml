@@ -225,7 +225,3 @@ body:
           required: true
         - label: I included enough info to reproduce (steps + version + OS)
           required: true
-"""
-path = Path("/mnt/data/bug_report.yml")
-path.write_text(content, encoding="utf-8")
-str(path), path.stat().st_size
