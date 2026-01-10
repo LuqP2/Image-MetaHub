@@ -77,7 +77,7 @@ const STOP_WORDS = new Set([
   'art', 'illustration', '4k', '8k', '16k', 'uhd', 'hd',
 ]);
 
-function tokenize(text: string): Set<string> {
+export function tokenizeForSimilarity(text: string): Set<string> {
   // Remove A1111 weight syntax: (term:1.2) or [term:0.8]
   const cleanedText = text.replace(/[(\[]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g, '$1');
 
@@ -102,8 +102,8 @@ function tokenize(text: string): Set<string> {
  * Fast: O(n+m) where n,m are token counts
  */
 export function jaccardSimilarity(str1: string, str2: string): number {
-  const tokens1 = tokenize(str1);
-  const tokens2 = tokenize(str2);
+  const tokens1 = tokenizeForSimilarity(str1);
+  const tokens2 = tokenizeForSimilarity(str2);
 
   if (tokens1.size === 0 && tokens2.size === 0) return 1.0;
   if (tokens1.size === 0 || tokens2.size === 0) return 0.0;
@@ -187,7 +187,7 @@ export function generatePromptHash(prompt: string): string {
  */
 export function extractKeywords(prompt: string, topN: number = 5): string[] {
   const normalized = normalizePrompt(prompt);
-  const tokens = tokenize(normalized);
+  const tokens = tokenizeForSimilarity(normalized);
 
   // Filter for likely meaningful words (length >= 3, not pure digits)
   const keywords = [...tokens]

@@ -17,6 +17,8 @@ import {
   hybridSimilarity,
   shareKeywords,
   extractKeywords,
+  tokenizeForSimilarity,
+  normalizedLevenshtein,
 } from '../utils/similarityMetrics';
 
 /**
@@ -45,6 +47,7 @@ export interface LightweightImage {
 interface ClusterBuilder {
   promptHash: string;
   basePrompt: string;
+  tokens: Set<string>;
   imageIds: string[];
   imageTimestamps: Map<string, number>; // For sorting
 }
@@ -100,7 +103,7 @@ export async function generateClusters(
   // Phase 2: Token bucketing
   totalUnits += exactClusters.size;
   reportProgress(0, 'Phase 2/4: Token bucketing', true);
-  const buckets = performTokenBucketing(lightweightImages, exactClusters, () => {
+  const buckets = performTokenBucketing(exactClusters, () => {
     reportProgress(1, 'Phase 2/4: Token bucketing');
   });
   console.log(`Phase 2 complete: ${buckets.length} token buckets`);
@@ -113,7 +116,6 @@ export async function generateClusters(
   totalUnits += buckets.length + totalComparisons;
   reportProgress(0, 'Phase 3/4: Similarity clustering', true);
   const similarityClusters = performSimilarityClustering(
-    lightweightImages,
     buckets,
     exactClusters,
     threshold,
@@ -164,6 +166,7 @@ function performExactMatching(
       clusters.set(hash, {
         promptHash: hash,
         basePrompt: normalized,
+        tokens: tokenizeForSimilarity(normalized),
         imageIds: [],
         imageTimestamps: new Map(),
       });
@@ -184,10 +187,12 @@ function performExactMatching(
  * Only clusters with 2+ shared keywords are compared in Phase 3
  */
 function performTokenBucketing(
-  images: LightweightImage[],
   exactClusters: Map<string, ClusterBuilder>,
   onProgress?: () => void
 ): string[][] {
+  const totalClusters = exactClusters.size;
+  const maxKeywordClusterCount = Math.max(30, Math.floor(totalClusters * 0.12));
+
   // Create keyword index: keyword -> cluster hashes
   const keywordIndex = new Map<string, Set<string>>();
 
@@ -209,22 +214,37 @@ function performTokenBucketing(
   for (const [hash, cluster] of exactClusters.entries()) {
     if (processed.has(hash)) continue;
 
-    const bucket = new Set<string>([hash]);
+    const bucket = new Set<string>();
+    const queue: string[] = [hash];
+
     processed.add(hash);
 
-    const keywords = extractKeywords(cluster.basePrompt, 10);
+    while (queue.length > 0) {
+      const currentHash = queue.pop()!;
+      const currentCluster = exactClusters.get(currentHash);
+      if (!currentCluster) {
+        continue;
+      }
 
-    // Find all clusters sharing at least 2 keywords
-    for (const keyword of keywords) {
-      const relatedHashes = keywordIndex.get(keyword);
-      if (!relatedHashes) continue;
+      bucket.add(currentHash);
+      const keywords = extractKeywords(currentCluster.basePrompt, 10);
 
-      for (const relatedHash of relatedHashes) {
-        if (relatedHash === hash || processed.has(relatedHash)) continue;
+      for (const keyword of keywords) {
+        const relatedHashes = keywordIndex.get(keyword);
+        if (!relatedHashes || relatedHashes.size > maxKeywordClusterCount) {
+          continue;
+        }
 
-        const relatedCluster = exactClusters.get(relatedHash)!;
-        if (shareKeywords(cluster.basePrompt, relatedCluster.basePrompt, 2)) {
-          bucket.add(relatedHash);
+        for (const relatedHash of relatedHashes) {
+          if (processed.has(relatedHash)) continue;
+
+          const relatedCluster = exactClusters.get(relatedHash);
+          if (!relatedCluster) continue;
+
+          if (shareKeywords(currentCluster.basePrompt, relatedCluster.basePrompt, 2)) {
+            processed.add(relatedHash);
+            queue.push(relatedHash);
+          }
         }
       }
     }
@@ -242,7 +262,6 @@ function performTokenBucketing(
  * Merges clusters above threshold
  */
 function performSimilarityClustering(
-  images: LightweightImage[],
   buckets: string[][],
   exactClusters: Map<string, ClusterBuilder>,
   threshold: number,
@@ -295,6 +314,20 @@ function mergeSimilarClusters(
 
   const comparisonChunk = 2000;
   let pendingComparisons = 0;
+  const minJaccard = Math.max(0, (threshold - 0.4) / 0.6);
+
+  const jaccardFromTokens = (a: Set<string>, b: Set<string>): number => {
+    if (a.size === 0 && b.size === 0) return 1;
+    if (a.size === 0 || b.size === 0) return 0;
+    let intersection = 0;
+    for (const token of a) {
+      if (b.has(token)) {
+        intersection += 1;
+      }
+    }
+    const union = a.size + b.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+  };
 
   // Union-Find data structure
   const parent = new Map<number, number>();
@@ -320,10 +353,23 @@ function mergeSimilarClusters(
   // Compare all pairs
   for (let i = 0; i < clusters.length; i++) {
     for (let j = i + 1; j < clusters.length; j++) {
-      const similarity = hybridSimilarity(
+      const jaccard = jaccardFromTokens(clusters[i].tokens, clusters[j].tokens);
+      if (jaccard < minJaccard) {
+        if (onComparisonProgress) {
+          pendingComparisons += 1;
+          if (pendingComparisons >= comparisonChunk) {
+            onComparisonProgress(pendingComparisons);
+            pendingComparisons = 0;
+          }
+        }
+        continue;
+      }
+
+      const levenshtein = normalizedLevenshtein(
         clusters[i].basePrompt,
         clusters[j].basePrompt
       );
+      const similarity = jaccard * 0.6 + levenshtein * 0.4;
 
       if (similarity >= threshold) {
         union(i, j);
@@ -359,6 +405,7 @@ function mergeSimilarClusters(
     const mergedCluster: ClusterBuilder = {
       promptHash: clusters[root].promptHash,
       basePrompt: clusters[root].basePrompt,
+      tokens: clusters[root].tokens,
       imageIds: [],
       imageTimestamps: new Map(),
     };

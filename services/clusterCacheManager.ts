@@ -82,8 +82,14 @@ export async function getCacheDirectory(): Promise<string> {
     let basePath: string | undefined;
 
     if (typeof electronAPI.getUserDataPath === 'function') {
-      basePath = await electronAPI.getUserDataPath();
-    } else if (typeof electronAPI.getDefaultCachePath === 'function') {
+      try {
+        basePath = await electronAPI.getUserDataPath();
+      } catch (error) {
+        console.warn('[ClusterCacheManager] getUserDataPath failed, falling back:', error);
+      }
+    }
+
+    if (!basePath && typeof electronAPI.getDefaultCachePath === 'function') {
       const result = await electronAPI.getDefaultCachePath();
       if (result?.success && result.path) {
         basePath = result.path;

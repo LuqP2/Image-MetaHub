@@ -103,6 +103,13 @@ const ImagePreviewSidebar: React.FC = () => {
     removeTagFromImage,
     availableTags
   } = useImageStore();
+  const previewImageFromStore = useImageStore((state) => {
+    if (!state.previewImage) return null;
+    const id = state.previewImage.id;
+    return state.images.find(img => img.id === id) ||
+      state.filteredImages.find(img => img.id === id) ||
+      null;
+  });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -122,7 +129,9 @@ const ImagePreviewSidebar: React.FC = () => {
     let isMounted = true;
     let currentUrl: string | null = null;
 
-    if (previewImage) {
+    const activeImage = previewImageFromStore || previewImage;
+
+    if (activeImage) {
       const loadImage = async () => {
         if (!isMounted) return;
         
@@ -132,10 +141,10 @@ const ImagePreviewSidebar: React.FC = () => {
         }
         setImageUrl(null); // Reset while loading
 
-        const directoryPath = directories.find(d => d.id === previewImage.directoryId)?.path;
+        const directoryPath = directories.find(d => d.id === activeImage.directoryId)?.path;
 
         try {
-          const fileHandle = previewImage.thumbnailHandle || previewImage.handle;
+          const fileHandle = activeImage.thumbnailHandle || activeImage.handle;
           if (fileHandle && typeof fileHandle.getFile === 'function') {
             const file = await fileHandle.getFile();
             if (isMounted) {
@@ -149,7 +158,7 @@ const ImagePreviewSidebar: React.FC = () => {
           console.warn(`Could not load image with FileSystemFileHandle: ${(handleError as Error).message}. Attempting Electron fallback.`);
           if (isMounted && window.electronAPI && directoryPath) {
             try {
-              const pathResult = await window.electronAPI.joinPaths(directoryPath, previewImage.name);
+              const pathResult = await window.electronAPI.joinPaths(directoryPath, activeImage.name);
               if (!pathResult.success || !pathResult.path) {
                 throw new Error(pathResult.error || 'Failed to construct image path.');
               }
@@ -157,7 +166,7 @@ const ImagePreviewSidebar: React.FC = () => {
               if (fileResult.success && fileResult.data && isMounted) {
                 let dataUrl: string;
                 if (typeof fileResult.data === 'string') {
-                  const lowerName = previewImage.name.toLowerCase();
+                  const lowerName = activeImage.name.toLowerCase();
                   const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                     ? 'jpeg'
                     : lowerName.endsWith('.webp')
@@ -167,7 +176,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 } else if (fileResult.data instanceof Uint8Array) {
                   const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
                   const base64 = btoa(binary);
-                  const lowerName = previewImage.name.toLowerCase();
+                  const lowerName = activeImage.name.toLowerCase();
                   const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
                     ? 'jpeg'
                     : lowerName.endsWith('.webp')
@@ -204,13 +213,14 @@ const ImagePreviewSidebar: React.FC = () => {
         }, 100);
       }
     };
-  }, [previewImage, directories]);
+  }, [previewImage, previewImageFromStore, directories]);
 
-  if (!previewImage) {
+  const activeImage = previewImageFromStore || previewImage;
+  if (!activeImage) {
     return null;
   }
 
-  const nMeta: BaseMetadata | undefined = previewImage.metadata?.normalizedMetadata;
+  const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) return;
@@ -223,28 +233,28 @@ const ImagePreviewSidebar: React.FC = () => {
 
   // Tag management handlers
   const handleAddTag = () => {
-    if (!tagInput.trim() || !previewImage) return;
-    addTagToImage(previewImage.id, tagInput);
+    if (!tagInput.trim() || !activeImage) return;
+    addTagToImage(activeImage.id, tagInput);
     setTagInput('');
     setShowTagAutocomplete(false);
   };
 
   const handleRemoveTag = (tag: string) => {
-    if (!previewImage) return;
-    removeTagFromImage(previewImage.id, tag);
+    if (!activeImage) return;
+    removeTagFromImage(activeImage.id, tag);
   };
 
   const handleToggleFavorite = () => {
-    if (!previewImage) return;
-    toggleFavorite(previewImage.id);
+    if (!activeImage) return;
+    toggleFavorite(activeImage.id);
   };
 
   // Filter autocomplete tags
-  const autocompleteOptions = tagInput && previewImage
+  const autocompleteOptions = tagInput && activeImage
     ? availableTags
         .filter(tag =>
           tag.name.includes(tagInput.toLowerCase()) &&
-          !(previewImage.tags || []).includes(tag.name)
+          !(activeImage.tags || []).includes(tag.name)
         )
         .slice(0, 5)
     : [];
@@ -267,14 +277,14 @@ const ImagePreviewSidebar: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
-          {imageUrl ? <img src={imageUrl} alt={previewImage.name} className="max-w-full max-h-96 object-contain" /> : <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>}
+          {imageUrl ? <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" /> : <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>}
         </div>
 
         {/* Metadata */}
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h2 className="text-lg font-bold text-gray-100 break-all">{previewImage.name}</h2>
-            {hasVerifiedTelemetry(previewImage) && (
+            <h2 className="text-lg font-bold text-gray-100 break-all">{activeImage.name}</h2>
+            {hasVerifiedTelemetry(activeImage) && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
                 title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
@@ -284,7 +294,7 @@ const ImagePreviewSidebar: React.FC = () => {
               </span>
             )}
           </div>
-          <p className="text-xs text-blue-400 font-mono break-all">{new Date(previewImage.lastModified).toLocaleString()}</p>
+          <p className="text-xs text-blue-400 font-mono break-all">{new Date(activeImage.lastModified).toLocaleString()}</p>
         </div>
 
         {/* Annotations Section */}
@@ -295,21 +305,21 @@ const ImagePreviewSidebar: React.FC = () => {
             <button
               onClick={handleToggleFavorite}
               className={`p-1.5 rounded transition-all ${
-                previewImage.isFavorite
+                activeImage.isFavorite
                   ? 'text-yellow-400 hover:text-yellow-300'
                   : 'text-gray-500 hover:text-yellow-400'
               }`}
-              title={previewImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             >
-              <Star className={`w-5 h-5 ${previewImage.isFavorite ? 'fill-current' : ''}`} />
+              <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
             </button>
 
             {/* Tags Pills */}
             <div className="flex-1 space-y-2">
               {/* Current Tags */}
-              {previewImage.tags && previewImage.tags.length > 0 && (
+              {activeImage.tags && activeImage.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                  {previewImage.tags.map(tag => (
+                  {activeImage.tags.map(tag => (
                     <button
                       key={tag}
                       onClick={() => handleRemoveTag(tag)}
@@ -355,7 +365,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       <button
                         key={tag.name}
                         onClick={() => {
-                          addTagToImage(previewImage.id, tag.name);
+                          addTagToImage(activeImage.id, tag.name);
                           setTagInput('');
                           setShowTagAutocomplete(false);
                         }}
@@ -370,12 +380,12 @@ const ImagePreviewSidebar: React.FC = () => {
               </div>
 
               {/* Tag Suggestions */}
-              {(!previewImage.tags || previewImage.tags.length === 0) && availableTags.length > 0 && (
+              {(!activeImage.tags || activeImage.tags.length === 0) && availableTags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {availableTags.slice(0, 5).map(tag => (
                     <button
                       key={tag.name}
-                      onClick={() => addTagToImage(previewImage.id, tag.name)}
+                      onClick={() => addTagToImage(activeImage.id, tag.name)}
                       className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
                     >
                       {tag.name}
@@ -384,11 +394,11 @@ const ImagePreviewSidebar: React.FC = () => {
                 </div>
               )}
 
-              {previewImage.autoTags && previewImage.autoTags.length > 0 && (
+              {activeImage.autoTags && activeImage.autoTags.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {previewImage.autoTags.map(tag => (
+                    {activeImage.autoTags.map(tag => (
                       <span
                         key={`auto-${tag}`}
                         className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 text-purple-300 px-2 py-0.5 rounded-full text-xs"
@@ -542,7 +552,7 @@ const ImagePreviewSidebar: React.FC = () => {
                     showProModal('a1111');
                     return;
                   }
-                  copyToA1111(previewImage);
+                  copyToA1111(activeImage);
                 }}
                 disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
                 className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
@@ -580,7 +590,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
-                  image={previewImage}
+                  image={activeImage}
                   onGenerate={async (params: A1111GenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -593,7 +603,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       model: params.model || nMeta?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
-                    await generateWithA1111(previewImage, customMetadata, params.numberOfImages);
+                    await generateWithA1111(activeImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
@@ -641,7 +651,7 @@ const ImagePreviewSidebar: React.FC = () => {
                     showProModal('comfyui');
                     return;
                   }
-                  copyToComfyUI(previewImage);
+                  copyToComfyUI(activeImage);
                 }}
                 disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
                 className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
@@ -679,7 +689,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 <ComfyUIGenerateModal
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
-                  image={previewImage}
+                  image={activeImage}
                   onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -693,7 +703,7 @@ const ImagePreviewSidebar: React.FC = () => {
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
-                    await generateWithComfyUI(previewImage, {
+                    await generateWithComfyUI(activeImage, {
                       customMetadata,
                       overrides: {
                         model: params.model,
