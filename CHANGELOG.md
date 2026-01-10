@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **Auto-Watch Instant Sync**: Activating auto-watch now triggers an immediate folder refresh, ensuring the gallery is instantly synchronized with the current directory state without waiting for the next file change event.
 - **Image Compare Mode - Slider Interaction**: Significantly improved slider usability:
   - Expanded clickable area from 1px to 40px (20px on each side of the divider line) for much easier dragging
   - Removed 180ms transition delay during drag operations for instant response
