@@ -263,6 +263,7 @@ interface ImageState {
   cancelClustering: () => void;
   setClusters: (clusters: ImageCluster[]) => void;
   setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
+  handleClusterImageDeletion: (deletedImageIds: string[]) => void;
 
   // Comparison Actions
   setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
@@ -1259,6 +1260,18 @@ export const useImageStore = create<ImageState>((set, get) => {
         setClusters: (clusters) => set({ clusters }),
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
+
+        handleClusterImageDeletion: (deletedImageIds: string[]) => {
+            const { clusters } = get();
+            if (clusters.length === 0) return;
+
+            // Import removeImagesFromClusters dynamically to avoid circular deps
+            import('../services/clusteringEngine').then(({ removeImagesFromClusters }) => {
+                const updatedClusters = removeImagesFromClusters(deletedImageIds, clusters);
+                set({ clusters: updatedClusters });
+                console.log(`Clusters updated after ${deletedImageIds.length} image deletions`);
+            });
+        },
 
         // Comparison Actions
         setComparisonImages: (images) => set({ comparisonImages: images }),

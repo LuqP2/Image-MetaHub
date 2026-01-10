@@ -418,3 +418,48 @@ export function calculateClusterPosition(
 ): number {
   return cluster.imageIds.indexOf(imageId);
 }
+
+/**
+ * Remove deleted images from clusters
+ * Called when file watcher detects deletions
+ * Returns updated clusters (empty clusters are removed)
+ */
+export function removeImagesFromClusters(
+  deletedImageIds: string[],
+  existingClusters: ImageCluster[]
+): ImageCluster[] {
+  const deletedSet = new Set(deletedImageIds);
+  const updatedClusters: ImageCluster[] = [];
+
+  for (const cluster of existingClusters) {
+    // Filter out deleted images
+    const remainingImageIds = cluster.imageIds.filter((id) => !deletedSet.has(id));
+
+    // Skip empty clusters
+    if (remainingImageIds.length === 0) {
+      console.log(`Cluster ${cluster.id} is now empty and will be removed`);
+      continue;
+    }
+
+    // Update cluster with remaining images
+    const updatedCluster: ImageCluster = {
+      ...cluster,
+      imageIds: remainingImageIds,
+      size: remainingImageIds.length,
+      coverImageId: remainingImageIds[0], // Update cover if needed
+      updatedAt: Date.now(),
+    };
+
+    // Only keep clusters with 1+ images (configurable threshold)
+    if (updatedCluster.size >= 1) {
+      updatedClusters.push(updatedCluster);
+    }
+  }
+
+  console.log(
+    `Removed ${deletedImageIds.length} images from clusters. ` +
+      `${existingClusters.length - updatedClusters.length} clusters removed (empty)`
+  );
+
+  return updatedClusters;
+}

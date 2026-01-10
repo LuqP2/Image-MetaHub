@@ -111,6 +111,7 @@ export async function loadClusterCache(
 
 /**
  * Save cluster cache for a directory
+ * Uses atomic write (temp file + rename) to prevent corruption
  */
 export async function saveClusterCache(
   directoryPath: string,
@@ -122,6 +123,7 @@ export async function saveClusterCache(
     const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
     const cachePath = `${cacheDir}/${idHash}-clusters.json`;
+    const tempPath = `${cachePath}.tmp`;
 
     const cacheEntry: ClusterCacheEntry = {
       id: idHash,
@@ -134,8 +136,23 @@ export async function saveClusterCache(
     };
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      await window.electronAPI.writeFile(cachePath, JSON.stringify(cacheEntry, null, 2));
-      console.log(`Cluster cache saved: ${clusters.length} clusters`);
+      // Atomic write: write to temp file, then rename
+      await window.electronAPI.writeFile(tempPath, JSON.stringify(cacheEntry, null, 2));
+
+      // Rename temp to final (atomic operation on most filesystems)
+      try {
+        await window.electronAPI.renameFile(tempPath, cachePath);
+      } catch (renameError) {
+        // Fallback: if rename fails, try delete + rename
+        try {
+          await window.electronAPI.deleteFile(cachePath);
+        } catch {
+          // Ignore if file doesn't exist
+        }
+        await window.electronAPI.renameFile(tempPath, cachePath);
+      }
+
+      console.log(`Cluster cache saved atomically: ${clusters.length} clusters`);
     }
   } catch (error) {
     console.error('Failed to save cluster cache:', error);
@@ -179,6 +196,7 @@ export async function loadAutoTagCache(
 
 /**
  * Save auto-tag cache for a directory
+ * Uses atomic write (temp file + rename) to prevent corruption
  */
 export async function saveAutoTagCache(
   directoryPath: string,
@@ -190,6 +208,7 @@ export async function saveAutoTagCache(
     const cacheDir = await getCacheDirectory();
     const idHash = generateDirectoryIdHash(directoryPath, scanSubfolders);
     const cachePath = `${cacheDir}/${idHash}-autotags.json`;
+    const tempPath = `${cachePath}.tmp`;
 
     // Serialize TF-IDF model (convert Map to object)
     const serializedModel: TFIDFModelSerialized = {
@@ -209,8 +228,23 @@ export async function saveAutoTagCache(
     };
 
     if (typeof window !== 'undefined' && window.electronAPI) {
-      await window.electronAPI.writeFile(cachePath, JSON.stringify(cacheEntry, null, 2));
-      console.log(`Auto-tag cache saved: ${Object.keys(autoTags).length} images tagged`);
+      // Atomic write: write to temp file, then rename
+      await window.electronAPI.writeFile(tempPath, JSON.stringify(cacheEntry, null, 2));
+
+      // Rename temp to final (atomic operation)
+      try {
+        await window.electronAPI.renameFile(tempPath, cachePath);
+      } catch (renameError) {
+        // Fallback: if rename fails, try delete + rename
+        try {
+          await window.electronAPI.deleteFile(cachePath);
+        } catch {
+          // Ignore if file doesn't exist
+        }
+        await window.electronAPI.renameFile(tempPath, cachePath);
+      }
+
+      console.log(`Auto-tag cache saved atomically: ${Object.keys(autoTags).length} images tagged`);
     }
   } catch (error) {
     console.error('Failed to save auto-tag cache:', error);
