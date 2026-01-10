@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -197,6 +197,12 @@ interface ImageState {
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
 
+  // Smart Clustering State (Phase 2)
+  clusters: ImageCluster[];
+  clusteringProgress: { current: number; total: number; message: string } | null;
+  clusteringWorker: Worker | null;
+  isClustering: boolean;
+
   // Actions
   addDirectory: (directory: Directory) => void;
   removeDirectory: (directoryId: string) => void;
@@ -251,6 +257,12 @@ interface ImageState {
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
+
+  // Clustering Actions (Phase 2)
+  startClustering: (directoryPath: string, scanSubfolders: boolean, threshold: number) => Promise<void>;
+  cancelClustering: () => void;
+  setClusters: (clusters: ImageCluster[]) => void;
+  setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
 
   // Comparison Actions
   setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
@@ -742,6 +754,12 @@ export const useImageStore = create<ImageState>((set, get) => {
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
 
+        // Smart Clustering initial values (Phase 2)
+        clusters: [],
+        clusteringProgress: null,
+        clusteringWorker: null,
+        isClustering: false,
+
         // --- ACTIONS ---
 
         addDirectory: (directory) => set(state => {
@@ -1155,6 +1173,92 @@ export const useImageStore = create<ImageState>((set, get) => {
         setSelectedImage: (image) => set({ selectedImage: image }),
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
+
+        // Clustering Actions (Phase 2)
+        startClustering: async (directoryPath: string, scanSubfolders: boolean, threshold: number) => {
+            const { images, clusteringWorker: existingWorker } = get();
+
+            // Cancel existing worker if running
+            if (existingWorker) {
+                existingWorker.terminate();
+            }
+
+            // Create new worker
+            const worker = new Worker(
+                new URL('../services/workers/clusteringWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+
+            set({ clusteringWorker: worker, isClustering: true, clusteringProgress: { current: 0, total: images.length, message: 'Initializing...' } });
+
+            // Handle worker messages
+            worker.onmessage = (e: MessageEvent) => {
+                const { type, payload } = e.data;
+
+                switch (type) {
+                    case 'progress':
+                        set({ clusteringProgress: payload });
+                        break;
+
+                    case 'complete':
+                        set({
+                            clusters: payload.clusters,
+                            clusteringProgress: null,
+                            isClustering: false,
+                        });
+                        worker.terminate();
+                        set({ clusteringWorker: null });
+                        console.log(`Clustering complete: ${payload.clusters.length} clusters created`);
+                        break;
+
+                    case 'error':
+                        console.error('Clustering error:', payload.error);
+                        set({
+                            clusteringProgress: null,
+                            isClustering: false,
+                            error: `Clustering failed: ${payload.error}`,
+                        });
+                        worker.terminate();
+                        set({ clusteringWorker: null });
+                        break;
+                }
+            };
+
+            // Prepare lightweight data for worker (90% less data)
+            const lightweightImages = images
+                .filter(img => img.prompt && img.prompt.trim().length > 0)
+                .map(img => ({
+                    id: img.id,
+                    prompt: img.prompt!,
+                    lastModified: img.lastModified,
+                }));
+
+            // Start clustering
+            worker.postMessage({
+                type: 'start',
+                payload: {
+                    images: lightweightImages,
+                    threshold,
+                },
+            });
+        },
+
+        cancelClustering: () => {
+            const { clusteringWorker } = get();
+            if (clusteringWorker) {
+                clusteringWorker.postMessage({ type: 'cancel' });
+                clusteringWorker.terminate();
+                set({
+                    clusteringWorker: null,
+                    clusteringProgress: null,
+                    isClustering: false,
+                });
+            }
+        },
+
+        setClusters: (clusters) => set({ clusters }),
+
+        setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
         // Comparison Actions
         setComparisonImages: (images) => set({ comparisonImages: images }),

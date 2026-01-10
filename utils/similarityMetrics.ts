@@ -60,7 +60,8 @@ export function normalizedLevenshtein(str1: string, str2: string): number {
 
 /**
  * Tokenize a string into words
- * - Splits by whitespace
+ * - Splits by whitespace AND commas (Danbooru-style prompts)
+ * - Preserves terms in parentheses/brackets (A1111 weights)
  * - Converts to lowercase
  * - Removes empty tokens
  * - Removes common stop words
@@ -77,9 +78,17 @@ const STOP_WORDS = new Set([
 ]);
 
 function tokenize(text: string): Set<string> {
-  const tokens = text
+  // Remove A1111 weight syntax: (term:1.2) or [term:0.8]
+  const cleanedText = text.replace(/[(\[]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g, '$1');
+
+  const tokens = cleanedText
     .toLowerCase()
-    .split(/\s+/)
+    // Split by whitespace AND commas (Danbooru-style: "1girl, blue hair, sitting")
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+    // Remove parentheses/brackets artifacts
+    .map((token) => token.replace(/^[(\[]+|[)\]]+$/g, ''))
     .filter((token) => token.length > 0)
     .filter((token) => !STOP_WORDS.has(token))
     .filter((token) => !/^\d+$/.test(token)); // Remove pure numbers
