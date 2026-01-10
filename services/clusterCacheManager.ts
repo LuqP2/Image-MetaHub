@@ -7,7 +7,6 @@
  */
 
 import { ImageCluster, AutoTag, TFIDFModel } from '../types';
-import { createHash } from 'crypto';
 import { PARSER_VERSION } from './cacheManager';
 
 /**
@@ -47,12 +46,30 @@ export interface TFIDFModelSerialized {
 
 /**
  * Generate a unique ID hash for a directory path
- * Uses MD5 to avoid Windows MAX_PATH issues with long paths
+ * Uses a lightweight FNV-1a hash to avoid MAX_PATH issues
  */
 export function generateDirectoryIdHash(directoryPath: string, scanSubfolders: boolean): string {
   const normalizedPath = directoryPath.replace(/[\\/]+$/, '');
   const key = `${normalizedPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-  return createHash('md5').update(key).digest('hex');
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function decodeCachePayload(data: unknown): string {
+  if (typeof data === 'string') {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return new TextDecoder('utf-8').decode(new Uint8Array(data));
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder('utf-8').decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+  return String(data ?? '');
 }
 
 /**
@@ -89,7 +106,10 @@ export async function loadClusterCache(
 
     if (typeof window !== 'undefined' && window.electronAPI) {
       const content = await window.electronAPI.readFile(cachePath);
-      const cache: ClusterCacheEntry = JSON.parse(content);
+      if (!content.success || !content.data) {
+        return null;
+      }
+      const cache: ClusterCacheEntry = JSON.parse(decodeCachePayload(content.data));
 
       // Validate cache version
       if (cache.parserVersion !== PARSER_VERSION) {
@@ -174,7 +194,10 @@ export async function loadAutoTagCache(
 
     if (typeof window !== 'undefined' && window.electronAPI) {
       const content = await window.electronAPI.readFile(cachePath);
-      const cache: AutoTagCacheEntry = JSON.parse(content);
+      if (!content.success || !content.data) {
+        return null;
+      }
+      const cache: AutoTagCacheEntry = JSON.parse(decodeCachePayload(content.data));
 
       // Validate cache version
       if (cache.parserVersion !== PARSER_VERSION) {
