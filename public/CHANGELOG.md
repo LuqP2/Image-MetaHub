@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Image Compare Mode - Hover & Slider**: Fixed critical rendering bug where images appeared as black screen in Hover and Slider comparison modes. The issue was caused by `react-zoom-pan-pinch` wrapper not receiving explicit height styles, causing the container to collapse to 0px height. Added `wrapperStyle` and `contentStyle` inline styles to force proper dimensions.
+- **Forge Metadata Parsing**: Fixed "No normalized metadata available" issue for images created with newer Forge versions (f2.0.1+). The Forge backend update removed "Forge"/"Gradio" keywords from metadata, causing images to fall through to A1111 parser. Updated detection logic to recognize Forge version patterns (`/Version:\s*f\d+\./i`) in addition to keyword matching. (Issue #108)
 
 ### Improved
 

@@ -5,7 +5,7 @@
 **Image MetaHub** is a React + Electron desktop application for browsing large collections of AI generated images. The app focuses on fast indexing, rich metadata filters, and fully local processing so that libraries remain private.
 
 ### Current Version
-- **Version:** 0.11.0
+- **Version:** 0.11.1
 - **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
 - **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
 - **State Management:** Zustand stores for both image data and application settings

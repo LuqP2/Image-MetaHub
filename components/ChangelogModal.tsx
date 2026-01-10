@@ -126,7 +126,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Image MetaHub 0.11.0 is here — the biggest feature update yet.</strong></p>
+                  <p><strong className="text-white">Image MetaHub 0.11.1 is here — bug fixes and improvements.</strong></p>
 
                   <p>This release brings <strong>Auto-Watch</strong> for real-time folder monitoring during generation, the official <strong>MetaHub Save Node for ComfyUI</strong> with instant metadata parsing (10-20x faster), complete <strong>ComfyUI generation integration</strong> with real-time WebSocket progress tracking, and a <strong>unified generation queue</strong> for both A1111 and ComfyUI jobs. The A1111 integration now includes model/LoRA selection with search filters and image size controls.</p>
 
