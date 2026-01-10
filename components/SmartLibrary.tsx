@@ -1,11 +1,14 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { ImageCluster, IndexedImage } from '../types';
+import { ImageCluster, IndexedImage, SmartCollection } from '../types';
 import StackCard from './StackCard';
 import StackExpandedView from './StackExpandedView';
+import SmartCollectionsSidebar, { sectionIcons } from './SmartCollectionsSidebar';
+import { getAllSmartCollections } from '../services/imageAnnotationsStorage';
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
+const MAX_AUTO_COLLECTIONS = 40;
 
 interface ClusterEntry {
   cluster: ImageCluster;
@@ -25,6 +28,8 @@ const SmartLibrary: React.FC = () => {
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
 
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<SmartCollection | null>(null);
+  const [customCollections, setCustomCollections] = useState<SmartCollection[]>([]);
 
   const imageMap = useMemo(() => {
     return new Map(images.map((image) => [image.id, image]));
@@ -44,6 +49,145 @@ const SmartLibrary: React.FC = () => {
   const sortedEntries = useMemo(() => {
     return [...clusterEntries].sort((a, b) => b.cluster.size - a.cluster.size);
   }, [clusterEntries]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getAllSmartCollections()
+      .then((collections) => {
+        if (isMounted) {
+          setCustomCollections(collections);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load smart collections:', error);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const normalizeKey = (value: string) => value.trim().toLowerCase();
+
+  const modelCollections = useMemo(() => {
+    const modelMap = new Map<string, { count: number; thumbnailId: string }>();
+
+    for (const image of images) {
+      const uniqueModels = new Set((image.models || []).map(normalizeKey).filter(Boolean));
+      uniqueModels.forEach((model) => {
+        const entry = modelMap.get(model);
+        if (entry) {
+          entry.count += 1;
+        } else {
+          modelMap.set(model, { count: 1, thumbnailId: image.id });
+        }
+      });
+    }
+
+    return Array.from(modelMap.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, MAX_AUTO_COLLECTIONS)
+      .map(([model, data]) => ({
+        id: `model:${model}`,
+        name: model,
+        type: 'model' as const,
+        query: { models: [model] },
+        imageCount: data.count,
+        thumbnailId: data.thumbnailId,
+        createdAt: 0,
+        updatedAt: 0,
+      }));
+  }, [images]);
+
+  const autoTagCollections = useMemo(() => {
+    const tagMap = new Map<string, { count: number; thumbnailId: string }>();
+
+    for (const image of images) {
+      const uniqueTags = new Set((image.autoTags || []).map(normalizeKey).filter(Boolean));
+      uniqueTags.forEach((tag) => {
+        const entry = tagMap.get(tag);
+        if (entry) {
+          entry.count += 1;
+        } else {
+          tagMap.set(tag, { count: 1, thumbnailId: image.id });
+        }
+      });
+    }
+
+    return Array.from(tagMap.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, MAX_AUTO_COLLECTIONS)
+      .map(([tag, data]) => ({
+        id: `style:${tag}`,
+        name: tag,
+        type: 'style' as const,
+        query: { autoTags: [tag] },
+        imageCount: data.count,
+        thumbnailId: data.thumbnailId,
+        createdAt: 0,
+        updatedAt: 0,
+      }));
+  }, [images]);
+
+  const matchesCollection = (entry: ClusterEntry, collection: SmartCollection | null) => {
+    if (!collection) {
+      return true;
+    }
+
+    const query = collection.query || {};
+
+    if (query.clusters && query.clusters.length > 0) {
+      if (!query.clusters.includes(entry.cluster.id)) {
+        return false;
+      }
+    }
+
+    if (query.dateRange) {
+      const { from, to } = query.dateRange;
+      const inRange = entry.images.some((image) => {
+        const timestamp = image.lastModified ?? 0;
+        return (!from || timestamp >= from) && (!to || timestamp <= to);
+      });
+      if (!inRange) {
+        return false;
+      }
+    }
+
+    if (query.models && query.models.length > 0) {
+      const targetModels = new Set(query.models.map(normalizeKey));
+      const hasModel = entry.images.some((image) =>
+        (image.models || []).some((model) => targetModels.has(normalizeKey(model)))
+      );
+      if (!hasModel) {
+        return false;
+      }
+    }
+
+    if (query.autoTags && query.autoTags.length > 0) {
+      const targetTags = new Set(query.autoTags.map(normalizeKey));
+      const hasAutoTag = entry.images.some((image) =>
+        (image.autoTags || []).some((tag) => targetTags.has(normalizeKey(tag)))
+      );
+      if (!hasAutoTag) {
+        return false;
+      }
+    }
+
+    if (query.userTags && query.userTags.length > 0) {
+      const targetTags = new Set(query.userTags.map(normalizeKey));
+      const hasUserTag = entry.images.some((image) =>
+        (image.tags || []).some((tag) => targetTags.has(normalizeKey(tag)))
+      );
+      if (!hasUserTag) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const filteredEntries = useMemo(() => {
+    return sortedEntries.filter((entry) => matchesCollection(entry, selectedCollection));
+  }, [sortedEntries, selectedCollection]);
 
   useEffect(() => {
     if (expandedClusterId && !clusterEntries.some((entry) => entry.cluster.id === expandedClusterId)) {
@@ -67,6 +211,32 @@ const SmartLibrary: React.FC = () => {
     if (!primaryPath) return;
     startAutoTagging(primaryPath, scanSubfolders);
   };
+
+  const collectionSections = useMemo(() => {
+    return [
+      {
+        id: 'models',
+        label: 'Models',
+        icon: sectionIcons.model,
+        collections: modelCollections,
+        emptyLabel: 'No model collections yet.',
+      },
+      {
+        id: 'styles',
+        label: 'Auto Tags',
+        icon: sectionIcons.style,
+        collections: autoTagCollections,
+        emptyLabel: 'Run auto-tagging to populate styles.',
+      },
+      {
+        id: 'custom',
+        label: 'Custom',
+        icon: sectionIcons.custom,
+        collections: customCollections,
+        emptyLabel: 'No custom collections saved.',
+      },
+    ];
+  }, [modelCollections, autoTagCollections, customCollections]);
 
   return (
     <section className="flex flex-col h-full min-h-0">
@@ -152,36 +322,46 @@ const SmartLibrary: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-        {activeCluster ? (
-          <StackExpandedView
-            cluster={activeCluster.cluster}
-            images={activeCluster.images}
-            onBack={() => setExpandedClusterId(null)}
-          />
-        ) : sortedEntries.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-gray-400">
-            <div className="w-14 h-14 rounded-full bg-gray-800/60 flex items-center justify-center mb-3">
-              <Layers className="w-6 h-6" />
+      <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[260px_1fr]">
+        <SmartCollectionsSidebar
+          sections={collectionSections}
+          selectedCollectionId={selectedCollection?.id ?? null}
+          onSelectCollection={setSelectedCollection}
+        />
+        <div className="min-h-0 overflow-y-auto pr-1">
+          {activeCluster ? (
+            <StackExpandedView
+              cluster={activeCluster.cluster}
+              images={activeCluster.images}
+              onBack={() => setExpandedClusterId(null)}
+            />
+          ) : filteredEntries.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center text-gray-400">
+              <div className="w-14 h-14 rounded-full bg-gray-800/60 flex items-center justify-center mb-3">
+                <Layers className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-semibold text-gray-200">
+                {selectedCollection ? 'No matching stacks' : 'No clusters yet'}
+              </h3>
+              <p className="text-xs max-w-md mt-2">
+                {selectedCollection
+                  ? 'Try another collection or clear the filter.'
+                  : 'Generate clusters to group similar prompts into visual stacks. This is fully virtual and does not move files.'}
+              </p>
             </div>
-            <h3 className="text-sm font-semibold text-gray-200">No clusters yet</h3>
-            <p className="text-xs max-w-md mt-2">
-              Generate clusters to group similar prompts into visual stacks. This is fully virtual and
-              does not move files.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {sortedEntries.map((entry) => (
-              <StackCard
-                key={entry.cluster.id}
-                cluster={entry.cluster}
-                images={entry.images}
-                onOpen={() => setExpandedClusterId(entry.cluster.id)}
-              />
-            ))}
-          </div>
-        )}
+          ) : (
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {filteredEntries.map((entry) => (
+                <StackCard
+                  key={entry.cluster.id}
+                  cluster={entry.cluster}
+                  images={entry.images}
+                  onOpen={() => setExpandedClusterId(entry.cluster.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
