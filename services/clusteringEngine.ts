@@ -106,7 +106,11 @@ export async function generateClusters(
   console.log(`Phase 2 complete: ${buckets.length} token buckets`);
 
   // Phase 3: Similarity clustering within buckets
-  totalUnits += buckets.length;
+  const totalComparisons = buckets.reduce((sum, bucket) => {
+    const size = bucket.length;
+    return sum + (size * (size - 1)) / 2;
+  }, 0);
+  totalUnits += buckets.length + totalComparisons;
   reportProgress(0, 'Phase 3/4: Similarity clustering', true);
   const similarityClusters = performSimilarityClustering(
     lightweightImages,
@@ -115,6 +119,9 @@ export async function generateClusters(
     threshold,
     () => {
       reportProgress(1, 'Phase 3/4: Similarity clustering');
+    },
+    (count) => {
+      reportProgress(count, 'Phase 3/4: Similarity clustering');
     }
   );
   console.log(`Phase 3 complete: ${similarityClusters.length} similarity clusters`);
@@ -239,7 +246,8 @@ function performSimilarityClustering(
   buckets: string[][],
   exactClusters: Map<string, ClusterBuilder>,
   threshold: number,
-  onProgress?: () => void
+  onProgress?: () => void,
+  onComparisonProgress?: (count: number) => void
 ): ClusterBuilder[] {
   const mergedClusters = new Map<string, ClusterBuilder>();
   const mergeMap = new Map<string, string>(); // old hash -> new hash
@@ -255,7 +263,7 @@ function performSimilarityClustering(
 
     // Compare all pairs within bucket
     const bucketClusters = bucket.map((hash) => exactClusters.get(hash)!);
-    const merged = mergeSimilarClusters(bucketClusters, threshold);
+    const merged = mergeSimilarClusters(bucketClusters, threshold, onComparisonProgress);
 
     // Add to merged clusters
     for (const cluster of merged) {
@@ -279,10 +287,14 @@ function performSimilarityClustering(
  */
 function mergeSimilarClusters(
   clusters: ClusterBuilder[],
-  threshold: number
+  threshold: number,
+  onComparisonProgress?: (count: number) => void
 ): ClusterBuilder[] {
   if (clusters.length === 0) return [];
   if (clusters.length === 1) return clusters;
+
+  const comparisonChunk = 2000;
+  let pendingComparisons = 0;
 
   // Union-Find data structure
   const parent = new Map<number, number>();
@@ -316,7 +328,19 @@ function mergeSimilarClusters(
       if (similarity >= threshold) {
         union(i, j);
       }
+
+      if (onComparisonProgress) {
+        pendingComparisons += 1;
+        if (pendingComparisons >= comparisonChunk) {
+          onComparisonProgress(pendingComparisons);
+          pendingComparisons = 0;
+        }
+      }
     }
+  }
+
+  if (onComparisonProgress && pendingComparisons > 0) {
+    onComparisonProgress(pendingComparisons);
   }
 
   // Group by root

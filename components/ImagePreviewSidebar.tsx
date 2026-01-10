@@ -383,6 +383,22 @@ const ImagePreviewSidebar: React.FC = () => {
                   ))}
                 </div>
               )}
+
+              {previewImage.autoTags && previewImage.autoTags.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {previewImage.autoTags.map(tag => (
+                      <span
+                        key={`auto-${tag}`}
+                        className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 text-purple-300 px-2 py-0.5 rounded-full text-xs"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
