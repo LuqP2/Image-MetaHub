@@ -24,7 +24,7 @@ body:
         - Crash
         - Other
     validations:
-      required: true
+      required: false
 
   - type: input
     id: version
@@ -63,7 +63,7 @@ body:
         - Dev build (npm/yarn/pnpm)
         - Other
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: summary
@@ -83,21 +83,21 @@ body:
         2. ...
         3. ...
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: actual
     attributes:
       label: Actual behavior
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: attachments
@@ -215,13 +215,3 @@ body:
         - HDD
         - Network drive
         - Other
-
-  - type: checkboxes
-    id: final_checks
-    attributes:
-      label: Final checks
-      options:
-        - label: I searched existing issues to avoid duplicates
-          required: true
-        - label: I included enough info to reproduce (steps + version + OS)
-          required: true
