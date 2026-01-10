@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **External Drag & Drop (Gallery View)**: You can now drag images from the gallery directly into other apps (browser, Photoshop, etc.) in the desktop app.
+- **External Drag & Drop**: Enabled native drag and drop support for images in the Gallery View. Users can now directly drag images from the application to external programs (ComfyUI, Photoshop, Discord, file explorer, etc.) for a seamless workflow.
 
 ### Fixed
 
