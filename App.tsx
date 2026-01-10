@@ -332,7 +332,9 @@ export default function App() {
             setError(`Failed to start auto-watch: ${result.error}`);
             // Reverter o toggle se falhou
             toggleAutoWatch(directoryId);
+            return;
           }
+          await handleUpdateFolder(directoryId);
         } else {
           await window.electronAPI.stopWatchingDirectory({
             directoryId: directory.id
@@ -344,7 +346,7 @@ export default function App() {
         toggleAutoWatch(directoryId);
       }
     }
-  }, [directories, toggleAutoWatch, setError]);
+  }, [directories, toggleAutoWatch, setError, handleUpdateFolder]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
