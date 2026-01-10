@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 
-import type { ImageAnnotations, TagInfo } from '../types';
+import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 2; // Increment from 1 to 2
+const DB_VERSION = 3; // Increment from 2 to 3 (Smart Clustering & Auto-Tagging)
 const STORE_NAME = 'imageAnnotations';
 
 let inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
@@ -93,7 +93,7 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
           }
         }
 
-        // Versão 2: Create imageAnnotations store (new)
+        // Versão 2: Create imageAnnotations store (existing)
         if (oldVersion < 2) {
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             const store = db.createObjectStore(STORE_NAME, { keyPath: 'imageId' });
@@ -103,6 +103,22 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
 
             // Index para buscar por tag (multiEntry: true permite busca em array)
             store.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+          }
+        }
+
+        // Versão 3: Create Smart Clustering stores (Phase 1)
+        if (oldVersion < 3) {
+          // Cluster preferences store
+          if (!db.objectStoreNames.contains('clusterPreferences')) {
+            db.createObjectStore('clusterPreferences', { keyPath: 'clusterId' });
+            console.log('Created clusterPreferences object store (v3)');
+          }
+
+          // Smart collections store
+          if (!db.objectStoreNames.contains('smartCollections')) {
+            const collectionsStore = db.createObjectStore('smartCollections', { keyPath: 'id' });
+            collectionsStore.createIndex('type', 'type', { unique: false });
+            console.log('Created smartCollections object store (v3)');
           }
         }
       };
@@ -559,5 +575,244 @@ export async function clearAllAnnotations(): Promise<void> {
   }).catch((error) => {
     console.error('IndexedDB clear error for image annotations:', error);
     disablePersistence(error);
+  });
+}
+
+// ===== Cluster Preferences Functions (Phase 1) =====
+
+/**
+ * Get cluster preference by ID
+ */
+export async function getClusterPreference(clusterId: string): Promise<ClusterPreference | null> {
+  const db = await openDatabase();
+  if (!db) return null;
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(['clusterPreferences'], 'readonly');
+    const store = transaction.objectStore('clusterPreferences');
+    const request = store.get(clusterId);
+
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => {
+      console.error('Error getting cluster preference:', request.error);
+      resolve(null);
+    };
+  });
+}
+
+/**
+ * Save cluster preference
+ */
+export async function saveClusterPreference(preference: ClusterPreference): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  preference.updatedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['clusterPreferences'], 'readwrite');
+    const store = transaction.objectStore('clusterPreferences');
+    const request = store.put(preference);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error saving cluster preference:', request.error);
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Delete cluster preference
+ */
+export async function deleteClusterPreference(clusterId: string): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['clusterPreferences'], 'readwrite');
+    const store = transaction.objectStore('clusterPreferences');
+    const request = store.delete(clusterId);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error deleting cluster preference:', request.error);
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Get all cluster preferences
+ */
+export async function getAllClusterPreferences(): Promise<ClusterPreference[]> {
+  const db = await openDatabase();
+  if (!db) return [];
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(['clusterPreferences'], 'readonly');
+    const store = transaction.objectStore('clusterPreferences');
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => {
+      console.error('Error getting all cluster preferences:', request.error);
+      resolve([]);
+    };
+  });
+}
+
+/**
+ * Mark images as best in a cluster
+ */
+export async function markAsBest(clusterId: string, imageIds: string[]): Promise<void> {
+  const existing = await getClusterPreference(clusterId);
+
+  const preference: ClusterPreference = existing || {
+    clusterId,
+    bestImageIds: [],
+    archivedImageIds: [],
+    isExpanded: false,
+    updatedAt: Date.now(),
+  };
+
+  // Add to best images (avoid duplicates)
+  preference.bestImageIds = [...new Set([...preference.bestImageIds, ...imageIds])];
+
+  // Remove from archived if present
+  preference.archivedImageIds = preference.archivedImageIds.filter(
+    (id) => !imageIds.includes(id)
+  );
+
+  await saveClusterPreference(preference);
+}
+
+/**
+ * Mark images for archival in a cluster
+ */
+export async function markForArchive(clusterId: string, imageIds: string[]): Promise<void> {
+  const existing = await getClusterPreference(clusterId);
+
+  const preference: ClusterPreference = existing || {
+    clusterId,
+    bestImageIds: [],
+    archivedImageIds: [],
+    isExpanded: false,
+    updatedAt: Date.now(),
+  };
+
+  // Add to archived (avoid duplicates)
+  preference.archivedImageIds = [...new Set([...preference.archivedImageIds, ...imageIds])];
+
+  // Remove from best if present
+  preference.bestImageIds = preference.bestImageIds.filter((id) => !imageIds.includes(id));
+
+  await saveClusterPreference(preference);
+}
+
+// ===== Smart Collections Functions (Phase 1) =====
+
+/**
+ * Get smart collection by ID
+ */
+export async function getSmartCollection(id: string): Promise<SmartCollection | null> {
+  const db = await openDatabase();
+  if (!db) return null;
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(['smartCollections'], 'readonly');
+    const store = transaction.objectStore('smartCollections');
+    const request = store.get(id);
+
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => {
+      console.error('Error getting smart collection:', request.error);
+      resolve(null);
+    };
+  });
+}
+
+/**
+ * Save smart collection
+ */
+export async function saveSmartCollection(collection: SmartCollection): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  collection.updatedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['smartCollections'], 'readwrite');
+    const store = transaction.objectStore('smartCollections');
+    const request = store.put(collection);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error saving smart collection:', request.error);
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Delete smart collection
+ */
+export async function deleteSmartCollection(id: string): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['smartCollections'], 'readwrite');
+    const store = transaction.objectStore('smartCollections');
+    const request = store.delete(id);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error deleting smart collection:', request.error);
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Get all smart collections
+ */
+export async function getAllSmartCollections(): Promise<SmartCollection[]> {
+  const db = await openDatabase();
+  if (!db) return [];
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(['smartCollections'], 'readonly');
+    const store = transaction.objectStore('smartCollections');
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => {
+      console.error('Error getting all smart collections:', request.error);
+      resolve([]);
+    };
+  });
+}
+
+/**
+ * Get smart collections by type
+ */
+export async function getSmartCollectionsByType(
+  type: 'model' | 'style' | 'subject' | 'custom'
+): Promise<SmartCollection[]> {
+  const db = await openDatabase();
+  if (!db) return [];
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(['smartCollections'], 'readonly');
+    const store = transaction.objectStore('smartCollections');
+    const index = store.index('type');
+    const request = index.getAll(type);
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => {
+      console.error('Error getting smart collections by type:', request.error);
+      resolve([]);
+    };
   });
 }
