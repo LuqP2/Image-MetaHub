@@ -5,12 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.1] - 2025-01-09
+## [0.11.1] - 2025-01-10
+
+### Added
+
+- **External Drag & Drop (Gallery View)**: You can now drag images from the gallery directly into other apps (browser, Photoshop, etc.) in the desktop app.
 
 ### Fixed
 
-- **Image Compare Mode - Hover & Slider**: Fixed critical rendering bug where images appeared as black screen in Hover and Slider comparison modes. The issue was caused by `react-zoom-pan-pinch` wrapper not receiving explicit height styles, causing the container to collapse to 0px height. Added `wrapperStyle` and `contentStyle` inline styles to force proper dimensions.
 - **Forge Metadata Parsing**: Fixed "No normalized metadata available" issue for images created with newer Forge versions (f2.0.1+). The Forge backend update removed "Forge"/"Gradio" keywords from metadata, causing images to fall through to A1111 parser. Updated detection logic to recognize Forge version patterns (`/Version:\s*f\d+\./i`) in addition to keyword matching. (Issue #108)
+- **Image Compare Mode - Hover & Slider**: Fixed critical rendering bug where images appeared as black screen in Hover and Slider comparison modes. The issue was caused by `react-zoom-pan-pinch` wrapper not receiving explicit height styles, causing the container to collapse to 0px height. Added `wrapperStyle` and `contentStyle` inline styles to force proper dimensions.
 
 ### Improved
 
