@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -1056,6 +1056,31 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error updating allowed paths:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.on('start-file-drag', (event, payload) => {
+    try {
+      const directoryPath = payload?.directoryPath;
+      const relativePath = payload?.relativePath;
+      if (!directoryPath || !relativePath) {
+        return;
+      }
+
+      const fullPath = path.resolve(directoryPath, relativePath);
+      if (!isPathAllowed(fullPath)) {
+        console.error('SECURITY VIOLATION: Attempted to drag file outside of allowed directories.');
+        return;
+      }
+
+      const fileIcon = nativeImage.createFromPath(fullPath);
+      const dragIcon = fileIcon && !fileIcon.isEmpty()
+        ? fileIcon
+        : nativeImage.createFromPath(getIconPath());
+
+      event.sender.startDrag({ file: fullPath, icon: dragIcon });
+    } catch (error) {
+      console.error('Error starting file drag:', error);
     }
   });
 

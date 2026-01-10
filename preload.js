@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
 
   // --- Caching ---
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),

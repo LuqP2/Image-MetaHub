@@ -33,6 +33,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
+  const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Extract filename to display based on showFullFilePath setting
   const displayName = showFullFilePath
@@ -121,6 +122,26 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     toggleImageSelection(image.id);
   };
 
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!canDragExternally) {
+      return;
+    }
+
+    const directoryPath = image.directoryId;
+    if (!directoryPath) {
+      return;
+    }
+
+    const [, relativeFromId] = image.id.split('::');
+    const relativePath = relativeFromId || image.name;
+
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'copy';
+    }
+    window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
@@ -134,6 +155,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
         onClick={(e) => onImageClick(image, e)}
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
+        onDragStart={handleDragStart}
+        draggable={canDragExternally}
       >
         {/* Checkbox for selection - always visible on hover or when selected */}
         <button
@@ -200,6 +223,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             alt={image.name}
             className="max-w-full max-h-full object-contain"
             loading="lazy"
+            draggable={false}
           />
         ) : (
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
