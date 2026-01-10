@@ -90,10 +90,6 @@ Choose the appropriate installer for your operating system:
 - **Format**: Portable AppImage (no installation required)
 - **Dependencies**: None (fully self-contained)
 
-## What's New in v${VERSION}
-
-${releaseNotes.split('\n').slice(2).join('\n')}
-
 ## System Requirements
 
 - **OS**: Windows 10+, macOS 10.15+, Ubuntu 18.04+ (or equivalent)
