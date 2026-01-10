@@ -26,6 +26,8 @@ export interface ClusteringOptions {
   threshold: number; // Similarity threshold (0.85-0.90 recommended)
   minClusterSize?: number; // Minimum images per cluster (default: 1)
   maxClusterSize?: number; // Maximum images per cluster (default: unlimited)
+  onProgress?: (progress: { current: number; total: number; message: string }) => void;
+  progressIntervalMs?: number;
 }
 
 /**
@@ -55,7 +57,13 @@ export async function generateClusters(
   images: IndexedImage[],
   options: ClusteringOptions
 ): Promise<ImageCluster[]> {
-  const { threshold, minClusterSize = 1, maxClusterSize = Infinity } = options;
+  const {
+    threshold,
+    minClusterSize = 1,
+    maxClusterSize = Infinity,
+    onProgress,
+    progressIntervalMs = 250,
+  } = options;
 
   // Convert to lightweight representation
   const lightweightImages = images
@@ -68,25 +76,55 @@ export async function generateClusters(
 
   console.log(`Clustering ${lightweightImages.length} images with threshold ${threshold}`);
 
+  let progressCount = 0;
+  let totalUnits = lightweightImages.length;
+  let lastProgress = 0;
+  const reportProgress = (increment: number, message: string, force: boolean = false) => {
+    if (!onProgress) return;
+    progressCount += increment;
+    const now = Date.now();
+    if (force || now - lastProgress >= progressIntervalMs) {
+      onProgress({ current: progressCount, total: totalUnits, message });
+      lastProgress = now;
+    }
+  };
+
+  reportProgress(0, 'Phase 1/4: Exact matching', true);
+
   // Phase 1: Exact matching (fast path)
-  const exactClusters = performExactMatching(lightweightImages);
+  const exactClusters = performExactMatching(lightweightImages, () => {
+    reportProgress(1, 'Phase 1/4: Exact matching');
+  });
   console.log(`Phase 1 complete: ${exactClusters.size} exact match groups`);
 
   // Phase 2: Token bucketing
-  const buckets = performTokenBucketing(lightweightImages, exactClusters);
+  totalUnits += exactClusters.size;
+  reportProgress(0, 'Phase 2/4: Token bucketing', true);
+  const buckets = performTokenBucketing(lightweightImages, exactClusters, () => {
+    reportProgress(1, 'Phase 2/4: Token bucketing');
+  });
   console.log(`Phase 2 complete: ${buckets.length} token buckets`);
 
   // Phase 3: Similarity clustering within buckets
+  totalUnits += buckets.length;
+  reportProgress(0, 'Phase 3/4: Similarity clustering', true);
   const similarityClusters = performSimilarityClustering(
     lightweightImages,
     buckets,
     exactClusters,
-    threshold
+    threshold,
+    () => {
+      reportProgress(1, 'Phase 3/4: Similarity clustering');
+    }
   );
   console.log(`Phase 3 complete: ${similarityClusters.length} similarity clusters`);
 
   // Phase 4: Cluster refinement
-  const refinedClusters = refineClusters(similarityClusters, maxClusterSize);
+  totalUnits += similarityClusters.length;
+  reportProgress(0, 'Phase 4/4: Refinement', true);
+  const refinedClusters = refineClusters(similarityClusters, maxClusterSize, () => {
+    reportProgress(1, 'Phase 4/4: Refinement');
+  });
   console.log(`Phase 4 complete: ${refinedClusters.length} refined clusters`);
 
   // Convert to final format
@@ -94,6 +132,7 @@ export async function generateClusters(
     .filter((cluster) => cluster.imageIds.length >= minClusterSize)
     .map((cluster) => convertToFinalCluster(cluster, threshold));
 
+  reportProgress(0, 'Clustering complete', true);
   console.log(`Final: ${finalClusters.length} clusters created`);
 
   return finalClusters;
@@ -105,7 +144,8 @@ export async function generateClusters(
  * Complexity: O(n)
  */
 function performExactMatching(
-  images: LightweightImage[]
+  images: LightweightImage[],
+  onProgress?: () => void
 ): Map<string, ClusterBuilder> {
   const clusters = new Map<string, ClusterBuilder>();
 
@@ -125,6 +165,7 @@ function performExactMatching(
     const cluster = clusters.get(hash)!;
     cluster.imageIds.push(image.id);
     cluster.imageTimestamps.set(image.id, image.lastModified);
+    onProgress?.();
   }
 
   return clusters;
@@ -137,7 +178,8 @@ function performExactMatching(
  */
 function performTokenBucketing(
   images: LightweightImage[],
-  exactClusters: Map<string, ClusterBuilder>
+  exactClusters: Map<string, ClusterBuilder>,
+  onProgress?: () => void
 ): string[][] {
   // Create keyword index: keyword -> cluster hashes
   const keywordIndex = new Map<string, Set<string>>();
@@ -181,6 +223,7 @@ function performTokenBucketing(
     }
 
     buckets.push([...bucket]);
+    onProgress?.();
   }
 
   return buckets;
@@ -195,7 +238,8 @@ function performSimilarityClustering(
   images: LightweightImage[],
   buckets: string[][],
   exactClusters: Map<string, ClusterBuilder>,
-  threshold: number
+  threshold: number,
+  onProgress?: () => void
 ): ClusterBuilder[] {
   const mergedClusters = new Map<string, ClusterBuilder>();
   const mergeMap = new Map<string, string>(); // old hash -> new hash
@@ -223,6 +267,7 @@ function performSimilarityClustering(
         mergeMap.set(oldHash, newHash);
       }
     }
+    onProgress?.();
   }
 
   return [...mergedClusters.values()];
@@ -315,7 +360,8 @@ function mergeSimilarClusters(
  */
 function refineClusters(
   clusters: ClusterBuilder[],
-  maxClusterSize: number
+  maxClusterSize: number,
+  onProgress?: () => void
 ): ClusterBuilder[] {
   const refined: ClusterBuilder[] = [];
 
@@ -329,6 +375,7 @@ function refineClusters(
       });
 
       refined.push(cluster);
+      onProgress?.();
     } else {
       // Split large cluster
       // TODO: Implement smart splitting based on sub-similarity
@@ -344,6 +391,7 @@ function refineClusters(
       });
 
       refined.push(cluster);
+      onProgress?.();
     }
   }
 

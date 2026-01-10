@@ -95,7 +95,12 @@ async function startClustering(
     postProgress(0, images.length, 'Starting clustering...');
 
     // Run clustering (this is CPU-intensive)
-    const clusters = await generateClusters(images, { threshold });
+    const clusters = await generateClusters(images, {
+      threshold,
+      onProgress: (progress) => {
+        postProgress(progress.current, progress.total, progress.message);
+      }
+    });
 
     if (isCancelled) {
       postProgress(0, 0, 'Cancelled');

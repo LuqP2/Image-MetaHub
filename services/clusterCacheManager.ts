@@ -78,12 +78,35 @@ function decodeCachePayload(data: unknown): string {
  */
 export async function getCacheDirectory(): Promise<string> {
   if (typeof window !== 'undefined' && window.electronAPI) {
-    // Electron environment
-    const userDataPath = await window.electronAPI.getUserDataPath();
-    const cacheDir = `${userDataPath}/smart-library-cache`;
+    const electronAPI = window.electronAPI;
+    let basePath: string | undefined;
 
-    // Ensure directory exists
-    await window.electronAPI.ensureDirectory(cacheDir);
+    if (typeof electronAPI.getUserDataPath === 'function') {
+      basePath = await electronAPI.getUserDataPath();
+    } else if (typeof electronAPI.getDefaultCachePath === 'function') {
+      const result = await electronAPI.getDefaultCachePath();
+      if (result?.success && result.path) {
+        basePath = result.path;
+      }
+    }
+
+    if (!basePath) {
+      throw new Error('Unable to resolve cache directory base path');
+    }
+
+    let cacheDir = `${basePath}/smart-library-cache`;
+    if (typeof electronAPI.joinPaths === 'function') {
+      const joined = await electronAPI.joinPaths(basePath, 'smart-library-cache');
+      if (joined?.success && joined.path) {
+        cacheDir = joined.path;
+      }
+    }
+
+    if (typeof electronAPI.ensureDirectory === 'function') {
+      await electronAPI.ensureDirectory(cacheDir);
+    } else {
+      console.warn('[ClusterCacheManager] ensureDirectory unavailable; cache folder creation skipped');
+    }
 
     return cacheDir;
   } else {
