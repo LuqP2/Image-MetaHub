@@ -715,6 +715,13 @@ function setupFileOperationHandlers() {
     const normalizedFilePath = path.normalize(filePath);
     return Array.from(allowedDirectoryPaths).some(allowedPath => normalizedFilePath.startsWith(allowedPath));
   };
+  const userDataPath = path.normalize(app.getPath('userData'));
+  const isInternalPath = (filePath) => {
+    if (!filePath) return false;
+    const normalized = path.normalize(filePath);
+    return normalized === userDataPath || normalized.startsWith(userDataPath + path.sep);
+  };
+  const isAllowedOrInternal = (filePath) => isPathAllowed(filePath) || isInternalPath(filePath);
 
   // --- Settings IPC ---
   ipcMain.handle('get-settings', async () => {
@@ -736,6 +743,10 @@ function setupFileOperationHandlers() {
     } catch (error) {
       return { success: false, error: error.message };
     }
+  });
+
+  ipcMain.handle('get-user-data-path', () => {
+    return app.getPath('userData');
   });
 
   ipcMain.handle('get-theme', () => {
@@ -1130,7 +1141,7 @@ function setupFileOperationHandlers() {
   // Handle file renaming
   ipcMain.handle('rename-file', async (event, oldPath, newPath) => {
     try {
-      if (!isPathAllowed(oldPath) || !isPathAllowed(newPath)) {
+      if (!isAllowedOrInternal(oldPath) || !isAllowedOrInternal(newPath)) {
         console.error('SECURITY VIOLATION: Attempted to rename file outside of allowed directories.');
         return { success: false, error: 'Access denied: Cannot rename files outside of the allowed directories.' };
       }
@@ -1592,6 +1603,37 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Error writing file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('delete-file', async (event, filePath) => {
+    try {
+      if (!isInternalPath(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to delete file outside userData.');
+        return { success: false, error: 'Access denied: Cannot delete files outside userData.' };
+      }
+      await fs.unlink(filePath);
+      return { success: true };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true };
+      }
+      console.error('Error deleting file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ensure-directory', async (event, dirPath) => {
+    try {
+      if (!isInternalPath(dirPath)) {
+        console.error('SECURITY VIOLATION: Attempted to create directory outside userData.');
+        return { success: false, error: 'Access denied: Cannot create directories outside userData.' };
+      }
+      await fs.mkdir(dirPath, { recursive: true });
+      return { success: true };
+    } catch (error) {
+      console.error('Error ensuring directory:', error);
       return { success: false, error: error.message };
     }
   });
