@@ -721,7 +721,10 @@ export default function App() {
                       />
                   )
                 ) : (
-                  <SmartLibrary />
+                  <SmartLibrary
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  />
                 )}
               </div>
 

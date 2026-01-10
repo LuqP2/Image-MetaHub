@@ -52,6 +52,10 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
 
   const promptLabel = cluster.basePrompt || previewImage?.prompt || 'Untitled stack';
   const coverUrl = previewImage?.thumbnailUrl || '';
+  const displayCount = images.length;
+  const totalCount = cluster.size;
+  const countLabel = displayCount === totalCount ? `${displayCount}` : `${displayCount}/${totalCount}`;
+  const detailCountLabel = displayCount === totalCount ? `${displayCount} images` : `${displayCount}/${totalCount} images`;
 
   return (
     <button
@@ -77,7 +81,7 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
         )}
         <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-gray-100">
           <Layers className="w-3.5 h-3.5" />
-          {cluster.size}
+          {countLabel}
         </div>
         {images.length > 1 && (
           <div className="absolute bottom-3 left-3 right-3 h-1 rounded-full bg-black/40 overflow-hidden">
@@ -93,7 +97,7 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
       <div className="p-3">
         <p className="text-sm font-semibold text-gray-100 truncate">{promptLabel}</p>
         <p className="text-xs text-gray-400 mt-1">
-          {images.length} images · similarity {Math.round(cluster.similarityThreshold * 100)}%
+          {detailCountLabel} | similarity {Math.round(cluster.similarityThreshold * 100)}%
         </p>
       </div>
     </button>

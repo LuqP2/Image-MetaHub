@@ -1,73 +1,85 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { ImageCluster, IndexedImage } from '../types';
-import { useThumbnail } from '../hooks/useThumbnail';
 import { useImageStore } from '../store/useImageStore';
+import ImageGrid from './ImageGrid';
+import ImageTable from './ImageTable';
 
 interface StackExpandedViewProps {
   cluster: ImageCluster;
   images: IndexedImage[];
+  allImages: IndexedImage[];
+  viewMode: 'grid' | 'list';
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
   onBack: () => void;
 }
 
-interface StackImageTileProps {
-  image: IndexedImage;
-  isSelected: boolean;
-  onSelect: (image: IndexedImage, event: React.MouseEvent) => void;
-}
-
-const StackImageTile: React.FC<StackImageTileProps> = ({ image, isSelected, onSelect }) => {
-  useThumbnail(image);
-  const thumbnailUrl = image.thumbnailUrl;
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => onSelect(image, event)}
-      className={`relative overflow-hidden rounded-xl border transition-all ${
-        isSelected
-          ? 'border-blue-400 shadow-md shadow-blue-500/20'
-          : 'border-gray-800 hover:border-gray-700'
-      }`}
-    >
-      {thumbnailUrl ? (
-        <img src={thumbnailUrl} alt={image.name} className="w-full h-full object-cover" loading="lazy" />
-      ) : (
-        <div className="w-full h-full bg-gray-800/70 flex items-center justify-center text-gray-500 text-xs">
-          Loading...
-        </div>
-      )}
-      {isSelected && (
-        <div className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-500 text-white shadow">
-          Selected
-        </div>
-      )}
-    </button>
-  );
-};
-
-const StackExpandedView: React.FC<StackExpandedViewProps> = ({ cluster, images, onBack }) => {
+const StackExpandedView: React.FC<StackExpandedViewProps> = ({
+  cluster,
+  images,
+  allImages,
+  viewMode,
+  currentPage,
+  totalPages,
+  onPageChange,
+  onBack,
+}) => {
+  const selectedImage = useImageStore((state) => state.selectedImage);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
+  const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
 
-  const sortedImages = useMemo(() => {
-    return [...images].sort((a, b) => (a.lastModified || 0) - (b.lastModified || 0));
-  }, [images]);
+  const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
 
-  const handleSelect = (image: IndexedImage, event: React.MouseEvent) => {
-    if (event.ctrlKey || event.metaKey) {
-      toggleImageSelection(image.id);
-      return;
-    }
+  const promptLabel = useMemo(() => {
+    return cluster.basePrompt || allImages[0]?.prompt || 'Untitled stack';
+  }, [cluster.basePrompt, allImages]);
 
-    clearImageSelection();
-    setSelectedImage(image);
-  };
+  const handleImageClick = useCallback(
+    (image: IndexedImage, event: React.MouseEvent) => {
+      const clickedIndex = allImages.findIndex((img) => img.id === image.id);
+      if (clickedIndex !== -1) {
+        setFocusedImageIndex(clickedIndex);
+      }
+
+      if (event.shiftKey && selectedImage) {
+        const lastSelectedIndex = allImages.findIndex((img) => img.id === selectedImage.id);
+        if (lastSelectedIndex !== -1 && clickedIndex !== -1) {
+          const start = Math.min(lastSelectedIndex, clickedIndex);
+          const end = Math.max(lastSelectedIndex, clickedIndex);
+          const rangeIds = allImages.slice(start, end + 1).map((img) => img.id);
+          const newSelection = new Set(safeSelectedImages);
+          rangeIds.forEach((id) => newSelection.add(id));
+          useImageStore.setState({ selectedImages: newSelection });
+          return;
+        }
+      }
+
+      if (event.ctrlKey || event.metaKey) {
+        toggleImageSelection(image.id);
+        return;
+      }
+
+      clearImageSelection();
+      setSelectedImage(image);
+    },
+    [
+      allImages,
+      clearImageSelection,
+      safeSelectedImages,
+      selectedImage,
+      setFocusedImageIndex,
+      setSelectedImage,
+      toggleImageSelection,
+    ]
+  );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col min-h-0 gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
@@ -78,22 +90,30 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({ cluster, images, 
           Back to stacks
         </button>
         <div className="text-xs text-gray-400">
-          {sortedImages.length} images · similarity {Math.round(cluster.similarityThreshold * 100)}%
+          {allImages.length} images | similarity {Math.round(cluster.similarityThreshold * 100)}%
         </div>
       </div>
       <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-100 mb-1">Cluster prompt</h3>
-        <p className="text-xs text-gray-300 leading-relaxed">{cluster.basePrompt}</p>
+        <p className="text-xs text-gray-300 leading-relaxed">{promptLabel}</p>
       </div>
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        {sortedImages.map((image) => (
-          <StackImageTile
-            key={image.id}
-            image={image}
-            isSelected={selectedImages.has(image.id)}
-            onSelect={handleSelect}
+      <div className="flex-1 min-h-0">
+        {viewMode === 'grid' ? (
+          <ImageGrid
+            images={images}
+            onImageClick={handleImageClick}
+            selectedImages={safeSelectedImages}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
           />
-        ))}
+        ) : (
+          <ImageTable
+            images={images}
+            onImageClick={handleImageClick}
+            selectedImages={safeSelectedImages}
+          />
+        )}
       </div>
     </div>
   );
