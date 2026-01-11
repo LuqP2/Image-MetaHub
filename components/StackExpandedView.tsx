@@ -1,9 +1,11 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { ImageCluster, IndexedImage } from '../types';
+import { ImageCluster, IndexedImage, ClusterPreference } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import ImageGrid from './ImageGrid';
 import ImageTable from './ImageTable';
+import DeduplicationHelper from './DeduplicationHelper';
+import { getClusterPreference } from '../services/imageAnnotationsStorage';
 
 interface StackExpandedViewProps {
   cluster: ImageCluster;
@@ -33,11 +35,66 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
 
+  const [clusterPreference, setClusterPreference] = useState<ClusterPreference | null>(null);
+  const [preferenceLoading, setPreferenceLoading] = useState(true);
+
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
+
+  // Load cluster preference on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPreference = async () => {
+      setPreferenceLoading(true);
+      try {
+        const preference = await getClusterPreference(cluster.id);
+        if (isMounted) {
+          setClusterPreference(preference);
+        }
+      } catch (error) {
+        console.error('Failed to load cluster preference:', error);
+      } finally {
+        if (isMounted) {
+          setPreferenceLoading(false);
+        }
+      }
+    };
+
+    loadPreference();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [cluster.id]);
+
+  // Callback to refresh preference after updates
+  const handlePreferenceUpdated = useCallback(async () => {
+    try {
+      const updated = await getClusterPreference(cluster.id);
+      setClusterPreference(updated);
+    } catch (error) {
+      console.error('Failed to refresh cluster preference:', error);
+    }
+  }, [cluster.id]);
 
   const promptLabel = useMemo(() => {
     return cluster.basePrompt || allImages[0]?.prompt || 'Untitled stack';
   }, [cluster.basePrompt, allImages]);
+
+  // Create Sets for deduplication markers
+  const markedBestIds = useMemo(() => {
+    if (!clusterPreference || !clusterPreference.bestImageIds) {
+      return undefined;
+    }
+    return new Set(clusterPreference.bestImageIds);
+  }, [clusterPreference]);
+
+  const markedArchivedIds = useMemo(() => {
+    if (!clusterPreference || !clusterPreference.archivedImageIds) {
+      return undefined;
+    }
+    return new Set(clusterPreference.archivedImageIds);
+  }, [clusterPreference]);
 
   const handleImageClick = useCallback(
     (image: IndexedImage, event: React.MouseEvent) => {
@@ -97,6 +154,14 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
         <h3 className="text-sm font-semibold text-gray-100 mb-1">Cluster prompt</h3>
         <p className="text-xs text-gray-300 leading-relaxed">{promptLabel}</p>
       </div>
+      {!preferenceLoading && (
+        <DeduplicationHelper
+          cluster={cluster}
+          images={allImages}
+          existingPreference={clusterPreference}
+          onPreferenceUpdated={handlePreferenceUpdated}
+        />
+      )}
       <div className="flex-1 min-h-0">
         {viewMode === 'grid' ? (
           <ImageGrid
@@ -106,6 +171,8 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={onPageChange}
+            markedBestIds={markedBestIds}
+            markedArchivedIds={markedArchivedIds}
           />
         ) : (
           <ImageTable

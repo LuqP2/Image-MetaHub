@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -22,9 +22,11 @@ interface ImageCardProps {
   baseWidth: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
+  isMarkedBest?: boolean;       // For deduplication: marked as best to keep
+  isMarkedArchived?: boolean;   // For deduplication: marked for archive
 }
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -175,6 +177,22 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           )}
         </button>
 
+        {/* Deduplication: Best badge */}
+        {isMarkedBest && (
+          <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-yellow-500/90 rounded-lg text-white text-xs font-bold shadow-lg flex items-center gap-1">
+            <Crown className="h-3.5 w-3.5" />
+            Best
+          </div>
+        )}
+
+        {/* Deduplication: Archived badge */}
+        {isMarkedArchived && (
+          <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-gray-600/90 rounded-lg text-white text-xs font-bold shadow-lg flex items-center gap-1">
+            <Archive className="h-3.5 w-3.5" />
+            Archive
+          </div>
+        )}
+
         {isComparisonFirst && (
           <div className="absolute top-2 left-11 z-20 px-2 py-1 bg-purple-600 rounded-lg text-white text-xs font-bold shadow-lg">
             Compare #1
@@ -294,9 +312,12 @@ interface ImageGridProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  // Deduplication support (optional)
+  markedBestIds?: Set<string>;      // IDs of images marked as best
+  markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
 
-const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange }) => {
+const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -654,6 +675,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               baseWidth={imageSize}
               isComparisonFirst={comparisonFirstImage?.id === image.id}
               cardRef={createCardRef(image.id)}
+              isMarkedBest={markedBestIds?.has(image.id)}
+              isMarkedArchived={markedArchivedIds?.has(image.id)}
             />
           );
         })}

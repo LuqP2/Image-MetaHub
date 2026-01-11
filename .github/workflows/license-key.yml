@@ -6,6 +6,7 @@ on:
       email:
         description: "Customer email (used to generate the key)"
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,22 +20,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Generate key
-        id: gen
+      - name: Generate key (no log output)
+        shell: bash
         run: |
-          if [ -z "$IMH_LICENSE_SECRET" ]; then
+          set -euo pipefail
+
+          if [ -z "${IMH_LICENSE_SECRET:-}" ]; then
             echo "IMH_LICENSE_SECRET is missing in repository secrets." >&2
             exit 1
           fi
 
-          echo "Generating license for: ${{ inputs.email }}"
-          OUTPUT=$(node scripts/generateLicenseKey.mjs "${{ inputs.email }}")
-          echo "$OUTPUT"
+          EMAIL="${{ inputs.email }}"
+          OUTPUT="$(node scripts/generateLicenseKey.mjs "$EMAIL")"
 
-          # Add to job summary for easy copy/paste
+          # Prevent accidental leakage if a future change echoes OUTPUT.
+          echo "::add-mask::$OUTPUT"
+
+          printf "%s\n" "$OUTPUT" > license.txt
+
           {
-            echo "## License for ${{ inputs.email }}"
-            echo '```'
-            echo "$OUTPUT"
-            echo '```'
+            echo "## License generated"
+            echo "Email: $EMAIL"
+            echo "Key saved as artifact: license.txt"
+            echo "(This workflow does not print the key to logs or job summary.)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload license artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-key
+          path: license.txt
+          if-no-files-found: error
+          retention-days: 1
