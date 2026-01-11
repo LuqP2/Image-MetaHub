@@ -28,6 +28,7 @@ import CommandPalette from './components/CommandPalette';
 import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
+import SmartLibrary from './components/SmartLibrary';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -51,6 +52,7 @@ export default function App() {
   const selectedImages = useImageStore((state) => state.selectedImages);
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
+  const clustersCount = useImageStore((state) => state.clusters.length);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -133,6 +135,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -664,45 +667,89 @@ export default function App() {
 
           {hasDirectories && (
             <>
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <div className="inline-flex rounded-full bg-gray-900/60 border border-gray-800 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setLibraryView('library')}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      libraryView === 'library'
+                        ? 'bg-blue-500/20 text-blue-200'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    Library
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLibraryView('smart')}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      libraryView === 'smart'
+                        ? 'bg-purple-500/20 text-purple-200'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    Smart Library
+                    {clustersCount > 0 && (
+                      <span className="ml-2 rounded-full bg-purple-500/30 px-2 py-0.5 text-[10px] font-semibold text-purple-100">
+                        {clustersCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+                <span className="text-xs text-gray-500">
+                  {libraryView === 'library' ? 'All indexed images' : 'Similarity stacks'}
+                </span>
+              </div>
+
               <div className="flex-1 min-h-0">
-                {viewMode === 'grid' ? (
-                    <ImageGrid
-                      images={paginatedImages}
-                      onImageClick={handleImageSelection}
-                      selectedImages={safeSelectedImages}
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      onPageChange={setCurrentPage}
-                    />
-                  ) : (
-                    <ImageTable
-                      images={paginatedImages}
-                      onImageClick={handleImageSelection}
-                      selectedImages={safeSelectedImages}
-                    />
+                {libraryView === 'library' ? (
+                  viewMode === 'grid' ? (
+                      <ImageGrid
+                        images={paginatedImages}
+                        onImageClick={handleImageSelection}
+                        selectedImages={safeSelectedImages}
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={setCurrentPage}
+                      />
+                    ) : (
+                      <ImageTable
+                        images={paginatedImages}
+                        onImageClick={handleImageSelection}
+                        selectedImages={safeSelectedImages}
+                      />
+                  )
+                ) : (
+                  <SmartLibrary
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  />
                 )}
               </div>
 
-              <Footer
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-                itemsPerPage={itemsPerPage}
-                onItemsPerPageChange={setItemsPerPage}
-                selectedCount={safeSelectedImages.size}
-                onClearSelection={clearSelection}
-                onDeleteSelected={handleDeleteSelectedImages}
-                viewMode={viewMode}
-                onViewModeChange={toggleViewMode}
-                filteredCount={safeFilteredImages.length}
-                totalCount={selectionTotalImages}
-                directoryCount={selectionDirectoryCount}
-                enrichmentProgress={enrichmentProgress}
-                a1111Progress={a1111Progress}
-                queueCount={queueCount}
-                isQueueOpen={isQueueOpen}
-                onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
-              />
+              {libraryView === 'library' && (
+                <Footer
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  itemsPerPage={itemsPerPage}
+                  onItemsPerPageChange={setItemsPerPage}
+                  selectedCount={safeSelectedImages.size}
+                  onClearSelection={clearSelection}
+                  onDeleteSelected={handleDeleteSelectedImages}
+                  viewMode={viewMode}
+                  onViewModeChange={toggleViewMode}
+                  filteredCount={safeFilteredImages.length}
+                  totalCount={selectionTotalImages}
+                  directoryCount={selectionDirectoryCount}
+                  enrichmentProgress={enrichmentProgress}
+                  a1111Progress={a1111Progress}
+                  queueCount={queueCount}
+                  isQueueOpen={isQueueOpen}
+                  onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                />
+              )}
             </>
           )}
         </main>

@@ -16,6 +16,9 @@ export interface ElectronAPI {
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
+  getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
@@ -560,6 +563,12 @@ export interface IndexedImage {
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status
   tags?: string[];               // Quick access to tags array
+
+  // Smart Clustering & Auto-Tagging (Phase 1)
+  clusterId?: string;            // Cluster this image belongs to
+  clusterPosition?: number;      // Position within cluster (0 = cover image)
+  autoTags?: string[];           // Auto-generated tags from TF-IDF
+  autoTagsGeneratedAt?: number;  // Timestamp of tag generation
 }
 
 /**
@@ -648,4 +657,86 @@ export interface ComparisonMetadataPanelProps {
   onToggleExpanded: () => void;
   viewMode?: 'standard' | 'diff';
   otherImageMetadata?: BaseMetadata | null;
+}
+
+// ===== Smart Clustering & Auto-Tagging Types =====
+
+/**
+ * Image cluster - groups images with similar prompts
+ */
+export interface ImageCluster {
+  id: string;                      // Hash-based cluster ID
+  promptHash: string;              // Hash of the base prompt
+  basePrompt: string;              // Representative prompt text
+  imageIds: string[];              // Array of image IDs in this cluster
+  coverImageId: string;            // First image chronologically
+  size: number;                    // Number of images in cluster
+  similarityThreshold: number;     // Threshold used for clustering (0.85-0.90)
+  createdAt: number;               // Timestamp of cluster creation
+  updatedAt: number;               // Timestamp of last update
+}
+
+/**
+ * Auto-generated tag from TF-IDF analysis
+ */
+export interface AutoTag {
+  tag: string;                     // Tag name (e.g., "cyberpunk")
+  tfidfScore: number;              // TF-IDF score
+  frequency: number;               // Term frequency across corpus
+  sourceType: 'prompt' | 'metadata';  // Origin of tag
+}
+
+/**
+ * Smart collection - virtual folder based on filters
+ */
+export interface SmartCollection {
+  id: string;                      // Unique collection ID
+  name: string;                    // Display name
+  type: 'model' | 'style' | 'subject' | 'custom';  // Collection category
+  query: SmartCollectionQuery;     // Filter criteria
+  imageCount: number;              // Cached count
+  thumbnailId?: string;            // Cover image ID
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Query criteria for smart collections
+ */
+export interface SmartCollectionQuery {
+  models?: string[];
+  autoTags?: string[];
+  userTags?: string[];
+  clusters?: string[];
+  dateRange?: { from: number; to: number };
+}
+
+/**
+ * User preferences for a specific cluster (stored in IndexedDB)
+ */
+export interface ClusterPreference {
+  clusterId: string;               // Primary key
+  bestImageIds: string[];          // User-marked best images
+  archivedImageIds: string[];      // Suggested for deletion
+  isExpanded: boolean;             // UI state persistence
+  notes?: string;                  // User notes about cluster
+  updatedAt: number;
+}
+
+/**
+ * UI state for stack view
+ */
+export interface StackViewState {
+  expandedClusterId: string | null;  // Currently expanded stack
+  hoverClusterId: string | null;     // Stack being hovered
+  scrubPosition: number;             // 0-1 for hover preview
+}
+
+/**
+ * TF-IDF model for auto-tagging
+ */
+export interface TFIDFModel {
+  vocabulary: string[];                // All unique terms
+  idfScores: Map<string, number>;      // Term → IDF score
+  documentCount: number;               // Total documents processed
 }

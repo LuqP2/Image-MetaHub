@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -191,11 +191,25 @@ interface ImageState {
   // Annotations State
   annotations: Map<string, ImageAnnotations>;
   availableTags: TagInfo[];
+  availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   selectedTags: string[];
+  selectedAutoTags: string[]; // Filter by auto-tags
   showFavoritesOnly: boolean;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
+
+  // Smart Clustering State (Phase 2)
+  clusters: ImageCluster[];
+  clusteringProgress: { current: number; total: number; message: string } | null;
+  clusteringWorker: Worker | null;
+  isClustering: boolean;
+
+  // Auto-Tagging State (Phase 3)
+  tfidfModel: TFIDFModel | null;
+  autoTaggingProgress: { current: number; total: number; message: string } | null;
+  autoTaggingWorker: Worker | null;
+  isAutoTagging: boolean;
 
   // Actions
   addDirectory: (directory: Directory) => void;
@@ -252,6 +266,22 @@ interface ImageState {
   setFocusedImageIndex: (index: number | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
 
+  // Clustering Actions (Phase 2)
+  startClustering: (directoryPath: string, scanSubfolders: boolean, threshold: number) => Promise<void>;
+  cancelClustering: () => void;
+  setClusters: (clusters: ImageCluster[]) => void;
+  setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
+  handleClusterImageDeletion: (deletedImageIds: string[]) => void;
+
+  // Auto-Tagging Actions (Phase 3)
+  startAutoTagging: (
+    directoryPath: string,
+    scanSubfolders: boolean,
+    options?: { topN?: number; minScore?: number }
+  ) => Promise<void>;
+  cancelAutoTagging: () => void;
+  setAutoTaggingProgress: (progress: { current: number; total: number; message: string } | null) => void;
+
   // Comparison Actions
   setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
   addImageToComparison: (image: IndexedImage) => void;
@@ -267,12 +297,15 @@ interface ImageState {
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
   removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
+  removeAutoTagFromImage: (imageId: string, tag: string) => void;
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
+  setSelectedAutoTags: (tags: string[]) => void;
   setShowFavoritesOnly: (show: boolean) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
+  refreshAvailableAutoTags: () => void;
   importMetadataTags: (images: IndexedImage[]) => Promise<void>;
   flushPendingImages: () => void;
   setDirectoryRefreshing: (directoryId: string, isRefreshing: boolean) => void;
@@ -545,6 +578,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
+        // Step 4: Auto-tags filter
+        if (state.selectedAutoTags && state.selectedAutoTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.autoTags || img.autoTags.length === 0) return false;
+                // Match ANY selected auto-tag (OR logic)
+                return state.selectedAutoTags.some(tag => img.autoTags!.includes(tag));
+            });
+        }
+
         if (searchQuery) {
             const searchTerms = searchQuery
                 .toLowerCase()
@@ -736,11 +778,25 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Annotations initial values
         annotations: new Map(),
         availableTags: [],
+        availableAutoTags: [],
         selectedTags: [],
+        selectedAutoTags: [],
         showFavoritesOnly: false,
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
+
+        // Smart Clustering initial values (Phase 2)
+        clusters: [],
+        clusteringProgress: null,
+        clusteringWorker: null,
+        isClustering: false,
+
+        // Auto-Tagging initial values (Phase 3)
+        tfidfModel: null,
+        autoTaggingProgress: null,
+        autoTaggingWorker: null,
+        isAutoTagging: false,
 
         // --- ACTIONS ---
 
@@ -1156,6 +1212,219 @@ export const useImageStore = create<ImageState>((set, get) => {
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
+        // Clustering Actions (Phase 2)
+        startClustering: async (directoryPath: string, scanSubfolders: boolean, threshold: number) => {
+            const { images, clusteringWorker: existingWorker } = get();
+
+            // Cancel existing worker if running
+            if (existingWorker) {
+                existingWorker.terminate();
+            }
+
+            // Create new worker
+            const worker = new Worker(
+                new URL('../services/workers/clusteringWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+
+            set({ clusteringWorker: worker, isClustering: true, clusteringProgress: { current: 0, total: images.length, message: 'Initializing...' } });
+
+            // Handle worker messages
+            worker.onmessage = (e: MessageEvent) => {
+                const { type, payload } = e.data;
+
+                switch (type) {
+                    case 'progress':
+                        set({ clusteringProgress: payload });
+                        break;
+
+                    case 'complete':
+                        set({
+                            clusters: payload.clusters,
+                            clusteringProgress: null,
+                            isClustering: false,
+                        });
+                        worker.terminate();
+                        set({ clusteringWorker: null });
+                        console.log(`Clustering complete: ${payload.clusters.length} clusters created`);
+                        break;
+
+                    case 'error':
+                        console.error('Clustering error:', payload.error);
+                        set({
+                            clusteringProgress: null,
+                            isClustering: false,
+                            error: `Clustering failed: ${payload.error}`,
+                        });
+                        worker.terminate();
+                        set({ clusteringWorker: null });
+                        break;
+                }
+            };
+
+            // Prepare lightweight data for worker (90% less data)
+            const lightweightImages = images
+                .filter(img => img.prompt && img.prompt.trim().length > 0)
+                .map(img => ({
+                    id: img.id,
+                    prompt: img.prompt!,
+                    lastModified: img.lastModified,
+                }));
+
+            // Start clustering
+            worker.postMessage({
+                type: 'start',
+                payload: {
+                    images: lightweightImages,
+                    threshold,
+                },
+            });
+        },
+
+        cancelClustering: () => {
+            const { clusteringWorker } = get();
+            if (clusteringWorker) {
+                clusteringWorker.postMessage({ type: 'cancel' });
+                clusteringWorker.terminate();
+                set({
+                    clusteringWorker: null,
+                    clusteringProgress: null,
+                    isClustering: false,
+                });
+            }
+        },
+
+        setClusters: (clusters) => set({ clusters }),
+
+        setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
+
+        handleClusterImageDeletion: (deletedImageIds: string[]) => {
+            const { clusters } = get();
+            if (clusters.length === 0) return;
+
+            // Import removeImagesFromClusters dynamically to avoid circular deps
+            import('../services/clusteringEngine').then(({ removeImagesFromClusters }) => {
+                const updatedClusters = removeImagesFromClusters(deletedImageIds, clusters);
+                set({ clusters: updatedClusters });
+                console.log(`Clusters updated after ${deletedImageIds.length} image deletions`);
+            });
+        },
+
+        // Auto-Tagging Actions (Phase 3)
+        startAutoTagging: async (directoryPath, scanSubfolders, options) => {
+            const { images, autoTaggingWorker: existingWorker } = get();
+
+            if (existingWorker) {
+                existingWorker.terminate();
+            }
+
+            const worker = new Worker(
+                new URL('../services/workers/autoTaggingWorker.ts', import.meta.url),
+                { type: 'module' }
+            );
+
+            set({
+                autoTaggingWorker: worker,
+                isAutoTagging: true,
+                autoTaggingProgress: { current: 0, total: images.length, message: 'Initializing...' }
+            });
+
+            worker.onmessage = (e: MessageEvent) => {
+                const { type, payload } = e.data;
+
+                switch (type) {
+                    case 'progress':
+                        set({ autoTaggingProgress: payload });
+                        break;
+                    case 'complete': {
+                        const generatedAt = Date.now();
+                        const tagMap = new Map<string, string[]>();
+                        Object.entries(payload.autoTags || {}).forEach(([id, tags]: [string, AutoTag[]]) => {
+                            const normalizedTags = (tags || []).map((tag) => tag.tag).filter(Boolean);
+                            tagMap.set(id, normalizedTags);
+                        });
+
+                        set(state => {
+                            const updateList = (list: IndexedImage[]) => list.map(img => {
+                                if (!tagMap.has(img.id)) {
+                                    return img;
+                                }
+                                const tags = tagMap.get(img.id) ?? [];
+                                return {
+                                    ...img,
+                                    autoTags: tags,
+                                    autoTagsGeneratedAt: generatedAt,
+                                };
+                            });
+
+                            return {
+                                ...state,
+                                images: updateList(state.images),
+                                filteredImages: updateList(state.filteredImages),
+                                tfidfModel: payload.tfidfModel ?? null,
+                                autoTaggingProgress: null,
+                                isAutoTagging: false,
+                            };
+                        });
+
+                        worker.terminate();
+                        set({ autoTaggingWorker: null });
+                        console.log(`Auto-tagging complete: ${Object.keys(payload.autoTags || {}).length} images tagged`);
+
+                        if (payload.autoTags && payload.tfidfModel) {
+                            import('../services/clusterCacheManager')
+                                .then(({ saveAutoTagCache }) => saveAutoTagCache(directoryPath, scanSubfolders, payload.autoTags, payload.tfidfModel))
+                                .catch(error => {
+                                    console.warn('Failed to save auto-tag cache:', error);
+                                });
+                        }
+                        break;
+                    }
+                    case 'error':
+                        console.error('Auto-tagging error:', payload.error);
+                        set({
+                            autoTaggingProgress: null,
+                            isAutoTagging: false,
+                            error: `Auto-tagging failed: ${payload.error}`,
+                        });
+                        worker.terminate();
+                        set({ autoTaggingWorker: null });
+                        break;
+                }
+            };
+
+            const taggingImages = images.map(img => ({
+                id: img.id,
+                prompt: img.prompt,
+                models: img.models,
+                loras: img.loras,
+            }));
+
+            worker.postMessage({
+                type: 'start',
+                payload: {
+                    images: taggingImages,
+                    topN: options?.topN,
+                    minScore: options?.minScore,
+                },
+            });
+        },
+
+        cancelAutoTagging: () => {
+            const { autoTaggingWorker } = get();
+            if (autoTaggingWorker) {
+                autoTaggingWorker.postMessage({ type: 'cancel' });
+                autoTaggingWorker.terminate();
+                set({
+                    autoTaggingWorker: null,
+                    autoTaggingProgress: null,
+                    isAutoTagging: false,
+                });
+            }
+        },
+
+        setAutoTaggingProgress: (progress) => set({ autoTaggingProgress: progress }),
+
         // Comparison Actions
         setComparisonImages: (images) => set({ comparisonImages: images }),
 
@@ -1379,6 +1648,27 @@ export const useImageStore = create<ImageState>((set, get) => {
             get().refreshAvailableTags();
         },
 
+        removeAutoTagFromImage: (imageId, tag) => {
+            set(state => {
+                const updatedImages = state.images.map(img => {
+                    if (img.id === imageId && img.autoTags) {
+                        return {
+                            ...img,
+                            autoTags: img.autoTags.filter(t => t !== tag),
+                        };
+                    }
+                    return img;
+                });
+
+                const newState = {
+                    ...state,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+        },
+
         bulkAddTag: async (imageIds, tag) => {
             const normalizedTag = tag.trim().toLowerCase();
             if (!normalizedTag || imageIds.length === 0) return;
@@ -1497,6 +1787,32 @@ export const useImageStore = create<ImageState>((set, get) => {
         refreshAvailableTags: async () => {
             const tags = await getAllTags();
             set({ availableTags: tags });
+        },
+
+        refreshAvailableAutoTags: () => {
+            const { images } = get();
+
+            // Count frequency of each auto-tag
+            const tagFrequency = new Map<string, number>();
+
+            images.forEach(img => {
+                if (img.autoTags && img.autoTags.length > 0) {
+                    img.autoTags.forEach(tag => {
+                        tagFrequency.set(tag, (tagFrequency.get(tag) || 0) + 1);
+                    });
+                }
+            });
+
+            // Convert to TagInfo array and sort by frequency
+            const autoTags: TagInfo[] = Array.from(tagFrequency.entries())
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count); // Most used first
+
+            set({ availableAutoTags: autoTags });
+        },
+
+        setSelectedAutoTags: (tags) => {
+            set(state => ({ ...filterAndSort({ ...state, selectedAutoTags: tags }), selectedAutoTags: tags }));
         },
 
         importMetadataTags: async (images) => {
@@ -1661,11 +1977,21 @@ export const useImageStore = create<ImageState>((set, get) => {
             isComparisonModalOpen: false,
             annotations: new Map(),
             availableTags: [],
+            availableAutoTags: [],
             selectedTags: [],
+            selectedAutoTags: [],
             showFavoritesOnly: false,
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),
+            clusters: [],
+            clusteringProgress: null,
+            clusteringWorker: null,
+            isClustering: false,
+            tfidfModel: null,
+            autoTaggingProgress: null,
+            autoTaggingWorker: null,
+            isAutoTagging: false,
         }),
 
         cleanupInvalidImages: () => {

@@ -1,5 +1,5 @@
-import { resolveAll } from './comfyui/traversalEngine';
-import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
+import { resolveAll, resolveFacts } from './comfyui/traversalEngine';
+import { ParserNode, NodeRegistry, WorkflowFacts } from './comfyui/nodeRegistry';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
@@ -589,6 +589,42 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
   results.generator = 'ComfyUI';
 
   return { ...results, _telemetry: telemetry };
+}
+
+/**
+ * Resolve structured workflow facts for ComfyUI graphs.
+ * Uses the same graph construction as resolvePromptFromGraph.
+ */
+export function resolveWorkflowFactsFromGraph(
+  workflow: any,
+  prompt: any
+): WorkflowFacts | null {
+  try {
+    let parsedWorkflow = workflow;
+    let parsedPrompt = prompt;
+
+    if (typeof parsedWorkflow === 'string') {
+      parsedWorkflow = JSON.parse(parsedWorkflow);
+    }
+    if (typeof parsedPrompt === 'string') {
+      parsedPrompt = JSON.parse(parsedPrompt);
+    }
+
+    if (!parsedWorkflow && !parsedPrompt) {
+      return null;
+    }
+
+    const graph = createNodeMap(parsedWorkflow, parsedPrompt);
+    const terminalNode = findTerminalNode(graph);
+    if (!terminalNode) {
+      return null;
+    }
+
+    return resolveFacts({ startNode: terminalNode, graph });
+  } catch (error) {
+    console.warn('[ComfyUI Parser] Failed to resolve workflow facts:', error);
+    return null;
+  }
 }
 
 /**

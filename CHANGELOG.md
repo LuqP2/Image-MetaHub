@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2025-01-11
+
+### Added
+
+- **Smart Library Foundation - Image Clustering**: Revolutionary clustering system that organizes images into prompt-similarity stacks:
+  - Background clustering worker with TF-IDF vectorization and hierarchical clustering
+  - Multiple similarity metrics: Jaccard (token-based), Levenshtein (character-based), and hybrid scoring
+  - Prompt normalization and FNV-1a hashing for efficient deduplication
+  - Stack cards showing cover image, prompt preview, and image counts
+  - StackExpandedView for browsing images within each cluster
+  - Real-time progress streaming across clustering phases
+  - File watcher integration: deletions automatically update clusters and remove empty ones
+
+- **TF-IDF Auto-Tagging Engine**: Intelligent automatic tag generation from image metadata:
+  - Metadata-weighted boosts for model and LoRA names for more relevant tags
+  - ComfyUI workflow facts resolver for enhanced metadata extraction
+  - Auto-tags persisted during indexing in the store
+  - Displayed in ImageModal and ImagePreviewSidebar
+  - Auto-tag filtering with frequency counts
+  - "Promote to tag" workflow to convert auto-tags into permanent tags
+  - Per-tag removal capability
+
+- **Smart Library UI**: Complete browsing interface for clustered images:
+  - SmartLibrary.tsx with grid layout for stack cards
+  - StackCard.tsx showing cover, prompt, and counts
+  - Collections sidebar with filtering capabilities
+  - Loading and empty states for better UX
+  - Aligned with Gallery view for consistent experience
+  - Reuses ImageGrid component for efficiency
+
+- **Intelligent Deduplication Helper (Beta)**: Advanced tool for managing duplicate images:
+  - Heuristic ranking: favorites → file size → creation date
+  - Visual badges in ImageGrid for "best" vs "archived" images
+  - Manual selection override support
+  - Disk space savings estimation
+  - Persistent deduplication preferences
+  - Integrated into StackExpandedView
+  - Marked as beta feature with appropriate labeling
+
+### Improved
+
+- **Performance Optimizations**:
+  - Lazy thumbnail loading with IntersectionObserver for faster stack rendering
+  - Increased thumbnail concurrency in thumbnailManager
+  - Precomputed token/Jaccard filter to skip expensive Levenshtein comparisons
+  - Efficient background worker architecture for non-blocking operations
+
+- **Enhanced IPC & Cache Management**:
+  - Exposed userData and FS helpers via IPC for cache operations
+  - Stream progress updates across all clustering phases
+  - Multiple cache path fallbacks for increased reliability
+  - IndexedDB version bump to resolve mismatch issues
+
+### Technical Improvements
+
+- **ComfyUI Integration**: Extended comfyUIParser.ts with workflow facts resolver for better metadata extraction
+
 ## [0.11.1] - 2025-01-10
 
 ### Added

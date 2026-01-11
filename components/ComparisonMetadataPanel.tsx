@@ -76,7 +76,7 @@ const MetadataField: FC<{
     }
 
     return (
-      <p className={`text-gray-200 text-sm mt-1 ${multiline ? 'whitespace-pre-wrap break-words' : ''}`}>
+      <p className={`text-gray-200 text-sm mt-1 break-words ${multiline ? 'whitespace-pre-wrap' : ''}`}>
         {displayValue}
       </p>
     );
