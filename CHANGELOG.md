@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Reuses ImageGrid component for efficiency
 
 - **Intelligent Deduplication Helper (Beta)**: Advanced tool for managing duplicate images:
-  - Heuristic ranking: favorites → file size → creation date
+  - Heuristic ranking: favorites -> file size -> creation date
   - Visual badges in ImageGrid for "best" vs "archived" images
   - Manual selection override support
   - Disk space savings estimation

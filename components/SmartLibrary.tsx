@@ -33,6 +33,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
+  const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -237,7 +238,10 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
             cluster={activeCluster.cluster}
             images={paginatedClusterImages}
             allImages={activeClusterImages}
-            onBack={() => setExpandedClusterId(null)}
+            onBack={() => {
+              setClusterNavigationContext(null);
+              setExpandedClusterId(null);
+            }}
             viewMode={viewMode}
             currentPage={clusterPage}
             totalPages={clusterTotalPages}

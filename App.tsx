@@ -101,6 +101,7 @@ export default function App() {
   const setError = useImageStore((state) => state.setError);
   const handleNavigateNext = useImageStore((state) => state.handleNavigateNext);
   const handleNavigatePrevious = useImageStore((state) => state.handleNavigatePrevious);
+  const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
   const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
@@ -533,8 +534,9 @@ export default function App() {
 
   // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
   const handleCloseImageModal = useCallback(() => {
+    setClusterNavigationContext(null);
     setSelectedImage(null);
-  }, [setSelectedImage]);
+  }, [setSelectedImage, setClusterNavigationContext]);
 
   const handleImageModalNavigateNext = useCallback(() => {
     handleNavigateNext();

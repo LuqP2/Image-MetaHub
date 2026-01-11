@@ -34,6 +34,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
+  const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
 
   const [clusterPreference, setClusterPreference] = useState<ClusterPreference | null>(null);
   const [preferenceLoading, setPreferenceLoading] = useState(true);
@@ -122,6 +123,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
       }
 
       clearImageSelection();
+      setClusterNavigationContext(allImages);
       setSelectedImage(image);
     },
     [
@@ -132,6 +134,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
       setFocusedImageIndex,
       setSelectedImage,
       toggleImageSelection,
+      setClusterNavigationContext,
     ]
   );
 

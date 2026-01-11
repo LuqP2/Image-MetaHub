@@ -5,17 +5,18 @@
 **Image MetaHub** is a React + Electron desktop application for browsing large collections of AI generated images. The app focuses on fast indexing, rich metadata filters, and fully local processing so that libraries remain private.
 
 ### Current Version
-- **Version:** 0.11.1
+- **Version:** 0.12.0
 - **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
 - **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
 - **State Management:** Zustand stores for both image data and application settings
 - **Build Tooling:** Vite 5 for development and bundling, Vitest for unit tests, ESLint 9 for linting
 
-### Release Highlights (v0.9.5)
-- Tri-state folder tree with inherited selection rules and bulk actions in `components/DirectoryList.tsx`
-- IndexedDB-backed folder visibility persistence via `services/folderSelectionStorage.ts`
-- Always-on recursive scanning enforced by the welcome experience in `components/FolderSelector.tsx`
-- Updated branding assets (`public/logo1.svg`, `public/icon.ico`) surfaced across the UI and Electron shell
+### Release Highlights (v0.12.0)
+- Smart Library clustering view with stack cards and expanded stack browsing
+- Background clustering and auto-tagging workers for large libraries
+- TF-IDF auto-tags with filtering/promote-to-tag workflows
+- Deduplication helper with smart keep/archive suggestions and disk savings
+- Cache reliability improvements (atomic writes, userData fallbacks)
 
 ## Runtime Architecture
 
@@ -49,6 +50,16 @@
 - **Discovery (`services/fileIndexer.ts`)** walks directories either recursively or flat based on the `scanSubfolders` flag. It extracts metadata through parser modules that understand InvokeAI, Automatic1111, ComfyUI, DreamStudio, Fooocus, SD.Next, SwarmUI, Midjourney, Draw Things, and more.
 - **Caching (`services/cacheManager.ts`)** persists intermediate results so subsequent launches only process new or changed files.
 - **Enrichment (`hooks/useImageLoader.ts`)** coordinates indexing jobs, respects user-controlled concurrency, and updates progress indicators exposed through `useImageStore`.
+
+### Smart Library & Clustering
+- **Clustering Engine (`services/clusteringEngine.ts`)** computes similarity-based stacks using Jaccard/Levenshtein hybrid scoring with prompt normalization in `utils/similarityMetrics.ts`.
+- **Clustering Worker (`services/workers/clusteringWorker.ts`)** runs clustering off the main thread and streams progress updates for large datasets.
+- **Cluster Cache (`services/clusterCacheManager.ts`)** persists stack results with atomic writes and Electron `userData` fallbacks for crash-safe storage.
+
+### Auto-Tagging & Deduplication
+- **Auto-Tagging Engine (`services/autoTaggingEngine.ts`)** builds a TF-IDF model and emits suggested tags, persisted alongside indexed images.
+- **Auto-Tagging Worker (`services/workers/autoTaggingWorker.ts`)** handles long-running tag generation with cancellation support.
+- **Deduplication Engine (`services/deduplicationEngine.ts`)** scores images for keep/archive suggestions (favorites -> file size -> creation date), surfaced in `components/DeduplicationHelper.tsx`.
 
 ### ComfyUI Parser Architecture (Recent Refactoring)
 The ComfyUI parser (`services/parsers/comfyui/`) underwent major architectural improvements to separate data extraction from presentation logic:

@@ -204,6 +204,7 @@ interface ImageState {
   clusteringProgress: { current: number; total: number; message: string } | null;
   clusteringWorker: Worker | null;
   isClustering: boolean;
+  clusterNavigationContext: IndexedImage[] | null; // Images from currently opened cluster for modal navigation
 
   // Auto-Tagging State (Phase 3)
   tfidfModel: TFIDFModel | null;
@@ -272,6 +273,7 @@ interface ImageState {
   setClusters: (clusters: ImageCluster[]) => void;
   setClusteringProgress: (progress: { current: number; total: number; message: string } | null) => void;
   handleClusterImageDeletion: (deletedImageIds: string[]) => void;
+  setClusterNavigationContext: (images: IndexedImage[] | null) => void;
 
   // Auto-Tagging Actions (Phase 3)
   startAutoTagging: (
@@ -791,6 +793,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         clusteringProgress: null,
         clusteringWorker: null,
         isClustering: false,
+        clusterNavigationContext: null,
 
         // Auto-Tagging initial values (Phase 3)
         tfidfModel: null,
@@ -1297,6 +1300,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         setClusters: (clusters) => set({ clusters }),
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
+
+        setClusterNavigationContext: (images) => set({ clusterNavigationContext: images }),
 
         handleClusterImageDeletion: (deletedImageIds: string[]) => {
             const { clusters } = get();
@@ -1926,9 +1931,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         handleNavigateNext: () => {
             const state = get();
             if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
-            if (currentIndex < state.filteredImages.length - 1) {
-                const nextImage = state.filteredImages[currentIndex + 1];
+
+            // Use cluster context if available, otherwise use filtered images
+            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
+
+            if (currentIndex < imagesToNavigate.length - 1) {
+                const nextImage = imagesToNavigate[currentIndex + 1];
                 set({ selectedImage: nextImage });
             }
         },
@@ -1936,9 +1945,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         handleNavigatePrevious: () => {
             const state = get();
             if (!state.selectedImage) return;
-            const currentIndex = state.filteredImages.findIndex(img => img.id === state.selectedImage!.id);
+
+            // Use cluster context if available, otherwise use filtered images
+            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
+
             if (currentIndex > 0) {
-                const prevImage = state.filteredImages[currentIndex - 1];
+                const prevImage = imagesToNavigate[currentIndex - 1];
                 set({ selectedImage: prevImage });
             }
         },
@@ -1988,6 +2001,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             clusteringProgress: null,
             clusteringWorker: null,
             isClustering: false,
+            clusterNavigationContext: null,
             tfidfModel: null,
             autoTaggingProgress: null,
             autoTaggingWorker: null,

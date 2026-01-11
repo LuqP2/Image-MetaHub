@@ -196,6 +196,14 @@ Metadata sources:
 5. **File Operations**: Rename, delete, export metadata (desktop only)
 6. **A1111 Integration**: Send images back to Automatic1111 for editing or regeneration
 
+## Smart Library & Auto-Tags
+
+- **Clustering & Stacks**: `services/clusteringEngine.ts`, `services/workers/clusteringWorker.ts`, `components/SmartLibrary.tsx`, `components/StackCard.tsx`, `components/StackExpandedView.tsx`
+- **Auto-Tags (TF-IDF)**: `services/autoTaggingEngine.ts`, `services/workers/autoTaggingWorker.ts`, `components/TagsAndFavorites.tsx`, `components/ImageModal.tsx`, `components/ImagePreviewSidebar.tsx`
+- **Deduplication Helper**: `services/deduplicationEngine.ts`, `components/DeduplicationHelper.tsx`, `components/ImageGrid.tsx`
+- **Cluster Cache**: `services/clusterCacheManager.ts` (atomic writes, userData path resolution)
+
+
 ## A1111 Integration
 
 The application includes bidirectional workflow with Automatic1111 WebUI, allowing users to send image metadata back to A1111 for editing or regeneration.
@@ -617,6 +625,14 @@ For advanced workflows (ControlNet, upscaling, multi-stage), users should:
 4. Save custom workflow template for reuse
 
 ## Common Tasks
+
+### Adding Smart Library Features
+
+1. Update clustering or auto-tagging logic in `services/` or `utils/`
+2. Update UI in `components/SmartLibrary.tsx` or stack components
+3. Extend store state in `store/useImageStore.ts` if needed
+4. Add/adjust worker logic in `services/workers/` for background tasks
+5. Add tests in `__tests__/` when parser or tokenizer changes
 
 ### Adding New Metadata Format Support
 
