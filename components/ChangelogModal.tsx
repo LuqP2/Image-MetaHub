@@ -126,9 +126,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Image MetaHub 0.11.1 is here — bug fixes and improvements.</strong></p>
+                  <p><strong className="text-white">Image MetaHub 0.12.0 is here — Smart Library with clustering and auto-tagging!</strong></p>
 
-                  <p>This release brings <strong>Auto-Watch</strong> for real-time folder monitoring during generation, the official <strong>MetaHub Save Node for ComfyUI</strong> with instant metadata parsing (10-20x faster), complete <strong>ComfyUI generation integration</strong> with real-time WebSocket progress tracking, and a <strong>unified generation queue</strong> for both A1111 and ComfyUI jobs. The A1111 integration now includes model/LoRA selection with search filters and image size controls.</p>
+                  <p>This release introduces the <strong>Smart Library Foundation</strong> with revolutionary clustering that organizes images into prompt-similarity stacks using TF-IDF vectorization and hierarchical clustering. It also brings an <strong>intelligent auto-tagging engine</strong> that automatically generates relevant tags from metadata, and the <strong>Deduplication Helper (Beta)</strong> with heuristic ranking to help manage duplicate images. Performance optimizations include lazy thumbnail loading and efficient background worker architecture.</p>
 
                   <div className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg">
                     <p className="font-semibold text-purple-300 mb-2">🎉 Introducing MetaHub Custom Nodes for ComfyUI</p>
