@@ -25,7 +25,6 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const refreshImages = useImageStore((state) => state.refreshImages);
 
   // Generate deduplication suggestion
   const suggestion: DeduplicationSuggestion = useMemo(() => {

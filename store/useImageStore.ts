@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
 import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -1339,8 +1339,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                     case 'complete': {
                         const generatedAt = Date.now();
                         const tagMap = new Map<string, string[]>();
-                        Object.entries(payload.autoTags || {}).forEach(([id, tags]) => {
-                            const normalizedTags = (tags || []).map((tag: any) => tag.tag).filter(Boolean);
+                        Object.entries(payload.autoTags || {}).forEach(([id, tags]: [string, AutoTag[]]) => {
+                            const normalizedTags = (tags || []).map((tag) => tag.tag).filter(Boolean);
                             tagMap.set(id, normalizedTags);
                         });
 

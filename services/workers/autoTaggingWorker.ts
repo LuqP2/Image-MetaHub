@@ -45,13 +45,13 @@ type WorkerResponse =
 let isCancelled = false;
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
-  const { type, payload } = e.data;
+  const message = e.data;
 
-  switch (type) {
+  switch (message.type) {
     case 'start':
-      await startAutoTagging(payload.images, {
-        topN: payload.topN,
-        minScore: payload.minScore,
+      await startAutoTagging(message.payload.images, {
+        topN: message.payload.topN,
+        minScore: message.payload.minScore,
       });
       break;
     case 'cancel':

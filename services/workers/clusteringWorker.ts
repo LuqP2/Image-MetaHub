@@ -56,11 +56,11 @@ let isCancelled = false;
  * Main worker message handler
  */
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
-  const { type, payload } = e.data;
+  const message = e.data;
 
-  switch (type) {
+  switch (message.type) {
     case 'start':
-      await startClustering(payload.images, payload.threshold);
+      await startClustering(message.payload.images, message.payload.threshold);
       break;
 
     case 'pause':

@@ -57,7 +57,7 @@ interface ClusterBuilder {
  * Groups images by prompt similarity
  */
 export async function generateClusters(
-  images: IndexedImage[],
+  images: IndexedImage[] | LightweightImage[],
   options: ClusteringOptions
 ): Promise<ImageCluster[]> {
   const {
@@ -68,7 +68,7 @@ export async function generateClusters(
     progressIntervalMs = 250,
   } = options;
 
-  // Convert to lightweight representation
+  // Convert to lightweight representation if needed
   const lightweightImages = images
     .filter((img) => img.prompt && img.prompt.trim().length > 0)
     .map((img) => ({
