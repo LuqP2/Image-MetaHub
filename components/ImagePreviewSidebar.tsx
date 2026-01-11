@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -101,6 +101,7 @@ const ImagePreviewSidebar: React.FC = () => {
     toggleFavorite,
     addTagToImage,
     removeTagFromImage,
+    removeAutoTagFromImage,
     availableTags
   } = useImageStore();
   const previewImageFromStore = useImageStore((state) => {
@@ -242,6 +243,18 @@ const ImagePreviewSidebar: React.FC = () => {
   const handleRemoveTag = (tag: string) => {
     if (!activeImage) return;
     removeTagFromImage(activeImage.id, tag);
+  };
+
+  const handleRemoveAutoTag = (tag: string) => {
+    if (!activeImage) return;
+    removeAutoTagFromImage(activeImage.id, tag);
+  };
+
+  const handlePromoteAutoTag = async (tag: string) => {
+    if (!activeImage) return;
+    // Add as manual tag and remove from auto-tags
+    await addTagToImage(activeImage.id, tag);
+    removeAutoTagFromImage(activeImage.id, tag);
   };
 
   const handleToggleFavorite = () => {
@@ -399,12 +412,23 @@ const ImagePreviewSidebar: React.FC = () => {
                   <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
                   <div className="flex flex-wrap gap-1.5">
                     {activeImage.autoTags.map(tag => (
-                      <span
-                        key={`auto-${tag}`}
-                        className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 text-purple-300 px-2 py-0.5 rounded-full text-xs"
-                      >
-                        {tag}
-                      </span>
+                      <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
+                        <button
+                          onClick={() => handlePromoteAutoTag(tag)}
+                          className="px-2 py-0.5 text-purple-300 hover:bg-blue-600/30 hover:text-blue-200 transition-all"
+                          title="Promote to manual tag"
+                        >
+                          <ArrowUp size={12} />
+                        </button>
+                        <span className="text-purple-300 text-xs">{tag}</span>
+                        <button
+                          onClick={() => handleRemoveAutoTag(tag)}
+                          className="px-2 py-0.5 text-purple-300 hover:bg-red-600/30 hover:text-red-200 transition-all"
+                          title="Remove auto-tag"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

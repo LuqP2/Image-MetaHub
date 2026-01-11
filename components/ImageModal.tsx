@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -152,6 +152,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
+  const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
 
   // Get live tags and favorite status from store instead of props
@@ -541,6 +542,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeTagFromImage(image.id, tag);
   };
 
+  const handleRemoveAutoTag = (tag: string) => {
+    removeAutoTagFromImage(image.id, tag);
+  };
+
+  const handlePromoteAutoTag = async (tag: string) => {
+    // Add as manual tag and remove from auto-tags
+    await addTagToImage(image.id, tag);
+    removeAutoTagFromImage(image.id, tag);
+  };
+
   const handleToggleFavorite = () => {
     toggleFavorite(image.id);
   };
@@ -736,12 +747,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     <p className="text-[10px] uppercase tracking-wider text-purple-300">Auto tags</p>
                     <div className="flex flex-wrap gap-1.5">
                       {currentAutoTags.map(tag => (
-                        <span
-                          key={`auto-${tag}`}
-                          className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 text-purple-300 px-2 py-0.5 rounded-full text-xs"
-                        >
-                          {tag}
-                        </span>
+                        <div key={`auto-${tag}`} className="inline-flex items-center bg-purple-600/20 border border-purple-500/40 rounded-full overflow-hidden">
+                          <button
+                            onClick={() => handlePromoteAutoTag(tag)}
+                            className="px-2 py-0.5 text-purple-300 hover:bg-blue-600/30 hover:text-blue-200 transition-all"
+                            title="Promote to manual tag"
+                          >
+                            <ArrowUp size={12} />
+                          </button>
+                          <span className="text-purple-300 text-xs">{tag}</span>
+                          <button
+                            onClick={() => handleRemoveAutoTag(tag)}
+                            className="px-2 py-0.5 text-purple-300 hover:bg-red-600/30 hover:text-red-200 transition-all"
+                            title="Remove auto-tag"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>

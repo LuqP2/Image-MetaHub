@@ -191,7 +191,9 @@ interface ImageState {
   // Annotations State
   annotations: Map<string, ImageAnnotations>;
   availableTags: TagInfo[];
+  availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   selectedTags: string[];
+  selectedAutoTags: string[]; // Filter by auto-tags
   showFavoritesOnly: boolean;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
@@ -295,12 +297,15 @@ interface ImageState {
   bulkToggleFavorite: (imageIds: string[], isFavorite: boolean) => Promise<void>;
   addTagToImage: (imageId: string, tag: string) => Promise<void>;
   removeTagFromImage: (imageId: string, tag: string) => Promise<void>;
+  removeAutoTagFromImage: (imageId: string, tag: string) => void;
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
+  setSelectedAutoTags: (tags: string[]) => void;
   setShowFavoritesOnly: (show: boolean) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
+  refreshAvailableAutoTags: () => void;
   importMetadataTags: (images: IndexedImage[]) => Promise<void>;
   flushPendingImages: () => void;
   setDirectoryRefreshing: (directoryId: string, isRefreshing: boolean) => void;
@@ -573,6 +578,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
+        // Step 4: Auto-tags filter
+        if (state.selectedAutoTags && state.selectedAutoTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.autoTags || img.autoTags.length === 0) return false;
+                // Match ANY selected auto-tag (OR logic)
+                return state.selectedAutoTags.some(tag => img.autoTags!.includes(tag));
+            });
+        }
+
         if (searchQuery) {
             const searchTerms = searchQuery
                 .toLowerCase()
@@ -764,7 +778,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Annotations initial values
         annotations: new Map(),
         availableTags: [],
+        availableAutoTags: [],
         selectedTags: [],
+        selectedAutoTags: [],
         showFavoritesOnly: false,
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
@@ -1632,6 +1648,27 @@ export const useImageStore = create<ImageState>((set, get) => {
             get().refreshAvailableTags();
         },
 
+        removeAutoTagFromImage: (imageId, tag) => {
+            set(state => {
+                const updatedImages = state.images.map(img => {
+                    if (img.id === imageId && img.autoTags) {
+                        return {
+                            ...img,
+                            autoTags: img.autoTags.filter(t => t !== tag),
+                        };
+                    }
+                    return img;
+                });
+
+                const newState = {
+                    ...state,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+        },
+
         bulkAddTag: async (imageIds, tag) => {
             const normalizedTag = tag.trim().toLowerCase();
             if (!normalizedTag || imageIds.length === 0) return;
@@ -1750,6 +1787,32 @@ export const useImageStore = create<ImageState>((set, get) => {
         refreshAvailableTags: async () => {
             const tags = await getAllTags();
             set({ availableTags: tags });
+        },
+
+        refreshAvailableAutoTags: () => {
+            const { images } = get();
+
+            // Count frequency of each auto-tag
+            const tagFrequency = new Map<string, number>();
+
+            images.forEach(img => {
+                if (img.autoTags && img.autoTags.length > 0) {
+                    img.autoTags.forEach(tag => {
+                        tagFrequency.set(tag, (tagFrequency.get(tag) || 0) + 1);
+                    });
+                }
+            });
+
+            // Convert to TagInfo array and sort by frequency
+            const autoTags: TagInfo[] = Array.from(tagFrequency.entries())
+                .map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count); // Most used first
+
+            set({ availableAutoTags: autoTags });
+        },
+
+        setSelectedAutoTags: (tags) => {
+            set(state => ({ ...filterAndSort({ ...state, selectedAutoTags: tags }), selectedAutoTags: tags }));
         },
 
         importMetadataTags: async (images) => {
@@ -1914,7 +1977,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             isComparisonModalOpen: false,
             annotations: new Map(),
             availableTags: [],
+            availableAutoTags: [],
             selectedTags: [],
+            selectedAutoTags: [],
             showFavoritesOnly: false,
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
