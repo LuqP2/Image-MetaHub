@@ -3,7 +3,7 @@ import cacheManager from './cacheManager';
 import { useImageStore } from '../store/useImageStore';
 
 const MAX_THUMBNAIL_EDGE = 320;
-const MAX_CONCURRENT_THUMBNAILS = 3;
+const MAX_CONCURRENT_THUMBNAILS = 8; // Increased from 3: with Intersection Observer, only visible images load
 
 async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   try {

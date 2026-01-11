@@ -5,6 +5,7 @@ import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import Toast from './Toast';
@@ -42,7 +43,25 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     ? image.name
     : image.name.split('/').pop() || image.name;
 
-  useThumbnail(image);
+  // Lazy load thumbnails only when visible in viewport
+  const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
+    rootMargin: '400px', // Start loading 400px before entering viewport
+    freezeOnceVisible: true, // Once loaded, stay loaded
+  });
+
+  // Only request thumbnail when visible (or about to be visible)
+  useThumbnail(isVisible ? image : null);
+
+  // Merge refs: combine intersectionRef with cardRef
+  const mergedRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      intersectionRef(node);
+      if (cardRef) {
+        cardRef(node);
+      }
+    },
+    [intersectionRef, cardRef]
+  );
 
   useEffect(() => {
     if (thumbnailsDisabled) {
@@ -148,7 +167,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
-        ref={cardRef}
+        ref={mergedRef}
         className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
           isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
         } ${

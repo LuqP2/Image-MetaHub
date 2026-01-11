@@ -136,8 +136,8 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
   );
 
   return (
-    <div className="flex flex-col min-h-0 gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col h-full gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
         <button
           type="button"
           onClick={onBack}
@@ -150,19 +150,21 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
           {allImages.length} images | similarity {Math.round(cluster.similarityThreshold * 100)}%
         </div>
       </div>
-      <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+      <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 flex-shrink-0">
         <h3 className="text-sm font-semibold text-gray-100 mb-1">Cluster prompt</h3>
         <p className="text-xs text-gray-300 leading-relaxed">{promptLabel}</p>
       </div>
       {!preferenceLoading && (
-        <DeduplicationHelper
-          cluster={cluster}
-          images={allImages}
-          existingPreference={clusterPreference}
-          onPreferenceUpdated={handlePreferenceUpdated}
-        />
+        <div className="flex-shrink-0">
+          <DeduplicationHelper
+            cluster={cluster}
+            images={allImages}
+            existingPreference={clusterPreference}
+            onPreferenceUpdated={handlePreferenceUpdated}
+          />
+        </div>
       )}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-auto">
         {viewMode === 'grid' ? (
           <ImageGrid
             images={images}
