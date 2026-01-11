@@ -50,6 +50,7 @@ interface ClusterBuilder {
   tokens: Set<string>;
   imageIds: string[];
   imageTimestamps: Map<string, number>; // For sorting
+  averageSimilarity?: number; // Average similarity of merged clusters
 }
 
 /**
@@ -139,7 +140,7 @@ export async function generateClusters(
   // Convert to final format
   const finalClusters = refinedClusters
     .filter((cluster) => cluster.imageIds.length >= minClusterSize)
-    .map((cluster) => convertToFinalCluster(cluster, threshold));
+    .map((cluster) => convertToFinalCluster(cluster));
 
   reportProgress(0, 'Clustering complete', true);
   console.log(`Final: ${finalClusters.length} clusters created`);
@@ -335,6 +336,9 @@ function mergeSimilarClusters(
     parent.set(i, i);
   }
 
+  // Track similarities of merged pairs for each group
+  const groupSimilarities = new Map<number, number[]>();
+
   function find(i: number): number {
     if (parent.get(i) !== i) {
       parent.set(i, find(parent.get(i)!));
@@ -342,11 +346,16 @@ function mergeSimilarClusters(
     return parent.get(i)!;
   }
 
-  function union(i: number, j: number) {
+  function union(i: number, j: number, similarity: number) {
     const rootI = find(i);
     const rootJ = find(j);
     if (rootI !== rootJ) {
       parent.set(rootI, rootJ);
+      // Track similarity for this merge
+      if (!groupSimilarities.has(rootJ)) {
+        groupSimilarities.set(rootJ, []);
+      }
+      groupSimilarities.get(rootJ)!.push(similarity);
     }
   }
 
@@ -372,7 +381,7 @@ function mergeSimilarClusters(
       const similarity = jaccard * 0.6 + levenshtein * 0.4;
 
       if (similarity >= threshold) {
-        union(i, j);
+        union(i, j, similarity);
       }
 
       if (onComparisonProgress) {
@@ -402,12 +411,30 @@ function mergeSimilarClusters(
   // Merge clusters in each group
   const merged: ClusterBuilder[] = [];
   for (const [root, indices] of groups.entries()) {
+    // Calculate average similarity for this group
+    let averageSimilarity: number | undefined;
+    if (indices.length === 1) {
+      // Single cluster, not merged - perfect similarity
+      averageSimilarity = 1.0;
+    } else {
+      // Multiple clusters merged - calculate average of recorded similarities
+      const similarities = groupSimilarities.get(root) || [];
+      if (similarities.length > 0) {
+        const sum = similarities.reduce((a, b) => a + b, 0);
+        averageSimilarity = sum / similarities.length;
+      } else {
+        // Fallback: near-perfect similarity (exact match group)
+        averageSimilarity = 0.98;
+      }
+    }
+
     const mergedCluster: ClusterBuilder = {
       promptHash: clusters[root].promptHash,
       basePrompt: clusters[root].basePrompt,
       tokens: clusters[root].tokens,
       imageIds: [],
       imageTimestamps: new Map(),
+      averageSimilarity,
     };
 
     for (const idx of indices) {
@@ -470,13 +497,30 @@ function refineClusters(
 }
 
 /**
+ * Calculate average similarity within a cluster
+ * Uses the averageSimilarity tracked during merge, or defaults based on cluster size
+ */
+function calculateClusterSimilarity(builder: ClusterBuilder): number {
+  // If averageSimilarity was calculated during merge, use it
+  if (builder.averageSimilarity !== undefined) {
+    return builder.averageSimilarity;
+  }
+
+  // Single image cluster has perfect similarity
+  if (builder.imageIds.length === 1) {
+    return 1.0;
+  }
+
+  // Fallback: exact match clusters (same prompt hash) have near-perfect similarity
+  return 0.98;
+}
+
+/**
  * Convert internal cluster to final format
  */
-function convertToFinalCluster(
-  builder: ClusterBuilder,
-  threshold: number
-): ImageCluster {
+function convertToFinalCluster(builder: ClusterBuilder): ImageCluster {
   const now = Date.now();
+  const averageSimilarity = calculateClusterSimilarity(builder);
 
   return {
     id: builder.promptHash,
@@ -485,7 +529,7 @@ function convertToFinalCluster(
     imageIds: builder.imageIds,
     coverImageId: builder.imageIds[0], // First image chronologically
     size: builder.imageIds.length,
-    similarityThreshold: threshold,
+    similarityThreshold: averageSimilarity,
     createdAt: now,
     updatedAt: now,
   };
