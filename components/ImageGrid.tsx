@@ -7,7 +7,9 @@ import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
+import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
+import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
@@ -347,6 +349,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [comparisonFirstImage, setComparisonFirstImage] = useState<IndexedImage | null>(null);
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
@@ -358,13 +361,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
-  const { canUseComparison, showProModal, canUseA1111, initialized } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, initialized } = useFeatureAccess();
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
   };
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
+  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   const {
     contextMenu,
@@ -391,6 +395,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setIsGenerateModalOpen(true);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, canUseA1111, showProModal]);
+
+  const openComfyUIGenerateModal = useCallback(() => {
+    if (!contextMenu.image) return;
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+    setSelectedImageForGeneration(contextMenu.image);
+    setIsComfyUIGenerateModalOpen(true);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, canUseComfyUI, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -816,7 +832,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
           >
             <Sparkles className="w-4 h-4" />
-            <span className="flex-1">Generate Variation</span>
+            <span className="flex-1">Generate with A1111</span>
+            <ProBadge size="sm" />
+          </button>
+
+          <button
+            onClick={openComfyUIGenerateModal}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={!contextMenu.image?.metadata?.normalizedMetadata?.prompt}
+            title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="flex-1">Generate with ComfyUI</span>
             <ProBadge size="sm" />
           </button>
         </div>
@@ -848,6 +875,42 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             setSelectedImageForGeneration(null);
           }}
           isGenerating={isGenerating}
+        />
+      )}
+
+      {/* ComfyUI Generate Variation Modal */}
+      {isComfyUIGenerateModalOpen && selectedImageForGeneration && (
+        <ComfyUIGenerateModal
+          isOpen={isComfyUIGenerateModalOpen}
+          onClose={() => {
+            setIsComfyUIGenerateModalOpen(false);
+            setSelectedImageForGeneration(null);
+          }}
+          image={selectedImageForGeneration}
+          onGenerate={async (params: ComfyUIGenerationParams) => {
+            const customMetadata: Partial<BaseMetadata> = {
+              prompt: params.prompt,
+              negativePrompt: params.negativePrompt,
+              cfg_scale: params.cfgScale,
+              steps: params.steps,
+              seed: params.randomSeed ? -1 : params.seed,
+              width: params.width,
+              height: params.height,
+              batch_size: params.numberOfImages,
+              ...(params.sampler ? { sampler: params.sampler } : {}),
+              ...(params.scheduler ? { scheduler: params.scheduler } : {}),
+            };
+            await generateWithComfyUI(selectedImageForGeneration, {
+              customMetadata,
+              overrides: {
+                model: params.model,
+                loras: params.loras,
+              },
+            });
+            setIsComfyUIGenerateModalOpen(false);
+            setSelectedImageForGeneration(null);
+          }}
+          isGenerating={isGeneratingComfyUI}
         />
       )}
     </div>

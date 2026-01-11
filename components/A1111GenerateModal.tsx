@@ -78,30 +78,50 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     };
   }, [isOpen]);
 
-  // Initialize form with image metadata when modal opens
+  // Initialize form with persisted parameters when modal opens
   useEffect(() => {
     if (isOpen && image.metadata?.normalizedMetadata) {
       const meta = image.metadata.normalizedMetadata;
-      const storedModel =
-        typeof window !== 'undefined'
-          ? localStorage.getItem('IMH_A1111_LAST_MODEL')
-          : null;
+
+      // Load persisted parameters from localStorage
+      const storedModel = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_MODEL') : null;
+      const storedCfgScale = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_CFG_SCALE') : null;
+      const storedSteps = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_STEPS') : null;
+      const storedRandomSeed = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_RANDOM_SEED') : null;
+      const storedLoras = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_LORAS') : null;
+      const storedSampler = typeof window !== 'undefined' ? localStorage.getItem('IMH_A1111_LAST_SAMPLER') : null;
+
+      // Use persisted values or fallback to image metadata
       const preferredModel = storedModel || meta.model || undefined;
+      const preferredCfgScale = storedCfgScale ? parseFloat(storedCfgScale) : meta.cfg_scale || 7.0;
+      const preferredSteps = storedSteps ? parseInt(storedSteps) : meta.steps || 20;
+      const preferredRandomSeed = storedRandomSeed ? storedRandomSeed === 'true' : false;
+      const preferredSampler = storedSampler || meta.sampler || meta.scheduler || undefined;
+
+      let preferredLoras: LoRAConfig[] = [];
+      if (storedLoras) {
+        try {
+          preferredLoras = JSON.parse(storedLoras);
+        } catch (e) {
+          console.error('Failed to parse stored LoRAs:', e);
+        }
+      }
+
       setParams({
         prompt: meta.prompt || '',
         negativePrompt: meta.negativePrompt || '',
-        cfgScale: meta.cfg_scale || 7.0,
-        steps: meta.steps || 20,
+        cfgScale: preferredCfgScale,
+        steps: preferredSteps,
         seed: meta.seed !== undefined ? meta.seed : -1,
-        randomSeed: false,
+        randomSeed: preferredRandomSeed,
         numberOfImages: 1,
         width: meta.width || 512,
         height: meta.height || 512,
         model: preferredModel,
         loras: [],
-        sampler: meta.sampler || meta.scheduler || undefined,
+        sampler: preferredSampler,
       });
-      setSelectedLoras([]);
+      setSelectedLoras(preferredLoras);
       setModelSearch('');
       setValidationError('');
     }
@@ -158,6 +178,18 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
 
     setValidationError('');
 
+    // Persist parameters to localStorage
+    if (typeof window !== 'undefined') {
+      if (params.model) localStorage.setItem('IMH_A1111_LAST_MODEL', params.model);
+      localStorage.setItem('IMH_A1111_LAST_CFG_SCALE', params.cfgScale.toString());
+      localStorage.setItem('IMH_A1111_LAST_STEPS', params.steps.toString());
+      localStorage.setItem('IMH_A1111_LAST_RANDOM_SEED', params.randomSeed.toString());
+      if (selectedLoras.length > 0) {
+        localStorage.setItem('IMH_A1111_LAST_LORAS', JSON.stringify(selectedLoras));
+      }
+      if (params.sampler) localStorage.setItem('IMH_A1111_LAST_SAMPLER', params.sampler);
+    }
+
     const generationParams: GenerationParams = {
       ...params,
       prompt: buildPromptWithLoras(params.prompt, selectedLoras),
@@ -171,6 +203,27 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   const handleClose = () => {
     // Allow closing even during generation (non-blocking)
     onClose();
+  };
+
+  const handleLoadFromImage = () => {
+    if (!image.metadata?.normalizedMetadata) return;
+
+    const meta = image.metadata.normalizedMetadata;
+    setParams({
+      prompt: meta.prompt || '',
+      negativePrompt: meta.negativePrompt || '',
+      cfgScale: meta.cfg_scale || 7.0,
+      steps: meta.steps || 20,
+      seed: meta.seed !== undefined ? meta.seed : -1,
+      randomSeed: false,
+      numberOfImages: 1,
+      width: meta.width || 512,
+      height: meta.height || 512,
+      model: meta.model || undefined,
+      loras: [],
+      sampler: meta.sampler || meta.scheduler || undefined,
+    });
+    setSelectedLoras([]);
   };
 
   const handleAddLora = (loraName: string) => {
@@ -235,12 +288,26 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Generate with A1111</h2>
-          <button
-            onClick={handleClose}
-            className="p-1 rounded-full hover:bg-gray-700 transition-colors"
-          >
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLoadFromImage}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+              title="Load parameters from image metadata"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Load from Image
+            </button>
+            <button
+              onClick={handleClose}
+              className="p-1 rounded-full hover:bg-gray-700 transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         {/* Content - Scrollable */}
