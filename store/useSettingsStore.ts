@@ -63,6 +63,7 @@ interface SettingsState {
   disableThumbnails: boolean;
   showFilenames: boolean;
   showFullFilePath: boolean;
+  globalAutoWatch: boolean;
 
   // A1111 Integration settings
   a1111ServerUrl: string;
@@ -89,6 +90,7 @@ interface SettingsState {
   setDisableThumbnails: (value: boolean) => void;
   setShowFilenames: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
+  toggleGlobalAutoWatch: () => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
@@ -120,6 +122,7 @@ export const useSettingsStore = create<SettingsState>()(
       disableThumbnails: false,
       showFilenames: false,
       showFullFilePath: false,
+      globalAutoWatch: true,
 
       // A1111 Integration initial state
       a1111ServerUrl: 'http://127.0.0.1:7860',
@@ -153,6 +156,7 @@ export const useSettingsStore = create<SettingsState>()(
       setDisableThumbnails: (value) => set({ disableThumbnails: !!value }),
       setShowFilenames: (value) => set({ showFilenames: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
+      toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -189,6 +193,7 @@ export const useSettingsStore = create<SettingsState>()(
         disableThumbnails: false,
         showFilenames: false,
         showFullFilePath: false,
+        globalAutoWatch: true,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
         a1111LastConnectionStatus: 'unknown',

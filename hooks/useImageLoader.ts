@@ -815,7 +815,8 @@ export function useImageLoader() {
                 return;
             }
 
-            const newDirectory: Directory = { id: directoryId, path, name, handle };
+            const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
+            const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
 
             // Add to store first
             addDirectory(newDirectory);
