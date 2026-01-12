@@ -200,6 +200,10 @@ export default function App() {
       lastModified: Date.now(),
       directoryId: '',
       handle: {} as FileSystemFileHandle,
+      metadataString: '',
+      models: [],
+      loras: [],
+      scheduler: '',
       metadata: {
         normalizedMetadata: {
           prompt: '',
