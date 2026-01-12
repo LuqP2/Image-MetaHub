@@ -275,18 +275,6 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
           <h2 className="text-2xl font-bold">Generate with ComfyUI</h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleLoadFromImage}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Load parameters from image metadata"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Load from Image
-            </button>
-            <button
               onClick={handleClose}
               className="p-1 rounded-full hover:bg-gray-700 transition-colors"
             >
@@ -340,7 +328,18 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
           {/* Generation Parameters */}
           <div className="bg-gray-900 p-4 rounded-md border border-gray-700 space-y-4">
             <h3 className="text-sm font-semibold text-gray-300">Generation Parameters</h3>
-
+            <button
+              onClick={handleLoadFromImage}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+              title="Load parameters from image metadata"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Load from Image
+            </button>
             {/* Model Selection */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-300">

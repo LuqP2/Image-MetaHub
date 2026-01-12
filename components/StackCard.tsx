@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Lock } from 'lucide-react';
 import { ImageCluster, IndexedImage } from '../types';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
 
 interface StackCardProps {
   cluster: ImageCluster;
   images: IndexedImage[];
   onOpen: () => void;
+  isLocked?: boolean;
 }
 
-const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
+const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen, isLocked = false }) => {
+  const { showProModal } = useFeatureAccess();
   const [previewIndex, setPreviewIndex] = useState(0);
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -57,13 +60,25 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
   const countLabel = displayCount === totalCount ? `${displayCount}` : `${displayCount}/${totalCount}`;
   const detailCountLabel = displayCount === totalCount ? `${displayCount} images` : `${displayCount}/${totalCount} images`;
 
+  const handleClick = () => {
+    if (isLocked) {
+      showProModal('clustering');
+    } else {
+      onOpen();
+    }
+  };
+
   return (
     <button
       ref={cardRef}
-      onClick={onOpen}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerLeave}
-      className="group text-left bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-xl hover:shadow-blue-500/20 transition-all"
+      onClick={handleClick}
+      onPointerMove={!isLocked ? handlePointerMove : undefined}
+      onPointerLeave={!isLocked ? handlePointerLeave : undefined}
+      className={`group text-left bg-gray-900/60 border rounded-2xl overflow-hidden shadow-lg transition-all ${
+        isLocked
+          ? 'border-purple-500/40 hover:shadow-xl hover:shadow-purple-500/30 cursor-pointer'
+          : 'border-gray-800 hover:shadow-xl hover:shadow-blue-500/20'
+      }`}
       type="button"
     >
       <div className="relative aspect-[4/5] overflow-hidden">
@@ -71,12 +86,26 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen }) => {
           <img
             src={coverUrl}
             alt={promptLabel}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02] ${
+              isLocked ? 'blur-lg' : ''
+            }`}
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 flex items-center justify-center text-gray-400">
+          <div className={`w-full h-full bg-gradient-to-br from-gray-800 via-gray-900 to-gray-800 flex items-center justify-center text-gray-400 ${
+            isLocked ? 'blur-lg' : ''
+          }`}>
             <Layers className="w-8 h-8 opacity-70" />
+          </div>
+        )}
+
+        {/* Lock overlay */}
+        {isLocked && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <div className="flex flex-col items-center gap-2 text-purple-300">
+              <Lock className="w-12 h-12" />
+              <span className="text-sm font-semibold">Pro Only</span>
+            </div>
           </div>
         )}
         <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-gray-100">

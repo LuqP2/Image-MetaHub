@@ -60,6 +60,17 @@ const featureInfo = {
       'Dimension and parameter insights',
     ],
   },
+  clustering: {
+    name: 'Unlimited Clustering',
+    icon: Sparkles,
+    description: 'Analyze your entire image library for duplicate groups and prompt similarities',
+    benefits: [
+      'Process unlimited images',
+      'Find all duplicate variations',
+      'Organize massive libraries efficiently',
+      'Save hours of manual sorting',
+    ],
+  },
 };
 
 const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
