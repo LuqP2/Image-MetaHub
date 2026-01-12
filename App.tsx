@@ -77,7 +77,7 @@ export default function App() {
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
   // Folder selection selectors
-  const folderSelection = useImageStore((state) => state.folderSelection);
+  const selectedFolders = useImageStore((state) => state.selectedFolders);
   const isFolderSelectionLoaded = useImageStore((state) => state.isFolderSelectionLoaded);
 
   // Modal state selectors
@@ -94,8 +94,8 @@ export default function App() {
   const updateImage = useImageStore((state) => state.updateImage);
   const toggleDirectoryVisibility = useImageStore((state) => state.toggleDirectoryVisibility);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
-  const setFolderSelectionState = useImageStore((state) => state.setFolderSelectionState);
-  const getFolderSelectionState = useImageStore((state) => state.getFolderSelectionState);
+  const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
+  const isFolderSelected = useImageStore((state) => state.isFolderSelected);
   const resetState = useImageStore((state) => state.resetState);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
@@ -621,9 +621,9 @@ export default function App() {
             onToggleVisibility={toggleDirectoryVisibility}
             onToggleAutoWatch={handleToggleAutoWatch}
             refreshingDirectories={refreshingDirectories}
-            onUpdateSelection={setFolderSelectionState}
-            getSelectionState={getFolderSelectionState}
-            folderSelection={folderSelection}
+            onToggleFolderSelection={toggleFolderSelection}
+            isFolderSelected={isFolderSelected}
+            selectedFolders={selectedFolders}
             isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
             scanSubfolders={scanSubfolders}
           />

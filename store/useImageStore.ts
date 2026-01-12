@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
-import { loadFolderSelection, saveFolderSelection, StoredSelectionState } from '../services/folderSelectionStorage';
+import { loadSelectedFolders, saveSelectedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
   saveAnnotation,
@@ -9,45 +9,9 @@ import {
 } from '../services/imageAnnotationsStorage';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
-type SelectionState = StoredSelectionState;
-
-type FolderSelectionMap = Map<string, SelectionState>;
-
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/[\\/]+$/, '');
-};
-
-const getParentPath = (path: string): string | null => {
-    const normalized = normalizePath(path);
-    if (!normalized) return null;
-    const lastSlash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
-    if (lastSlash === -1) {
-        return '';
-    }
-    return normalized.slice(0, lastSlash);
-};
-
-const isDescendantPath = (child: string, parent: string) => {
-    const normalizedChild = normalizePath(child);
-    const normalizedParent = normalizePath(parent);
-    if (!normalizedParent) {
-        return normalizedChild !== '';
-    }
-    if (normalizedChild === normalizedParent) {
-        return false;
-    }
-    const separator = normalizedParent.includes('\\') ? '\\' : '/';
-    return normalizedChild.startsWith(normalizedParent + separator);
-};
-
-const isSameOrDescendantPath = (child: string, parent: string) => {
-    const normalizedChild = normalizePath(child);
-    const normalizedParent = normalizePath(parent);
-    if (normalizedChild === normalizedParent) {
-        return true;
-    }
-    return isDescendantPath(normalizedChild, normalizedParent);
 };
 
 const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
@@ -84,14 +48,6 @@ const joinPath = (base: string, relative: string) => {
         return normalizedRelative;
     }
     return `${normalizedBase}${separator}${normalizedRelative}`;
-};
-
-const mapToRecord = (selection: FolderSelectionMap): Record<string, SelectionState> => {
-    const record: Record<string, SelectionState> = {};
-    for (const [key, value] of selection.entries()) {
-        record[key] = value;
-    }
-    return record;
 };
 
 const getRelativeImagePath = (image: IndexedImage): string => {
@@ -155,7 +111,7 @@ interface ImageState {
   selectionTotalImages: number;
   selectionDirectoryCount: number;
   directories: Directory[];
-  folderSelection: FolderSelectionMap;
+  selectedFolders: Set<string>;
   isFolderSelectionLoaded: boolean;
 
   // UI State
@@ -218,12 +174,8 @@ interface ImageState {
   toggleDirectoryVisibility: (directoryId: string) => void;
   toggleAutoWatch: (directoryId: string) => void;
   initializeFolderSelection: () => Promise<void>;
-  setFolderSelectionState: (
-    path: string,
-    state: SelectionState,
-    options?: { applyToDescendants?: boolean; clearDescendantOverrides?: boolean }
-  ) => void;
-  getFolderSelectionState: (path: string) => SelectionState;
+  toggleFolderSelection: (path: string, ctrlKey: boolean) => void;
+  isFolderSelected: (path: string) => boolean;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
   setEnrichmentProgress: (progress: { processed: number; total: number } | null) => void;
@@ -494,41 +446,19 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, folderSelection } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
         );
 
-        const normalizedSelection = new Map<string, SelectionState>();
-        for (const [path, value] of folderSelection.entries()) {
-            normalizedSelection.set(normalizePath(path), value);
-        }
-
         const directoryPathMap = new Map<string, string>();
-        const rootPaths: string[] = [];
         directories.forEach(dir => {
             const normalized = normalizePath(dir.path);
             directoryPathMap.set(dir.id, normalized);
-            rootPaths.push(normalized);
         });
 
-        const rootCoverage = new Map<string, boolean>();
-        rootPaths.forEach(rootPath => {
-            const storedState = normalizedSelection.get(rootPath);
-            rootCoverage.set(rootPath, storedState ? storedState === 'checked' : true);
-        });
-
-        for (const [path, stateValue] of normalizedSelection.entries()) {
-            if (stateValue !== 'checked') {
-                continue;
-            }
-            const matchedRoot = rootPaths.find(rootPath => isSameOrDescendantPath(path, rootPath));
-            if (matchedRoot) {
-                rootCoverage.set(matchedRoot, true);
-            }
-        }
-
+        // Direct matching - only show images if their folder is explicitly selected
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
@@ -540,28 +470,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             const folderPath = getImageFolderPath(img, parentPath);
-            const rootState = normalizedSelection.get(parentPath);
-            if (folderPath === parentPath) {
-                return rootState ? rootState === 'checked' : true;
-            }
 
-            let current: string | null = folderPath;
-            while (current && current !== parentPath) {
-                const entry = normalizedSelection.get(current);
-                if (entry === 'checked') {
-                    return true;
-                }
-                if (entry === 'unchecked') {
-                    return false;
-                }
-                current = getParentPath(current);
-            }
-
-            if (rootState === 'unchecked') {
-                return false;
-            }
-
-            return true;
+            // Direct matching - no inheritance
+            return selectedFolders.has(normalizePath(folderPath));
         });
 
         let results = selectionFiltered;
@@ -693,9 +604,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         const totalInScope = images.length; // Total absoluto de imagens indexadas
-        const selectionDirectoryCount = Array.from(rootCoverage.entries())
-            .filter(([, selected]) => selected)
-            .length;
+        const selectionDirectoryCount = state.directories.length;
 
         const compareById = (a: IndexedImage, b: IndexedImage) => a.id.localeCompare(b.id);
         const compareByNameAsc = (a: IndexedImage, b: IndexedImage) => {
@@ -750,7 +659,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectionTotalImages: 0,
         selectionDirectoryCount: 0,
         directories: [],
-        folderSelection: new Map(),
+        selectedFolders: new Set(),
         isFolderSelectionLoaded: false,
         isLoading: false,
         progress: null,
@@ -845,63 +754,44 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         initializeFolderSelection: async () => {
-            const persisted = await loadFolderSelection();
+            const selectedPaths = await loadSelectedFolders();
             set(state => {
-                const selectionMap: FolderSelectionMap = new Map();
-                Object.entries(persisted || {}).forEach(([key, value]) => {
-                    selectionMap.set(normalizePath(key), value as SelectionState);
+                const selection = new Set<string>();
+                selectedPaths.forEach(path => {
+                    selection.add(normalizePath(path));
                 });
-                const newState = { ...state, folderSelection: selectionMap, isFolderSelectionLoaded: true };
+                const newState = { ...state, selectedFolders: selection, isFolderSelectionLoaded: true };
                 return { ...newState, ...filterAndSort(newState) };
             });
         },
 
-        setFolderSelectionState: (path, selectionState, options) => {
+        toggleFolderSelection: (path, ctrlKey) => {
             const normalizedPath = normalizePath(path);
             set(state => {
-                const selection = new Map(state.folderSelection);
-                selection.set(normalizedPath, selectionState);
+                const selection = new Set(state.selectedFolders);
 
-                const shouldApplyDescendants = selectionState === 'unchecked' && options?.applyToDescendants;
-                const shouldClearOverrides = selectionState === 'checked' && options?.clearDescendantOverrides;
-
-                if (shouldApplyDescendants || shouldClearOverrides) {
-                    const directoryPathMap = new Map(state.directories.map(dir => [dir.id, normalizePath(dir.path)]));
-                    const descendantPaths = new Set<string>();
-                    descendantPaths.add(normalizedPath);
-
-                    for (const image of state.images) {
-                        const rootPath = directoryPathMap.get(image.directoryId || '');
-                        if (!rootPath) {
-                            continue;
-                        }
-                        const folderPath = getImageFolderPath(image, rootPath);
-                        if (isSameOrDescendantPath(folderPath, normalizedPath)) {
-                            descendantPaths.add(folderPath);
-                        }
+                if (ctrlKey) {
+                    // Multi-select: toggle this folder
+                    if (selection.has(normalizedPath)) {
+                        selection.delete(normalizedPath);
+                    } else {
+                        selection.add(normalizedPath);
                     }
-
-                    if (shouldClearOverrides) {
-                        descendantPaths.forEach(descPath => {
-                            selection.set(descPath, 'checked');
-                        });
-                    }
-
-                    if (shouldApplyDescendants) {
-                        descendantPaths.forEach(descPath => {
-                            selection.set(descPath, 'unchecked');
-                        });
-                    }
+                } else {
+                    // Single select: replace all with this folder
+                    selection.clear();
+                    selection.add(normalizedPath);
                 }
 
-                const newState = { ...state, folderSelection: selection };
+                const newState = { ...state, selectedFolders: selection };
                 const resultState = { ...newState, ...filterAndSort(newState) };
-                
+
                 // Recalculate available filters based on the new filtered images
                 const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
                 const finalState = { ...resultState, ...availableFilters };
 
-                saveFolderSelection(mapToRecord(selection)).catch((error) => {
+                // Persist to IndexedDB
+                saveSelectedFolders(Array.from(selection)).catch((error) => {
                     console.error('Failed to persist folder selection state', error);
                 });
 
@@ -909,31 +799,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         },
 
-        getFolderSelectionState: (path) => {
-            const selection = get().folderSelection;
-            const directories = get().directories;
+        isFolderSelected: (path) => {
             const normalizedPath = normalizePath(path);
-
-            if (selection.has(normalizedPath)) {
-                return selection.get(normalizedPath)!;
-            }
-
-            const rootPaths = directories.map(dir => normalizePath(dir.path));
-            const matchedRoot = rootPaths.find(rootPath => isSameOrDescendantPath(normalizedPath, rootPath));
-            if (!matchedRoot) {
-                return 'unchecked';
-            }
-
-            const rootState = selection.get(matchedRoot);
-            if (rootState === 'unchecked') {
-                return 'unchecked';
-            }
-
-            return 'checked';
+            return get().selectedFolders.has(normalizedPath);
         },
 
         removeDirectory: (directoryId) => {
-            const { directories, images, folderSelection } = get();
+            const { directories, images, selectedFolders } = get();
             const targetDirectory = directories.find(d => d.id === directoryId);
             const newDirectories = directories.filter(d => d.id !== directoryId);
             if (window.electronAPI) {
@@ -941,22 +813,25 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             const newImages = images.filter(img => img.directoryId !== directoryId);
 
-            const updatedSelection = new Map(folderSelection);
+            // Remove all selected folders belonging to this directory
+            const updatedSelection = new Set(selectedFolders);
             if (targetDirectory) {
                 const normalizedPath = normalizePath(targetDirectory.path);
-                for (const key of Array.from(updatedSelection.keys())) {
-                    if (normalizePath(key) === normalizedPath || isDescendantPath(key, normalizedPath)) {
-                        updatedSelection.delete(key);
+                for (const folderPath of Array.from(updatedSelection)) {
+                    const normalizedFolder = normalizePath(folderPath);
+                    // Remove if it's the directory itself or starts with the directory path
+                    if (normalizedFolder === normalizedPath || normalizedFolder.startsWith(normalizedPath + '/') || normalizedFolder.startsWith(normalizedPath + '\\')) {
+                        updatedSelection.delete(folderPath);
                     }
                 }
             }
 
             set(state => {
-                const baseState = { ...state, directories: newDirectories, folderSelection: updatedSelection };
+                const baseState = { ...state, directories: newDirectories, selectedFolders: updatedSelection };
                 return _updateState(baseState, newImages);
             });
 
-            saveFolderSelection(mapToRecord(updatedSelection)).catch((error) => {
+            saveSelectedFolders(Array.from(updatedSelection)).catch((error) => {
                 console.error('Failed to persist folder selection state', error);
             });
         },
@@ -1962,7 +1837,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectionTotalImages: 0,
             selectionDirectoryCount: 0,
             directories: [],
-            folderSelection: new Map(),
+            selectedFolders: new Set(),
             isFolderSelectionLoaded: false,
             isLoading: false,
             progress: { current: 0, total: 0 },
