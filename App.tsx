@@ -93,7 +93,6 @@ export default function App() {
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const removeImage = useImageStore((state) => state.removeImage);
   const updateImage = useImageStore((state) => state.updateImage);
-  const toggleDirectoryVisibility = useImageStore((state) => state.toggleDirectoryVisibility);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
   const isFolderSelected = useImageStore((state) => state.isFolderSelected);
@@ -584,7 +583,6 @@ export default function App() {
             directories={safeDirectories}
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
-            onToggleVisibility={toggleDirectoryVisibility}
             refreshingDirectories={refreshingDirectories}
             onToggleFolderSelection={toggleFolderSelection}
             isFolderSelected={isFolderSelected}

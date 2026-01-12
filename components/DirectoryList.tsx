@@ -6,7 +6,6 @@ interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string) => void;
-  onToggleVisibility: (directoryId: string) => void;
   refreshingDirectories?: Set<string>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   isFolderSelected?: (path: string) => boolean;
@@ -46,7 +45,6 @@ export default function DirectoryList({
   directories,
   onRemoveDirectory,
   onUpdateDirectory,
-  onToggleVisibility,
   refreshingDirectories,
   onToggleFolderSelection,
   isFolderSelected,
@@ -290,20 +288,19 @@ export default function DirectoryList({
               const isRootExpanded = expandedNodes.has(rootKey);
               const isRootLoading = loadingNodes.has(rootKey);
               const rootChildren = subfolderCache.get(rootKey) || [];
-              const rootChildPaths = rootChildren.map(child => child.path);
               const isRefreshing = refreshingDirectories?.has(dir.id) ?? false;
+              const isRootSelected = isFolderSelected ? isFolderSelected(dir.path) : false;
 
               return (
                 <li key={dir.id}>
-                  <div className="flex items-center justify-between bg-gray-800 p-2 rounded-md">
+                  <div
+                    className={`flex items-center justify-between p-2 rounded-md transition-colors ${
+                      isRootSelected
+                        ? 'bg-blue-600/30 hover:bg-blue-600/40'
+                        : 'bg-gray-800 hover:bg-gray-700/50'
+                    }`}
+                  >
                     <div className="flex items-center overflow-hidden flex-1">
-                      <input
-                        type="checkbox"
-                        checked={dir.visible ?? true}
-                        onChange={() => onToggleVisibility(dir.id)}
-                        className="mr-2 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer flex-shrink-0"
-                        title="Show/hide images from this folder"
-                      />
                       <button
                         onClick={() => handleToggleNode(rootKey, dir.path, dir)}
                         className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
@@ -315,9 +312,12 @@ export default function DirectoryList({
                       </button>
                       <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
                       <button
-                        onClick={() => handleOpenInExplorer(dir.path)}
-                        className="ml-2 text-sm text-gray-300 hover:text-blue-400 hover:underline truncate text-left transition-colors flex-1"
-                        title={`Click to open: ${dir.path}`}
+                        onClick={(e) => handleFolderClick(dir.path, e)}
+                        onContextMenu={(e) => handleContextMenu(e, dir.path)}
+                        className={`ml-2 text-sm truncate text-left transition-colors flex-1 ${
+                          isRootSelected ? 'text-white' : 'text-gray-300 hover:text-gray-100'
+                        }`}
+                        title={`Select folder: ${dir.path}`}
                       >
                         {dir.name}
                       </button>
@@ -368,19 +368,6 @@ export default function DirectoryList({
                     <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-700 pl-2">
                       {scanSubfolders ? (
                         <>
-                          <div
-                            className={`py-1 flex items-center cursor-pointer rounded px-2 transition-colors ${
-                              isFolderSelected?.(dir.path)
-                                ? 'bg-blue-600/30 hover:bg-blue-600/40'
-                                : 'hover:bg-gray-700/50'
-                            }`}
-                            onClick={(e) => handleFolderClick(dir.path, e)}
-                            onContextMenu={(e) => handleContextMenu(e, dir.path)}
-                          >
-                            <Folder className="w-3 h-3 mr-2 text-gray-400" />
-                            <span className="text-sm text-gray-300 italic">(root)</span>
-                          </div>
-
                           <ul className="ml-3 space-y-1">
                             {isRootLoading ? (
                               <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
