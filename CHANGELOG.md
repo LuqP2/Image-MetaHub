@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integrated into StackExpandedView
   - Marked as beta feature with appropriate labeling
 
+### Changed
+- **Directory Navigation**: Refactored root folder behavior to align with standard Explorer patterns. Clicking a root folder row now selects and filters its content directly instead of opening the system file explorer.
+- **Auto-Watch Behavior**: "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
+
 ### Improved
 
 - **Performance Optimizations**:
