@@ -54,6 +54,86 @@ export interface CacheDiff {
 }
 
 const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
+const MAX_METADATA_STRING_LENGTH = 1_000_000;
+const MAX_METADATA_FIELD_LENGTH = 200_000;
+const MAX_METADATA_JSON_LENGTH = 2_000_000;
+const MAX_BUFFER_LENGTH = 65_536;
+const TRUNCATION_SUFFIX = '...[truncated]';
+
+const truncateString = (value: string, maxLength: number): string => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  if (maxLength <= TRUNCATION_SUFFIX.length) {
+    return value.slice(0, maxLength);
+  }
+  return `${value.slice(0, maxLength - TRUNCATION_SUFFIX.length)}${TRUNCATION_SUFFIX}`;
+};
+
+const getNormalizedMetadata = (metadata: unknown): unknown => {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+  if ('normalizedMetadata' in (metadata as Record<string, unknown>)) {
+    return (metadata as Record<string, unknown>).normalizedMetadata;
+  }
+  return null;
+};
+
+const hasHeavyMetadata = (metadata: unknown): boolean => {
+  if (!metadata || typeof metadata !== 'object') {
+    return false;
+  }
+  const record = metadata as Record<string, unknown>;
+  if (record.imagemetahub_data && typeof record.imagemetahub_data === 'object') {
+    return true;
+  }
+  if (record.workflow && typeof record.workflow === 'object') {
+    return true;
+  }
+  if (record.prompt && typeof record.prompt === 'object') {
+    return true;
+  }
+  if (record.prompt_api && typeof record.prompt_api === 'object') {
+    return true;
+  }
+  return false;
+};
+
+const getJsonSize = (value: unknown): number | null => {
+  try {
+    return JSON.stringify(value).length;
+  } catch {
+    return null;
+  }
+};
+
+const buildMetadataStub = (
+  entry: CacheImageMetadata,
+  reason: string,
+  metadataSize?: number,
+  trimmedMetadataString?: string,
+  logTruncation?: boolean
+): CacheImageMetadata => {
+  if (logTruncation) {
+    const sizeInfo = metadataSize ? ` size=${metadataSize}` : '';
+    console.warn(
+      `[Cache] Skipping oversized metadata for ${entry.name} (${entry.id}) reason=${reason}${sizeInfo}`
+    );
+  }
+
+  const fallbackString = trimmedMetadataString ?? entry.metadataString ?? '';
+  const safeMetadataString = fallbackString.length > MAX_METADATA_STRING_LENGTH
+    ? truncateString(fallbackString, MAX_METADATA_STRING_LENGTH)
+    : fallbackString;
+  const normalized = getNormalizedMetadata(entry.metadata);
+
+  return {
+    ...entry,
+    metadataString: safeMetadataString,
+    metadata: normalized ? { normalizedMetadata: normalized } : {},
+  };
+};
 
 function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
   return images.map(img => ({
@@ -87,12 +167,15 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
 const isCloneError = (error: unknown): boolean => {
   if (!error) return false;
   const message = error instanceof Error ? error.message : String(error);
-  return /clone|deserialize|DataCloneError/i.test(message);
+  return /clone|deserialize|DataCloneError|serialize|serializer/i.test(message);
 };
 
 const safeJsonClone = (value: unknown): any => {
   try {
     return JSON.parse(JSON.stringify(value, (_key, val) => {
+      if (typeof val === 'string' && val.length > MAX_METADATA_FIELD_LENGTH) {
+        return truncateString(val, MAX_METADATA_FIELD_LENGTH);
+      }
       if (typeof val === 'bigint') {
         return val.toString();
       }
@@ -107,10 +190,12 @@ const safeJsonClone = (value: unknown): any => {
       }
       if (ArrayBuffer.isView(val)) {
         const view = val as ArrayBufferView;
-        return Array.from(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+        const length = Math.min(view.byteLength, MAX_BUFFER_LENGTH);
+        return Array.from(new Uint8Array(view.buffer, view.byteOffset, length));
       }
       if (val instanceof ArrayBuffer) {
-        return Array.from(new Uint8Array(val));
+        const length = Math.min(val.byteLength, MAX_BUFFER_LENGTH);
+        return Array.from(new Uint8Array(val, 0, length));
       }
       return val;
     }));
@@ -119,11 +204,53 @@ const safeJsonClone = (value: unknown): any => {
   }
 };
 
-const sanitizeCacheMetadata = (metadata: CacheImageMetadata[]): CacheImageMetadata[] => {
-  return metadata.map(entry => ({
-    ...entry,
-    metadata: safeJsonClone(entry.metadata),
-  }));
+const sanitizeCacheMetadata = (
+  metadata: CacheImageMetadata[],
+  options: { forceClone?: boolean; logTruncation?: boolean } = {}
+): CacheImageMetadata[] => {
+  const forceClone = options.forceClone ?? false;
+  const logTruncation = options.logTruncation ?? false;
+  let didChange = false;
+
+  const sanitized = metadata.map(entry => {
+    const metadataString = entry.metadataString || '';
+    const needsTrim = metadataString.length > MAX_METADATA_STRING_LENGTH;
+    const hasHeavy = hasHeavyMetadata(entry.metadata);
+    const shouldClone = forceClone || needsTrim;
+    const trimmedMetadataString = needsTrim
+      ? truncateString(metadataString, MAX_METADATA_STRING_LENGTH)
+      : metadataString;
+
+    if (!shouldClone && !hasHeavy && trimmedMetadataString === metadataString) {
+      return entry;
+    }
+
+    let clonedMetadata = entry.metadata;
+    if (shouldClone || hasHeavy) {
+      clonedMetadata = safeJsonClone(entry.metadata);
+      if (clonedMetadata === null) {
+        didChange = true;
+        return buildMetadataStub(entry, 'clone_failed', undefined, trimmedMetadataString, logTruncation);
+      }
+
+      if (hasHeavy) {
+        const metadataSize = getJsonSize(clonedMetadata);
+        if (metadataSize && metadataSize > MAX_METADATA_JSON_LENGTH) {
+          didChange = true;
+          return buildMetadataStub(entry, 'metadata_too_large', metadataSize, trimmedMetadataString, logTruncation);
+        }
+      }
+    }
+
+    didChange = true;
+    return {
+      ...entry,
+      metadataString: trimmedMetadataString,
+      metadata: clonedMetadata,
+    };
+  });
+
+  return didChange ? sanitized : metadata;
 };
 
 class IncrementalCacheWriter {
@@ -158,6 +285,7 @@ class IncrementalCacheWriter {
     }
 
     let metadata = precomputed ?? toCacheMetadata(images);
+    let preparedMetadata = sanitizeCacheMetadata(metadata, { logTruncation: true });
     const chunkNumber = this.chunkIndex++;
     this.totalImages += images.length;
 
@@ -166,21 +294,23 @@ class IncrementalCacheWriter {
         const result = await window.electronAPI?.writeCacheChunk?.({
           cacheId: this.cacheId,
           chunkIndex: chunkNumber,
-          data: metadata,
+          data: preparedMetadata,
         });
         if (result && !result.success) {
           throw new Error(result.error || 'Failed to write cache chunk');
         }
       } catch (err) {
         if (isCloneError(err)) {
-          metadata = sanitizeCacheMetadata(metadata);
+          console.warn('[Cache] Cache chunk serialization failed, retrying with sanitized payload.', err);
+          preparedMetadata = sanitizeCacheMetadata(metadata, { forceClone: true, logTruncation: true });
           const retry = await window.electronAPI?.writeCacheChunk?.({
             cacheId: this.cacheId,
             chunkIndex: chunkNumber,
-            data: metadata,
+            data: preparedMetadata,
           });
           if (retry && !retry.success) {
-            throw new Error(retry.error || 'Failed to write cache chunk');
+            console.error('[Cache] Failed to write cache chunk after sanitization:', retry.error);
+            return;
           }
           return;
         }
@@ -189,7 +319,7 @@ class IncrementalCacheWriter {
     });
 
     await this.writeQueue;
-    return metadata;
+    return preparedMetadata;
   }
 
   async overwrite(chunkIndex: number, metadata: CacheImageMetadata[]): Promise<void> {
@@ -197,19 +327,21 @@ class IncrementalCacheWriter {
       return;
     }
 
+    const preparedMetadata = sanitizeCacheMetadata(metadata, { logTruncation: true });
     this.writeQueue = this.writeQueue.then(async () => {
       try {
         const result = await window.electronAPI?.writeCacheChunk?.({
           cacheId: this.cacheId,
           chunkIndex,
-          data: metadata,
+          data: preparedMetadata,
         });
         if (result && !result.success) {
           throw new Error(result.error || 'Failed to rewrite cache chunk');
         }
       } catch (err) {
         if (isCloneError(err)) {
-          const sanitized = sanitizeCacheMetadata(metadata);
+          console.warn('[Cache] Cache chunk rewrite serialization failed, retrying with sanitized payload.', err);
+          const sanitized = sanitizeCacheMetadata(metadata, { forceClone: true, logTruncation: true });
           metadata.splice(0, metadata.length, ...sanitized);
           const retry = await window.electronAPI?.writeCacheChunk?.({
             cacheId: this.cacheId,
@@ -217,7 +349,8 @@ class IncrementalCacheWriter {
             data: sanitized,
           });
           if (retry && !retry.success) {
-            throw new Error(retry.error || 'Failed to rewrite cache chunk');
+            console.error('[Cache] Failed to rewrite cache chunk after sanitization:', retry.error);
+            return;
           }
           return;
         }
@@ -355,7 +488,7 @@ class CacheManager {
     if (!this.isElectron) return;
 
     const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    const metadata = toCacheMetadata(images);
+    const metadata = sanitizeCacheMetadata(toCacheMetadata(images), { logTruncation: true });
     
     const cacheEntry: CacheEntry = {
       id: cacheId,
