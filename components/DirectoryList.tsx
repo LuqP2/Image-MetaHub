@@ -250,9 +250,18 @@ export default function DirectoryList({
 
   return (
     <div className="border-b border-gray-700">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setIsExpanded(prev => !prev);
+          }
+        }}
         className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+        aria-expanded={isExpanded}
       >
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Folders</span>
@@ -279,7 +288,7 @@ export default function DirectoryList({
         <ChevronDown
           className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
         />
-      </button>
+      </div>
       {isExpanded && (
         <div className="px-4 pb-4">
           <ul className="space-y-1">
