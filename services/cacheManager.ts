@@ -310,7 +310,7 @@ class IncrementalCacheWriter {
           });
           if (retry && !retry.success) {
             console.error('[Cache] Failed to write cache chunk after sanitization:', retry.error);
-            return;
+            throw new Error(retry.error || 'Failed to write cache chunk');
           }
           return;
         }
@@ -350,7 +350,7 @@ class IncrementalCacheWriter {
           });
           if (retry && !retry.success) {
             console.error('[Cache] Failed to rewrite cache chunk after sanitization:', retry.error);
-            return;
+            throw new Error(retry.error || 'Failed to rewrite cache chunk');
           }
           return;
         }
