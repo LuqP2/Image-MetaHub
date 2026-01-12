@@ -305,6 +305,12 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
             <textarea
               value={params.prompt}
               onChange={(e) => setParams(prev => ({ ...prev, prompt: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  e.preventDefault();
+                  handleGenerate();
+                }
+              }}
               rows={10}
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Enter your prompt..."
@@ -319,6 +325,12 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
             <textarea
               value={params.negativePrompt}
               onChange={(e) => setParams(prev => ({ ...prev, negativePrompt: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                  e.preventDefault();
+                  handleGenerate();
+                }
+              }}
               rows={6}
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500"
               placeholder="Enter negative prompt (optional)..."
