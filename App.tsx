@@ -123,6 +123,7 @@ export default function App() {
     toggleViewMode,
     theme,
     setLastViewedVersion,
+    globalAutoWatch,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -305,7 +306,8 @@ export default function App() {
         id: path,
         name: dirName,
         path: path,
-        handle: mockHandle as unknown as FileSystemDirectoryHandle
+        handle: mockHandle as unknown as FileSystemDirectoryHandle,
+        autoWatch: globalAutoWatch
       };
 
       // Load the directory using the hook's loadDirectory function
@@ -315,44 +317,6 @@ export default function App() {
       console.error('Error loading directory from path:', error);
     }
   }, [loadDirectory, safeDirectories]);
-
-  // Handler for toggling auto-watch on directories
-  const handleToggleAutoWatch = useCallback(async (directoryId: string) => {
-    const directory = directories.find(d => d.id === directoryId);
-    if (!directory) return;
-
-    const newAutoWatchState = !directory.autoWatch;
-
-    // Atualizar estado no store primeiro
-    toggleAutoWatch(directoryId);
-
-    // Chamar IPC para start/stop watcher
-    if (window.electronAPI) {
-      try {
-        if (newAutoWatchState) {
-          const result = await window.electronAPI.startWatchingDirectory({
-            directoryId: directory.id,
-            dirPath: directory.path
-          });
-          if (!result.success) {
-            setError(`Failed to start auto-watch: ${result.error}`);
-            // Reverter o toggle se falhou
-            toggleAutoWatch(directoryId);
-            return;
-          }
-          await handleUpdateFolder(directoryId);
-        } else {
-          await window.electronAPI.stopWatchingDirectory({
-            directoryId: directory.id
-          });
-        }
-      } catch (err: any) {
-        setError(`Error toggling auto-watch: ${err.message}`);
-        // Reverter o toggle se falhou
-        toggleAutoWatch(directoryId);
-      }
-    }
-  }, [directories, toggleAutoWatch, setError, handleUpdateFolder]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
@@ -621,7 +585,6 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             onToggleVisibility={toggleDirectoryVisibility}
-            onToggleAutoWatch={handleToggleAutoWatch}
             refreshingDirectories={refreshingDirectories}
             onToggleFolderSelection={toggleFolderSelection}
             isFolderSelected={isFolderSelected}

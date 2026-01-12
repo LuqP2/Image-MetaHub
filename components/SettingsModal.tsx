@@ -37,6 +37,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
+  const globalAutoWatch = useSettingsStore((state) => state.globalAutoWatch);
+  const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
 
   // A1111 Integration settings
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
@@ -348,6 +350,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   type="checkbox"
                   checked={autoUpdate}
                   onChange={toggleAutoUpdate}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* Auto-watch Setting */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2">File Monitoring</h3>
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+              <div>
+                <p className="text-sm">Monitor changes in real-time</p>
+                <p className="text-xs text-gray-400">
+                  Automatically watch directories for new or modified images. Disable this if you have very large folders or a slower PC.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={globalAutoWatch}
+                  onChange={toggleGlobalAutoWatch}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

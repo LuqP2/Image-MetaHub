@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, Eye } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder } from 'lucide-react';
 
 interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string) => void;
   onToggleVisibility: (directoryId: string) => void;
-  onToggleAutoWatch: (directoryId: string) => void;
   refreshingDirectories?: Set<string>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   isFolderSelected?: (path: string) => boolean;
@@ -48,7 +47,6 @@ export default function DirectoryList({
   onRemoveDirectory,
   onUpdateDirectory,
   onToggleVisibility,
-  onToggleAutoWatch,
   refreshingDirectories,
   onToggleFolderSelection,
   isFolderSelected,
@@ -344,26 +342,6 @@ export default function DirectoryList({
                         }
                       >
                         <RotateCcw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                      </button>
-                      <button
-                        onClick={() => onToggleAutoWatch(dir.id)}
-                        disabled={isIndexing}
-                        className={`transition-colors ${
-                          isIndexing
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : dir.autoWatch
-                              ? 'text-green-500 hover:text-green-400'
-                              : 'text-gray-400 hover:text-gray-50'
-                        }`}
-                        title={
-                          isIndexing
-                            ? 'Cannot toggle during indexing'
-                            : dir.autoWatch
-                              ? 'Auto-watch enabled - click to disable'
-                              : 'Enable auto-watch for new images'
-                        }
-                      >
-                        <Eye className={`w-4 h-4 ${dir.autoWatch ? 'fill-current' : ''}`} />
                       </button>
                       <button
                         onClick={() => onRemoveDirectory(dir.id)}
