@@ -79,6 +79,7 @@ export default function App() {
   // Folder selection selectors
   const selectedFolders = useImageStore((state) => state.selectedFolders);
   const isFolderSelectionLoaded = useImageStore((state) => state.isFolderSelectionLoaded);
+  const includeSubfolders = useImageStore((state) => state.includeSubfolders);
 
   // Modal state selectors
   const isComparisonModalOpen = useImageStore((state) => state.isComparisonModalOpen);
@@ -96,6 +97,7 @@ export default function App() {
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
   const isFolderSelected = useImageStore((state) => state.isFolderSelected);
+  const toggleIncludeSubfolders = useImageStore((state) => state.toggleIncludeSubfolders);
   const resetState = useImageStore((state) => state.resetState);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
@@ -624,6 +626,8 @@ export default function App() {
             onToggleFolderSelection={toggleFolderSelection}
             isFolderSelected={isFolderSelected}
             selectedFolders={selectedFolders}
+            includeSubfolders={includeSubfolders}
+            onToggleIncludeSubfolders={toggleIncludeSubfolders}
             isIndexing={indexingState === 'indexing' || indexingState === 'paused' || indexingState === 'completed'}
             scanSubfolders={scanSubfolders}
           />

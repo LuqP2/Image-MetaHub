@@ -113,6 +113,7 @@ interface ImageState {
   directories: Directory[];
   selectedFolders: Set<string>;
   isFolderSelectionLoaded: boolean;
+  includeSubfolders: boolean;
 
   // UI State
   isLoading: boolean;
@@ -176,6 +177,7 @@ interface ImageState {
   initializeFolderSelection: () => Promise<void>;
   toggleFolderSelection: (path: string, ctrlKey: boolean) => void;
   isFolderSelected: (path: string) => boolean;
+  toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
   setEnrichmentProgress: (progress: { processed: number; total: number } | null) => void;
@@ -446,7 +448,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, includeSubfolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -458,7 +460,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             directoryPathMap.set(dir.id, normalized);
         });
 
-        // Direct matching - only show images if their folder is explicitly selected
+        // Filter images based on folder selection
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
@@ -469,10 +471,25 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return false;
             }
 
-            const folderPath = getImageFolderPath(img, parentPath);
+            const folderPath = normalizePath(getImageFolderPath(img, parentPath));
 
-            // Direct matching - no inheritance
-            return selectedFolders.has(normalizePath(folderPath));
+            // Direct matching - check if folder is explicitly selected
+            if (selectedFolders.has(folderPath)) {
+                return true;
+            }
+
+            // If includeSubfolders is enabled, check if any parent folder is selected
+            if (includeSubfolders) {
+                for (const selectedFolder of selectedFolders) {
+                    const normalizedSelected = normalizePath(selectedFolder);
+                    // Check if folderPath is a subfolder of selectedFolder
+                    if (folderPath.startsWith(normalizedSelected + '/') || folderPath.startsWith(normalizedSelected + '\\')) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         });
 
         let results = selectionFiltered;
@@ -661,6 +678,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         directories: [],
         selectedFolders: new Set(),
         isFolderSelectionLoaded: false,
+        includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
         progress: null,
         enrichmentProgress: null,
@@ -802,6 +820,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         isFolderSelected: (path) => {
             const normalizedPath = normalizePath(path);
             return get().selectedFolders.has(normalizedPath);
+        },
+
+        toggleIncludeSubfolders: () => {
+            set(state => {
+                const newValue = !state.includeSubfolders;
+                localStorage.setItem('image-metahub-include-subfolders', String(newValue));
+                const newState = { ...state, includeSubfolders: newValue };
+                return { ...newState, ...filterAndSort(newState) };
+            });
         },
 
         removeDirectory: (directoryId) => {

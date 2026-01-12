@@ -12,6 +12,8 @@ interface DirectoryListProps {
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   isFolderSelected?: (path: string) => boolean;
   selectedFolders?: Set<string>;
+  includeSubfolders?: boolean;
+  onToggleIncludeSubfolders?: () => void;
   isIndexing?: boolean;
   scanSubfolders?: boolean;
 }
@@ -51,6 +53,8 @@ export default function DirectoryList({
   onToggleFolderSelection,
   isFolderSelected,
   selectedFolders = new Set<string>(),
+  includeSubfolders = true,
+  onToggleIncludeSubfolders,
   isIndexing = false,
   scanSubfolders = false
 }: DirectoryListProps) {
@@ -259,6 +263,22 @@ export default function DirectoryList({
           <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
             {directories.length}
           </span>
+          {onToggleIncludeSubfolders && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleIncludeSubfolders();
+              }}
+              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                includeSubfolders
+                  ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-500'
+                  : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+              }`}
+              title={includeSubfolders ? 'Including subfolders (click to disable)' : 'Not including subfolders (click to enable)'}
+            >
+              {includeSubfolders ? '📁 + Subfolders' : '📁 Direct'}
+            </button>
+          )}
         </div>
         <ChevronDown
           className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
