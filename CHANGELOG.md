@@ -5,18 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.0] - 2025-01-xx
+## [0.12.0] - 2025-01-12
 
 ### Added
-
-- **Enhanced Generation Workflow**: Comprehensive improvements to image generation modals and accessibility:
-  - Generate dropdown in header for quick access to A1111 and ComfyUI generation from anywhere
-  - Support for generation from scratch without requiring a base image
-  - "Generate with ComfyUI" option added to gallery context menu alongside A1111
-  - Parameter persistence across sessions: model, LoRAs, cfg_scale, steps, randomSeed, and sampler/scheduler
-  - "Load from Image" button to restore original image parameters after adjusting persisted values
-  - Separated Sampler and Scheduler into distinct fields in ComfyUI modal (matching ComfyUI interface)
-  - Pro feature gating with Crown badges for non-licensed users
 
 - **Smart Library Foundation - Image Clustering**: Revolutionary clustering system that organizes images into prompt-similarity stacks:
   - Background clustering worker with TF-IDF vectorization and hierarchical clustering
@@ -26,15 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - StackExpandedView for browsing images within each cluster
   - Real-time progress streaming across clustering phases
   - File watcher integration: deletions automatically update clusters and remove empty ones
-
+ 
 - **TF-IDF Auto-Tagging Engine**: Intelligent automatic tag generation from image metadata:
   - Metadata-weighted boosts for model and LoRA names for more relevant tags
   - ComfyUI workflow facts resolver for enhanced metadata extraction
-  - Auto-tags persisted during indexing in the store
   - Displayed in ImageModal and ImagePreviewSidebar
   - Auto-tag filtering with frequency counts
   - "Promote to tag" workflow to convert auto-tags into permanent tags
   - Per-tag removal capability
+
+- **Enhanced Generation Workflow**: Comprehensive improvements to image generation modals and accessibility:
+  - Generate dropdown in header for quick access to A1111 and ComfyUI generation from anywhere
+  - Support for generation from scratch without requiring a base image
+  - "Generate" option added to gallery context menu
+  - Parameter persistence across sessions: model, LoRAs, cfg_scale, steps, randomSeed, and sampler/scheduler
+  - "Load from Image" button to restore original image parameters after adjusting persisted values
+  - Separated Sampler and Scheduler into distinct fields in ComfyUI modal (matching ComfyUI interface)
 
 - **Smart Library UI**: Complete browsing interface for clustered images:
   - SmartLibrary.tsx with grid layout for stack cards
@@ -44,16 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Aligned with Gallery view for consistent experience
   - Reuses ImageGrid component for efficiency
 
-- **Intelligent Deduplication Helper (Beta)**: Advanced tool for managing duplicate images:
+- **Intelligent Deduplication Helper (Beta)**: Foundation for managing duplicate images:
   - Heuristic ranking: favorites -> file size -> creation date
   - Visual badges in ImageGrid for "best" vs "archived" images
   - Manual selection override support
   - Disk space savings estimation
   - Persistent deduplication preferences
-  - Integrated into StackExpandedView
-  - Marked as beta feature with appropriate labeling
 
 ### Changed
+
 - **Directory Navigation**
  - Refactored root folder behavior to align with standard Explorer patterns. Clicking a root folder row now selects and filters its content directly instead of opening the system file explorer.
  - "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
