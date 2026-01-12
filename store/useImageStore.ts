@@ -8,6 +8,8 @@ import {
   getAllTags,
 } from '../services/imageAnnotationsStorage';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { useLicenseStore } from './useLicenseStore';
+import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
 
 type SelectionState = StoredSelectionState;
 
@@ -205,6 +207,12 @@ interface ImageState {
   clusteringWorker: Worker | null;
   isClustering: boolean;
   clusterNavigationContext: IndexedImage[] | null; // Images from currently opened cluster for modal navigation
+  clusteringMetadata: {
+    processedCount: number;
+    remainingCount: number;
+    isLimited: boolean;
+    lockedImageIds: Set<string>; // IDs of images in the "preview locked" range
+  } | null;
 
   // Auto-Tagging State (Phase 3)
   tfidfModel: TFIDFModel | null;
@@ -794,6 +802,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         clusteringWorker: null,
         isClustering: false,
         clusterNavigationContext: null,
+        clusteringMetadata: null,
 
         // Auto-Tagging initial values (Phase 3)
         tfidfModel: null,
@@ -1224,13 +1233,45 @@ export const useImageStore = create<ImageState>((set, get) => {
                 existingWorker.terminate();
             }
 
+            // Get clustering limits from license store directly (can't use hooks in Zustand actions)
+            const licenseStore = useLicenseStore.getState();
+            const isPro = licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
+            const isTrialActive = licenseStore.licenseStatus === 'trial';
+
+            // Filter images with prompts
+            const imagesWithPrompts = images.filter(img => img.prompt && img.prompt.trim().length > 0);
+
+            // For free users: process CLUSTERING_PREVIEW_LIMIT (1500) images
+            // - First 1000: shown normally
+            // - Next 500: shown blurred (locked preview)
+            const processingLimit = (isPro || isTrialActive) ? Infinity : CLUSTERING_PREVIEW_LIMIT;
+            const limitedImages = imagesWithPrompts.slice(0, processingLimit);
+            const remainingCount = Math.max(0, imagesWithPrompts.length - processingLimit);
+
+            // Track which images are in the "locked preview" range (1001-1500)
+            const lockedImageIds = new Set<string>();
+            if (!isPro && !isTrialActive && imagesWithPrompts.length > CLUSTERING_FREE_TIER_LIMIT) {
+                const lockedImages = imagesWithPrompts.slice(CLUSTERING_FREE_TIER_LIMIT, processingLimit);
+                lockedImages.forEach(img => lockedImageIds.add(img.id));
+            }
+
+            // Store metadata for banner display and locked preview
+            set({
+                clusteringMetadata: {
+                    processedCount: Math.min(limitedImages.length, CLUSTERING_FREE_TIER_LIMIT),
+                    remainingCount: remainingCount,
+                    isLimited: remainingCount > 0,
+                    lockedImageIds,
+                }
+            });
+
             // Create new worker
             const worker = new Worker(
                 new URL('../services/workers/clusteringWorker.ts', import.meta.url),
                 { type: 'module' }
             );
 
-            set({ clusteringWorker: worker, isClustering: true, clusteringProgress: { current: 0, total: images.length, message: 'Initializing...' } });
+            set({ clusteringWorker: worker, isClustering: true, clusteringProgress: { current: 0, total: limitedImages.length, message: 'Initializing...' } });
 
             // Handle worker messages
             worker.onmessage = (e: MessageEvent) => {
@@ -1266,13 +1307,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             };
 
             // Prepare lightweight data for worker (90% less data)
-            const lightweightImages = images
-                .filter(img => img.prompt && img.prompt.trim().length > 0)
-                .map(img => ({
-                    id: img.id,
-                    prompt: img.prompt!,
-                    lastModified: img.lastModified,
-                }));
+            const lightweightImages = limitedImages.map(img => ({
+                id: img.id,
+                prompt: img.prompt!,
+                lastModified: img.lastModified,
+            }));
 
             // Start clustering
             worker.postMessage({

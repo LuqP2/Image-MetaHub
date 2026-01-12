@@ -34,14 +34,21 @@ import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
+import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './components/A1111GenerateModal';
+import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
+import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
+import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
+import { type IndexedImage, type BaseMetadata } from './types';
 
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
-  
+
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
+  const { generateWithA1111, isGenerating: isGeneratingA1111 } = useGenerateWithA1111();
+  const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
@@ -137,6 +144,8 @@ export default function App() {
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
+  const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
+  const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -179,6 +188,28 @@ export default function App() {
 
   const handleOpenLicenseSettings = () => {
     handleOpenSettings('general', 'license');
+  };
+
+  // Create a dummy image for generation from scratch (no base image)
+  const createDummyImage = (): IndexedImage => {
+    return {
+      id: 'dummy-generation',
+      name: 'New Generation',
+      lastModified: Date.now(),
+      directoryId: '',
+      handle: {} as FileSystemFileHandle,
+      metadata: {
+        normalizedMetadata: {
+          prompt: '',
+          negativePrompt: '',
+          steps: 20,
+          cfg_scale: 7.0,
+          seed: -1,
+          width: 1024,
+          height: 1024,
+        }
+      }
+    };
   };
 
   useEffect(() => {
@@ -641,6 +672,8 @@ export default function App() {
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenLicense={handleOpenLicenseSettings}
+          onOpenA1111Generate={() => setIsA1111GenerateModalOpen(true)}
+          onOpenComfyUIGenerate={() => setIsComfyUIGenerateModalOpen(true)}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -793,6 +826,62 @@ export default function App() {
           isExpired={isExpired}
           isPro={isPro}
         />
+
+        {/* Generate from Scratch Modals */}
+        {isA1111GenerateModalOpen && (
+          <A1111GenerateModal
+            isOpen={isA1111GenerateModalOpen}
+            onClose={() => setIsA1111GenerateModalOpen(false)}
+            image={createDummyImage()}
+            onGenerate={async (params: A1111GenerationParams) => {
+              const customMetadata: Partial<BaseMetadata> = {
+                prompt: params.prompt,
+                negativePrompt: params.negativePrompt,
+                cfg_scale: params.cfgScale,
+                steps: params.steps,
+                seed: params.randomSeed ? -1 : params.seed,
+                width: params.width,
+                height: params.height,
+                model: params.model,
+                ...(params.sampler ? { sampler: params.sampler } : {}),
+              };
+              await generateWithA1111(createDummyImage(), customMetadata, params.numberOfImages);
+              setIsA1111GenerateModalOpen(false);
+            }}
+            isGenerating={isGeneratingA1111}
+          />
+        )}
+
+        {isComfyUIGenerateModalOpen && (
+          <ComfyUIGenerateModal
+            isOpen={isComfyUIGenerateModalOpen}
+            onClose={() => setIsComfyUIGenerateModalOpen(false)}
+            image={createDummyImage()}
+            onGenerate={async (params: ComfyUIGenerationParams) => {
+              const customMetadata: Partial<BaseMetadata> = {
+                prompt: params.prompt,
+                negativePrompt: params.negativePrompt,
+                cfg_scale: params.cfgScale,
+                steps: params.steps,
+                seed: params.randomSeed ? -1 : params.seed,
+                width: params.width,
+                height: params.height,
+                batch_size: params.numberOfImages,
+                ...(params.sampler ? { sampler: params.sampler } : {}),
+                ...(params.scheduler ? { scheduler: params.scheduler } : {}),
+              };
+              await generateWithComfyUI(createDummyImage(), {
+                customMetadata,
+                overrides: {
+                  model: params.model,
+                  loras: params.loras,
+                },
+              });
+              setIsComfyUIGenerateModalOpen(false);
+            }}
+            isGenerating={isGeneratingComfyUI}
+          />
+        )}
       </div>
     </div>
   );

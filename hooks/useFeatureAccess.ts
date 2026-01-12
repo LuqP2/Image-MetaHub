@@ -2,7 +2,10 @@ import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering';
+
+export const CLUSTERING_FREE_TIER_LIMIT = 300;
+export const CLUSTERING_PREVIEW_LIMIT = 500; // Process extra for blurred preview
 
 type ProModalState = {
   proModalOpen: boolean;
@@ -112,6 +115,10 @@ export const useFeatureAccess = () => {
     canUseComfyUI,
     canUseComparison,
     canUseAnalytics,
+
+    // Clustering limits
+    canUseFullClustering: canUseDuringTrialOrPro,
+    clusteringImageLimit: canUseDuringTrialOrPro ? Infinity : CLUSTERING_FREE_TIER_LIMIT,
 
     // Status
     isTrialActive,

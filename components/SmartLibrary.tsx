@@ -8,6 +8,7 @@ import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ImageCluster, IndexedImage } from '../types';
 import StackCard from './StackCard';
 import StackExpandedView from './StackExpandedView';
+import ClusterUpgradeBanner from './ClusterUpgradeBanner';
 import Footer from './Footer';
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
@@ -29,6 +30,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const isClustering = useImageStore((state) => state.isClustering);
   const clusteringProgress = useImageStore((state) => state.clusteringProgress);
+  const clusteringMetadata = useImageStore((state) => state.clusteringMetadata);
   const isAutoTagging = useImageStore((state) => state.isAutoTagging);
   const autoTaggingProgress = useImageStore((state) => state.autoTaggingProgress);
   const startClustering = useImageStore((state) => state.startClustering);
@@ -52,6 +54,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
   const [stackPage, setStackPage] = useState(1);
   const [clusterPage, setClusterPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'count' | 'similarity'>('count');
 
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
@@ -65,18 +68,52 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
           .map((id) => imageMap.get(id))
           .filter((image): image is IndexedImage => Boolean(image)),
       }))
-      .filter((entry) => entry.images.length > 0);
+      .filter((entry) => entry.images.length >= 3); // Minimum 3 images per cluster
   }, [clusters, imageMap]);
 
   const sortedEntries = useMemo(() => {
-    return [...clusterEntries].sort((a, b) => {
-      const imageCountDelta = b.images.length - a.images.length;
-      if (imageCountDelta !== 0) {
-        return imageCountDelta;
+    // Separate locked and unlocked clusters
+    const lockedImageIds = clusteringMetadata?.lockedImageIds || new Set();
+    const unlocked: ClusterEntry[] = [];
+    const locked: ClusterEntry[] = [];
+
+    clusterEntries.forEach((entry) => {
+      // Count how many images in this cluster are locked
+      const lockedCount = entry.images.filter((img) => lockedImageIds.has(img.id)).length;
+      const lockedPercentage = entry.images.length > 0 ? lockedCount / entry.images.length : 0;
+
+      // If more than 50% of images are locked, mark cluster as locked
+      if (lockedPercentage > 0.5) {
+        locked.push(entry);
+      } else {
+        unlocked.push(entry);
       }
-      return b.cluster.size - a.cluster.size;
     });
-  }, [clusterEntries]);
+
+    // Sort function based on selected sort mode
+    const sortFunction = (a: ClusterEntry, b: ClusterEntry) => {
+      if (sortBy === 'similarity') {
+        // Sort by similarity (higher similarity first)
+        return b.cluster.similarityThreshold - a.cluster.similarityThreshold;
+      } else {
+        // Sort by count (more images first)
+        const imageCountDelta = b.images.length - a.images.length;
+        if (imageCountDelta !== 0) {
+          return imageCountDelta;
+        }
+        return b.cluster.size - a.cluster.size;
+      }
+    };
+
+    unlocked.sort(sortFunction);
+    locked.sort(sortFunction);
+
+    // Limit locked preview to only 5 clusters (for teaser effect)
+    const lockedPreview = locked.slice(0, 5);
+
+    // Return unlocked first, then limited locked preview
+    return [...unlocked, ...lockedPreview];
+  }, [clusterEntries, clusteringMetadata, sortBy]);
 
   const stackTotalPages = Math.ceil(sortedEntries.length / itemsPerPage);
   const paginatedEntries = useMemo(() => {
@@ -158,6 +195,19 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {clusters.length > 0 && !activeCluster && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-400 font-medium">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'count' | 'similarity')}
+                className="px-3 py-2 bg-gray-900/60 border border-gray-700 rounded-md text-xs text-gray-200 hover:bg-gray-800/80 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              >
+                <option value="count">Image Count</option>
+                <option value="similarity">Similarity</option>
+              </select>
+            </div>
+          )}
           <button
             onClick={handleGenerateClusters}
             disabled={!hasDirectories || isClustering}
@@ -260,15 +310,33 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
         ) : (
           <div className="min-h-0 overflow-auto pr-1">
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {paginatedEntries.map((entry) => (
-                <StackCard
-                  key={entry.cluster.id}
-                  cluster={entry.cluster}
-                  images={entry.images}
-                  onOpen={() => setExpandedClusterId(entry.cluster.id)}
-                />
-              ))}
+              {paginatedEntries.map((entry) => {
+                // Check if majority of images in this cluster are locked
+                const lockedImageIds = clusteringMetadata?.lockedImageIds || new Set();
+                const lockedCount = entry.images.filter((img) => lockedImageIds.has(img.id)).length;
+                const lockedPercentage = entry.images.length > 0 ? lockedCount / entry.images.length : 0;
+                const isLocked = lockedPercentage > 0.5;
+
+                return (
+                  <StackCard
+                    key={entry.cluster.id}
+                    cluster={entry.cluster}
+                    images={entry.images}
+                    onOpen={() => setExpandedClusterId(entry.cluster.id)}
+                    isLocked={isLocked}
+                  />
+                );
+              })}
             </div>
+
+            {/* Upgrade banner */}
+            {clusteringMetadata && clusteringMetadata.isLimited && (
+              <ClusterUpgradeBanner
+                processedCount={clusteringMetadata.processedCount}
+                remainingCount={clusteringMetadata.remainingCount}
+                clusterCount={sortedEntries.length}
+              />
+            )}
           </div>
         )}
       </div>

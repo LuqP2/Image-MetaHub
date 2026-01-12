@@ -9,12 +9,12 @@
 
 ## What is Image MetaHub?
 
-Image MetaHub is a **local image browser and manager** focused on AI‑generated images.
-It scans your folders, parses metadata from popular tools (Automatic1111, ComfyUI, Fooocus, SD.Next, Forge, SwarmUI, DrawThings) and online services like Midjourney / Nijijourney, whenever their metadata is present in the files. and lets you search, filter and organize your images by prompt, model, sampler, seed and more – all **offline**, on your machine.
+Image MetaHub is a **local image browser and manager** focused on AI-generated images.
+It scans your folders, parses metadata from popular tools (Automatic1111, ComfyUI, Fooocus, SD.Next, Forge, SwarmUI, DrawThings) and online services like Midjourney / Nijijourney, whenever their metadata is present in the files, and lets you search, filter and organize your images by prompt, model, sampler, seed and more - all **offline**, on your machine.
 
-It is open‑source (MPL 2.0) and free to use, with optional **Pro features** for power users.
+It is open-source (MPL 2.0) and free to use, with optional **Pro features** for power users.
 
-> *Previously known as **"Local Image Browser for InvokeAI"** – renamed as the project grew beyond a single backend into a broader AI image hub.*
+> *Previously known as **"Local Image Browser for InvokeAI"** - renamed as the project grew beyond a single backend into a broader AI image hub.*
 
 ---
 
@@ -24,14 +24,16 @@ It is open‑source (MPL 2.0) and free to use, with optional **Pro features** fo
 * **Rich metadata parsing** for Stable Diffusion / A1111 / ComfyUI and other tools, including WebP format
 * **Auto-Watch functionality** for real-time monitoring of output folders during generation
 * **Powerful search & filters** by prompt text, model, steps, CFG, sampler, seed, etc.
-* **Tagging & organization** to build your own curated libraries
+* **Smart Library** with clustering stacks and collections
+* **Auto-tags and manual tags** for faster organization and discovery
+* **Deduplication helper (Experimental)** to pick the best images in a stack
 * **Compare tools** with diff view to inspect variations side-by-side (Pro)
 * **Analytics dashboard** with performance metrics and verified telemetry badges (Pro)
 * **Automatic1111 integration** with model/LoRA selection and image size controls (Pro)
 * **ComfyUI integration** with full workflow-based generation and real-time progress tracking (Pro)
 * **Unified generation queue** for tracking both A1111 and ComfyUI jobs in one place (Pro)
 
-Below sections go into more detail – but if you just want to try it, jump to **Getting started**.
+Below sections go into more detail - but if you just want to try it, jump to **Getting started**.
 
 ---
 
@@ -39,14 +41,16 @@ Below sections go into more detail – but if you just want to try it, jump to *
 
 Image MetaHub is developed as a hybrid model:
 
-* The **core app is free and open‑source (MPL 2.0)** – this repository.
+* The **core app is free and open-source (MPL 2.0)** - this repository.
 * Some **advanced workflow features are Pro** and require a license key to unlock in the desktop app.
 
 **Free (core) includes for example:**
 
 * Scanning folders and caching metadata
 * Browsing, searching and filtering images
-* Basic collections / organization features
+* Smart Library clustering stacks and collections
+* Auto-tags suggestions and manual tag workflows
+* Deduplication helper (beta) for stack cleanup
 
 **Pro currently unlocks:**
 
@@ -56,7 +60,7 @@ Image MetaHub is developed as a hybrid model:
 * Compare panel with intelligent diff view for variations
 * Analytics dashboard with performance metrics and verified telemetry
 
-The goal is to keep the core tool open and useful for everyone, while making heavy‑duty workflow features help sustain the project.
+The goal is to keep the core tool open and useful for everyone, while making heavy-duty workflow features help sustain the project.
 
 ---
 
@@ -72,7 +76,7 @@ The goal is to keep the core tool open and useful for everyone, while making hea
 
 3. **Add your image folders**
 
-   * Point the app to the directories where you keep your AI‑generated images.
+   * Point the app to the directories where you keep your AI-generated images.
    * Image MetaHub will scan and index them, reading metadata where available.
 
 4. **Start browsing & filtering**
@@ -100,6 +104,17 @@ Perfect for monitoring ComfyUI or Automatic1111 output folders during active gen
 
 ---
 
+## Smart Library: Clustering, auto-tags, and dedup (beta)
+
+The Smart Library groups similar images into stacks using prompt similarity, so you can browse variations together and manage large libraries faster.
+
+* **Clustering stacks** - Background worker builds stacks from prompt similarity with progress updates and cached results
+* **Collections sidebar** - Filter stacks by model and auto-tag collections
+* **Auto-tags** - TF-IDF suggestions from prompts and metadata, with promote-to-tag and removal workflows
+* **Dedup helper (beta)** - Suggests best vs archived images in a stack and estimates disk space savings
+
+---
+
 ## Metadata support
 
 Image MetaHub parses metadata from:
@@ -114,6 +129,8 @@ Image MetaHub parses metadata from:
 * Online services like Midjourney / Nijijourney (when prompts/settings are saved into the downloaded files)
 * Other tools that store generation parameters in PNG/JPG/WebP metadata
 
+> **New in v0.12.0 - Smart Library + Auto-Tags:** Image MetaHub can now cluster similar prompts into stacks, generate TF-IDF auto-tags, and surface dedup suggestions for large libraries.
+>
 > **NEW in v0.11.0 - Official MetaHub Save Node for ComfyUI:** We've released an [official companion custom node](https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save) ([ComfyUI Registry](https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save)) designed specifically for Image MetaHub. This node guarantees full metadata compatibility by auto-extracting all generation parameters and saving them in both A1111 and Image MetaHub formats.
 >
 > For legacy ComfyUI images without MetaHub Save Node, Image MetaHub attempts to parse metadata from standard workflow formats, though coverage may vary depending on custom nodes and workflow complexity.
@@ -189,14 +206,14 @@ With Pro enabled, Image MetaHub can generate variations of your images by sendin
 
 Image MetaHub creates a **basic txt2img workflow** from the extracted metadata. This means:
 
-✅ **Preserved Parameters:**
+**Preserved Parameters:**
 - Positive and negative prompts
 - Model name (checkpoint)
 - Seed, steps, CFG scale
 - Sampler and scheduler
 - Image dimensions (width/height)
 
-❌ **Not Preserved (Advanced Features):**
+**Not Preserved (Advanced Features):**
 - ControlNet inputs and preprocessing
 - Upscalers and high-res fixes
 - Refiner models and switch points
@@ -208,9 +225,9 @@ Image MetaHub creates a **basic txt2img workflow** from the extracted metadata. 
 
 The generated workflow is a simple linear pipeline:
 ```
-CheckpointLoader → MetaHub Timer → CLIPTextEncode (positive/negative)
-                                  ↓
-EmptyLatent → KSampler → VAEDecode → MetaHub Save Node
+CheckpointLoader -> MetaHub Timer -> CLIPTextEncode (positive/negative)
+                                    |
+EmptyLatent -> KSampler -> VAEDecode -> MetaHub Save Node
 ```
 
 The **MetaHub Timer** node is automatically included to ensure accurate `generation_time_ms` and `steps_per_second` metrics in your variation images.
@@ -218,11 +235,11 @@ The **MetaHub Timer** node is automatically included to ensure accurate `generat
 **Why This Approach?**
 
 This simplified workflow approach ensures:
--  Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
--  Consistent parameter extraction across different formats
--  Compatibility across different ComfyUI setups and versions
--  Fast workflow execution with minimal overhead
--  No dependency on complex custom nodes
+- Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
+- Consistent parameter extraction across different formats
+- Compatibility across different ComfyUI setups and versions
+- Fast workflow execution with minimal overhead
+- No dependency on complex custom nodes
 
 **Setup:**
 
@@ -349,13 +366,13 @@ npm run build
 npm run electron-dist
 ```
 
-If you’re interested in contributing (bugfixes, parser support, UX tweaks, etc.), feel free to open an issue or PR.
+If you're interested in contributing (bugfixes, parser support, UX tweaks, etc.), feel free to open an issue or PR.
 
 ---
 
 ## Privacy
 
-Image MetaHub is designed to be **local‑first**:
+Image MetaHub is designed to be **local-first**:
 
 * Your libraries and metadata stay on your machine.
 * No mandatory account, no remote server dependency.
@@ -381,14 +398,13 @@ Image MetaHub is designed to be **local‑first**:
 * Cross-generator translation - Convert A1111 parameters to optimized ComfyUI workflows
 * Community workflow library - Share and download workflow templates
 
-**Recently Completed (v0.11.0):**
+**Recently Completed (v0.12.0):**
 
-* Real-time WebSocket-based progress tracking
-* Unified generation queue for A1111 and ComfyUI
-* Complete workflow-based image generation from metadata
-* Auto-watch functionality for real-time folder monitoring
-* Enhanced metadata comparison with diff view
-* Performance metrics and verified telemetry badges
+* Smart Library clustering stacks with stack cards and expanded browsing
+* TF-IDF auto-tags with filtering, promote-to-tag, and removal workflows
+* Deduplication helper (beta) with keep/archive suggestions and disk savings
+* Background workers and progress streaming for clustering and auto-tags
+* Cache reliability improvements (atomic writes, userData fallbacks)
 
 For detailed issues and planned work, check the [Issues](https://github.com/LuqP2/Image-MetaHub/issues) and project board.
 
@@ -406,4 +422,4 @@ If you find it useful and want to support development, consider upgrading to Pro
 
 * Website: [https://imagemetahub.com](https://imagemetahub.com)
 * Get Pro on Gumroad: [https://lucasphere4660.gumroad.com/l/qmjima](https://lucasphere4660.gumroad.com/l/qmjima)
-* Support on Ko‑fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
+* Support on Ko-fi: [https://ko-fi.com/lucaspierri](https://ko-fi.com/lucaspierri)
