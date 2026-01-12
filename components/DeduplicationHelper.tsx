@@ -110,7 +110,7 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
         <div className="flex items-center gap-3">
           <Archive className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-semibold text-gray-100">
-            Deduplication Helper [Beta]
+            Deduplication Helper [Experimental]
           </span>
           {hasUserPreferences && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">

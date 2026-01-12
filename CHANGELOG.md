@@ -5,9 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.0] - 2025-01-11
+## [0.12.0] - 2025-01-xx
 
 ### Added
+
+- **Enhanced Generation Workflow**: Comprehensive improvements to image generation modals and accessibility:
+  - Generate dropdown in header for quick access to A1111 and ComfyUI generation from anywhere
+  - Support for generation from scratch without requiring a base image
+  - "Generate with ComfyUI" option added to gallery context menu alongside A1111
+  - Parameter persistence across sessions: model, LoRAs, cfg_scale, steps, randomSeed, and sampler/scheduler
+  - "Load from Image" button to restore original image parameters after adjusting persisted values
+  - Separated Sampler and Scheduler into distinct fields in ComfyUI modal (matching ComfyUI interface)
+  - Pro feature gating with Crown badges for non-licensed users
 
 - **Smart Library Foundation - Image Clustering**: Revolutionary clustering system that organizes images into prompt-similarity stacks:
   - Background clustering worker with TF-IDF vectorization and hierarchical clustering
