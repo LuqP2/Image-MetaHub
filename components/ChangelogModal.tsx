@@ -126,12 +126,14 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Image MetaHub 0.12.0 is here — Smart Library with clustering and auto-tagging!</strong></p>
+                  <p><strong className="text-white">Yes, I know I just released v0.11 a few days ago!</strong></p>
 
-                  <p>This release introduces the <strong>Smart Library Foundation</strong> with revolutionary clustering that organizes images into prompt-similarity stacks using TF-IDF vectorization and hierarchical clustering. It also brings an <strong>intelligent auto-tagging engine</strong> that automatically generates relevant tags from metadata, and the <strong>Deduplication Helper (Beta)</strong> with heuristic ranking to help manage duplicate images. Performance optimizations include lazy thumbnail loading and efficient background worker architecture.</p>
+                  <p>I wanted to quickly push <strong>v0.12.0</strong> because I fell down a rabbit hole of algorithms this weekend and built something I could not wait to share: the <strong>Smart Library</strong>.</p>
+
+                  <p>This update brings local intelligence to your chaos. Using <strong>TF-IDF vectorization</strong> and clustering algorithms, the app now automatically detects similar images (like variations of the same prompt) and stacks them for you.</p>
 
                   <div className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg">
-                    <p className="font-semibold text-purple-300 mb-2">🎉 Introducing MetaHub Custom Nodes for ComfyUI</p>
+                    <p className="font-semibold text-purple-300 mb-2">Introducing MetaHub Custom Nodes for ComfyUI</p>
                     <p className="mb-3">Two new custom nodes designed specifically for Image MetaHub:</p>
                     <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
                       <li><strong className="text-white">MetaHub Save Node</strong> - Guarantees full metadata compatibility with auto-extraction of all generation parameters</li>
@@ -163,15 +165,24 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                     </div>
                   </div>
 
-                  <p>Plus: WebP format support, intelligent diff view for comparing variations, performance metrics with verified telemetry badges, and comprehensive LoRA weight display across all parsers.</p>
+                  <div className="mt-3">
+                    <p className="font-semibold text-gray-200">New Organizational Tools (Early Access):</p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li><strong className="text-white">Auto-Tagging</strong>: The engine now suggests tags based on your metadata. (Note: tools to manually refine/edit these auto-tags are coming in the next update.)</li>
+                    </ul>
+                  </div>
 
-                  <p>Some of these new tools are Pro. The code stays open-source and everything that was free stays free — forever. The more advanced features live behind the Pro toggle. This is a local desktop app with intentionally lightweight licensing. I know it's not unbreakable. If the Pro features are useful to you and you're able to pay, a license helps me keep pushing the project forward. If not, everything that was free stays free.</p>
+                  <div className="mt-3">
+                    <p className="font-semibold text-gray-200">Experimental / Alpha Features:</p>
+                    <p><strong className="text-white">Deduplication Helper</strong>: I included a very early prototype of the deduplication tool. It is currently extremely basic/experimental. Feel free to poke around, but please wait for v0.12.1 before relying on it for heavy cleaning. I decided to leave it visible so you can see the direction we are heading.</p>
+                  </div>
 
-                  <p>There's a 7-day Pro trial that only starts <strong className="text-white">when you opt in</strong> after trying a Pro feature, so you can see in practice if the extra tools actually help your workflow.</p>
+                  <div className="mt-3">
+                    <p className="font-semibold text-gray-200">Work in Progress:</p>
+                    <p>Because we moved so fast, some UI aspects might still need tweaking. If you spot something weird, please open an <strong className="text-white">Issue on GitHub</strong>. This project thrives on your reports and contributions.</p>
+                  </div>
 
-                  <p>Details on how to get a license are on <a href="https://www.imagemetahub.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">the website</a>, or via the Get Pro / license status link in the app header.</p>
-
-                  <p className="font-medium mt-4">Thanks for supporting the project and for using Image MetaHub!</p>
+                  <p className="font-medium mt-4">A big thank you to everyone who jumped on board with the last update, submitting reports and feedback. And especially to the <strong className="text-white">Pro supporters</strong> - this weekend sprint was fueled directly by your support. Thank you for believing in the project!</p>
                 </div>
               </div>
 
