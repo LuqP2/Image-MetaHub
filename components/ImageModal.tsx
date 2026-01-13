@@ -134,6 +134,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
 
+  // Zoom and pan states
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
   // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -366,6 +372,72 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
+  // Reset zoom and pan when image changes
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [image.id]);
+
+  // Reset zoom and pan when entering/exiting fullscreen
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [isFullscreen]);
+
+  // Zoom handlers
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+
+    const delta = e.deltaY * -0.01;
+    const newZoom = Math.min(Math.max(1, zoom + delta), 5); // Min 1x, Max 5x
+
+    setZoom(newZoom);
+
+    // Reset pan if zooming out to 1x
+    if (newZoom === 1) {
+      setPan({ x: 0, y: 0 });
+    }
+  }, [zoom]);
+
+  // Pan handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (zoom > 1 && e.button === 0) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      e.preventDefault();
+    }
+  }, [zoom, pan]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDragging && zoom > 1) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  }, [isDragging, dragStart, zoom]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev + 0.5, 5));
+  };
+
+  const handleZoomOut = () => {
+    const newZoom = Math.max(zoom - 0.5, 1);
+    setZoom(newZoom);
+    if (newZoom === 1) {
+      setPan({ x: 0, y: 0 });
+    }
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
   useEffect(() => {
     let isMounted = true;
     let currentUrl: string | null = null;
@@ -494,15 +566,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('click', handleClickOutside);
 
+    // Add wheel event listener to the image container
+    const imageContainer = document.getElementById('image-zoom-container');
+    if (imageContainer) {
+      imageContainer.addEventListener('wheel', handleWheel, { passive: false });
+    }
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleClickOutside);
+      if (imageContainer) {
+        imageContainer.removeEventListener('wheel', handleWheel);
+      }
       if (currentUrl) {
         URL.revokeObjectURL(currentUrl);
       }
       isMounted = false;
     };
-  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen]);
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen, handleWheel]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
@@ -572,15 +653,37 @@ const ImageModal: React.FC<ImageModalProps> = ({
       onClick={onClose}
     >
       <div
-        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh]'} flex flex-col md:flex-row overflow-hidden`}
+        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-7xl h-full max-h-[95vh]'} flex flex-col md:flex-row overflow-hidden`}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
         }}
       >
         {/* Image Display Section */}
-        <div className={`w-full ${isFullscreen ? 'h-full' : 'md:w-2/3 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-4'} relative group`}>
-          {imageUrl ? <img src={imageUrl} alt={image.name} className="max-w-full max-h-full object-contain" onContextMenu={handleContextMenu} /> : <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>}
+        <div
+          id="image-zoom-container"
+          className={`w-full ${isFullscreen ? 'h-full' : 'md:w-3/4 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+        >
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={image.name}
+              className="max-w-full max-h-full object-contain select-none"
+              onContextMenu={handleContextMenu}
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+              }}
+              draggable={false}
+            />
+          ) : (
+            <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
+          )}
 
           {onNavigatePrevious && <button onClick={onNavigatePrevious} className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">←</button>}
           {onNavigateNext && <button onClick={onNavigateNext} className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">→</button>}
@@ -588,6 +691,40 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
+
+          {/* Zoom Controls */}
+          <div className="absolute bottom-4 left-4 flex flex-col gap-2 bg-black/60 rounded-lg p-2 backdrop-blur-sm border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handleZoomIn}
+              disabled={zoom >= 5}
+              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              title="Zoom In"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+            <div className="text-white text-xs text-center font-mono">{Math.round(zoom * 100)}%</div>
+            <button
+              onClick={handleZoomOut}
+              disabled={zoom <= 1}
+              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              title="Zoom Out"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              </svg>
+            </button>
+            <button
+              onClick={handleResetZoom}
+              disabled={zoom <= 1}
+              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs"
+              title="Reset Zoom"
+            >
+              Reset
+            </button>
+          </div>
+
           <div className="absolute top-4 right-4 flex items-center gap-2">
             <button onClick={toggleFullscreen} className="bg-black/60 text-white rounded-full px-3 py-2 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
               {isFullscreen ? 'Exit' : 'Fullscreen'}
@@ -604,7 +741,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         </div>
 
         {/* Metadata Panel */}
-        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/3 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/4 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
           <div>
             {isRenaming ? (
               <div className="flex gap-2">
