@@ -434,16 +434,21 @@ export default function App() {
     if (!window.electronAPI || directories.length === 0) return;
 
     const restoreWatchers = async () => {
+      console.log('[App] Restoring watchers for directories:', directories.map(d => ({ id: d.id, name: d.name, autoWatch: d.autoWatch })));
       for (const dir of directories) {
         if (dir.autoWatch) {
           try {
-            await window.electronAPI.startWatchingDirectory({
+            console.log(`[App] Starting watcher for ${dir.name} (${dir.path})`);
+            const result = await window.electronAPI.startWatchingDirectory({
               directoryId: dir.id,
               dirPath: dir.path
             });
+            console.log(`[App] Watcher start result for ${dir.name}:`, result);
           } catch (err) {
             console.error(`Failed to restore watcher for ${dir.path}:`, err);
           }
+        } else {
+          console.log(`[App] Skipping watcher for ${dir.name} (autoWatch: ${dir.autoWatch})`);
         }
       }
     };
@@ -452,7 +457,43 @@ export default function App() {
     const timeoutId = setTimeout(restoreWatchers, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [directories.length]); // Trigger apenas quando o número de pastas mudar
+  }, [directories]);
+
+  // Sync all directories with globalAutoWatch setting when it changes
+  useEffect(() => {
+    if (!window.electronAPI || directories.length === 0) return;
+
+    const syncAutoWatch = async () => {
+      console.log(`[App] Syncing all directories to globalAutoWatch: ${globalAutoWatch}`);
+      for (const dir of directories) {
+        // Update directory autoWatch state if it differs from global
+        if (dir.autoWatch !== globalAutoWatch) {
+          console.log(`[App] Updating ${dir.name} autoWatch from ${dir.autoWatch} to ${globalAutoWatch}`);
+          toggleAutoWatch(dir.id);
+
+          // Start or stop watcher based on new state
+          try {
+            if (globalAutoWatch) {
+              const result = await window.electronAPI.startWatchingDirectory({
+                directoryId: dir.id,
+                dirPath: dir.path
+              });
+              console.log(`[App] Started watcher for ${dir.name}:`, result);
+            } else {
+              await window.electronAPI.stopWatchingDirectory({
+                directoryId: dir.id
+              });
+              console.log(`[App] Stopped watcher for ${dir.name}`);
+            }
+          } catch (err) {
+            console.error(`Failed to sync watcher for ${dir.path}:`, err);
+          }
+        }
+      }
+    };
+
+    syncAutoWatch();
+  }, [globalAutoWatch]);
 
   // Auto-dismiss new images toast after 5 seconds
   useEffect(() => {

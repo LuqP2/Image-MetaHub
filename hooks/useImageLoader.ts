@@ -874,11 +874,8 @@ export function useImageLoader() {
                         return;
                     }
 
-                    // Load autoWatch states
-                    const storedWatchStates = localStorage.getItem('image-metahub-directory-watchers');
-                    const watchStates: Record<string, { enabled: boolean; path: string }> = storedWatchStates
-                        ? JSON.parse(storedWatchStates)
-                        : {};
+                    // Use global auto-watch setting for all directories
+                    const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
 
                     // First, add all directories to the store without loading.
                     for (const path of paths) {
@@ -886,11 +883,8 @@ export function useImageLoader() {
                         const handle = { name, kind: 'directory' } as any;
                         const directoryId = path;
 
-                        // Check if this directory has autoWatch enabled, default to global setting
-                        const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
-                        const autoWatch = watchStates[directoryId]?.enabled ?? globalAutoWatch;
-
-                        const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch };
+                        // All directories use the global auto-watch setting
+                        const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch: globalAutoWatch };
                         addDirectory(newDirectory);
                     }
                     
