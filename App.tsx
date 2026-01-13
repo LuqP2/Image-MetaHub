@@ -102,6 +102,7 @@ export default function App() {
   const updateImage = useImageStore((state) => state.updateImage);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
+  const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
   const isFolderSelected = useImageStore((state) => state.isFolderSelected);
   const toggleIncludeSubfolders = useImageStore((state) => state.toggleIncludeSubfolders);
   const resetState = useImageStore((state) => state.resetState);
@@ -635,6 +636,7 @@ export default function App() {
             onUpdateDirectory={handleUpdateFolder}
             refreshingDirectories={refreshingDirectories}
             onToggleFolderSelection={toggleFolderSelection}
+            onClearFolderSelection={clearFolderSelection}
             isFolderSelected={isFolderSelected}
             selectedFolders={selectedFolders}
             includeSubfolders={includeSubfolders}

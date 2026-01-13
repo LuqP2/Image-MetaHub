@@ -8,6 +8,7 @@ interface DirectoryListProps {
   onUpdateDirectory: (directoryId: string) => void;
   refreshingDirectories?: Set<string>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
+  onClearFolderSelection?: () => void;
   isFolderSelected?: (path: string) => boolean;
   selectedFolders?: Set<string>;
   includeSubfolders?: boolean;
@@ -47,6 +48,7 @@ export default function DirectoryList({
   onUpdateDirectory,
   refreshingDirectories,
   onToggleFolderSelection,
+  onClearFolderSelection,
   isFolderSelected,
   selectedFolders = new Set<string>(),
   includeSubfolders = true,
@@ -268,6 +270,11 @@ export default function DirectoryList({
           <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
             {directories.length}
           </span>
+          {selectedFolders.size > 0 && (
+            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded border border-blue-500">
+              {selectedFolders.size} selected
+            </span>
+          )}
           {onToggleIncludeSubfolders && (
             <button
               onClick={(e) => {
@@ -282,6 +289,18 @@ export default function DirectoryList({
               title={includeSubfolders ? 'Including subfolders (click to disable)' : 'Not including subfolders (click to enable)'}
             >
               {includeSubfolders ? '📁 + Subfolders' : '📁 Direct'}
+            </button>
+          )}
+          {selectedFolders.size > 0 && onClearFolderSelection && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClearFolderSelection();
+              }}
+              className="text-xs px-2 py-0.5 rounded border transition-colors bg-gray-700 border-gray-600 text-gray-400 hover:bg-red-600 hover:border-red-500 hover:text-white"
+              title="Clear selection to show all folders"
+            >
+              Clear
             </button>
           )}
         </div>

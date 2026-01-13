@@ -184,6 +184,7 @@ interface ImageState {
   toggleAutoWatch: (directoryId: string) => void;
   initializeFolderSelection: () => Promise<void>;
   toggleFolderSelection: (path: string, ctrlKey: boolean) => void;
+  clearFolderSelection: () => void;
   isFolderSelected: (path: string) => boolean;
   toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
@@ -472,6 +473,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
+            }
+
+            // If no folders are selected, show all images from visible directories
+            if (selectedFolders.size === 0) {
+                return true;
             }
 
             const parentPath = directoryPathMap.get(img.directoryId || '');
@@ -806,8 +812,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                     }
                 } else {
                     // Single select: replace all with this folder
-                    selection.clear();
-                    selection.add(normalizedPath);
+                    // If clicking the same folder that's already the only selection, clear it
+                    if (selection.size === 1 && selection.has(normalizedPath)) {
+                        selection.clear();
+                    } else {
+                        selection.clear();
+                        selection.add(normalizedPath);
+                    }
                 }
 
                 const newState = { ...state, selectedFolders: selection };
@@ -819,6 +830,26 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 // Persist to IndexedDB
                 saveSelectedFolders(Array.from(selection)).catch((error) => {
+                    console.error('Failed to persist folder selection state', error);
+                });
+
+                return finalState;
+            });
+        },
+
+        clearFolderSelection: () => {
+            set(state => {
+                const selection = new Set<string>();
+
+                const newState = { ...state, selectedFolders: selection };
+                const resultState = { ...newState, ...filterAndSort(newState) };
+
+                // Recalculate available filters based on the new filtered images
+                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
+                const finalState = { ...resultState, ...availableFilters };
+
+                // Persist to IndexedDB
+                saveSelectedFolders([]).catch((error) => {
                     console.error('Failed to persist folder selection state', error);
                 });
 
