@@ -126,9 +126,9 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Yes, I know I just released v0.11 a few days ago!</strong></p>
+                  <p><strong className="text-white">Yeah, I know: v0.11 was released just a few days ago...</strong></p>
 
-                  <p>I wanted to quickly push <strong>v0.12.0</strong> because I fell down a rabbit hole of algorithms this weekend and built something I could not wait to share: the <strong>Smart Library</strong>.</p>
+                  <p>The thing is, I wanted to quickly push <strong>v0.12.0</strong> because I fell down a rabbit hole of algorithms this weekend and built something I could not wait to share: the <strong>Smart Library</strong>.</p>
 
                   <p>This update brings local intelligence to your chaos. Using <strong>TF-IDF vectorization</strong> and clustering algorithms, the app now automatically detects similar images (like variations of the same prompt) and stacks them for you.</p>
 
