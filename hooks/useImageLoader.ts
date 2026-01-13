@@ -830,6 +830,21 @@ export function useImageLoader() {
             // Now load the content of the new directory
             await loadDirectory(newDirectory, false);
 
+            // Start watcher if autoWatch is enabled
+            if (getIsElectron() && newDirectory.autoWatch) {
+                try {
+                    const result = await window.electronAPI.startWatchingDirectory({
+                        directoryId: newDirectory.id,
+                        dirPath: newDirectory.path
+                    });
+                    if (!result.success) {
+                        console.error(`Failed to start auto-watch: ${result.error}`);
+                    }
+                } catch (err) {
+                    console.error('Error starting auto-watch:', err);
+                }
+            }
+
         } catch (err) {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
@@ -859,12 +874,23 @@ export function useImageLoader() {
                         return;
                     }
 
+                    // Load autoWatch states
+                    const storedWatchStates = localStorage.getItem('image-metahub-directory-watchers');
+                    const watchStates: Record<string, { enabled: boolean; path: string }> = storedWatchStates
+                        ? JSON.parse(storedWatchStates)
+                        : {};
+
                     // First, add all directories to the store without loading.
                     for (const path of paths) {
                         const name = path.split(/\/|\\/).pop() || 'Loaded Folder';
                         const handle = { name, kind: 'directory' } as any;
                         const directoryId = path;
-                        const newDirectory: Directory = { id: directoryId, path, name, handle };
+
+                        // Check if this directory has autoWatch enabled, default to global setting
+                        const globalAutoWatch = useSettingsStore.getState().globalAutoWatch;
+                        const autoWatch = watchStates[directoryId]?.enabled ?? globalAutoWatch;
+
+                        const newDirectory: Directory = { id: directoryId, path, name, handle, autoWatch };
                         addDirectory(newDirectory);
                     }
                     

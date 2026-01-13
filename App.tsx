@@ -347,10 +347,25 @@ export default function App() {
       // Load the directory using the hook's loadDirectory function
       await loadDirectory(newDirectory, false);
 
+      // Start watcher if autoWatch is enabled
+      if (window.electronAPI && globalAutoWatch) {
+        try {
+          const result = await window.electronAPI.startWatchingDirectory({
+            directoryId: path,
+            dirPath: path
+          });
+          if (!result.success) {
+            console.error(`Failed to start auto-watch: ${result.error}`);
+          }
+        } catch (err) {
+          console.error('Error starting auto-watch:', err);
+        }
+      }
+
     } catch (error) {
       console.error('Error loading directory from path:', error);
     }
-  }, [loadDirectory, safeDirectories]);
+  }, [loadDirectory, safeDirectories, globalAutoWatch]);
 
   // On mount, load directories stored in localStorage
   useEffect(() => {
