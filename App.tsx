@@ -149,6 +149,7 @@ export default function App() {
   const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
+  const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -398,6 +399,9 @@ export default function App() {
 
       if (!directory || !files || files.length === 0) return;
 
+      // Show toast notification
+      setNewImagesToast({ count: files.length, directoryName: directory.name });
+
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
 
@@ -449,6 +453,16 @@ export default function App() {
 
     return () => clearTimeout(timeoutId);
   }, [directories.length]); // Trigger apenas quando o número de pastas mudar
+
+  // Auto-dismiss new images toast after 5 seconds
+  useEffect(() => {
+    if (newImagesToast) {
+      const timer = setTimeout(() => {
+        setNewImagesToast(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [newImagesToast]);
 
   // Get app version and check if we should show changelog
   useEffect(() => {
@@ -678,10 +692,32 @@ export default function App() {
           
           {/* Toast Notification */}
           {success && (
-            <Toast 
-              message={success} 
+            <Toast
+              message={success}
               onDismiss={() => setSuccess(null)}
             />
+          )}
+
+          {/* New Images Toast */}
+          {newImagesToast && (
+            <div className="fixed bottom-4 right-4 z-50 animate-slide-in-right">
+              <div className="bg-blue-900/90 backdrop-blur-sm text-blue-100 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-[500px] border border-blue-700/50">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span className="text-sm">
+                    <span className="font-semibold">{newImagesToast.count}</span> new image{newImagesToast.count !== 1 ? 's' : ''} detected in <span className="font-semibold">{newImagesToast.directoryName}</span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => setNewImagesToast(null)}
+                  className="p-1 hover:bg-blue-800/50 rounded transition-colors flex-shrink-0"
+                  title="Dismiss"
+                  aria-label="Dismiss notification"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
           )}
 
           {!isLoading && !hasDirectories && <FolderSelector onSelectFolder={handleSelectFolder} />}
