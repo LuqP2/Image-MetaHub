@@ -566,24 +566,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('click', handleClickOutside);
 
-    // Add wheel event listener to the image container
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', handleClickOutside);
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+      isMounted = false;
+    };
+  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen]);
+
+  // Separate effect for wheel event listener to avoid image reloading on zoom changes
+  useEffect(() => {
     const imageContainer = document.getElementById('image-zoom-container');
     if (imageContainer) {
       imageContainer.addEventListener('wheel', handleWheel, { passive: false });
     }
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('click', handleClickOutside);
       if (imageContainer) {
         imageContainer.removeEventListener('wheel', handleWheel);
       }
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
-      }
-      isMounted = false;
     };
-  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen, handleWheel]);
+  }, [handleWheel]);
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
