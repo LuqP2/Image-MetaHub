@@ -5,15 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.11.1] - 2025-01-09
+## [0.12.0] - 2025-01-12
 
-### Fixed
+### Added
 
-- **Image Compare Mode - Hover & Slider**: Fixed critical rendering bug where images appeared as black screen in Hover and Slider comparison modes. The issue was caused by `react-zoom-pan-pinch` wrapper not receiving explicit height styles, causing the container to collapse to 0px height. Added `wrapperStyle` and `contentStyle` inline styles to force proper dimensions.
-- **Forge Metadata Parsing**: Fixed "No normalized metadata available" issue for images created with newer Forge versions (f2.0.1+). The Forge backend update removed "Forge"/"Gradio" keywords from metadata, causing images to fall through to A1111 parser. Updated detection logic to recognize Forge version patterns (`/Version:\s*f\d+\./i`) in addition to keyword matching. (Issue #108)
+- **Smart Library Foundation - Image Clustering**: Revolutionary clustering system that organizes images into prompt-similarity stacks:
+  - Background clustering worker with TF-IDF vectorization and hierarchical clustering
+  - Multiple similarity metrics: Jaccard (token-based), Levenshtein (character-based), and hybrid scoring
+  - Prompt normalization and FNV-1a hashing for efficient deduplication
+  - Stack cards showing cover image, prompt preview, and image counts
+  - StackExpandedView for browsing images within each cluster
+  - Real-time progress streaming across clustering phases
+  - File watcher integration: deletions automatically update clusters and remove empty ones
+ 
+- **TF-IDF Auto-Tagging Engine**: Intelligent automatic tag generation from image metadata:
+  - Metadata-weighted boosts for model and LoRA names for more relevant tags
+  - ComfyUI workflow facts resolver for enhanced metadata extraction
+  - Displayed in ImageModal and ImagePreviewSidebar
+  - Auto-tag filtering with frequency counts
+  - "Promote to tag" workflow to convert auto-tags into permanent tags
+  - Per-tag removal capability
+
+- **Enhanced Generation Workflow**: Comprehensive improvements to image generation modals and accessibility:
+  - Generate dropdown in header for quick access to A1111 and ComfyUI generation from anywhere
+  - Support for generation from scratch without requiring a base image
+  - "Generate" option added to gallery context menu
+  - Parameter persistence across sessions: model, LoRAs, cfg_scale, steps, randomSeed, and sampler/scheduler
+  - "Load from Image" button to restore original image parameters after adjusting persisted values
+  - Separated Sampler and Scheduler into distinct fields in ComfyUI modal (matching ComfyUI interface)
+
+- **Smart Library UI**: Complete browsing interface for clustered images:
+  - SmartLibrary.tsx with grid layout for stack cards
+  - StackCard.tsx showing cover, prompt, and counts
+  - Collections sidebar with filtering capabilities
+  - Loading and empty states for better UX
+  - Aligned with Gallery view for consistent experience
+  - Reuses ImageGrid component for efficiency
+
+- **Intelligent Deduplication Helper (Beta)**: Foundation for managing duplicate images:
+  - Heuristic ranking: favorites -> file size -> creation date
+  - Visual badges in ImageGrid for "best" vs "archived" images
+  - Manual selection override support
+  - Disk space savings estimation
+  - Persistent deduplication preferences
+
+### Changed
+
+- **Directory Navigation**
+ - Refactored root folder behavior to align with standard Explorer patterns. Clicking a root folder row now selects and filters its content directly instead of opening the system file explorer.
+ - "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
 
 ### Improved
 
+- **Image Viewer Enhancements**:
+  - **Zoom & Pan Controls**: Interactive zoom (1x-5x) with mouse wheel scrolling and visual controls
+  - **Larger Modal Display**: Increased modal size from 6xl to 7xl width and 90vh to 95vh height for better image viewing
+  - **Optimized Image Area**: Increased image display area from 2/3 to 3/4 of modal width with reduced padding
+
+- **Performance Optimizations**:
+  - Lazy thumbnail loading with IntersectionObserver for faster stack rendering
+  - Increased thumbnail concurrency in thumbnailManager
+  - Precomputed token/Jaccard filter to skip expensive Levenshtein comparisons
+  - Efficient background worker architecture for non-blocking operations
+
+- **Enhanced IPC & Cache Management**:
+  - Exposed userData and FS helpers via IPC for cache operations
+  - Stream progress updates across all clustering phases
+  - Multiple cache path fallbacks for increased reliability
+  - IndexedDB version bump to resolve mismatch issues
+  - Guarded cache IPC writes against oversized metadata payloads to prevent scan crashes
+
+### Technical Improvements
+
+- **ComfyUI Integration**: Extended comfyUIParser.ts with workflow facts resolver for better metadata extraction
+
+## [0.11.1] - 2025-01-10
+
+### Added
+
+- **External Drag & Drop**: Enabled native drag and drop support for images in the Gallery View. Users can now directly drag images from the application to external programs (ComfyUI, Photoshop, Discord, file explorer, etc.) for a seamless workflow.
+
+### Fixed
+
+- **Forge Metadata Parsing**: Fixed "No normalized metadata available" issue for images created with newer Forge versions (f2.0.1+). The Forge backend update removed "Forge"/"Gradio" keywords from metadata, causing images to fall through to A1111 parser. Updated detection logic to recognize Forge version patterns (`/Version:\s*f\d+\./i`) in addition to keyword matching. (Issue #108)
+- **Image Compare Mode - Hover & Slider**: Fixed critical rendering bug where images appeared as black screen in Hover and Slider comparison modes. The issue was caused by `react-zoom-pan-pinch` wrapper not receiving explicit height styles, causing the container to collapse to 0px height. Added `wrapperStyle` and `contentStyle` inline styles to force proper dimensions.
+
+### Improved
+
+- **Auto-Watch Instant Sync**: Activating auto-watch now triggers an immediate folder refresh, ensuring the gallery is instantly synchronized with the current directory state without waiting for the next file change event.
 - **Image Compare Mode - Slider Interaction**: Significantly improved slider usability:
   - Expanded clickable area from 1px to 40px (20px on each side of the divider line) for much easier dragging
   - Removed 180ms transition delay during drag operations for instant response
