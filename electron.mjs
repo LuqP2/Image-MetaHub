@@ -1612,7 +1612,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No file path provided' };
       }
 
-      if (!isPathAllowed(filePath)) {
+      if (!isAllowedOrInternal(filePath)) {
         console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
         console.error('  [read-file] Requested path:', filePath);
         console.error('  [read-file] Normalized path:', path.normalize(filePath));

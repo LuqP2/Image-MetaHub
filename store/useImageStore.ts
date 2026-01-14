@@ -211,6 +211,7 @@ interface ImageState {
       error?: string | null;
     }
   ) => void;
+  resetThumbnailsForDirectory: (directoryId: string) => void;
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
@@ -1133,6 +1134,52 @@ export const useImageStore = create<ImageState>((set, get) => {
             } finally {
                 thumbnailUpdateInProgress.delete(imageId);
             }
+        },
+
+        resetThumbnailsForDirectory: (directoryId) => {
+            if (!directoryId) return;
+
+            const shouldReset = (image: IndexedImage) =>
+                image.directoryId === directoryId &&
+                (image.thumbnailStatus === 'error' || !image.thumbnailUrl);
+
+            set(state => {
+                let hasChanges = false;
+
+                const updateList = (list: IndexedImage[]) => {
+                    let touched = false;
+                    const next = list.map(image => {
+                        if (!shouldReset(image)) {
+                            return image;
+                        }
+                        touched = true;
+                        return {
+                            ...image,
+                            thumbnailStatus: 'pending',
+                            thumbnailError: null,
+                            thumbnailUrl: null,
+                        };
+                    });
+                    if (touched) {
+                        hasChanges = true;
+                        return next;
+                    }
+                    return list;
+                };
+
+                const updatedImages = updateList(state.images);
+                const updatedFilteredImages = updateList(state.filteredImages);
+
+                if (!hasChanges) {
+                    return state;
+                }
+
+                return {
+                    ...state,
+                    images: updatedImages,
+                    filteredImages: updatedFilteredImages,
+                };
+            });
         },
 
         setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),

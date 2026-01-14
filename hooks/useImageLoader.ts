@@ -859,6 +859,7 @@ export function useImageLoader() {
             setError("Directory not found for update.");
             return;
         }
+        useImageStore.getState().resetThumbnailsForDirectory(directoryId);
         await loadDirectory(directory, true);
     }, [loadDirectory, setError]);
     
