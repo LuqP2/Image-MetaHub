@@ -2,6 +2,7 @@ import chokidar, { FSWatcher } from 'chokidar';
 import path from 'path';
 import { BrowserWindow } from 'electron';
 import fs from 'fs';
+import { ALL_MEDIA_EXTENSIONS } from './mediaConstants.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map<string, FSWatcher>();
@@ -86,7 +87,7 @@ export function startWatching(
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+      if (!(ALL_MEDIA_EXTENSIONS as readonly string[]).includes(ext)) {
         return;
       }
 

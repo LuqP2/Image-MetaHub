@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
+import { ALL_MEDIA_EXTENSION_REGEX, isVideoFile, getMediaType } from './mediaConstants';
 
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
@@ -1673,7 +1674,7 @@ export async function processFiles(
     await pushUiBatch(true);
   }
 
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp)$/i.test(entry.handle.name));
+  const imageFiles = fileEntries.filter(entry => ALL_MEDIA_EXTENSION_REGEX.test(entry.handle.name));
 
   const asyncPool = async <T, R>(
     concurrency: number,

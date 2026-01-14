@@ -10,7 +10,93 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
+
+const execFileAsync = promisify(execFile);
+
+// Media type constants (centralized)
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv'];
+const ALL_MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS];
+
+function isSupportedMediaFile(filename) {
+  const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+  return ALL_MEDIA_EXTENSIONS.includes(ext);
+}
+
+function getMimeType(filename) {
+  const ext = filename.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+  const mimeTypes = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mkv': 'video/x-matroska',
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+}
+
+// Cache for ffmpeg/ffprobe paths
+let cachedFFmpegPath = null;
+let cachedFFprobePath = null;
+
+async function findFFmpeg() {
+  if (cachedFFmpegPath) return cachedFFmpegPath;
+
+  const candidates = [
+    process.env.FFMPEG_PATH,
+    'ffmpeg',  // In PATH
+    'C:/ffmpeg/bin/ffmpeg.exe',
+    'C:/Program Files/ffmpeg/bin/ffmpeg.exe',
+    '/usr/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ['-version'], { timeout: 5000 });
+      cachedFFmpegPath = candidate;
+      console.log('[Video] Found ffmpeg at:', candidate);
+      return candidate;
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  console.warn('[Video] ffmpeg not found in PATH or common locations');
+  return null;
+}
+
+async function findFFprobe() {
+  if (cachedFFprobePath) return cachedFFprobePath;
+
+  const candidates = [
+    process.env.FFPROBE_PATH,
+    'ffprobe',  // In PATH
+    'C:/ffmpeg/bin/ffprobe.exe',
+    'C:/Program Files/ffmpeg/bin/ffprobe.exe',
+    '/usr/bin/ffprobe',
+    '/usr/local/bin/ffprobe',
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ['-version'], { timeout: 5000 });
+      cachedFFprobePath = candidate;
+      console.log('[Video] Found ffprobe at:', candidate);
+      return candidate;
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  console.warn('[Video] ffprobe not found in PATH or common locations');
+  return null;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -683,19 +769,13 @@ async function getFilesRecursively(directory, baseDirectory) {
             if (entry.isDirectory()) {
                 files.push(...await getFilesRecursively(fullPath, baseDirectory));
             } else if (entry.isFile()) {
-                const lowerName = entry.name.toLowerCase();
-                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp')) {
+                if (isSupportedMediaFile(entry.name)) {
                     const stats = await fs.stat(fullPath);
-                    const fileType = lowerName.endsWith('.png')
-                      ? 'image/png'
-                      : lowerName.endsWith('.webp')
-                        ? 'image/webp'
-                        : 'image/jpeg';
                     files.push({
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
                         lastModified: stats.birthtimeMs,
                         size: stats.size,
-                        type: fileType,
+                        type: getMimeType(entry.name),
                         birthtimeMs: stats.birthtimeMs,
                     });
                 }
@@ -1325,24 +1405,16 @@ function setupFileOperationHandlers() {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
 
         for (const file of files) {
-          if (file.isFile()) {
-            const name = file.name.toLowerCase();
-            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')) {
-              const filePath = path.join(dirPath, file.name);
-              const stats = await fs.stat(filePath);
-              const fileType = name.endsWith('.png')
-                ? 'image/png'
-                : name.endsWith('.webp')
-                  ? 'image/webp'
-                  : 'image/jpeg';
-              imageFiles.push({
-                name: file.name, // name is already relative for top-level
-                lastModified: stats.birthtimeMs,
-                size: stats.size,
-                type: fileType,
-                birthtimeMs: stats.birthtimeMs,
-              });
-            }
+          if (file.isFile() && isSupportedMediaFile(file.name)) {
+            const filePath = path.join(dirPath, file.name);
+            const stats = await fs.stat(filePath);
+            imageFiles.push({
+              name: file.name, // name is already relative for top-level
+              lastModified: stats.birthtimeMs,
+              size: stats.size,
+              type: getMimeType(file.name),
+              birthtimeMs: stats.birthtimeMs,
+            });
           }
         }
       }
@@ -1397,6 +1469,119 @@ function setupFileOperationHandlers() {
 
     const status = fileWatcher.getWatcherStatus(directoryId);
     return { success: true, ...status };
+  });
+
+  // --- Video Support: Get video metadata using ffprobe ---
+  ipcMain.handle('get-video-metadata', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied' };
+      }
+
+      // Find ffprobe in PATH or common locations
+      const ffprobePath = await findFFprobe();
+      if (!ffprobePath) {
+        return { success: false, error: 'ffprobe not found. Please install FFmpeg.' };
+      }
+
+      // Run ffprobe to get video metadata as JSON
+      const { stdout } = await execFileAsync(ffprobePath, [
+        '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_format',
+        '-show_streams',
+        filePath
+      ], { maxBuffer: 10 * 1024 * 1024 });
+
+      const probeData = JSON.parse(stdout);
+      const videoStream = probeData.streams?.find(s => s.codec_type === 'video');
+      const audioStream = probeData.streams?.find(s => s.codec_type === 'audio');
+
+      // Parse frame rate (can be "30/1" or "29.97")
+      let fps = null;
+      if (videoStream?.r_frame_rate) {
+        const parts = videoStream.r_frame_rate.split('/');
+        if (parts.length === 2 && parseInt(parts[1]) !== 0) {
+          fps = Math.round((parseInt(parts[0]) / parseInt(parts[1])) * 100) / 100;
+        }
+      }
+
+      const duration = probeData.format?.duration ? parseFloat(probeData.format.duration) : null;
+      const frameCount = videoStream?.nb_frames ? parseInt(videoStream.nb_frames) : null;
+
+      // Try to extract videometahub_data from comment field
+      let videometahubData = null;
+      const comment = probeData.format?.tags?.comment || probeData.format?.tags?.COMMENT;
+      if (comment) {
+        try {
+          const parsed = JSON.parse(comment);
+          if (parsed.generator === 'ComfyUI' || parsed.media_type === 'video') {
+            videometahubData = parsed;
+          }
+        } catch {
+          // Not JSON or not our format, ignore
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          duration,
+          codec: videoStream?.codec_name,
+          fps,
+          bitrate: probeData.format?.bit_rate ? Math.round(parseInt(probeData.format.bit_rate) / 1000) : null,
+          audioCodec: audioStream?.codec_name,
+          resolution: videoStream ? `${videoStream.width}x${videoStream.height}` : null,
+          frameCount,
+          width: videoStream?.width,
+          height: videoStream?.height,
+        },
+        videometahubData
+      };
+    } catch (error) {
+      console.error('Error getting video metadata:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // --- Video Support: Extract thumbnail from video using ffmpeg ---
+  ipcMain.handle('extract-video-thumbnail', async (event, args) => {
+    try {
+      const { filePath, outputPath, timestamp = '00:00:01' } = args;
+
+      if (!filePath || !outputPath) {
+        return { success: false, error: 'Missing filePath or outputPath' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied' };
+      }
+
+      const ffmpegPath = await findFFmpeg();
+      if (!ffmpegPath) {
+        return { success: false, error: 'ffmpeg not found. Please install FFmpeg.' };
+      }
+
+      // Extract frame at timestamp and save as webp
+      await execFileAsync(ffmpegPath, [
+        '-y',                    // Overwrite output
+        '-ss', timestamp,        // Seek to timestamp
+        '-i', filePath,          // Input file
+        '-vframes', '1',         // Extract 1 frame
+        '-vf', 'scale=320:-1',   // Scale to 320px width, maintain aspect ratio
+        '-q:v', '80',            // Quality
+        outputPath               // Output file
+      ], { timeout: 30000 });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error extracting video thumbnail:', error);
+      return { success: false, error: error.message };
+    }
   });
 
   // Handle reading file content

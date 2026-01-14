@@ -160,6 +160,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('watcher-debug', subscription);
   },
 
+  // Video support
+  getVideoMetadata: (filePath) => ipcRenderer.invoke('get-video-metadata', filePath),
+  extractVideoThumbnail: (args) => ipcRenderer.invoke('extract-video-thumbnail', args),
+
   // TEST ONLY: Simulate update dialog
   testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
 });

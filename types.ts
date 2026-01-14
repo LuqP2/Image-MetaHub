@@ -1,3 +1,19 @@
+// Re-export MediaType from mediaConstants
+export type { MediaType } from './services/mediaConstants';
+
+/**
+ * Video-specific metadata
+ */
+export interface VideoMetadata {
+  duration?: number;      // Duration in seconds
+  codec?: string;         // Video codec (h264, vp9, av1, etc.)
+  fps?: number;           // Frames per second
+  bitrate?: number;       // Bitrate in kbps
+  audioCodec?: string;    // Audio codec if present
+  resolution?: string;    // "1920x1080" format
+  frameCount?: number;    // Total number of frames
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -61,6 +77,18 @@ export interface ElectronAPI {
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
   onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
+
+  // Video support
+  getVideoMetadata: (filePath: string) => Promise<{
+    success: boolean;
+    data?: VideoMetadata;
+    error?: string;
+  }>;
+  extractVideoThumbnail: (args: {
+    filePath: string;
+    outputPath: string;
+    timestamp?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {
@@ -569,6 +597,11 @@ export interface IndexedImage {
   clusterPosition?: number;      // Position within cluster (0 = cover image)
   autoTags?: string[];           // Auto-generated tags from TF-IDF
   autoTagsGeneratedAt?: number;  // Timestamp of tag generation
+
+  // Video Support
+  mediaType?: 'image' | 'video'; // Discriminator for media type (default: 'image')
+  videoMetadata?: VideoMetadata; // Video-specific metadata (only for videos)
+  duration?: number;             // Quick access to video duration in seconds
 }
 
 /**
