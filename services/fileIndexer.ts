@@ -1452,6 +1452,29 @@ export async function processFiles(
       }
     };
 
+    const buildSizeCappedEntry = (image: IndexedImage, entryBytes: number): CacheImageMetadata => {
+      const cacheEntry = mapIndexedImageToCache(image);
+      if (entryBytes <= MAX_CACHE_CHUNK_BYTES) {
+        return cacheEntry;
+      }
+
+      const normalizedMetadata = image.metadata?.normalizedMetadata;
+      const safeMetadata = normalizedMetadata ? { normalizedMetadata } : {};
+      const safeMetadataString = normalizedMetadata ? JSON.stringify(safeMetadata) : '';
+
+      console.warn(
+        '[indexing] Oversized cache entry detected, using stubbed metadata for IPC:',
+        image.name,
+        `(${entryBytes} bytes)`
+      );
+
+      return {
+        ...cacheEntry,
+        metadata: safeMetadata,
+        metadataString: safeMetadataString,
+      };
+    };
+
     while (cursor < pendingImages.length) {
       const chunkImages: IndexedImage[] = [];
       let metadataChunk: CacheImageMetadata[] = [];
@@ -1459,27 +1482,31 @@ export async function processFiles(
 
       while (cursor < pendingImages.length) {
         const candidate = pendingImages[cursor];
-        const cacheEntry = mapIndexedImageToCache(candidate);
-        const entryBytes = estimateEntryBytes(cacheEntry);
+        const rawEntry = mapIndexedImageToCache(candidate);
+        const entryBytes = estimateEntryBytes(rawEntry);
+        const cacheEntry = buildSizeCappedEntry(candidate, entryBytes);
+        const finalEntryBytes = estimateEntryBytes(cacheEntry);
 
         if (chunkImages.length > 0) {
           if (chunkImages.length >= chunkThreshold) {
             break;
           }
-          if (estimatedBytes + entryBytes > MAX_CACHE_CHUNK_BYTES) {
+          if (estimatedBytes + finalEntryBytes > MAX_CACHE_CHUNK_BYTES) {
             break;
           }
         }
 
         chunkImages.push(candidate);
         metadataChunk.push(cacheEntry);
-        estimatedBytes += entryBytes;
+        estimatedBytes += finalEntryBytes;
         cursor += 1;
       }
 
       if (chunkImages.length === 0 && cursor < pendingImages.length) {
         const candidate = pendingImages[cursor];
-        const cacheEntry = mapIndexedImageToCache(candidate);
+        const rawEntry = mapIndexedImageToCache(candidate);
+        const entryBytes = estimateEntryBytes(rawEntry);
+        const cacheEntry = buildSizeCappedEntry(candidate, entryBytes);
         chunkImages.push(candidate);
         metadataChunk.push(cacheEntry);
         estimatedBytes = estimateEntryBytes(cacheEntry);
