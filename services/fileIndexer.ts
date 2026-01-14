@@ -1410,6 +1410,8 @@ export async function processFiles(
   const chunkBuffer: IndexedImage[] = [];
   const uiBatch: IndexedImage[] = [];
   const BATCH_SIZE = 50;
+  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
+  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   const totalPhaseAFiles = (options.preloadedImages?.length ?? 0) + fileEntries.length;
   const totalNewFiles = fileEntries.length;
   let processedNew = 0;
@@ -1435,33 +1437,109 @@ export async function processFiles(
       return;
     }
 
-    const chunkImages = chunkBuffer.splice(0, chunkBuffer.length);
-    let metadataChunk = chunkImages.map(mapIndexedImageToCache);
-    const chunkIndex = chunkRecords.length;
+    const pendingImages = chunkBuffer.splice(0, chunkBuffer.length);
+    let cursor = 0;
 
-    if (cacheWriter) {
-      const flushStart = performance.now();
-      metadataChunk = await cacheWriter.append(chunkImages, metadataChunk);
-      const duration = performance.now() - flushStart;
-      const bytesWritten = JSON.stringify(metadataChunk).length;
-      phaseAStats.bytesWritten += bytesWritten;
-      phaseAStats.diskWrites += 1;
-      phaseAStats.ipcCalls += 1;
-      performance.mark('indexing:phaseA:chunk-flush', {
-        detail: { chunkIndex, durationMs: duration, bytesWritten }
+    const estimateEntryBytes = (entry: CacheImageMetadata): number => {
+      const metadataLength = entry.metadataString ? entry.metadataString.length : 0;
+      if (metadataLength > 0) {
+        return metadataLength + CACHE_CHUNK_OVERHEAD_BYTES;
+      }
+      try {
+        return JSON.stringify(entry).length + CACHE_CHUNK_OVERHEAD_BYTES;
+      } catch {
+        return CACHE_CHUNK_OVERHEAD_BYTES;
+      }
+    };
+
+    const buildSizeCappedEntry = (image: IndexedImage, entryBytes: number): CacheImageMetadata => {
+      const cacheEntry = mapIndexedImageToCache(image);
+      if (entryBytes <= MAX_CACHE_CHUNK_BYTES) {
+        return cacheEntry;
+      }
+
+      const normalizedMetadata = image.metadata?.normalizedMetadata;
+      const safeMetadata = normalizedMetadata ? { normalizedMetadata } : {};
+      const safeMetadataString = normalizedMetadata ? JSON.stringify(safeMetadata) : '';
+
+      console.warn(
+        '[indexing] Oversized cache entry detected, using stubbed metadata for IPC:',
+        image.name,
+        `(${entryBytes} bytes)`
+      );
+
+      return {
+        ...cacheEntry,
+        metadata: safeMetadata,
+        metadataString: safeMetadataString,
+      };
+    };
+
+    while (cursor < pendingImages.length) {
+      const chunkImages: IndexedImage[] = [];
+      let metadataChunk: CacheImageMetadata[] = [];
+      let estimatedBytes = 0;
+
+      while (cursor < pendingImages.length) {
+        const candidate = pendingImages[cursor];
+        const rawEntry = mapIndexedImageToCache(candidate);
+        const entryBytes = estimateEntryBytes(rawEntry);
+        const cacheEntry = buildSizeCappedEntry(candidate, entryBytes);
+        const finalEntryBytes = estimateEntryBytes(cacheEntry);
+
+        if (chunkImages.length > 0) {
+          if (chunkImages.length >= chunkThreshold) {
+            break;
+          }
+          if (estimatedBytes + finalEntryBytes > MAX_CACHE_CHUNK_BYTES) {
+            break;
+          }
+        }
+
+        chunkImages.push(candidate);
+        metadataChunk.push(cacheEntry);
+        estimatedBytes += finalEntryBytes;
+        cursor += 1;
+      }
+
+      if (chunkImages.length === 0 && cursor < pendingImages.length) {
+        const candidate = pendingImages[cursor];
+        const rawEntry = mapIndexedImageToCache(candidate);
+        const entryBytes = estimateEntryBytes(rawEntry);
+        const cacheEntry = buildSizeCappedEntry(candidate, entryBytes);
+        chunkImages.push(candidate);
+        metadataChunk.push(cacheEntry);
+        estimatedBytes = estimateEntryBytes(cacheEntry);
+        cursor += 1;
+      }
+
+      const chunkIndex = chunkRecords.length;
+
+      if (cacheWriter) {
+        const flushStart = performance.now();
+        const writtenChunk = await cacheWriter.append(chunkImages, metadataChunk);
+        metadataChunk = writtenChunk;
+        const duration = performance.now() - flushStart;
+        const bytesWritten = JSON.stringify(writtenChunk).length;
+        phaseAStats.bytesWritten += bytesWritten;
+        phaseAStats.diskWrites += 1;
+        phaseAStats.ipcCalls += 1;
+        performance.mark('indexing:phaseA:chunk-flush', {
+          detail: { chunkIndex, durationMs: duration, bytesWritten }
+        });
+      }
+
+      chunkRecords.push(metadataChunk);
+
+      chunkImages.forEach((img, offset) => {
+        chunkMap.set(img.id, { chunkIndex, offset });
+        const entry = catalogState.get(img.id);
+        if (entry) {
+          entry.chunkIndex = chunkIndex;
+          entry.chunkOffset = offset;
+        }
       });
     }
-
-    chunkRecords.push(metadataChunk);
-
-    chunkImages.forEach((img, offset) => {
-      chunkMap.set(img.id, { chunkIndex, offset });
-      const entry = catalogState.get(img.id);
-      if (entry) {
-        entry.chunkIndex = chunkIndex;
-        entry.chunkOffset = offset;
-      }
-    });
   };
 
   const maybeLogPhaseA = () => {
