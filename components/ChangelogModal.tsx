@@ -128,7 +128,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
                   <p><strong className="text-white">Yeah, I know: v0.11 was released just a few days ago...</strong></p>
 
-                  <p>The thing is, I wanted to quickly push <strong>v0.12.0</strong> because I fell down a rabbit hole of algorithms this weekend and built something I could not wait to share: the <strong>Smart Library</strong>.</p>
+                  <p>The thing is, I wanted to quickly push <strong>v0.12.x</strong> because I fell down a rabbit hole of algorithms this weekend and built something I could not wait to share: the <strong>Smart Library</strong>.</p>
 
                   <p>This update brings local intelligence to your chaos. Using <strong>TF-IDF vectorization</strong> and clustering algorithms, the app now automatically detects similar images (like variations of the same prompt) and stacks them for you.</p>
 
