@@ -183,8 +183,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
               // Ctrl/Cmd+click: toggle selection (add/remove from multi-select)
               toggleImageSelection(image.id);
             } else {
-              // Single click: select only this image
-              useImageStore.setState({ selectedImages: new Set([image.id]) });
+              // Single click: select only this image and set as preview
+              useImageStore.setState({
+                selectedImages: new Set([image.id]),
+                previewImage: image
+              });
             }
           } else {
             onImageClick(image, e);
