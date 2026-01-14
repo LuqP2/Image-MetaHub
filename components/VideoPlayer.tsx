@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw, Repeat } from 'lucide-react';
 
 interface VideoPlayerProps {
   src: string;
@@ -28,11 +28,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(autoPlay);
   const [isMuted, setIsMuted] = useState(muted);
+  const [isLooping, setIsLooping] = useState(loop);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Toggle loop
+  const toggleLoop = () => {
+    if (videoRef.current) {
+      videoRef.current.loop = !isLooping;
+    }
+    setIsLooping(!isLooping);
+  };
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
@@ -175,7 +184,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         poster={poster}
         className="w-full h-full object-contain bg-black"
         autoPlay={autoPlay}
-        loop={loop}
+        loop={isLooping}
         muted={muted}
         playsInline
         onClick={togglePlay}
@@ -250,6 +259,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               ) : (
                 <Volume2 className="w-5 h-5" />
               )}
+            </button>
+
+            {/* Loop toggle */}
+            <button
+              onClick={toggleLoop}
+              className={`transition-colors ${
+                isLooping ? 'text-purple-400' : 'text-white hover:text-purple-400'
+              }`}
+              title={isLooping ? 'Disable loop' : 'Enable loop'}
+            >
+              <Repeat className="w-4 h-4" />
             </button>
 
             {/* Time display */}

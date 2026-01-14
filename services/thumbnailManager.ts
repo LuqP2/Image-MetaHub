@@ -203,10 +203,35 @@ class ThumbnailManager {
       return null;
     }
 
+    // Try WebP first, fallback to JPEG if it fails
+    const formats = ['webp', 'jpg'] as const;
+
+    for (const format of formats) {
+      try {
+        const blob = await this.tryExtractThumbnail(filePath, image.duration, format);
+        if (blob) {
+          return blob;
+        }
+      } catch (error) {
+        console.warn(`[ThumbnailManager] ${format} extraction failed, trying next format...`);
+      }
+    }
+
+    console.error('[ThumbnailManager] All thumbnail extraction attempts failed');
+    return null;
+  }
+
+  /**
+   * Try to extract thumbnail in a specific format
+   */
+  private async tryExtractThumbnail(
+    filePath: string,
+    duration: number | undefined,
+    format: 'webp' | 'jpg'
+  ): Promise<Blob | null> {
     try {
-      // Generate a unique temp path for the thumbnail
       const userDataPath = await (window as any).electronAPI.getUserDataPath();
-      const thumbFileName = `video-thumb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      const thumbFileName = `video-thumb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${format}`;
       const joinResult = await (window as any).electronAPI.joinPaths(userDataPath, 'temp', thumbFileName);
 
       if (!joinResult.success) {
@@ -223,7 +248,16 @@ class ThumbnailManager {
       }
 
       // Extract thumbnail at 1 second mark (or first frame for very short videos)
-      const timestamp = image.duration && image.duration > 1 ? '00:00:01' : '00:00:00.1';
+      const safeSeconds = (() => {
+        if (!duration || duration <= 0) return 0.1;
+        if (duration > 1) return 1;
+        if (duration > 0.2) return 0.1;
+        if (duration > 0.01) return duration / 2;
+        return 0;
+      })();
+      const timestamp = this.formatTimestamp(safeSeconds);
+
+      console.log(`[ThumbnailManager] Extracting ${format} thumbnail from:`, filePath);
 
       const result = await (window as any).electronAPI.extractVideoThumbnail({
         filePath,
@@ -233,6 +267,8 @@ class ThumbnailManager {
 
       if (!result.success) {
         console.error('[ThumbnailManager] Failed to extract video thumbnail:', result.error);
+        // Clean up failed temp file
+        (window as any).electronAPI.deleteFile(outputPath).catch(() => {});
         return null;
       }
 
@@ -240,11 +276,13 @@ class ThumbnailManager {
       const readResult = await (window as any).electronAPI.readFile(outputPath);
       if (!readResult.success || !readResult.data) {
         console.error('[ThumbnailManager] Failed to read video thumbnail file');
+        (window as any).electronAPI.deleteFile(outputPath).catch(() => {});
         return null;
       }
 
       // Convert buffer to blob
-      const blob = new Blob([readResult.data], { type: 'image/webp' });
+      const mimeType = format === 'webp' ? 'image/webp' : 'image/jpeg';
+      const blob = new Blob([readResult.data], { type: mimeType });
 
       // Clean up temp file (fire and forget)
       (window as any).electronAPI.deleteFile(outputPath).catch(() => {});
@@ -265,6 +303,17 @@ class ThumbnailManager {
     const url = URL.createObjectURL(blob);
     this.activeUrls.set(imageId, url);
     return url;
+  }
+
+  private formatTimestamp(seconds: number): string {
+    const clamped = Math.max(0, seconds);
+    const hours = Math.floor(clamped / 3600);
+    const minutes = Math.floor((clamped % 3600) / 60);
+    const secs = clamped % 60;
+    const secsFixed = secs.toFixed(3).padStart(6, '0');
+    return `${hours.toString().padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}:${secsFixed}`;
   }
 }
 

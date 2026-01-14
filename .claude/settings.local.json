@@ -10,7 +10,8 @@
       "Bash(node test.mjs:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

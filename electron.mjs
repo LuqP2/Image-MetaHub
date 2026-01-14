@@ -1566,16 +1566,37 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'ffmpeg not found. Please install FFmpeg.' };
       }
 
-      // Extract frame at timestamp and save as webp
-      await execFileAsync(ffmpegPath, [
-        '-y',                    // Overwrite output
-        '-ss', timestamp,        // Seek to timestamp
-        '-i', filePath,          // Input file
-        '-vframes', '1',         // Extract 1 frame
-        '-vf', 'scale=320:-1',   // Scale to 320px width, maintain aspect ratio
-        '-q:v', '80',            // Quality
-        outputPath               // Output file
-      ], { timeout: 30000 });
+      // Extract frame at timestamp and save as image
+      // Use JPEG for better compatibility (webp encoding can fail on some systems)
+      const isWebp = outputPath.toLowerCase().endsWith('.webp');
+      const ffmpegArgs = [
+        '-y',                           // Overwrite output
+        '-ss', timestamp,               // Seek to timestamp (before -i for faster seeking)
+        '-i', filePath,                 // Input file
+        '-frames:v', '1',               // Extract 1 frame
+        '-vf', 'scale=320:-2:flags=lanczos', // Scale to 320px width, height divisible by 2
+      ];
+
+      if (isWebp) {
+        // WebP encoding
+        ffmpegArgs.push('-c:v', 'libwebp', '-quality', '80');
+      } else {
+        // JPEG encoding (fallback)
+        ffmpegArgs.push('-pix_fmt', 'yuvj420p'); // Avoid non full-range YUV errors in MJPEG
+        ffmpegArgs.push('-q:v', '2');            // JPEG quality (2-5 is good, lower = better)
+      }
+
+      ffmpegArgs.push(outputPath);
+
+      await execFileAsync(ffmpegPath, ffmpegArgs, { timeout: 30000 });
+
+      // Verify the file was created
+      const fs = await import('fs/promises');
+      try {
+        await fs.access(outputPath);
+      } catch {
+        return { success: false, error: 'Thumbnail file was not created' };
+      }
 
       return { success: true };
     } catch (error) {
