@@ -37,6 +37,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
+  const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
+  const setDoubleClickToOpen = useSettingsStore((state) => state.setDoubleClickToOpen);
   const globalAutoWatch = useSettingsStore((state) => state.globalAutoWatch);
   const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
 
@@ -412,6 +414,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                     type="checkbox"
                     checked={showFullFilePath}
                     onChange={(event) => setShowFullFilePath(event.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                <div>
+                  <p className="text-sm">Double-click to open image</p>
+                  <p className="text-xs text-gray-400">
+                    Single click selects, double-click opens details. When off, single click opens details.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={doubleClickToOpen}
+                    onChange={(event) => setDoubleClickToOpen(event.target.checked)}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

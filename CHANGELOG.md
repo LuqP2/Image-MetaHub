@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2025-01-13
+
+### Fixed
+
+- **V8 Cache Serializer Chunking**: Implemented size-based chunking to prevent oversized cache writes.
+
+### Added
+
+- **Grid Toolbar Selection Actions**: Added GridToolbar with selection actions for faster multi-image workflows.
+- **Settings Modal Double-Click Toggle**: Added double-click toggle behavior for the settings modal.
+
 ## [0.12.0] - 2025-01-12
 
 ### Added

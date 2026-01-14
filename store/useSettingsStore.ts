@@ -64,6 +64,7 @@ interface SettingsState {
   showFilenames: boolean;
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
+  doubleClickToOpen: boolean;
 
   // A1111 Integration settings
   a1111ServerUrl: string;
@@ -91,6 +92,7 @@ interface SettingsState {
   setShowFilenames: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
+  setDoubleClickToOpen: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
@@ -123,6 +125,7 @@ export const useSettingsStore = create<SettingsState>()(
       showFilenames: false,
       showFullFilePath: false,
       globalAutoWatch: true,
+      doubleClickToOpen: false,
 
       // A1111 Integration initial state
       a1111ServerUrl: 'http://127.0.0.1:7860',
@@ -157,6 +160,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowFilenames: (value) => set({ showFilenames: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
+      setDoubleClickToOpen: (value) => set({ doubleClickToOpen: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -194,6 +198,7 @@ export const useSettingsStore = create<SettingsState>()(
         showFilenames: false,
         showFullFilePath: false,
         globalAutoWatch: true,
+        doubleClickToOpen: false,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
         a1111LastConnectionStatus: 'unknown',
