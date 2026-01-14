@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] - 2025-01-13
+
+### Fixed
+
+- **V8  ache Serializer Chunking**: Implemented size-based chunking to prevent oversized cache writes.
+
+### Added
+
+- **Grid Toolbar Selection Actions**: Added GridToolbar with selection actions for faster multi-image workflows.
+- **Settings Modal Double-Click Toggle**: Added double-click toggle behavior for the settings modal.
+
 ## [0.12.0] - 2025-01-12
 
 ### Added
@@ -56,11 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
 
 ### Improved
-
-- **Image Viewer Enhancements**:
-  - **Zoom & Pan Controls**: Interactive zoom (1x-5x) with mouse wheel scrolling and visual controls
-  - **Larger Modal Display**: Increased modal size from 6xl to 7xl width and 90vh to 95vh height for better image viewing
-  - **Optimized Image Area**: Increased image display area from 2/3 to 3/4 of modal width with reduced padding
 
 - **Performance Optimizations**:
   - Lazy thumbnail loading with IntersectionObserver for faster stack rendering
