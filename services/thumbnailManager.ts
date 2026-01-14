@@ -1,9 +1,20 @@
 import { IndexedImage } from '../types';
 import cacheManager from './cacheManager';
 import { useImageStore } from '../store/useImageStore';
+import { isVideoFile } from './mediaConstants';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 8; // Increased from 3: with Intersection Observer, only visible images load
+
+// Electron detection
+const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+
+/**
+ * Extended FileSystemFileHandle interface for Electron compatibility
+ */
+interface ElectronFileHandle extends FileSystemFileHandle {
+  _filePath?: string;
+}
 
 async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   try {
@@ -147,18 +158,101 @@ class ThumbnailManager {
         return;
       }
 
-      const file = await (image.thumbnailHandle ?? image.handle).getFile();
-      const blob = await generateThumbnailBlob(file);
-      if (!blob) {
-        throw new Error('Thumbnail generation failed');
-      }
+      // Check if this is a video file
+      const isVideo = image.mediaType === 'video' || isVideoFile(image.name);
 
-      await cacheManager.cacheThumbnail(image.id, blob);
-      const url = this.updateObjectUrl(image.id, blob);
-      setSafe({ status: 'ready', thumbnailUrl: url });
+      if (isVideo) {
+        // Generate video thumbnail via ffmpeg IPC
+        const blob = await this.generateVideoThumbnail(image);
+        if (!blob) {
+          throw new Error('Video thumbnail generation failed');
+        }
+        await cacheManager.cacheThumbnail(image.id, blob);
+        const url = this.updateObjectUrl(image.id, blob);
+        setSafe({ status: 'ready', thumbnailUrl: url });
+      } else {
+        // Generate image thumbnail via canvas
+        const file = await (image.thumbnailHandle ?? image.handle).getFile();
+        const blob = await generateThumbnailBlob(file);
+        if (!blob) {
+          throw new Error('Thumbnail generation failed');
+        }
+
+        await cacheManager.cacheThumbnail(image.id, blob);
+        const url = this.updateObjectUrl(image.id, blob);
+        setSafe({ status: 'ready', thumbnailUrl: url });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown thumbnail error';
       setSafe({ status: 'error', error: message });
+    }
+  }
+
+  /**
+   * Generate thumbnail for video files using ffmpeg via IPC
+   */
+  private async generateVideoThumbnail(image: IndexedImage): Promise<Blob | null> {
+    if (!isElectron || !(window as any).electronAPI?.extractVideoThumbnail) {
+      console.warn('[ThumbnailManager] Video thumbnail generation requires Electron');
+      return null;
+    }
+
+    const filePath = (image.handle as ElectronFileHandle)?._filePath;
+    if (!filePath) {
+      console.warn('[ThumbnailManager] Cannot generate video thumbnail without file path');
+      return null;
+    }
+
+    try {
+      // Generate a unique temp path for the thumbnail
+      const userDataPath = await (window as any).electronAPI.getUserDataPath();
+      const thumbFileName = `video-thumb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      const joinResult = await (window as any).electronAPI.joinPaths(userDataPath, 'temp', thumbFileName);
+
+      if (!joinResult.success) {
+        console.error('[ThumbnailManager] Failed to join paths:', joinResult.error);
+        return null;
+      }
+
+      const outputPath = joinResult.path;
+
+      // Ensure temp directory exists
+      const tempDir = await (window as any).electronAPI.joinPaths(userDataPath, 'temp');
+      if (tempDir.success) {
+        await (window as any).electronAPI.ensureDirectory(tempDir.path);
+      }
+
+      // Extract thumbnail at 1 second mark (or first frame for very short videos)
+      const timestamp = image.duration && image.duration > 1 ? '00:00:01' : '00:00:00.1';
+
+      const result = await (window as any).electronAPI.extractVideoThumbnail({
+        filePath,
+        outputPath,
+        timestamp
+      });
+
+      if (!result.success) {
+        console.error('[ThumbnailManager] Failed to extract video thumbnail:', result.error);
+        return null;
+      }
+
+      // Read the generated thumbnail file
+      const readResult = await (window as any).electronAPI.readFile(outputPath);
+      if (!readResult.success || !readResult.data) {
+        console.error('[ThumbnailManager] Failed to read video thumbnail file');
+        return null;
+      }
+
+      // Convert buffer to blob
+      const blob = new Blob([readResult.data], { type: 'image/webp' });
+
+      // Clean up temp file (fire and forget)
+      (window as any).electronAPI.deleteFile(outputPath).catch(() => {});
+
+      return blob;
+    } catch (error) {
+      console.error('[ThumbnailManager] Error generating video thumbnail:', error);
+      return null;
     }
   }
 

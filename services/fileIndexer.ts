@@ -53,6 +53,7 @@ import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
 import { parseSDNextMetadata } from './parsers/sdNextParser';
+import { tryParseVideoMetadata, type VideoMetahubData } from './parsers/videoMetadataParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -1025,6 +1026,103 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
 }
 
 /**
+ * Processes a video file to extract metadata via IPC (ffprobe).
+ * Videos require external tools since browser cannot parse video container metadata.
+ */
+async function processVideoFileOptimized(
+  fileEntry: CatalogFileEntry,
+  directoryId: string
+): Promise<IndexedImage | null> {
+  try {
+    // Video processing requires Electron IPC
+    if (!isElectron || !(window as any).electronAPI?.getVideoMetadata) {
+      console.warn('[FileIndexer] Video processing not available (requires Electron)');
+      return null;
+    }
+
+    const filePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
+    if (!filePath) {
+      console.warn('[FileIndexer] Cannot process video without file path');
+      return null;
+    }
+
+    // Get video metadata via ffprobe
+    const videoResult = await (window as any).electronAPI.getVideoMetadata(filePath);
+
+    if (!videoResult.success) {
+      console.warn('[FileIndexer] Failed to get video metadata:', videoResult.error);
+      return null;
+    }
+
+    const videoData = videoResult.data;
+    const videometahubData = videoResult.videometahubData as VideoMetahubData | null;
+
+    // Parse videometahub_data if present (from MetaHub Save Video Node)
+    let normalizedMetadata: BaseMetadata | undefined;
+    if (videometahubData) {
+      const parsed = tryParseVideoMetadata(videometahubData);
+      if (parsed) {
+        normalizedMetadata = {
+          ...parsed,
+          width: videoData.width || parsed.width || 0,
+          height: videoData.height || parsed.height || 0,
+        };
+      }
+    }
+
+    // Build video-specific IndexedImage
+    const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
+    const fileSizeValue = fileEntry.size ?? 0;
+    const fileType = getMediaType(fileEntry.handle.name) === 'video'
+      ? `video/${fileEntry.handle.name.split('.').pop()?.toLowerCase()}`
+      : 'video/mp4';
+
+    return {
+      id: `${directoryId}::${fileEntry.path}`,
+      name: fileEntry.handle.name,
+      handle: fileEntry.handle,
+      thumbnailStatus: 'pending',
+      thumbnailError: null,
+      directoryId,
+      metadata: normalizedMetadata
+        ? { videometahub_data: videometahubData, normalizedMetadata }
+        : videometahubData
+          ? { videometahub_data: videometahubData }
+          : {},
+      metadataString: videometahubData ? JSON.stringify(videometahubData) : '',
+      lastModified: sortDate,
+      models: normalizedMetadata?.models || [],
+      loras: normalizedMetadata?.loras || [],
+      scheduler: normalizedMetadata?.scheduler || '',
+      board: normalizedMetadata?.board || '',
+      prompt: normalizedMetadata?.prompt || '',
+      negativePrompt: normalizedMetadata?.negativePrompt || '',
+      cfgScale: normalizedMetadata?.cfg_scale ?? null,
+      steps: normalizedMetadata?.steps ?? null,
+      seed: normalizedMetadata?.seed ?? null,
+      dimensions: videoData.resolution || `${videoData.width || 0}x${videoData.height || 0}`,
+      fileSize: fileSizeValue,
+      fileType,
+      // Video-specific fields
+      mediaType: 'video',
+      videoMetadata: {
+        duration: videoData.duration,
+        codec: videoData.codec,
+        fps: videoData.fps,
+        bitrate: videoData.bitrate,
+        audioCodec: videoData.audioCodec,
+        resolution: videoData.resolution,
+        frameCount: videoData.frameCount,
+      },
+      duration: videoData.duration,
+    } as IndexedImage;
+  } catch (error) {
+    console.error(`[FileIndexer] Error processing video ${fileEntry.handle.name}:`, error);
+    return null;
+  }
+}
+
+/**
  * Processes a single file entry to extract metadata and create an IndexedImage object.
  * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
  */
@@ -1038,6 +1136,12 @@ async function processSingleFileOptimized(
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
+
+    // === VIDEO FILE HANDLING ===
+    // Check if this is a video file and process it via IPC (ffprobe)
+    if (isVideoFile(fileEntry.handle.name)) {
+      return await processVideoFileOptimized(fileEntry, directoryId);
+    }
 
     // If file data is provided (from batch read), parse directly from buffer
     if (fileData) {
@@ -1294,6 +1398,7 @@ if (rawMetadata) {
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
+      mediaType: 'image', // Explicitly set mediaType for images
     } as IndexedImage;
   } catch (error) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);

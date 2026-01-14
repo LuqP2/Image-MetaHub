@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -240,6 +240,24 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             Compare #1
           </div>
         )}
+
+        {/* Video badge with duration */}
+        {image.mediaType === 'video' && (
+          <div className="absolute bottom-2 right-2 z-20 px-2 py-1 bg-black/70 rounded-lg text-white text-xs font-mono shadow-lg flex items-center gap-1">
+            <Play className="h-3 w-3" fill="white" />
+            {image.duration ? (
+              <span>
+                {image.duration >= 60
+                  ? `${Math.floor(image.duration / 60)}:${Math.floor(image.duration % 60).toString().padStart(2, '0')}`
+                  : `0:${Math.floor(image.duration).toString().padStart(2, '0')}`
+                }
+              </span>
+            ) : (
+              <span>Video</span>
+            )}
+          </div>
+        )}
+
         <button
           onClick={handlePreviewClick}
           className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
@@ -337,6 +355,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
     prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
+    prevProps.image.mediaType === nextProps.image.mediaType &&
+    prevProps.image.duration === nextProps.image.duration &&
     tagsEqual &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isFocused === nextProps.isFocused &&

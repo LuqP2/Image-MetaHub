@@ -27,6 +27,19 @@ export interface CacheImageMetadata {
   fileSize?: number;
   fileType?: string;
 
+  // Video support
+  mediaType?: 'image' | 'video';
+  videoMetadata?: {
+    duration?: number;
+    codec?: string;
+    fps?: number;
+    bitrate?: number;
+    audioCodec?: string;
+    resolution?: string;
+    frameCount?: number;
+  };
+  duration?: number;
+
   // Smart Clustering & Auto-Tagging (Phase 1)
   clusterId?: string;
   clusterPosition?: number;

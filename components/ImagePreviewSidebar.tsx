@@ -1,7 +1,9 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, Play } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
+import VideoPlayer from './VideoPlayer';
+import { isVideoFile } from '../services/mediaConstants';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -288,9 +290,22 @@ const ImagePreviewSidebar: React.FC = () => {
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Image */}
-        <div className="bg-black flex items-center justify-center rounded-lg">
-          {imageUrl ? <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" /> : <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>}
+        {/* Image or Video */}
+        <div className="bg-black flex items-center justify-center rounded-lg overflow-hidden">
+          {activeImage.mediaType === 'video' || isVideoFile(activeImage.name) ? (
+            <VideoPlayer
+              src={imageUrl || ''}
+              poster={activeImage.thumbnailUrl}
+              className="w-full max-h-96"
+              autoPlay={false}
+              loop={false}
+              muted={true}
+            />
+          ) : imageUrl ? (
+            <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" />
+          ) : (
+            <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>
+          )}
         </div>
 
         {/* Metadata */}
@@ -460,6 +475,33 @@ const ImagePreviewSidebar: React.FC = () => {
                     <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                   )}
               </div>
+
+              {/* Video-specific metadata */}
+              {activeImage.mediaType === 'video' && activeImage.videoMetadata && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Play className="w-4 h-4 text-purple-400" />
+                    <span className="font-semibold text-gray-400 text-xs uppercase tracking-wider">Video Info</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {activeImage.videoMetadata.duration && (
+                      <MetadataItem
+                        label="Duration"
+                        value={`${Math.floor(activeImage.videoMetadata.duration / 60)}:${Math.floor(activeImage.videoMetadata.duration % 60).toString().padStart(2, '0')}`}
+                      />
+                    )}
+                    {activeImage.videoMetadata.codec && (
+                      <MetadataItem label="Codec" value={activeImage.videoMetadata.codec.toUpperCase()} />
+                    )}
+                    {activeImage.videoMetadata.fps && (
+                      <MetadataItem label="FPS" value={activeImage.videoMetadata.fps} />
+                    )}
+                    {activeImage.videoMetadata.bitrate && (
+                      <MetadataItem label="Bitrate" value={`${activeImage.videoMetadata.bitrate} kbps`} />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {nMeta.loras && nMeta.loras.length > 0 && (

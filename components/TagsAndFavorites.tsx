@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, X, Star, Tag } from 'lucide-react';
+import { ChevronDown, X, Star, Tag, Image, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 
@@ -7,6 +7,8 @@ const TagsAndFavorites: React.FC = () => {
   const {
     showFavoritesOnly,
     setShowFavoritesOnly,
+    selectedMediaType,
+    setSelectedMediaType,
     availableTags,
     availableAutoTags,
     selectedTags,
@@ -86,8 +88,12 @@ const TagsAndFavorites: React.FC = () => {
     setSelectedAutoTags([]);
   };
 
-  // Don't render if no tags or favorites exist in current images
-  if (currentImagesTags.length === 0 && totalFavoriteCount === 0) {
+  // Count videos in current images
+  const videoCount = images.filter(img => img.mediaType === 'video').length;
+
+  // Don't render if no tags, favorites, or videos exist in current images
+  // Always show if we have images (for the media type filter)
+  if (currentImagesTags.length === 0 && totalFavoriteCount === 0 && videoCount === 0 && images.length === 0) {
     return null;
   }
 
@@ -98,8 +104,8 @@ const TagsAndFavorites: React.FC = () => {
         className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
       >
         <div className="flex items-center space-x-2">
-          <span className="text-gray-300 font-medium">Favorites & Tags</span>
-          {(showFavoritesOnly || selectedTags.length > 0) && (
+          <span className="text-gray-300 font-medium">Filters</span>
+          {(showFavoritesOnly || selectedTags.length > 0 || selectedMediaType !== 'all') && (
             <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
               active
             </span>
@@ -139,6 +145,45 @@ const TagsAndFavorites: React.FC = () => {
                   </span>
                 </label>
               )}
+
+              {/* Media Type Filter */}
+              <div className="space-y-2">
+                <span className="text-sm text-gray-400 font-medium">Media Type</span>
+                <div className="flex rounded-lg overflow-hidden border border-gray-600">
+                  <button
+                    onClick={() => setSelectedMediaType('all')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-sm transition-colors ${
+                      selectedMediaType === 'all'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setSelectedMediaType('image')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-sm transition-colors border-l border-gray-600 ${
+                      selectedMediaType === 'image'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <Image className="w-3.5 h-3.5" />
+                    Images
+                  </button>
+                  <button
+                    onClick={() => setSelectedMediaType('video')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-sm transition-colors border-l border-gray-600 ${
+                      selectedMediaType === 'video'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    Videos
+                  </button>
+                </div>
+              </div>
 
               {/* Tags Section */}
               {currentImagesTags.length > 0 && (

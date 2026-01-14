@@ -3,6 +3,8 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import VideoPlayer from './VideoPlayer';
+import { isVideoFile } from '../services/mediaConstants';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -674,7 +676,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
           onMouseLeave={handleMouseUp}
           style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
-          {imageUrl ? (
+          {/* Render video or image based on media type */}
+          {image.mediaType === 'video' || isVideoFile(image.name) ? (
+            <VideoPlayer
+              src={imageUrl || ''}
+              poster={image.thumbnailUrl}
+              className="w-full h-full"
+              autoPlay={false}
+              loop={false}
+              muted={true}
+            />
+          ) : imageUrl ? (
             <img
               src={imageUrl}
               alt={image.name}
@@ -964,6 +976,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
                     </div>
+                    {/* Video-specific metadata */}
+                    {image.mediaType === 'video' && image.videoMetadata && (
+                      <div className="mt-3 pt-3 border-t border-gray-700">
+                        <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider mb-2">Video Info</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {image.videoMetadata.duration && (
+                            <MetadataItem
+                              label="Duration"
+                              value={`${Math.floor(image.videoMetadata.duration / 60)}:${Math.floor(image.videoMetadata.duration % 60).toString().padStart(2, '0')}`}
+                            />
+                          )}
+                          {image.videoMetadata.codec && (
+                            <MetadataItem label="Codec" value={image.videoMetadata.codec.toUpperCase()} />
+                          )}
+                          {image.videoMetadata.fps && (
+                            <MetadataItem label="FPS" value={image.videoMetadata.fps} />
+                          )}
+                          {image.videoMetadata.bitrate && (
+                            <MetadataItem label="Bitrate" value={`${image.videoMetadata.bitrate} kbps`} />
+                          )}
+                          {image.videoMetadata.audioCodec && (
+                            <MetadataItem label="Audio" value={image.videoMetadata.audioCodec.toUpperCase()} />
+                          )}
+                          {image.videoMetadata.frameCount && (
+                            <MetadataItem label="Frames" value={image.videoMetadata.frameCount} />
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

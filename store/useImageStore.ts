@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, MediaType } from '../types';
 import { loadSelectedFolders, saveSelectedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -154,6 +154,7 @@ interface ImageState {
   selectedTags: string[];
   selectedAutoTags: string[]; // Filter by auto-tags
   showFavoritesOnly: boolean;
+  selectedMediaType: 'all' | 'image' | 'video'; // Filter by media type
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
@@ -268,6 +269,7 @@ interface ImageState {
   setSelectedTags: (tags: string[]) => void;
   setSelectedAutoTags: (tags: string[]) => void;
   setShowFavoritesOnly: (show: boolean) => void;
+  setSelectedMediaType: (mediaType: 'all' | 'image' | 'video') => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
   refreshAvailableAutoTags: () => void;
@@ -513,6 +515,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(img => img.isFavorite === true);
         }
 
+        // Step 2.5: Media type filter
+        if (state.selectedMediaType && state.selectedMediaType !== 'all') {
+            results = results.filter(img => {
+                const imgMediaType = img.mediaType || 'image'; // Default to 'image' for backwards compatibility
+                return imgMediaType === state.selectedMediaType;
+            });
+        }
+
         // Step 3: Tags filter
         if (state.selectedTags && state.selectedTags.length > 0) {
             results = results.filter(img => {
@@ -725,6 +735,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedTags: [],
         selectedAutoTags: [],
         showFavoritesOnly: false,
+        selectedMediaType: 'all',
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
@@ -1757,6 +1768,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
+        setSelectedMediaType: (mediaType) => set(state => {
+            const newState = { ...state, selectedMediaType: mediaType };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
         getImageAnnotations: (imageId) => {
             return get().annotations.get(imageId) || null;
         },
@@ -1966,6 +1982,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedTags: [],
             selectedAutoTags: [],
             showFavoritesOnly: false,
+            selectedMediaType: 'all',
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),
