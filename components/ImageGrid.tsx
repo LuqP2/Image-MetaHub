@@ -36,6 +36,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
+  const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
@@ -176,7 +177,27 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
         }`}
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
-        onClick={(e) => onImageClick(image, e)}
+        onClick={(e) => {
+          if (doubleClickToOpen) {
+            if (e.ctrlKey || e.metaKey) {
+              // Ctrl/Cmd+click: toggle selection (add/remove from multi-select)
+              toggleImageSelection(image.id);
+            } else {
+              // Single click: select only this image and set as preview
+              useImageStore.setState({
+                selectedImages: new Set([image.id]),
+                previewImage: image
+              });
+            }
+          } else {
+            onImageClick(image, e);
+          }
+        }}
+        onDoubleClick={(e) => {
+          if (doubleClickToOpen) {
+            onImageClick(image, e);
+          }
+        }}
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
         draggable={canDragExternally}

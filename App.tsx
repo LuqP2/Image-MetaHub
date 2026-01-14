@@ -29,6 +29,7 @@ import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
+import GridToolbar from './components/GridToolbar';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -46,7 +47,7 @@ export default function App() {
 
   // --- Hooks ---
   const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
-  const { handleImageSelection, handleDeleteSelectedImages, clearSelection } = useImageSelection();
+  const { handleImageSelection, handleDeleteSelectedImages } = useImageSelection();
   const { generateWithA1111, isGenerating: isGeneratingA1111 } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
@@ -113,6 +114,8 @@ export default function App() {
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
+  const setComparisonImages = useImageStore((state) => state.setComparisonImages);
+  const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
@@ -149,6 +152,7 @@ export default function App() {
   const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
+  const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
 
   const queueCount = useGenerationQueueStore((state) =>
@@ -765,40 +769,27 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <div className="inline-flex rounded-full bg-gray-900/60 border border-gray-800 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setLibraryView('library')}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                      libraryView === 'library'
-                        ? 'bg-blue-500/20 text-blue-200'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    Library
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setLibraryView('smart')}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                      libraryView === 'smart'
-                        ? 'bg-purple-500/20 text-purple-200'
-                        : 'text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    Smart Library
-                    {clustersCount > 0 && (
-                      <span className="ml-2 rounded-full bg-purple-500/30 px-2 py-0.5 text-[10px] font-semibold text-purple-100">
-                        {clustersCount}
-                      </span>
-                    )}
-                  </button>
-                </div>
-                <span className="text-xs text-gray-500">
-                  {libraryView === 'library' ? 'All indexed images' : 'Similarity stacks'}
-                </span>
-              </div>
+              <GridToolbar
+                libraryView={libraryView}
+                onLibraryViewChange={setLibraryView}
+                clustersCount={clustersCount}
+                selectedImages={safeSelectedImages}
+                images={paginatedImages}
+                directories={safeDirectories}
+                onDeleteSelected={handleDeleteSelectedImages}
+                onGenerateA1111={(image) => {
+                  setSelectedImageForGeneration(image);
+                  setIsA1111GenerateModalOpen(true);
+                }}
+                onGenerateComfyUI={(image) => {
+                  setSelectedImageForGeneration(image);
+                  setIsComfyUIGenerateModalOpen(true);
+                }}
+                onCompare={(images) => {
+                  setComparisonImages(images);
+                  openComparisonModal();
+                }}
+              />
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
@@ -833,9 +824,6 @@ export default function App() {
                   onPageChange={setCurrentPage}
                   itemsPerPage={itemsPerPage}
                   onItemsPerPageChange={setItemsPerPage}
-                  selectedCount={safeSelectedImages.size}
-                  onClearSelection={clearSelection}
-                  onDeleteSelected={handleDeleteSelectedImages}
                   viewMode={viewMode}
                   onViewModeChange={toggleViewMode}
                   filteredCount={safeFilteredImages.length}
@@ -890,13 +878,17 @@ export default function App() {
           isPro={isPro}
         />
 
-        {/* Generate from Scratch Modals */}
+        {/* Generate Modals */}
         {isA1111GenerateModalOpen && (
           <A1111GenerateModal
             isOpen={isA1111GenerateModalOpen}
-            onClose={() => setIsA1111GenerateModalOpen(false)}
-            image={createDummyImage()}
+            onClose={() => {
+              setIsA1111GenerateModalOpen(false);
+              setSelectedImageForGeneration(null);
+            }}
+            image={selectedImageForGeneration || createDummyImage()}
             onGenerate={async (params: A1111GenerationParams) => {
+              const imageToUse = selectedImageForGeneration || createDummyImage();
               const customMetadata: Partial<BaseMetadata> = {
                 prompt: params.prompt,
                 negativePrompt: params.negativePrompt,
@@ -905,11 +897,12 @@ export default function App() {
                 seed: params.randomSeed ? -1 : params.seed,
                 width: params.width,
                 height: params.height,
-                model: params.model,
+                model: params.model || imageToUse.metadata?.normalizedMetadata?.model,
                 ...(params.sampler ? { sampler: params.sampler } : {}),
               };
-              await generateWithA1111(createDummyImage(), customMetadata, params.numberOfImages);
+              await generateWithA1111(imageToUse, customMetadata, params.numberOfImages);
               setIsA1111GenerateModalOpen(false);
+              setSelectedImageForGeneration(null);
             }}
             isGenerating={isGeneratingA1111}
           />
@@ -918,9 +911,13 @@ export default function App() {
         {isComfyUIGenerateModalOpen && (
           <ComfyUIGenerateModal
             isOpen={isComfyUIGenerateModalOpen}
-            onClose={() => setIsComfyUIGenerateModalOpen(false)}
-            image={createDummyImage()}
+            onClose={() => {
+              setIsComfyUIGenerateModalOpen(false);
+              setSelectedImageForGeneration(null);
+            }}
+            image={selectedImageForGeneration || createDummyImage()}
             onGenerate={async (params: ComfyUIGenerationParams) => {
+              const imageToUse = selectedImageForGeneration || createDummyImage();
               const customMetadata: Partial<BaseMetadata> = {
                 prompt: params.prompt,
                 negativePrompt: params.negativePrompt,
@@ -933,7 +930,7 @@ export default function App() {
                 ...(params.sampler ? { sampler: params.sampler } : {}),
                 ...(params.scheduler ? { scheduler: params.scheduler } : {}),
               };
-              await generateWithComfyUI(createDummyImage(), {
+              await generateWithComfyUI(imageToUse, {
                 customMetadata,
                 overrides: {
                   model: params.model,
@@ -941,6 +938,7 @@ export default function App() {
                 },
               });
               setIsComfyUIGenerateModalOpen(false);
+              setSelectedImageForGeneration(null);
             }}
             isGenerating={isGeneratingComfyUI}
           />

@@ -347,9 +347,6 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
         onPageChange={handlePageChange}
         itemsPerPage={itemsPerPage}
         onItemsPerPageChange={setItemsPerPage}
-        selectedCount={safeSelectedImages.size}
-        onClearSelection={clearSelection}
-        onDeleteSelected={handleDeleteSelectedImages}
         viewMode={viewMode}
         onViewModeChange={toggleViewMode}
         filteredCount={safeFilteredImages.length}
