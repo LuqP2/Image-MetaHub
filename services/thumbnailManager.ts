@@ -272,8 +272,17 @@ class ThumbnailManager {
         return null;
       }
 
-      // Read the generated thumbnail file
-      const readResult = await (window as any).electronAPI.readFile(outputPath);
+      // Small delay to ensure file is fully written to disk
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Read the generated thumbnail file with retry
+      let readResult = await (window as any).electronAPI.readFile(outputPath);
+
+      // Retry once if read fails (file might not be fully synced)
+      if (!readResult.success || !readResult.data) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        readResult = await (window as any).electronAPI.readFile(outputPath);
+      }
       if (!readResult.success || !readResult.data) {
         console.error('[ThumbnailManager] Failed to read video thumbnail file');
         (window as any).electronAPI.deleteFile(outputPath).catch(() => {});

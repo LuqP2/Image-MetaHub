@@ -89,6 +89,11 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     fileSize: img.fileSize,
     fileType: img.fileType,
 
+    // Video support
+    mediaType: img.mediaType,
+    videoMetadata: img.videoMetadata,
+    duration: img.duration,
+
     // Smart Clustering & Auto-Tagging (Phase 1)
     clusterId: img.clusterId,
     clusterPosition: img.clusterPosition,

@@ -125,27 +125,6 @@ const TagsAndFavorites: React.FC = () => {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-3">
-              {/* Favorites Toggle */}
-              {totalFavoriteCount > 0 && (
-                <label className="flex items-center space-x-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={showFavoritesOnly}
-                    onChange={(e) => setShowFavoritesOnly(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                  />
-                  <Star
-                    className={`w-4 h-4 ${showFavoritesOnly ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400 group-hover:text-yellow-400'}`}
-                  />
-                  <span className="text-sm text-gray-300 group-hover:text-gray-50">
-                    Show Favorites Only
-                  </span>
-                  <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                    {favoriteCount}
-                  </span>
-                </label>
-              )}
-
               {/* Media Type Filter */}
               <div className="space-y-2">
                 <span className="text-sm text-gray-400 font-medium">Media Type</span>
@@ -181,9 +160,35 @@ const TagsAndFavorites: React.FC = () => {
                   >
                     <Play className="w-3.5 h-3.5" />
                     Videos
+                    {videoCount > 0 && (
+                      <span className="text-xs bg-purple-700/50 px-1.5 rounded">
+                        {videoCount}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
+
+              {/* Favorites Toggle */}
+              {totalFavoriteCount > 0 && (
+                <label className="flex items-center space-x-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={showFavoritesOnly}
+                    onChange={(e) => setShowFavoritesOnly(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                  />
+                  <Star
+                    className={`w-4 h-4 ${showFavoritesOnly ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400 group-hover:text-yellow-400'}`}
+                  />
+                  <span className="text-sm text-gray-300 group-hover:text-gray-50">
+                    Show Favorites Only
+                  </span>
+                  <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
+                    {favoriteCount}
+                  </span>
+                </label>
+              )}
 
               {/* Tags Section */}
               {currentImagesTags.length > 0 && (

@@ -1467,6 +1467,10 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     clusterPosition: image.clusterPosition,
     autoTags: image.autoTags,
     autoTagsGeneratedAt: image.autoTagsGeneratedAt,
+    // Video support fields
+    mediaType: image.mediaType,
+    videoMetadata: image.videoMetadata,
+    duration: image.duration,
   };
 }
 

@@ -241,21 +241,30 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           </div>
         )}
 
-        {/* Video badge with duration */}
+        {/* Video indicator - large centered play icon */}
         {image.mediaType === 'video' && (
-          <div className="absolute bottom-2 right-2 z-20 px-2 py-1 bg-black/70 rounded-lg text-white text-xs font-mono shadow-lg flex items-center gap-1">
-            <Play className="h-3 w-3" fill="white" />
-            {image.duration ? (
-              <span>
-                {image.duration >= 60
-                  ? `${Math.floor(image.duration / 60)}:${Math.floor(image.duration % 60).toString().padStart(2, '0')}`
-                  : `0:${Math.floor(image.duration).toString().padStart(2, '0')}`
-                }
-              </span>
-            ) : (
-              <span>Video</span>
-            )}
-          </div>
+          <>
+            {/* Large centered play button */}
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div className="bg-black/60 rounded-full p-3 group-hover:bg-purple-600/80 transition-colors">
+                <Play className="h-8 w-8 text-white" fill="white" />
+              </div>
+            </div>
+            {/* Duration badge */}
+            <div className="absolute bottom-2 right-2 z-20 px-2 py-1 bg-black/70 rounded-lg text-white text-xs font-mono shadow-lg flex items-center gap-1">
+              <Play className="h-3 w-3" fill="white" />
+              {image.duration ? (
+                <span>
+                  {image.duration >= 60
+                    ? `${Math.floor(image.duration / 60)}:${Math.floor(image.duration % 60).toString().padStart(2, '0')}`
+                    : `0:${Math.floor(image.duration).toString().padStart(2, '0')}`
+                  }
+                </span>
+              ) : (
+                <span>Video</span>
+              )}
+            </div>
+          </>
         )}
 
         <button
