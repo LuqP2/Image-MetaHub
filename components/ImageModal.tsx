@@ -83,6 +83,40 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
+const resolveImageMimeType = (fileName: string): string => {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerName.endsWith('.webp')) return 'image/webp';
+  return 'image/png';
+};
+
+const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
+  const mimeType = resolveImageMimeType(fileName);
+
+  if (typeof data === 'string') {
+    return { url: `data:${mimeType};base64,${data}`, revoke: false };
+  }
+
+  if (data instanceof ArrayBuffer) {
+    const blob = new Blob([data], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
+    const view = new Uint8Array((data as { data: number[] }).data);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  throw new Error('Unknown file data format.');
+};
+
 // Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -169,6 +203,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentTags = imageFromStore?.tags || image.tags || [];
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
+  const preferredThumbnailUrl = imageFromStore?.thumbnailUrl ?? image.thumbnailUrl;
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
@@ -440,9 +475,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    let currentUrl: string | null = null;
-    // Reset imageUrl whenever the image prop changes
-    setImageUrl(null);
+    let createdUrl: string | null = null;
+    const hasPreview = Boolean(preferredThumbnailUrl);
+
+    setImageUrl(preferredThumbnailUrl ?? null);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -450,29 +486,47 @@ const ImageModal: React.FC<ImageModalProps> = ({
       // Validate directoryPath before attempting to load (prevents recursion)
       if (!directoryPath && window.electronAPI) {
         console.error('Cannot load image: directoryPath is undefined');
-        if (isMounted) {
+        if (isMounted && !hasPreview) {
           setImageUrl(null);
           alert('Failed to load image: Directory path is not available.');
         }
         return;
       }
 
-      try {
-        // Primary method: Use thumbnail if available, otherwise full image
-        const fileHandle = image.thumbnailHandle || image.handle;
+      const setResolvedUrl = (url: string, revoke: boolean) => {
+        if (!isMounted) return;
+        if (createdUrl) {
+          URL.revokeObjectURL(createdUrl);
+          createdUrl = null;
+        }
+        if (revoke) {
+          createdUrl = url;
+        }
+        setImageUrl(url);
+      };
 
-        if (fileHandle && typeof fileHandle.getFile === 'function') {
+      try {
+        const primaryHandle = image.handle;
+        const fallbackHandle = image.thumbnailHandle;
+        const fileHandle =
+          primaryHandle && typeof primaryHandle.getFile === 'function'
+            ? primaryHandle
+            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
+              ? fallbackHandle
+              : null;
+
+        if (fileHandle) {
           const file = await fileHandle.getFile();
           if (isMounted) {
-            currentUrl = URL.createObjectURL(file);
-            setImageUrl(currentUrl);
+            const url = URL.createObjectURL(file);
+            setResolvedUrl(url, true);
           }
           return; // Success, no need for fallback
         }
         throw new Error('Image handle is not a valid FileSystemFileHandle.');
       } catch (handleError) {
-        // Fallback method: Use Electron API if available
-        console.warn(`Could not load image with FileSystemFileHandle: ${handleError.message}. Attempting Electron fallback.`);
+        const message = handleError instanceof Error ? handleError.message : String(handleError);
+        console.warn(`Could not load image with FileSystemFileHandle: ${message}. Attempting Electron fallback.`);
         if (isMounted && window.electronAPI && directoryPath) {
           try {
             const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
@@ -481,53 +535,38 @@ const ImageModal: React.FC<ImageModalProps> = ({
             }
             const fileResult = await window.electronAPI.readFile(pathResult.path);
             if (fileResult.success && fileResult.data && isMounted) {
-              // fileResult.data is expected to be a base64 string or Uint8Array
-              let dataUrl: string;
-              if (typeof fileResult.data === 'string') {
-                // Assume base64 string
-                const lowerName = image.name.toLowerCase();
-                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
-                  ? 'jpeg'
-                  : lowerName.endsWith('.webp')
-                    ? 'webp'
-                    : 'png';
-                dataUrl = `data:image/${ext};base64,${fileResult.data}`;
-              } else if (fileResult.data instanceof Uint8Array) {
-                // Convert Uint8Array to base64
-                const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
-                const base64 = btoa(binary);
-                const lowerName = image.name.toLowerCase();
-                const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
-                  ? 'jpeg'
-                  : lowerName.endsWith('.webp')
-                    ? 'webp'
-                    : 'png';
-                dataUrl = `data:image/${ext};base64,${base64}`;
-              } else {
-                throw new Error('Unknown file data format.');
-              }
-              currentUrl = dataUrl;
-              setImageUrl(dataUrl);
+              const { url, revoke } = createImageUrlFromFileData(fileResult.data, image.name);
+              setResolvedUrl(url, revoke);
             } else {
               throw new Error(fileResult.error || 'Failed to read file via Electron API.');
             }
           } catch (electronError) {
             console.error('Electron fallback failed:', electronError);
-            if (isMounted) {
+            if (isMounted && !hasPreview) {
               setImageUrl(null); // Explicitly set to null on failure
-              alert(`Failed to load image: ${electronError.message}`);
+              const errorMessage = electronError instanceof Error ? electronError.message : String(electronError);
+              alert(`Failed to load image: ${errorMessage}`);
             }
           }
-        } else if (isMounted) {
-            // If no fallback is available
-            setImageUrl(null);
-            alert(`Failed to load image: No valid file handle and not in a compatible Electron environment.`);
+        } else if (isMounted && !hasPreview) {
+          // If no fallback is available
+          setImageUrl(null);
+          alert('Failed to load image: No valid file handle and not in a compatible Electron environment.');
         }
       }
     };
 
     loadImage();
 
+    return () => {
+      isMounted = false;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
       if (hotkeyManager.areHotkeysPaused()) {
@@ -569,12 +608,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleClickOutside);
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
-      }
-      isMounted = false;
     };
-  }, [image, onClose, isRenaming, isFullscreen, onNavigatePrevious, onNavigateNext, directoryPath, toggleFullscreen]);
+  }, [hideContextMenu, isFullscreen, isRenaming, onClose, onNavigateNext, onNavigatePrevious, toggleFullscreen]);
 
   // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {

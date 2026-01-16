@@ -1,6 +1,40 @@
 import { useEffect, useState } from 'react';
 import { IndexedImage } from '../types';
 
+const resolveImageMimeType = (fileName: string): string => {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerName.endsWith('.webp')) return 'image/webp';
+  return 'image/png';
+};
+
+const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
+  const mimeType = resolveImageMimeType(fileName);
+
+  if (typeof data === 'string') {
+    return { url: `data:${mimeType};base64,${data}`, revoke: false };
+  }
+
+  if (data instanceof ArrayBuffer) {
+    const blob = new Blob([data], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
+    const view = new Uint8Array((data as { data: number[] }).data);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  throw new Error('Unknown file data format.');
+};
+
 const useComparisonImageSource = (image: IndexedImage, directoryPath: string) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -8,8 +42,10 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string) =>
 
   useEffect(() => {
     let isMounted = true;
-    let currentUrl: string | null = null;
-    setImageUrl(null);
+    let createdUrl: string | null = null;
+    const previewUrl = image.thumbnailUrl ?? null;
+    const hasPreview = Boolean(previewUrl);
+    setImageUrl(previewUrl);
     setLoadError(null);
     setIsLoading(true);
 
@@ -23,15 +59,34 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string) =>
         return;
       }
 
-      try {
-        const fileHandle = image.handle;
+      const setResolvedUrl = (url: string, revoke: boolean) => {
+        if (!isMounted) return;
+        if (createdUrl) {
+          URL.revokeObjectURL(createdUrl);
+          createdUrl = null;
+        }
+        if (revoke) {
+          createdUrl = url;
+        }
+        setImageUrl(url);
+        setIsLoading(false);
+      };
 
-        if (fileHandle && typeof fileHandle.getFile === 'function') {
+      try {
+        const primaryHandle = image.handle;
+        const fallbackHandle = image.thumbnailHandle;
+        const fileHandle =
+          primaryHandle && typeof primaryHandle.getFile === 'function'
+            ? primaryHandle
+            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
+              ? fallbackHandle
+              : null;
+
+        if (fileHandle) {
           const file = await fileHandle.getFile();
           if (isMounted) {
-            currentUrl = URL.createObjectURL(file);
-            setImageUrl(currentUrl);
-            setIsLoading(false);
+            const url = URL.createObjectURL(file);
+            setResolvedUrl(url, true);
           }
           return;
         }
@@ -47,38 +102,25 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string) =>
             }
             const fileResult = await window.electronAPI.readFile(pathResult.path);
             if (fileResult.success && fileResult.data && isMounted) {
-              let dataUrl: string;
-              if (typeof fileResult.data === 'string') {
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
-                  ? 'jpeg'
-                  : 'png';
-                dataUrl = `data:image/${ext};base64,${fileResult.data}`;
-              } else if (fileResult.data instanceof Uint8Array) {
-                const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
-                const base64 = btoa(binary);
-                const ext = image.name.toLowerCase().endsWith('.jpg') || image.name.toLowerCase().endsWith('.jpeg')
-                  ? 'jpeg'
-                  : 'png';
-                dataUrl = `data:image/${ext};base64,${base64}`;
-              } else {
-                throw new Error('Unknown file data format.');
-              }
-              currentUrl = dataUrl;
-              setImageUrl(dataUrl);
-              setIsLoading(false);
+              const { url, revoke } = createImageUrlFromFileData(fileResult.data, image.name);
+              setResolvedUrl(url, revoke);
             } else {
               throw new Error(fileResult.error || 'Failed to read file via Electron API.');
             }
-          } catch (electronError) {
+        } catch (electronError) {
             const fallbackMessage = electronError instanceof Error ? electronError.message : String(electronError);
             console.error('Electron fallback failed:', fallbackMessage);
             if (isMounted) {
-              setLoadError(fallbackMessage);
+              if (!hasPreview) {
+                setLoadError(fallbackMessage);
+              }
               setIsLoading(false);
             }
           }
         } else if (isMounted) {
-          setLoadError('No valid file handle and not in a compatible Electron environment.');
+          if (!hasPreview) {
+            setLoadError('No valid file handle and not in a compatible Electron environment.');
+          }
           setIsLoading(false);
         }
       }
@@ -88,11 +130,11 @@ const useComparisonImageSource = (image: IndexedImage, directoryPath: string) =>
 
     return () => {
       isMounted = false;
-      if (currentUrl && currentUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(currentUrl);
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [image, directoryPath]);
+  }, [image.id, image.handle, image.thumbnailHandle, image.name, image.thumbnailUrl, directoryPath]);
 
   return { imageUrl, loadError, isLoading };
 };

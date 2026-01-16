@@ -66,6 +66,40 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
+const resolveImageMimeType = (fileName: string): string => {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerName.endsWith('.webp')) return 'image/webp';
+  return 'image/png';
+};
+
+const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
+  const mimeType = resolveImageMimeType(fileName);
+
+  if (typeof data === 'string') {
+    return { url: `data:${mimeType};base64,${data}`, revoke: false };
+  }
+
+  if (data instanceof ArrayBuffer) {
+    const blob = new Blob([data], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
+    const view = new Uint8Array((data as { data: number[] }).data);
+    const blob = new Blob([view], { type: mimeType });
+    return { url: URL.createObjectURL(blob), revoke: true };
+  }
+
+  throw new Error('Unknown file data format.');
+};
+
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -126,97 +160,99 @@ const ImagePreviewSidebar: React.FC = () => {
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
 
+  const activeImage = previewImageFromStore || previewImage;
+  const preferredThumbnailUrl = activeImage?.thumbnailUrl ?? null;
+
   useEffect(() => {
     let isMounted = true;
-    let currentUrl: string | null = null;
+    let createdUrl: string | null = null;
 
-    const activeImage = previewImageFromStore || previewImage;
-
-    if (activeImage) {
-      const loadImage = async () => {
-        if (!isMounted) return;
-        
-        // Revoke previous URL if it exists
-        if (imageUrl && imageUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(imageUrl);
-        }
-        setImageUrl(null); // Reset while loading
-
-        const directoryPath = directories.find(d => d.id === activeImage.directoryId)?.path;
-
-        try {
-          const fileHandle = activeImage.thumbnailHandle || activeImage.handle;
-          if (fileHandle && typeof fileHandle.getFile === 'function') {
-            const file = await fileHandle.getFile();
-            if (isMounted) {
-              currentUrl = URL.createObjectURL(file);
-              setImageUrl(currentUrl);
-            }
-            return;
-          }
-          throw new Error('Image handle is not a valid FileSystemFileHandle.');
-        } catch (handleError) {
-          console.warn(`Could not load image with FileSystemFileHandle: ${(handleError as Error).message}. Attempting Electron fallback.`);
-          if (isMounted && window.electronAPI && directoryPath) {
-            try {
-              const pathResult = await window.electronAPI.joinPaths(directoryPath, activeImage.name);
-              if (!pathResult.success || !pathResult.path) {
-                throw new Error(pathResult.error || 'Failed to construct image path.');
-              }
-              const fileResult = await window.electronAPI.readFile(pathResult.path);
-              if (fileResult.success && fileResult.data && isMounted) {
-                let dataUrl: string;
-                if (typeof fileResult.data === 'string') {
-                  const lowerName = activeImage.name.toLowerCase();
-                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
-                    ? 'jpeg'
-                    : lowerName.endsWith('.webp')
-                      ? 'webp'
-                      : 'png';
-                  dataUrl = `data:image/${ext};base64,${fileResult.data}`;
-                } else if (fileResult.data instanceof Uint8Array) {
-                  const binary = String.fromCharCode.apply(null, Array.from(fileResult.data));
-                  const base64 = btoa(binary);
-                  const lowerName = activeImage.name.toLowerCase();
-                  const ext = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
-                    ? 'jpeg'
-                    : lowerName.endsWith('.webp')
-                      ? 'webp'
-                      : 'png';
-                  dataUrl = `data:image/${ext};base64,${base64}`;
-                } else {
-                  throw new Error('Unknown file data format.');
-                }
-                currentUrl = dataUrl;
-                setImageUrl(dataUrl);
-              } else {
-                throw new Error(fileResult.error || 'Failed to read file via Electron API.');
-              }
-            } catch (electronError) {
-              console.error('Electron fallback failed:', electronError);
-              if (isMounted) setImageUrl(null);
-            }
-          } else if (isMounted) {
-            setImageUrl(null);
-          }
+    if (!activeImage) {
+      setImageUrl(null);
+      return () => {
+        isMounted = false;
+        if (createdUrl) {
+          URL.revokeObjectURL(createdUrl);
         }
       };
-
-      loadImage();
     }
+
+    const hasPreview = Boolean(preferredThumbnailUrl);
+    setImageUrl(preferredThumbnailUrl);
+
+    const loadImage = async () => {
+      if (!isMounted) return;
+
+      const directoryPath = directories.find(d => d.id === activeImage.directoryId)?.path;
+
+      const setResolvedUrl = (url: string, revoke: boolean) => {
+        if (!isMounted) return;
+        if (createdUrl) {
+          URL.revokeObjectURL(createdUrl);
+          createdUrl = null;
+        }
+        if (revoke) {
+          createdUrl = url;
+        }
+        setImageUrl(url);
+      };
+
+      try {
+        const primaryHandle = activeImage.thumbnailHandle;
+        const fallbackHandle = activeImage.handle;
+        const fileHandle =
+          primaryHandle && typeof primaryHandle.getFile === 'function'
+            ? primaryHandle
+            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
+              ? fallbackHandle
+              : null;
+        if (fileHandle) {
+          const file = await fileHandle.getFile();
+          if (isMounted) {
+            const url = URL.createObjectURL(file);
+            setResolvedUrl(url, true);
+          }
+          return;
+        }
+        throw new Error('Image handle is not a valid FileSystemFileHandle.');
+      } catch (handleError) {
+        const message = handleError instanceof Error ? handleError.message : String(handleError);
+        console.warn(`Could not load image with FileSystemFileHandle: ${message}. Attempting Electron fallback.`);
+        if (isMounted && window.electronAPI && directoryPath) {
+          try {
+            const pathResult = await window.electronAPI.joinPaths(directoryPath, activeImage.name);
+            if (!pathResult.success || !pathResult.path) {
+              throw new Error(pathResult.error || 'Failed to construct image path.');
+            }
+            const fileResult = await window.electronAPI.readFile(pathResult.path);
+            if (fileResult.success && fileResult.data && isMounted) {
+              const { url, revoke } = createImageUrlFromFileData(fileResult.data, activeImage.name);
+              setResolvedUrl(url, revoke);
+            } else {
+              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
+            }
+          } catch (electronError) {
+            console.error('Electron fallback failed:', electronError);
+            if (isMounted && !hasPreview) setImageUrl(null);
+          }
+        } else if (isMounted && !hasPreview) {
+          setImageUrl(null);
+        }
+      }
+    };
+
+    loadImage();
 
     return () => {
       isMounted = false;
-      if (currentUrl && currentUrl.startsWith('blob:')) {
+      if (createdUrl) {
         // Small delay to ensure image is no longer being used before revoking
         setTimeout(() => {
-          URL.revokeObjectURL(currentUrl);
+          URL.revokeObjectURL(createdUrl);
         }, 100);
       }
     };
-  }, [previewImage, previewImageFromStore, directories]);
-
-  const activeImage = previewImageFromStore || previewImage;
+  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl]);
   if (!activeImage) {
     return null;
   }
