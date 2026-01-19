@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2 } from 'lucide-react';
+import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
@@ -69,6 +69,17 @@ const featureInfo = {
       'Find all duplicate variations',
       'Organize massive libraries efficiently',
       'Save hours of manual sorting',
+    ],
+  },
+  batch_export: {
+    name: 'Batch Export',
+    icon: Download,
+    description: 'Export multiple images at once to a folder or ZIP archive',
+    benefits: [
+      'Export selected or filtered images',
+      'Automatic filename conflict resolution',
+      'Flattened output for easy sharing',
+      'ZIP creation for quick backups',
     ],
   },
 };

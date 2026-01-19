@@ -7,7 +7,8 @@ import {
   GitCompare,
   Sparkles,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Package
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -20,11 +21,13 @@ interface GridToolbarProps {
   clustersCount: number;
   selectedImages: Set<string>;
   images: IndexedImage[];
+  filteredCount: number;
   directories: { id: string; path: string }[];
   onDeleteSelected: () => void;
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
   onCompare: (images: [IndexedImage, IndexedImage]) => void;
+  onBatchExport: () => void;
 }
 
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
@@ -45,11 +48,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   clustersCount,
   selectedImages,
   images,
+  filteredCount,
   directories,
   onDeleteSelected,
   onGenerateA1111,
   onGenerateComfyUI,
   onCompare,
+  onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -59,6 +64,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const selectedCount = selectedImages.size;
   const selectedImagesList = images.filter(img => selectedImages.has(img.id));
   const firstSelectedImage = selectedImagesList[0];
+  const canShowBatchExport = filteredCount > 0;
 
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
@@ -205,10 +211,23 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
         )}
       </div>
 
-      {/* Right side: Actions (only when images selected) */}
-      {selectedCount > 0 && (
+      {/* Right side: Actions */}
+      {(selectedCount > 0 || canShowBatchExport) && (
         <div className="flex items-center gap-1">
-          <span className="text-[11px] text-gray-400 mr-2">{selectedCount} selected</span>
+          {selectedCount > 0 && (
+            <span className="text-[11px] text-gray-400 mr-2">{selectedCount} selected</span>
+          )}
+
+          {selectedCount === 0 && canShowBatchExport && (
+            <button
+              onClick={onBatchExport}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-full bg-blue-600/20 text-blue-200 border border-blue-500/30 hover:bg-blue-600/30 transition-colors"
+              title="Batch Export"
+            >
+              <Package className="w-4 h-4" />
+              Batch Export
+            </button>
+          )}
 
           {/* Copy to Clipboard */}
           <button
@@ -239,6 +258,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
           >
             <Download className="w-4 h-4" />
           </button>
+
+          {canShowBatchExport && (
+            <button
+              onClick={onBatchExport}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+              title="Batch Export"
+            >
+              <Package className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Favorites */}
           <button
