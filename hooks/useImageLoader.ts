@@ -945,6 +945,7 @@ export function useImageLoader() {
         files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }>
     ) => {
         try {
+            const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
             const normalizedFiles = files.map(file => {
                 const relativePath = toRelativeWatchPath(file.path, directory.path);
                 const normalizedName = relativePath || file.name;
@@ -1004,6 +1005,8 @@ export function useImageLoader() {
                 newFiles.map(f => [f.relativePath || f.normalizedName, { size: f.size, type: f.normalizedType, birthtimeMs: f.lastModified }])
             );
 
+            const enrichedForCache: IndexedImage[] = [];
+
             // Callback para processar batches de imagens
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 console.log('[auto-watch] Phase A processed', batch.length, 'images (not adding yet, waiting for Phase B)');
@@ -1027,6 +1030,7 @@ export function useImageLoader() {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
                         addImages(enrichedBatch);
+                        enrichedForCache.push(...enrichedBatch);
                         // Force flush imediatamente
                         const flushPendingImages = useImageStore.getState().flushPendingImages;
                         setTimeout(() => {
@@ -1041,6 +1045,14 @@ export function useImageLoader() {
             console.log('[auto-watch] Waiting for Phase B to complete...');
             await phaseB;
             console.log('[auto-watch] Phase B completed!');
+
+            if (getIsElectron() && enrichedForCache.length > 0) {
+                try {
+                    await cacheManager.appendToCache(directory.path, directory.name, enrichedForCache, shouldScanSubfolders);
+                } catch (err) {
+                    console.error('Failed to append auto-watch images to cache:', err);
+                }
+            }
 
         } catch (error) {
             console.error('Error processing watched files:', error);

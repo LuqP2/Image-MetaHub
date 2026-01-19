@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('imagemetahub-cli')
   .description('Image MetaHub CLI - Parse AI-generated image metadata')
-  .version('0.12.1');
+  .version('0.12.2');
 
 type ParseOptions = { json: boolean; pretty: boolean; raw?: boolean; quiet?: boolean };
 type IndexOptions = { out: string; recursive: boolean; raw?: boolean; quiet?: boolean; concurrency?: string };
