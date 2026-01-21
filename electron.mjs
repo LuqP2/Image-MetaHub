@@ -1509,6 +1509,58 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('read-files-head-batch', async (event, { filePaths, maxBytes }) => {
+    try {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+        return { success: false, error: 'No file paths provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      for (const filePath of filePaths) {
+        if (!isPathAllowed(filePath)) {
+          console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+          console.error('  Requested path:', filePath);
+          console.error('  Normalized path:', path.normalize(filePath));
+          console.error('  Allowed directories:', Array.from(allowedDirectoryPaths));
+          return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
+        }
+      }
+      // --- END SECURITY CHECK ---
+
+      const FALLBACK_HEAD_BYTES = 256 * 1024;
+      const MAX_HEAD_BYTES = 2 * 1024 * 1024;
+      const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
+      const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
+
+      const promises = filePaths.map(async (filePath) => {
+        const handle = await fs.open(filePath, 'r');
+        try {
+          const buffer = Buffer.allocUnsafe(safeBytes);
+          const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
+          return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
+        } finally {
+          await handle.close();
+        }
+      });
+      const results = await Promise.allSettled(promises);
+
+      const data = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        }
+        if (!result.reason.message?.includes('ENOENT')) {
+          console.error('Error reading file head in batch:', filePaths[index], result.reason);
+        }
+        return { success: false, error: result.reason.message, path: filePaths[index] };
+      });
+
+      return { success: true, files: data };
+    } catch (error) {
+      console.error('Error in read-files-head-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle getting file statistics (creation date, etc.)
   ipcMain.handle('get-file-stats', async (event, filePath) => {
     try {
