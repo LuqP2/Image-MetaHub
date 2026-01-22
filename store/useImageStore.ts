@@ -303,9 +303,9 @@ export const useImageStore = create<ImageState>((set, get) => {
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
     const MERGE_FLUSH_INTERVAL_MS = 250;
-    const MERGE_FLUSH_INTERVAL_INDEXING_MS = 1500;
-    const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 5000;
-    const MERGE_FLUSH_LARGE_THRESHOLD = 10000;
+    const MERGE_FLUSH_INTERVAL_INDEXING_MS = 3000;
+    const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 15000;
+    const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
     const FILTER_RECOMPUTE_INDEXING_MS = 5000;
 
     const clearPendingQueue = () => {
@@ -1099,7 +1099,6 @@ export const useImageStore = create<ImageState>((set, get) => {
             const isIndexing = get().indexingState === 'indexing';
             if (isIndexing) {
                 pendingMergeQueue.push(...updatedImages);
-                scheduleMergeFlush();
                 return;
             }
 

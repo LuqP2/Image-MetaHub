@@ -1040,6 +1040,38 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
   return { metadata: null, buffer };
 }
 
+const buildNormalizedMetadataFromMetaHubChunk = async (
+  metaHubData: unknown,
+  fallbackDims?: { width?: number; height?: number }
+): Promise<BaseMetadata> => {
+  const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: metaHubData });
+  const width = fallbackDims?.width ?? 0;
+  const height = fallbackDims?.height ?? 0;
+
+  return {
+    prompt: enhancedResult.prompt || '',
+    negativePrompt: enhancedResult.negativePrompt || '',
+    model: enhancedResult.model || '',
+    models: enhancedResult.model ? [enhancedResult.model] : [],
+    width,
+    height,
+    seed: enhancedResult.seed,
+    steps: enhancedResult.steps || 0,
+    cfg_scale: enhancedResult.cfg,
+    scheduler: enhancedResult.scheduler || '',
+    sampler: enhancedResult.sampler_name || '',
+    loras: enhancedResult.loras || [],
+    tags: enhancedResult.tags || [],
+    notes: enhancedResult.notes || '',
+    vae: enhancedResult.vae,
+    denoise: enhancedResult.denoise,
+    _analytics: enhancedResult._analytics || null,
+    _metahub_pro: enhancedResult._metahub_pro || null,
+    _detection_method: enhancedResult._detection_method,
+    generator: 'ComfyUI',
+  };
+};
+
 /**
  * Processes a single file entry to extract metadata and create an IndexedImage object.
  * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
@@ -1109,29 +1141,8 @@ if (rawMetadata) {
   // This has highest priority as it contains pre-extracted, validated metadata
   if ('imagemetahub_data' in rawMetadata) {
     try {
-      const enhancedResult = await parseComfyUIMetadataEnhanced(rawMetadata);
-      normalizedMetadata = {
-        prompt: enhancedResult.prompt || '',
-        negativePrompt: enhancedResult.negativePrompt || '',
-        model: enhancedResult.model || '',
-        models: enhancedResult.model ? [enhancedResult.model] : [],
-        width: 0, // Will be set from actual image dimensions below
-        height: 0,
-        seed: enhancedResult.seed,
-        steps: enhancedResult.steps || 0,
-        cfg_scale: enhancedResult.cfg,
-        scheduler: enhancedResult.scheduler || '',
-        sampler: enhancedResult.sampler_name || '',
-        loras: enhancedResult.loras || [],
-        tags: enhancedResult.tags || [],
-        notes: enhancedResult.notes || '',
-        vae: enhancedResult.vae,
-        denoise: enhancedResult.denoise,
-        _analytics: enhancedResult._analytics || null,
-        _metahub_pro: enhancedResult._metahub_pro || null,
-        _detection_method: enhancedResult._detection_method,
-        generator: 'ComfyUI',
-      };
+      const metaHubData = (rawMetadata as { imagemetahub_data: unknown }).imagemetahub_data;
+      normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData);
     } catch (e) {
       console.error('[FileIndexer] Failed to parse MetaHub chunk:', e);
       // Fall through to other parsers
@@ -1767,8 +1778,14 @@ export async function processFiles(
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
   const useHeadRead = isElectron && (window as any).electronAPI?.readFilesHeadBatch;
+  const useTailRead = isElectron && (window as any).electronAPI?.readFilesTailBatch;
   const FILE_READ_BATCH_SIZE = 128;
   const HEAD_READ_MAX_BYTES = 256 * 1024;
+  const TAIL_READ_MAX_BYTES = 512 * 1024;
+  const TAIL_SCAN_SAMPLE_LIMIT = 256;
+  let tailScanAttempts = 0;
+  let tailScanHits = 0;
+  let tailScanEnabled = true;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -2020,6 +2037,135 @@ export async function processFiles(
       return merged;
     };
 
+    const METAHUB_KEYWORD_BYTES = new TextEncoder().encode('imagemetahub_data');
+    const metahubTailDecoder = new TextDecoder();
+    const bufferContainsBytes = (buffer: ArrayBuffer, needle: Uint8Array) => {
+      const haystack = new Uint8Array(buffer);
+      if (needle.length === 0 || haystack.length < needle.length) {
+        return false;
+      }
+      outer: for (let i = 0; i <= haystack.length - needle.length; i += 1) {
+        for (let j = 0; j < needle.length; j += 1) {
+          if (haystack[i + j] !== needle[j]) {
+            continue outer;
+          }
+        }
+        return true;
+      }
+      return false;
+    };
+
+    const tryParseMetaHubFromTail = async (buffer: ArrayBuffer): Promise<unknown | null> => {
+      const bytes = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      const typeA = 0x69; // i
+      const typeB = 0x54; // T
+      const typeC = 0x58; // X
+      const typeD = 0x74; // t
+
+      for (let i = 4; i <= bytes.length - 4; i += 1) {
+        if (
+          bytes[i] !== typeA ||
+          bytes[i + 1] !== typeB ||
+          bytes[i + 2] !== typeC ||
+          bytes[i + 3] !== typeD
+        ) {
+          continue;
+        }
+
+        const lengthOffset = i - 4;
+        if (lengthOffset < 0) {
+          continue;
+        }
+        const chunkLength = view.getUint32(lengthOffset);
+        const chunkDataStart = i + 4;
+        const chunkDataEnd = chunkDataStart + chunkLength;
+        if (chunkDataEnd > bytes.length) {
+          continue;
+        }
+
+        const chunkData = bytes.slice(chunkDataStart, chunkDataEnd);
+        const keywordEndIndex = chunkData.indexOf(0);
+        if (keywordEndIndex === -1) {
+          continue;
+        }
+        const keyword = metahubTailDecoder.decode(chunkData.slice(0, keywordEndIndex));
+        if (keyword !== 'imagemetahub_data') {
+          continue;
+        }
+
+        const compressionFlag = chunkData[keywordEndIndex + 1];
+        let currentIndex = keywordEndIndex + 3;
+        const langTagEndIndex = chunkData.indexOf(0, currentIndex);
+        if (langTagEndIndex === -1) {
+          continue;
+        }
+        currentIndex = langTagEndIndex + 1;
+        const translatedKwEndIndex = chunkData.indexOf(0, currentIndex);
+        if (translatedKwEndIndex === -1) {
+          continue;
+        }
+        currentIndex = translatedKwEndIndex + 1;
+
+        const text = await decodeITXtText(chunkData.slice(currentIndex), compressionFlag, metahubTailDecoder);
+        if (!text) {
+          continue;
+        }
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
+    const deriveFallbackDims = (image: IndexedImage | null) => {
+      if (!image) {
+        return undefined;
+      }
+      const normalized = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+      const width = normalized?.width;
+      const height = normalized?.height;
+      if (width && height) {
+        return { width, height };
+      }
+      if (image.dimensions) {
+        const match = image.dimensions.match(/(\\d+)\\s*x\\s*(\\d+)/i);
+        if (match) {
+          return { width: Number(match[1]), height: Number(match[2]) };
+        }
+      }
+      return undefined;
+    };
+
+    const applyMetaHubOverride = async (image: IndexedImage | null, metaHubData: unknown) => {
+      if (!image) {
+        return image;
+      }
+      const fallbackDims = deriveFallbackDims(image);
+      const normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData, fallbackDims);
+      const rawMetadata = { ...(image.metadata || {}) } as Record<string, unknown>;
+      delete rawMetadata.normalizedMetadata;
+      rawMetadata.imagemetahub_data = metaHubData;
+
+      return {
+        ...image,
+        metadata: { ...rawMetadata, normalizedMetadata },
+        metadataString: Object.keys(rawMetadata).length > 0 ? JSON.stringify(rawMetadata) : '',
+        models: normalizedMetadata.models || [],
+        loras: normalizedMetadata.loras || [],
+        scheduler: normalizedMetadata.scheduler || '',
+        board: normalizedMetadata.board || '',
+        prompt: normalizedMetadata.prompt || '',
+        negativePrompt: normalizedMetadata.negativePrompt || '',
+        cfgScale: normalizedMetadata.cfgScale || normalizedMetadata.cfg_scale || null,
+        steps: normalizedMetadata.steps || null,
+        seed: normalizedMetadata.seed || null,
+        dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+      } as IndexedImage;
+    };
+
     const shouldFallbackToFullRead = (
       entry: CatalogEntryState,
       buffer: ArrayBuffer | undefined,
@@ -2039,6 +2185,38 @@ export async function processFiles(
       }
       const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
       return fileType === 'image/png';
+    };
+
+    const shouldCheckTailForMetaHub = (
+      entry: CatalogEntryState,
+      buffer: ArrayBuffer | undefined,
+      enriched: IndexedImage | null
+    ) => {
+      if (!tailScanEnabled) {
+        return false;
+      }
+      if (tailScanHits === 0 && tailScanAttempts >= TAIL_SCAN_SAMPLE_LIMIT) {
+        return false;
+      }
+      if (!entry.source || !buffer || !enriched) {
+        return false;
+      }
+      const fileSize = entry.source.size;
+      if (!fileSize || fileSize <= buffer.byteLength) {
+        return false;
+      }
+      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
+      if (fileType !== 'image/png') {
+        return false;
+      }
+      const metadata = enriched.metadata as Record<string, unknown> | undefined;
+      if (!metadata) {
+        return false;
+      }
+      if ('imagemetahub_data' in metadata) {
+        return false;
+      }
+      return 'parameters' in metadata;
     };
 
     const iterator = async (entry: CatalogEntryState) => {
@@ -2093,6 +2271,7 @@ export async function processFiles(
 
         const resultsById = new Map<string, { enriched: IndexedImage | null; profile?: PhaseProfileSample }>();
         const fallbackEntries: CatalogEntryState[] = [];
+        const tailCheckEntries: CatalogEntryState[] = [];
         const missingEntries = new Set<string>();
 
         const headIterator = async (entry: CatalogEntryState) => {
@@ -2114,15 +2293,81 @@ export async function processFiles(
             ? { totalMs: 0, parseMs: 0, normalizeMs: 0, dimensionsMs: 0 }
             : undefined;
           const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
+          if (enriched?.metadata && 'imagemetahub_data' in (enriched.metadata as Record<string, unknown>)) {
+            tailScanHits += 1;
+            tailScanEnabled = true;
+          }
           if (shouldFallbackToFullRead(entry, buffer, enriched)) {
             fallbackEntries.push(entry);
             return null;
+          }
+          if (useTailRead && shouldCheckTailForMetaHub(entry, buffer, enriched)) {
+            tailCheckEntries.push(entry);
           }
           resultsById.set(entry.image.id, { enriched, profile });
           return null;
         };
 
         await asyncPool(concurrencyLimit, batch, headIterator);
+
+        if (tailCheckEntries.length > 0 && useTailRead) {
+          const tailPaths = tailCheckEntries
+            .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+            .filter((path): path is string => typeof path === 'string' && path.length > 0);
+          if (tailPaths.length > 0) {
+            tailScanAttempts += tailPaths.length;
+            const tailResult = await (window as any).electronAPI.readFilesTailBatch({
+              filePaths: tailPaths,
+              maxBytes: TAIL_READ_MAX_BYTES
+            });
+            phaseBStats.ipcCalls += 1;
+
+            const tailMap = new Map<string, ArrayBuffer>();
+            if (tailResult.success && Array.isArray(tailResult.files)) {
+              for (const file of tailResult.files) {
+                if (!file.success || !file.data) {
+                  continue;
+                }
+                const raw = file.data as ArrayBuffer | ArrayBufferView;
+                if (raw instanceof ArrayBuffer) {
+                  tailMap.set(file.path, raw);
+                } else if (ArrayBuffer.isView(raw)) {
+                  const view = raw as ArrayBufferView;
+                  const copy = new Uint8Array(view.byteLength);
+                  copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+                  tailMap.set(file.path, copy.buffer);
+                }
+              }
+            }
+
+            for (const entry of tailCheckEntries) {
+              const filePath = (entry.source?.handle as ElectronFileHandle)?._filePath;
+              if (!filePath) {
+                continue;
+              }
+              const tailBuffer = tailMap.get(filePath);
+              if (!tailBuffer || !bufferContainsBytes(tailBuffer, METAHUB_KEYWORD_BYTES)) {
+                continue;
+              }
+              const metaHubData = await tryParseMetaHubFromTail(tailBuffer);
+              if (metaHubData) {
+                tailScanHits += 1;
+                const existing = resultsById.get(entry.image.id);
+                const updated = await applyMetaHubOverride(existing?.enriched ?? null, metaHubData);
+                if (updated) {
+                  resultsById.set(entry.image.id, { enriched: updated, profile: existing?.profile });
+                  continue;
+                }
+              }
+              resultsById.delete(entry.image.id);
+              fallbackEntries.push(entry);
+            }
+            if (tailScanHits === 0 && tailScanAttempts >= TAIL_SCAN_SAMPLE_LIMIT && tailScanEnabled) {
+              tailScanEnabled = false;
+              console.log('[indexing] Tail scan disabled after sample: no MetaHub iTXt chunks detected.');
+            }
+          }
+        }
 
         if (fallbackEntries.length > 0) {
           const fallbackPaths = fallbackEntries

@@ -219,6 +219,11 @@ export function useImageLoader() {
     
     // Timer for indexing performance tracking
     const indexingStartTimeRef = useRef<number | null>(null);
+    const filterRefreshRef = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({
+        last: 0,
+        timer: null,
+    });
+    const FILTER_REFRESH_MIN_INTERVAL_MS = 5000;
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback((allowIdle = false) => {
@@ -258,36 +263,71 @@ export function useImageLoader() {
         });
     }, []);
 
+    const updateGlobalFilters = useCallback(() => {
+        const allImages = useImageStore.getState().images;
+        const models = new Set<string>();
+        const loras = new Set<string>();
+        const schedulers = new Set<string>();
+
+        for (const image of allImages) {
+            if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
+            if (image.loras && image.loras.length > 0) {
+                image.loras.forEach(lora => {
+                    if (typeof lora === 'string') {
+                        loras.add(lora);
+                    } else if (lora && typeof lora === 'object' && lora.name) {
+                        loras.add(lora.name);
+                    }
+                });
+            }
+            if (image.scheduler) schedulers.add(image.scheduler);
+        }
+
+        setFilterOptions({
+            models: Array.from(models).sort(),
+            loras: Array.from(loras).sort(),
+            schedulers: Array.from(schedulers).sort(),
+            dimensions: [],
+        });
+    }, [setFilterOptions]);
+
+    const scheduleGlobalFilterRefresh = useCallback((force = false) => {
+        const isIndexing = useImageStore.getState().indexingState === 'indexing';
+        if (isIndexing && !force) {
+            return;
+        }
+        const now = Date.now();
+        const ref = filterRefreshRef.current;
+        if (force) {
+            if (ref.timer) {
+                clearTimeout(ref.timer);
+                ref.timer = null;
+            }
+            updateGlobalFilters();
+            ref.last = now;
+            return;
+        }
+
+        const elapsed = now - ref.last;
+        if (elapsed >= FILTER_REFRESH_MIN_INTERVAL_MS) {
+            updateGlobalFilters();
+            ref.last = now;
+            return;
+        }
+
+        if (ref.timer) {
+            return;
+        }
+
+        ref.timer = setTimeout(() => {
+            ref.timer = null;
+            updateGlobalFilters();
+            ref.last = Date.now();
+        }, FILTER_REFRESH_MIN_INTERVAL_MS - elapsed);
+    }, [updateGlobalFilters]);
+
     useEffect(() => {
         if (!getIsElectron()) return;
-
-        const updateGlobalFilters = () => {
-            const allImages = useImageStore.getState().images;
-            const models = new Set<string>();
-            const loras = new Set<string>();
-            const schedulers = new Set<string>();
-
-            for (const image of allImages) {
-                if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-                if (image.loras && image.loras.length > 0) {
-                    image.loras.forEach(lora => {
-                        if (typeof lora === 'string') {
-                            loras.add(lora);
-                        } else if (lora && typeof lora === 'object' && lora.name) {
-                            loras.add(lora.name);
-                        }
-                    });
-                }
-                if (image.scheduler) schedulers.add(image.scheduler);
-            }
-
-            setFilterOptions({
-                models: Array.from(models).sort(),
-                loras: Array.from(loras).sort(),
-                schedulers: Array.from(schedulers).sort(),
-                dimensions: [],
-            });
-        };
 
         const removeProgressListener = (window as any).electronAPI.onIndexingProgress((progress: { current: number, total: number }) => {
             setProgress(progress);
@@ -321,7 +361,7 @@ export function useImageLoader() {
                 isFirstBatch = false;
             }
             // Update filters incrementally as new images are processed
-            updateGlobalFilters();
+            scheduleGlobalFilterRefresh();
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
@@ -353,7 +393,17 @@ export function useImageLoader() {
             removeErrorListener();
             removeCompleteListener();
         };
-    }, [addImages, setProgress, setError, setLoading]);
+    }, [addImages, setProgress, setError, setLoading, scheduleGlobalFilterRefresh]);
+
+    useEffect(() => {
+        return () => {
+            const ref = filterRefreshRef.current;
+            if (ref.timer) {
+                clearTimeout(ref.timer);
+                ref.timer = null;
+            }
+        };
+    }, []);
 
     const finalizeDirectoryLoad = useCallback(async (
         directory: Directory,
@@ -399,6 +449,7 @@ export function useImageLoader() {
             indexingStartTimeRef.current = null;
         }
 
+        scheduleGlobalFilterRefresh(true);
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         if (!suppressIndexingState) {
             setLoading(false);
@@ -423,7 +474,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing]);
+    }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
 
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {

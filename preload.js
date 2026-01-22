@@ -116,6 +116,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),
+  readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
