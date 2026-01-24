@@ -12,6 +12,36 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
+const TAG_SUGGESTION_LIMIT = 5;
+
+const buildTagSuggestions = (
+  recentTags: string[],
+  availableTags: { name: string }[],
+  currentTags: string[],
+): string[] => {
+  const suggestions: string[] = [];
+
+  for (const tag of recentTags) {
+    if (!currentTags.includes(tag) && !suggestions.includes(tag)) {
+      suggestions.push(tag);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        return suggestions;
+      }
+    }
+  }
+
+  for (const tag of availableTags) {
+    if (!currentTags.includes(tag.name) && !suggestions.includes(tag.name)) {
+      suggestions.push(tag.name);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        break;
+      }
+    }
+  }
+
+  return suggestions;
+};
+
 // Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -138,6 +168,7 @@ const ImagePreviewSidebar: React.FC = () => {
     removeAutoTagFromImage,
     availableTags
   } = useImageStore();
+  const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
     if (!state.previewImage) return null;
     const id = state.previewImage.id;
@@ -162,6 +193,7 @@ const ImagePreviewSidebar: React.FC = () => {
 
   const activeImage = previewImageFromStore || previewImage;
   const preferredThumbnailUrl = activeImage?.thumbnailUrl ?? null;
+  const tagSuggestions = buildTagSuggestions(recentTags, availableTags, activeImage?.tags ?? []);
 
   useEffect(() => {
     let isMounted = true;
@@ -429,15 +461,15 @@ const ImagePreviewSidebar: React.FC = () => {
               </div>
 
               {/* Tag Suggestions */}
-              {(!activeImage.tags || activeImage.tags.length === 0) && availableTags.length > 0 && (
+              {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {availableTags.slice(0, 5).map(tag => (
+                  {tagSuggestions.map(tag => (
                     <button
-                      key={tag.name}
-                      onClick={() => addTagToImage(activeImage.id, tag.name)}
+                      key={tag}
+                      onClick={() => addTagToImage(activeImage.id, tag)}
                       className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
                     >
-                      {tag.name}
+                      {tag}
                     </button>
                   ))}
                 </div>

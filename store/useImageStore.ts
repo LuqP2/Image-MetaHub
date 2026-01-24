@@ -11,6 +11,55 @@ import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useLicenseStore } from './useLicenseStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
 
+const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
+const MAX_RECENT_TAGS = 12;
+
+const loadRecentTags = (): string[] => {
+    if (typeof window === 'undefined') {
+        return [];
+    }
+
+    try {
+        const raw = localStorage.getItem(RECENT_TAGS_STORAGE_KEY);
+        if (!raw) {
+            return [];
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        return parsed
+            .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+            .filter(Boolean)
+            .slice(0, MAX_RECENT_TAGS);
+    } catch (error) {
+        console.warn('Failed to load recent tags:', error);
+        return [];
+    }
+};
+
+const persistRecentTags = (tags: string[]) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        localStorage.setItem(RECENT_TAGS_STORAGE_KEY, JSON.stringify(tags));
+    } catch (error) {
+        console.warn('Failed to persist recent tags:', error);
+    }
+};
+
+const updateRecentTags = (currentTags: string[], tag: string): string[] => {
+    const normalizedTag = tag.trim().toLowerCase();
+    if (!normalizedTag) {
+        return currentTags;
+    }
+
+    const next = [normalizedTag, ...currentTags.filter(existing => existing !== normalizedTag)];
+    return next.slice(0, MAX_RECENT_TAGS);
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/[\\/]+$/, '');
@@ -151,6 +200,7 @@ interface ImageState {
   annotations: Map<string, ImageAnnotations>;
   availableTags: TagInfo[];
   availableAutoTags: TagInfo[]; // Top auto-tags by frequency
+  recentTags: string[];
   selectedTags: string[];
   selectedAutoTags: string[]; // Filter by auto-tags
   showFavoritesOnly: boolean;
@@ -872,6 +922,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         annotations: new Map(),
         availableTags: [],
         availableAutoTags: [],
+        recentTags: loadRecentTags(),
         selectedTags: [],
         selectedAutoTags: [],
         showFavoritesOnly: false,
@@ -1725,6 +1776,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 updatedAt: Date.now(),
             };
 
+            let nextRecentTags = get().recentTags;
+
             // Update state
             set(state => {
                 const newAnnotations = new Map(state.annotations);
@@ -1734,14 +1787,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                     img.id === imageId ? { ...img, tags: updatedAnnotation.tags } : img
                 );
 
+                nextRecentTags = updateRecentTags(state.recentTags, normalizedTag);
                 const newState = {
                     ...state,
                     annotations: newAnnotations,
                     images: updatedImages,
+                    recentTags: nextRecentTags,
                 };
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+
+            persistRecentTags(nextRecentTags);
 
             // Persist and refresh tags
             saveAnnotation(updatedAnnotation).catch(error => {
@@ -1832,6 +1889,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
 
+            let nextRecentTags = get().recentTags;
+
             // Update state
             set(state => {
                 const newAnnotations = new Map(state.annotations);
@@ -1847,14 +1906,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return img;
                 });
 
+                nextRecentTags = updateRecentTags(state.recentTags, normalizedTag);
                 const newState = {
                     ...state,
                     annotations: newAnnotations,
                     images: updatedImages,
+                    recentTags: nextRecentTags,
                 };
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+
+            persistRecentTags(nextRecentTags);
 
             // Persist and refresh tags
             bulkSaveAnnotations(updatedAnnotations).catch(error => {
@@ -2127,6 +2190,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             annotations: new Map(),
             availableTags: [],
             availableAutoTags: [],
+            recentTags: loadRecentTags(),
             selectedTags: [],
             selectedAutoTags: [],
             showFavoritesOnly: false,
