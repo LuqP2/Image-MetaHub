@@ -9,6 +9,7 @@ import {
 } from '../services/imageAnnotationsStorage';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useLicenseStore } from './useLicenseStore';
+import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
@@ -713,7 +714,21 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(img => img.isFavorite === true);
         }
 
-        // Step 3: Tags filter
+        // Step 3: Sensitive tags filter (safe mode)
+        const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore.getState();
+        const normalizedSensitiveTags = (sensitiveTags ?? [])
+            .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+            .filter(Boolean);
+        const sensitiveTagSet = new Set(normalizedSensitiveTags);
+        const shouldFilterSensitive = enableSafeMode && !blurSensitiveImages && sensitiveTagSet.size > 0;
+        if (shouldFilterSensitive) {
+            results = results.filter(img => {
+                if (!img.tags || img.tags.length === 0) return true;
+                return !img.tags.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+            });
+        }
+
+        // Step 4: Tags filter
         if (state.selectedTags && state.selectedTags.length > 0) {
             results = results.filter(img => {
                 if (!img.tags || img.tags.length === 0) return false;
@@ -722,7 +737,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
-        // Step 4: Auto-tags filter
+        // Step 5: Auto-tags filter
         if (state.selectedAutoTags && state.selectedAutoTags.length > 0) {
             results = results.filter(img => {
                 if (!img.autoTags || img.autoTags.length === 0) return false;
