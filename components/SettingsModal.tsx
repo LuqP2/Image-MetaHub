@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLicenseStore } from '../store/useLicenseStore';
-import { X, Wrench, Keyboard, Palette, Check, Crown } from 'lucide-react';
+import { X, Wrench, Keyboard, Palette, Check, Crown, Eye } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
 import { HotkeySettings } from './HotkeySettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'hotkeys' | 'themes';
+  initialTab?: 'general' | 'hotkeys' | 'themes' | 'privacy';
   focusSection?: 'license' | null;
 }
 
-type Tab = 'general' | 'hotkeys' | 'themes';
+type Tab = 'general' | 'hotkeys' | 'themes' | 'privacy';
 
 const themeOptions = [
   { id: 'system', name: 'System Default', colors: ['#525252', '#a3a3a3'] },
@@ -41,6 +41,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setDoubleClickToOpen = useSettingsStore((state) => state.setDoubleClickToOpen);
   const globalAutoWatch = useSettingsStore((state) => state.globalAutoWatch);
   const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
+  const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
+  const setSensitiveTags = useSettingsStore((state) => state.setSensitiveTags);
+  const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
+  const setBlurSensitiveImages = useSettingsStore((state) => state.setBlurSensitiveImages);
 
   // A1111 Integration settings
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
@@ -76,6 +80,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const [isActivatingLicense, setIsActivatingLicense] = useState(false);
   const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
   const licenseSectionRef = useRef<HTMLDivElement | null>(null);
+  const [sensitiveTagsInput, setSensitiveTagsInput] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -90,6 +95,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       });
     }
   }, [isOpen, cachePath]);
+
+  useEffect(() => {
+    setSensitiveTagsInput((sensitiveTags ?? []).join(', '));
+  }, [sensitiveTags]);
 
   useEffect(() => {
     if (isOpen && focusSection === 'license') {
@@ -267,6 +276,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
             >
               <Keyboard size={16} />
               <span>Keyboard Shortcuts</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('privacy')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'privacy' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
+            >
+              <Eye size={16} />
+              <span>Privacy</span>
             </button>
         </div>
 
@@ -691,6 +707,55 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
         {activeTab === 'hotkeys' && (
           <HotkeySettings />
+        )}
+
+        {activeTab === 'privacy' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Content Filtering</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm text-gray-300">Sensitive tags</label>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Comma-separated tags that should be hidden or blurred (for example: nsfw, private, hidden).
+                  </p>
+                  <input
+                    type="text"
+                    value={sensitiveTagsInput}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setSensitiveTagsInput(nextValue);
+                      const parsedTags = nextValue
+                        .split(',')
+                        .map(tag => tag.trim().toLowerCase())
+                        .filter(Boolean);
+                      setSensitiveTags(parsedTags);
+                    }}
+                    placeholder="nsfw, private, hidden"
+                    className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                  <div>
+                    <p className="text-sm">Blur sensitive images instead of hiding</p>
+                    <p className="text-xs text-gray-400">
+                      If enabled, sensitive images will be shown with a strong blur effect. If disabled, they will be completely removed from the grid.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={blurSensitiveImages}
+                      onChange={(event) => setBlurSensitiveImages(event.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         <div className="mt-6 text-center">

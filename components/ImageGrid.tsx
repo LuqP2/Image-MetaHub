@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -27,9 +27,10 @@ interface ImageCardProps {
   cardRef?: (el: HTMLDivElement | null) => void;
   isMarkedBest?: boolean;       // For deduplication: marked as best to keep
   isMarkedArchived?: boolean;   // For deduplication: marked for archive
+  isBlurred?: boolean;
 }
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -281,12 +282,20 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           <img
             src={imageUrl}
             alt={image.name}
-            className="max-w-full max-h-full object-contain"
+            className={`max-w-full max-h-full object-contain transition-all duration-200 ${
+              isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
+            }`}
             loading="lazy"
             draggable={false}
           />
         ) : (
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
+        )}
+
+        {isBlurred && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <EyeOff className="h-8 w-8 text-white/80 drop-shadow" />
+          </div>
         )}
         {/* Tags display - always visible if tags exist */}
         {image.tags && image.tags.length > 0 && (
@@ -341,7 +350,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isFocused === nextProps.isFocused &&
     prevProps.isComparisonFirst === nextProps.isComparisonFirst &&
-    prevProps.baseWidth === nextProps.baseWidth
+    prevProps.baseWidth === nextProps.baseWidth &&
+    prevProps.isBlurred === nextProps.isBlurred
   );
 });
 
@@ -362,7 +372,11 @@ interface ImageGridProps {
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
+  const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
+  const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
+  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
+  const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -385,6 +399,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
   const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized } = useFeatureAccess();
   const selectedCount = selectedImages.size;
+  const sensitiveTagSet = useMemo(() => {
+    return new Set(
+      (sensitiveTags ?? [])
+        .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    );
+  }, [sensitiveTags]);
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
@@ -679,6 +700,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return () => document.removeEventListener('mouseup', handleGlobalMouseUp);
   }, [isSelecting]);
 
+  useEffect(() => {
+    filterAndSortImages();
+  }, [filterAndSortImages, sensitiveTags, blurSensitiveImages, enableSafeMode]);
+
   // Memoized callbacks - MUST be before early return
   const handleContextMenu = useCallback((image: IndexedImage, e: React.MouseEvent) => {
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
@@ -722,6 +747,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       >
         {images.map((image, index) => {
           const isFocused = focusedImageIndex === index;
+          const isSensitive = enableSafeMode &&
+            sensitiveTagSet.size > 0 &&
+            !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
 
           return (
             <ImageCard
@@ -737,6 +765,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               cardRef={createCardRef(image.id)}
               isMarkedBest={markedBestIds?.has(image.id)}
               isMarkedArchived={markedArchivedIds?.has(image.id)}
+              isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
             />
           );
         })}

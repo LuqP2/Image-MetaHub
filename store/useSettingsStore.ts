@@ -65,6 +65,9 @@ interface SettingsState {
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
   doubleClickToOpen: boolean;
+  sensitiveTags: string[];
+  blurSensitiveImages: boolean;
+  enableSafeMode: boolean;
 
   // A1111 Integration settings
   a1111ServerUrl: string;
@@ -93,6 +96,9 @@ interface SettingsState {
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
   setDoubleClickToOpen: (value: boolean) => void;
+  setSensitiveTags: (tags: string[]) => void;
+  setBlurSensitiveImages: (value: boolean) => void;
+  setEnableSafeMode: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
@@ -126,6 +132,9 @@ export const useSettingsStore = create<SettingsState>()(
       showFullFilePath: false,
       globalAutoWatch: true,
       doubleClickToOpen: false,
+      sensitiveTags: ['nsfw', 'private', 'hidden'],
+      blurSensitiveImages: true,
+      enableSafeMode: true,
 
       // A1111 Integration initial state
       a1111ServerUrl: 'http://127.0.0.1:7860',
@@ -161,6 +170,14 @@ export const useSettingsStore = create<SettingsState>()(
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setDoubleClickToOpen: (value) => set({ doubleClickToOpen: !!value }),
+      setSensitiveTags: (tags) => {
+        const normalized = (Array.isArray(tags) ? tags : [])
+          .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+          .filter(Boolean);
+        set({ sensitiveTags: normalized });
+      },
+      setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
+      setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -199,6 +216,9 @@ export const useSettingsStore = create<SettingsState>()(
         showFullFilePath: false,
         globalAutoWatch: true,
         doubleClickToOpen: false,
+        sensitiveTags: ['nsfw', 'private', 'hidden'],
+        blurSensitiveImages: true,
+        enableSafeMode: true,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
         a1111LastConnectionStatus: 'unknown',
@@ -221,6 +241,18 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.showFullFilePath !== 'boolean') {
           state.showFullFilePath = false;
+        }
+
+        if (state && !Array.isArray(state.sensitiveTags)) {
+          state.sensitiveTags = ['nsfw', 'private', 'hidden'];
+        }
+
+        if (state && typeof state.blurSensitiveImages !== 'boolean') {
+          state.blurSensitiveImages = true;
+        }
+
+        if (state && typeof state.enableSafeMode !== 'boolean') {
+          state.enableSafeMode = true;
         }
       },
     }

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Batch Export**: Export selected or filtered images in bulk to a folder or ZIP with progress tracking (desktop only).
+- **Privacy Settings Tab**: New Privacy tab with content filtering controls for sensitive tags and blur behavior.
 
 ## [0.12.1] - 2025-01-13
 
