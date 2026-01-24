@@ -372,11 +372,9 @@ interface ImageGridProps {
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
-  const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore((state) => ({
-    sensitiveTags: state.sensitiveTags,
-    blurSensitiveImages: state.blurSensitiveImages,
-    enableSafeMode: state.enableSafeMode,
-  }));
+  const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
+  const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
+  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
   const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
