@@ -9,8 +9,10 @@ const { autoUpdater } = electronUpdater;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import crypto from 'crypto';
 import * as fileWatcher from './services/fileWatcher.mjs';
+import archiver from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -722,6 +724,18 @@ function setupFileOperationHandlers() {
     return normalized === userDataPath || normalized.startsWith(userDataPath + path.sep);
   };
   const isAllowedOrInternal = (filePath) => isPathAllowed(filePath) || isInternalPath(filePath);
+  const normalizeNameKey = (name) => name.toLowerCase();
+  const getUniqueName = (name, usedNames) => {
+    const parsed = path.parse(name);
+    let candidate = name;
+    let counter = 2;
+    while (usedNames.has(normalizeNameKey(candidate))) {
+      candidate = `${parsed.name} (${counter})${parsed.ext}`;
+      counter += 1;
+    }
+    usedNames.add(normalizeNameKey(candidate));
+    return candidate;
+  };
 
   // --- Settings IPC ---
   ipcMain.handle('get-settings', async () => {
@@ -1117,6 +1131,19 @@ function setupFileOperationHandlers() {
       };
     } catch (error) {
       console.error('Error showing directory dialog:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('show-save-dialog', async (event, options = {}) => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, options);
+      if (result.canceled) {
+        return { success: true, canceled: true };
+      }
+      return { success: true, canceled: false, path: result.filePath };
+    } catch (error) {
+      console.error('Error showing save dialog:', error);
       return { success: false, error: error.message };
     }
   });
@@ -1712,6 +1739,181 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error writing file:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId } = {}) => {
+    try {
+      if (!Array.isArray(files) || files.length === 0) {
+        return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
+      }
+      if (!destDir) {
+        return { success: false, error: 'No destination directory provided.', exportedCount: 0, failedCount: 0 };
+      }
+
+      await fs.mkdir(destDir, { recursive: true });
+      const usedNames = new Set();
+      let exportedCount = 0;
+      let failedCount = 0;
+      let processedCount = 0;
+      let stage = 'copying';
+      const totalCount = files.length;
+      const progressId = exportId ? String(exportId) : null;
+      const PROGRESS_THROTTLE_MS = 200;
+      let lastProgressAt = 0;
+      const sendProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressAt < PROGRESS_THROTTLE_MS && processedCount < totalCount) {
+          return;
+        }
+        lastProgressAt = now;
+        try {
+          event.sender.send('export-batch-progress', {
+            exportId: progressId,
+            mode: 'folder',
+            total: totalCount,
+            processed: processedCount,
+            exportedCount,
+            failedCount,
+            stage,
+          });
+        } catch (err) {
+          // ignore sender errors (window closed)
+        }
+      };
+
+      sendProgress(true);
+
+      for (const file of files) {
+        try {
+          const sourcePath = path.resolve(file.directoryPath, file.relativePath);
+          if (!isPathAllowed(sourcePath)) {
+            failedCount += 1;
+            continue;
+          }
+
+          const baseName = path.basename(file.relativePath);
+          const uniqueName = getUniqueName(baseName, usedNames);
+          const destPath = path.resolve(destDir, uniqueName);
+          await fs.copyFile(sourcePath, destPath);
+          exportedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+        } finally {
+          processedCount += 1;
+          sendProgress();
+        }
+      }
+
+      stage = 'done';
+      sendProgress(true);
+
+      const success = exportedCount > 0;
+      return {
+        success,
+        exportedCount,
+        failedCount,
+        error: success ? undefined : 'No files were exported.',
+      };
+    } catch (error) {
+      console.error('Error exporting images in batch:', error);
+      return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
+    }
+  });
+
+  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId } = {}) => {
+    try {
+      if (!Array.isArray(files) || files.length === 0) {
+        return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
+      }
+      if (!destZipPath) {
+        return { success: false, error: 'No ZIP destination provided.', exportedCount: 0, failedCount: 0 };
+      }
+
+      await fs.mkdir(path.dirname(destZipPath), { recursive: true });
+      const usedNames = new Set();
+      let exportedCount = 0;
+      let failedCount = 0;
+      let processedCount = 0;
+      let stage = 'copying';
+      const totalCount = files.length;
+      const progressId = exportId ? String(exportId) : null;
+      const PROGRESS_THROTTLE_MS = 200;
+      let lastProgressAt = 0;
+      const sendProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressAt < PROGRESS_THROTTLE_MS && processedCount < totalCount) {
+          return;
+        }
+        lastProgressAt = now;
+        try {
+          event.sender.send('export-batch-progress', {
+            exportId: progressId,
+            mode: 'zip',
+            total: totalCount,
+            processed: processedCount,
+            exportedCount,
+            failedCount,
+            stage,
+          });
+        } catch (err) {
+          // ignore sender errors (window closed)
+        }
+      };
+
+      const output = fsSync.createWriteStream(destZipPath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+
+      const finalizePromise = new Promise((resolve, reject) => {
+        output.on('close', resolve);
+        output.on('error', reject);
+        archive.on('error', reject);
+      });
+
+      archive.pipe(output);
+
+      sendProgress(true);
+
+      for (const file of files) {
+        try {
+          const sourcePath = path.resolve(file.directoryPath, file.relativePath);
+          if (!isPathAllowed(sourcePath)) {
+            failedCount += 1;
+            continue;
+          }
+
+          await fs.access(sourcePath);
+          const baseName = path.basename(file.relativePath);
+          const uniqueName = getUniqueName(baseName, usedNames);
+          archive.file(sourcePath, { name: uniqueName });
+          exportedCount += 1;
+        } catch (error) {
+          failedCount += 1;
+        } finally {
+          processedCount += 1;
+          sendProgress();
+        }
+      }
+
+      stage = 'finalizing';
+      sendProgress(true);
+
+      await archive.finalize();
+      await finalizePromise;
+
+      stage = 'done';
+      sendProgress(true);
+
+      const success = exportedCount > 0;
+      return {
+        success,
+        exportedCount,
+        failedCount,
+        error: success ? undefined : 'No files were exported.',
+      };
+    } catch (error) {
+      console.error('Error exporting images to ZIP:', error);
+      return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
     }
   });
 

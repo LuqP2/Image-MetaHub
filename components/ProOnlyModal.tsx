@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2 } from 'lucide-react';
+import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
@@ -71,6 +71,17 @@ const featureInfo = {
       'Save hours of manual sorting',
     ],
   },
+  batch_export: {
+    name: 'Batch Export',
+    icon: Download,
+    description: 'Export multiple images at once to a folder or ZIP archive',
+    benefits: [
+      'Export selected or filtered images',
+      'Automatic filename conflict resolution',
+      'Flattened output for easy sharing',
+      'ZIP creation for quick backups',
+    ],
+  },
 };
 
 const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
@@ -109,6 +120,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
     }
     return 'This is a Pro feature. Activate the trial or a license to continue.';
   })();
+  const showBatchExportLimitNote = feature === 'batch_export' && !isPro && !isTrialActive;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -145,6 +157,9 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-4 space-y-2">
             <p className="text-gray-100 font-semibold">This is a Pro feature.</p>
             <p className="text-gray-300 text-sm">{trialCopy}</p>
+            {showBatchExportLimitNote && (
+              <p className="text-gray-400 text-sm">Free users can export 1 image at a time.</p>
+            )}
           </div>
 
           {/* Benefits */}

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export';
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
 export const CLUSTERING_PREVIEW_LIMIT = 500; // Process extra for blurred preview
@@ -78,6 +78,7 @@ export const useFeatureAccess = () => {
   const canUseComfyUI = allowDuringInit || canUseDuringTrialOrPro;
   const canUseComparison = allowDuringInit || canUseDuringTrialOrPro;
   const canUseAnalytics = allowDuringInit || canUseDuringTrialOrPro;
+  const canUseBatchExport = allowDuringInit || canUseDuringTrialOrPro;
 
   // Trial countdown
   const trialDaysRemaining = isInitialized
@@ -115,6 +116,7 @@ export const useFeatureAccess = () => {
     canUseComfyUI,
     canUseComparison,
     canUseAnalytics,
+    canUseBatchExport,
 
     // Clustering limits
     canUseFullClustering: canUseDuringTrialOrPro,

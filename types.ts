@@ -1,9 +1,20 @@
+export interface ExportBatchProgress {
+  exportId: string | null;
+  mode: 'folder' | 'zip';
+  total: number;
+  processed: number;
+  exportedCount: number;
+  failedCount: number;
+  stage: 'copying' | 'finalizing' | 'done';
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
   setCurrentDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   updateAllowedPaths: (paths: string[]) => Promise<{ success: boolean; error?: string }>;
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
+  showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
@@ -16,6 +27,8 @@ export interface ElectronAPI {
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
+  exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
@@ -54,6 +67,7 @@ export interface ElectronAPI {
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
+  onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;
 
   // File watching
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;

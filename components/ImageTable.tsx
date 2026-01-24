@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -12,12 +12,13 @@ interface ImageTableProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
+  onBatchExport: () => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
 type SortDirection = 'asc' | 'desc' | null;
 
-const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages }) => {
+const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -26,6 +27,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const {
     contextMenu,
     showContextMenu,
+    hideContextMenu,
     copyPrompt,
     copyNegativePrompt,
     copySeed,
@@ -35,12 +37,16 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     exportImage
   } = useContextMenu();
 
+  const selectedCount = selectedImages.size;
+
   const handleContextMenu = (image: IndexedImage, e: React.MouseEvent) => {
-    if (selectedImages.size > 1) {
-      return;
-    }
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
+  };
+
+  const handleBatchExport = () => {
+    hideContextMenu();
+    onBatchExport();
   };
 
   // Function to apply sorting based on current field and direction
@@ -299,15 +305,24 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             Show in Folder
           </button>
 
-          <button
-            onClick={exportImage}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Export Image
-          </button>
-        </div>
-      )}
+            <button
+              onClick={exportImage}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Image
+            </button>
+            {selectedCount > 1 && (
+              <button
+                onClick={handleBatchExport}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Package className="w-4 h-4" />
+                Batch Export Selected ({selectedCount})
+              </button>
+            )}
+          </div>
+        )}
     </div>
   );
 };

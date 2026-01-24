@@ -53,6 +53,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onExportBatchProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('export-batch-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('export-batch-progress', handler);
+    };
+  },
+
   // Menu event listeners
   onMenuAddFolder: (callback) => {
     const handler = (event, ...args) => callback(...args);
@@ -109,6 +117,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCurrentDirectory: (dirPath) => ipcRenderer.invoke('set-current-directory', dirPath),
   updateAllowedPaths: (paths) => ipcRenderer.invoke('update-allowed-paths', paths),
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
+  showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
   openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
@@ -119,6 +128,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
+  exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
+  exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),

@@ -30,6 +30,7 @@ import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import GridToolbar from './components/GridToolbar';
+import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -154,6 +155,7 @@ export default function App() {
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
+  const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -180,6 +182,8 @@ export default function App() {
     isExpired,
     isFree,
     isPro,
+    canUseBatchExport,
+    showProModal,
     startTrial,
   } = useFeatureAccess();
 
@@ -621,6 +625,14 @@ export default function App() {
     handleNavigatePrevious();
   }, [handleNavigatePrevious]);
 
+  const handleOpenBatchExport = useCallback(() => {
+    if (!canUseBatchExport) {
+      showProModal('batch_export');
+      return;
+    }
+    setIsBatchExportModalOpen(true);
+  }, [canUseBatchExport, showProModal]);
+
   // --- Render Logic ---
   const paginatedImages = useMemo(
     () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
@@ -659,6 +671,14 @@ export default function App() {
       <ComparisonModal
         isOpen={isComparisonModalOpen}
         onClose={closeComparisonModal}
+      />
+
+      <BatchExportModal
+        isOpen={isBatchExportModalOpen}
+        onClose={() => setIsBatchExportModalOpen(false)}
+        selectedImageIds={safeSelectedImages}
+        filteredImages={safeFilteredImages}
+        directories={safeDirectories}
       />
 
       {hasDirectories && (
@@ -769,45 +789,48 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              <GridToolbar
-                libraryView={libraryView}
-                onLibraryViewChange={setLibraryView}
-                clustersCount={clustersCount}
-                selectedImages={safeSelectedImages}
-                images={paginatedImages}
-                directories={safeDirectories}
-                onDeleteSelected={handleDeleteSelectedImages}
-                onGenerateA1111={(image) => {
-                  setSelectedImageForGeneration(image);
-                  setIsA1111GenerateModalOpen(true);
-                }}
-                onGenerateComfyUI={(image) => {
-                  setSelectedImageForGeneration(image);
-                  setIsComfyUIGenerateModalOpen(true);
-                }}
-                onCompare={(images) => {
-                  setComparisonImages(images);
-                  openComparisonModal();
-                }}
-              />
+                <GridToolbar
+                  libraryView={libraryView}
+                  onLibraryViewChange={setLibraryView}
+                  clustersCount={clustersCount}
+                  selectedImages={safeSelectedImages}
+                  images={paginatedImages}
+                  directories={safeDirectories}
+                  onDeleteSelected={handleDeleteSelectedImages}
+                  onGenerateA1111={(image) => {
+                    setSelectedImageForGeneration(image);
+                    setIsA1111GenerateModalOpen(true);
+                  }}
+                  onGenerateComfyUI={(image) => {
+                    setSelectedImageForGeneration(image);
+                    setIsComfyUIGenerateModalOpen(true);
+                  }}
+                  onCompare={(images) => {
+                    setComparisonImages(images);
+                    openComparisonModal();
+                  }}
+                  onBatchExport={handleOpenBatchExport}
+                />
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
                   viewMode === 'grid' ? (
-                      <ImageGrid
-                        images={paginatedImages}
-                        onImageClick={handleImageSelection}
-                        selectedImages={safeSelectedImages}
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={setCurrentPage}
-                      />
-                    ) : (
-                      <ImageTable
-                        images={paginatedImages}
-                        onImageClick={handleImageSelection}
-                        selectedImages={safeSelectedImages}
-                      />
+                        <ImageGrid
+                          images={paginatedImages}
+                          onImageClick={handleImageSelection}
+                          selectedImages={safeSelectedImages}
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          onPageChange={setCurrentPage}
+                          onBatchExport={handleOpenBatchExport}
+                        />
+                      ) : (
+                        <ImageTable
+                          images={paginatedImages}
+                          onImageClick={handleImageSelection}
+                          selectedImages={safeSelectedImages}
+                          onBatchExport={handleOpenBatchExport}
+                        />
                   )
                 ) : (
                   <SmartLibrary
