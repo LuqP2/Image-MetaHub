@@ -836,6 +836,7 @@ export default function App() {
                   <SmartLibrary
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onBatchExport={handleOpenBatchExport}
                   />
                 )}
               </div>

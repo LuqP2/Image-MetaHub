@@ -16,6 +16,7 @@ interface StackExpandedViewProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onBack: () => void;
+  onBatchExport: () => void;
 }
 
 const StackExpandedView: React.FC<StackExpandedViewProps> = ({
@@ -27,6 +28,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
   totalPages,
   onPageChange,
   onBack,
+  onBatchExport,
 }) => {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const selectedImages = useImageStore((state) => state.selectedImages);
@@ -176,6 +178,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={onPageChange}
+            onBatchExport={onBatchExport}
             markedBestIds={markedBestIds}
             markedArchivedIds={markedArchivedIds}
           />
@@ -184,6 +187,7 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
             images={images}
             onImageClick={handleImageClick}
             selectedImages={safeSelectedImages}
+            onBatchExport={onBatchExport}
           />
         )}
       </div>

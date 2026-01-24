@@ -22,7 +22,8 @@ const createImageUrlFromFileData = (data: unknown, fileName: string): { url: str
 
   if (ArrayBuffer.isView(data)) {
     const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const blob = new Blob([view], { type: mimeType });
+    const safeView = new Uint8Array(view);
+    const blob = new Blob([safeView], { type: mimeType });
     return { url: URL.createObjectURL(blob), revoke: true };
   }
 

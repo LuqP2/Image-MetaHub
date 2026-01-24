@@ -21,9 +21,10 @@ interface ClusterEntry {
 interface SmartLibraryProps {
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
+  onBatchExport: () => void;
 }
 
-const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onToggleQueue }) => {
+const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onToggleQueue, onBatchExport }) => {
   const filteredImages = useImageStore((state) => state.filteredImages);
   const clusters = useImageStore((state) => state.clusters);
   const directories = useImageStore((state) => state.directories);
@@ -296,6 +297,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
             currentPage={clusterPage}
             totalPages={clusterTotalPages}
             onPageChange={setClusterPage}
+            onBatchExport={onBatchExport}
           />
         ) : paginatedEntries.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400">
