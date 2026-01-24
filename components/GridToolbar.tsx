@@ -25,6 +25,7 @@ interface GridToolbarProps {
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
   onCompare: (images: [IndexedImage, IndexedImage]) => void;
+  onBatchExport: () => void;
 }
 
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
@@ -50,6 +51,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onGenerateA1111,
   onGenerateComfyUI,
   onCompare,
+  onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -94,6 +96,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const handleExport = async () => {
+    if (selectedCount > 1) {
+      onBatchExport();
+      return;
+    }
     if (!firstSelectedImage) return;
     const directory = directories.find(d => d.id === firstSelectedImage.directoryId);
     if (!directory) return;
@@ -235,8 +241,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
           <button
             onClick={handleExport}
             className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-            title="Export"
-            disabled={selectedCount !== 1}
+            title={selectedCount > 1 ? 'Export selected images' : 'Export'}
+            disabled={selectedCount === 0}
           >
             <Download className="w-4 h-4" />
           </button>

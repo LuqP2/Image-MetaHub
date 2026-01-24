@@ -809,6 +809,7 @@ export default function App() {
                     setComparisonImages(images);
                     openComparisonModal();
                   }}
+                  onBatchExport={handleOpenBatchExport}
                 />
 
               <div className="flex-1 min-h-0">
