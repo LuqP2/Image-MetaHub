@@ -1099,6 +1099,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const isIndexing = get().indexingState === 'indexing';
             if (isIndexing) {
                 pendingMergeQueue.push(...updatedImages);
+                scheduleMergeFlush();
                 return;
             }
 
