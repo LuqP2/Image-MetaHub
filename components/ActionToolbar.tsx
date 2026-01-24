@@ -1,7 +1,6 @@
 import React from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, Eye, EyeOff } from 'lucide-react';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { Grid3X3, List } from 'lucide-react';
 
 interface ActionToolbarProps {
   sortOrder: string;
@@ -33,8 +32,6 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   enrichmentProgress
 }) => {
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
-  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
-  const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
   
   return (
     <div className="flex flex-col gap-2">
@@ -73,13 +70,6 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
 
         <div className="flex items-center gap-4">
           <ImageSizeSlider />
-          <button
-            onClick={() => setEnableSafeMode(!enableSafeMode)}
-            className="p-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"
-            title={enableSafeMode ? 'Safe Mode on: sensitive tags are filtered or blurred' : 'Safe Mode off: sensitive tags are ignored'}
-          >
-            {enableSafeMode ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-          </button>
           <button
             onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')}
             className="p-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-md transition-colors"

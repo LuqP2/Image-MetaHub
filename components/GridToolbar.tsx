@@ -7,12 +7,15 @@ import {
   GitCompare,
   Sparkles,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { type IndexedImage } from '../types';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface GridToolbarProps {
   libraryView: 'library' | 'smart';
@@ -57,6 +60,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal } = useFeatureAccess();
+  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
+  const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
 
   const selectedCount = selectedImages.size;
   const selectedImagesList = images.filter(img => selectedImages.has(img.id));
@@ -202,6 +207,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             )}
           </button>
         </div>
+        <button
+          onClick={() => setEnableSafeMode(!enableSafeMode)}
+          className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+          title={enableSafeMode ? 'Safe Mode on: sensitive tags are filtered or blurred' : 'Safe Mode off: sensitive tags are ignored'}
+        >
+          {enableSafeMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+        </button>
         {libraryView === 'library' && (
           <span className="text-[11px] text-gray-500">All indexed images</span>
         )}
