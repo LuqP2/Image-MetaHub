@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Indexing Performance**: Faster Phase B indexing with head-only reads, deferred cache flushes, and batched UI merges/filter refresh to reduce stalls.
 - **Image Loading Speed**: Modal and preview images now load faster via thumbnail placeholders and Blob URLs instead of base64.
+- **ComfyUI LoRA Selection**: Added a searchable field for LoRAs in the "Generate with ComfyUI" modal.
 - **Recent Tag Suggestions**: Newly added tags now show in suggestions and the list remains available when adding multiple tags.
 - **External Drag & Drop**: Enabled dragging images from ImageModal to other programs.
 

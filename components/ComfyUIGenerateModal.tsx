@@ -69,6 +69,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   });
 
   const [modelSearch, setModelSearch] = useState('');
+  const [loraSearch, setLoraSearch] = useState('');
   const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
   const [validationError, setValidationError] = useState<string>('');
 
@@ -133,6 +134,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       });
       setSelectedLoras(preferredLoras);
       setModelSearch('');
+      setLoraSearch('');
       setValidationError('');
     }
   }, [isOpen, image]);
@@ -395,6 +397,13 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                 <div className="text-xs text-red-400">Error loading LoRAs</div>
               ) : (
                 <>
+                  <input
+                    type="text"
+                    value={loraSearch}
+                    onChange={(e) => setLoraSearch(e.target.value)}
+                    placeholder="Search LoRA..."
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
                   <select
                     onChange={(e) => {
                       if (e.target.value) {
@@ -407,6 +416,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                   >
                     <option value="">Add a LoRA...</option>
                     {resources?.loras
+                      .filter(lora => lora.toLowerCase().includes(loraSearch.trim().toLowerCase()))
                       .filter(lora => !selectedLoras.some(selected => selected.name === lora))
                       .map(lora => (
                         <option key={lora} value={lora}>
