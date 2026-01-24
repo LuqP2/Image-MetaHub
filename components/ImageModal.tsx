@@ -16,6 +16,36 @@ import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
+const TAG_SUGGESTION_LIMIT = 5;
+
+const buildTagSuggestions = (
+  recentTags: string[],
+  availableTags: { name: string }[],
+  currentTags: string[],
+): string[] => {
+  const suggestions: string[] = [];
+
+  for (const tag of recentTags) {
+    if (!currentTags.includes(tag) && !suggestions.includes(tag)) {
+      suggestions.push(tag);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        return suggestions;
+      }
+    }
+  }
+
+  for (const tag of availableTags) {
+    if (!currentTags.includes(tag.name) && !suggestions.includes(tag.name)) {
+      suggestions.push(tag.name);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        break;
+      }
+    }
+  }
+
+  return suggestions;
+};
+
 interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
@@ -194,6 +224,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
+  const recentTags = useImageStore((state) => state.recentTags);
 
   // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore((state) =>
@@ -204,6 +235,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
   const preferredThumbnailUrl = imageFromStore?.thumbnailUrl ?? image.thumbnailUrl;
+  const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
@@ -905,15 +937,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </div>
 
                 {/* Tag Suggestions */}
-                {(!currentTags || currentTags.length === 0) && availableTags.length > 0 && (
+                {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {availableTags.slice(0, 5).map(tag => (
+                    {tagSuggestions.map(tag => (
                       <button
-                        key={tag.name}
-                        onClick={() => addTagToImage(image.id, tag.name)}
+                        key={tag}
+                        onClick={() => addTagToImage(image.id, tag)}
                         className="text-xs bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded hover:bg-gray-600 hover:text-gray-200"
                       >
-                        {tag.name}
+                        {tag}
                       </button>
                     ))}
                   </div>
