@@ -174,7 +174,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 
                   <div className="mt-3">
                     <p className="font-semibold text-gray-200">Experimental / Alpha Features:</p>
-                    <p><strong className="text-white">Deduplication Helper</strong>: I included a very early prototype of the deduplication tool. It is currently extremely basic/experimental. Feel free to poke around, but please wait for v0.12.1 before relying on it for heavy cleaning. I decided to leave it visible so you can see the direction we are heading.</p>
+                    <p><strong className="text-white">Deduplication Helper</strong>: I included a very early prototype of the deduplication tool. It is currently extremely basic/experimental. Feel free to poke around, but please wait for v0.13.0 before relying on it for heavy cleaning. I decided to leave it visible so you can see the direction we are heading.</p>
                   </div>
 
                   <div className="mt-3">

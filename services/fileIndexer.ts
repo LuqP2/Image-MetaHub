@@ -1368,6 +1368,13 @@ interface PhaseTelemetry {
   diskWrites: number;
   flushMs: number;
   flushChunks: number;
+  headReadMs: number;
+  headReadFiles: number;
+  tailReadMs: number;
+  tailReadFiles: number;
+  tailReadHits: number;
+  fullReadMs: number;
+  fullReadFiles: number;
   profileSamples: number;
   profileTotalMs: number;
   profileParseMs: number;
@@ -1469,6 +1476,13 @@ export async function processFiles(
     diskWrites: 0,
     flushMs: 0,
     flushChunks: 0,
+    headReadMs: 0,
+    headReadFiles: 0,
+    tailReadMs: 0,
+    tailReadFiles: 0,
+    tailReadHits: 0,
+    fullReadMs: 0,
+    fullReadFiles: 0,
     profileSamples: 0,
     profileTotalMs: 0,
     profileParseMs: 0,
@@ -1931,6 +1945,9 @@ export async function processFiles(
         const profileAvgNormalize = profileSamples > 0 ? phaseBStats.profileNormalizeMs / profileSamples : 0;
         const profileAvgDimensions = profileSamples > 0 ? phaseBStats.profileDimensionsMs / profileSamples : 0;
         const flushAvgMs = phaseBStats.flushChunks > 0 ? phaseBStats.flushMs / phaseBStats.flushChunks : 0;
+        const headReadAvgMs = phaseBStats.headReadFiles > 0 ? phaseBStats.headReadMs / phaseBStats.headReadFiles : 0;
+        const tailReadAvgMs = phaseBStats.tailReadFiles > 0 ? phaseBStats.tailReadMs / phaseBStats.tailReadFiles : 0;
+        const fullReadAvgMs = phaseBStats.fullReadFiles > 0 ? phaseBStats.fullReadMs / phaseBStats.fullReadFiles : 0;
 
         console.log('[indexing]', {
           phase: 'B',
@@ -1940,6 +1957,13 @@ export async function processFiles(
           bytes_written: phaseBStats.bytesWritten,
           avg_ms_per_file: Number(avg.toFixed(2)),
           flush_avg_ms: Number(flushAvgMs.toFixed(2)),
+          head_read_files: phaseBStats.headReadFiles,
+          head_read_avg_ms: Number(headReadAvgMs.toFixed(2)),
+          tail_read_files: phaseBStats.tailReadFiles,
+          tail_read_hits: phaseBStats.tailReadHits,
+          tail_read_avg_ms: Number(tailReadAvgMs.toFixed(2)),
+          full_read_files: phaseBStats.fullReadFiles,
+          full_read_avg_ms: Number(fullReadAvgMs.toFixed(2)),
           profile_samples: profileSamples,
           profile_avg_total_ms: Number(profileAvgTotal.toFixed(2)),
           profile_avg_parse_ms: Number(profileAvgParse.toFixed(2)),
@@ -2246,9 +2270,18 @@ export async function processFiles(
           continue;
         }
 
+        const readStart = performance.now();
         const readResult = useHeadRead
           ? await (window as any).electronAPI.readFilesHeadBatch({ filePaths, maxBytes: HEAD_READ_MAX_BYTES })
           : await (window as any).electronAPI.readFilesBatch(filePaths);
+        const readDuration = performance.now() - readStart;
+        if (useHeadRead) {
+          phaseBStats.headReadFiles += filePaths.length;
+          phaseBStats.headReadMs += readDuration;
+        } else {
+          phaseBStats.fullReadFiles += filePaths.length;
+          phaseBStats.fullReadMs += readDuration;
+        }
         phaseBStats.ipcCalls += 1;
 
         const dataMap = new Map<string, ArrayBuffer>();
@@ -2293,10 +2326,6 @@ export async function processFiles(
             ? { totalMs: 0, parseMs: 0, normalizeMs: 0, dimensionsMs: 0 }
             : undefined;
           const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
-          if (enriched?.metadata && 'imagemetahub_data' in (enriched.metadata as Record<string, unknown>)) {
-            tailScanHits += 1;
-            tailScanEnabled = true;
-          }
           if (shouldFallbackToFullRead(entry, buffer, enriched)) {
             fallbackEntries.push(entry);
             return null;
@@ -2316,10 +2345,14 @@ export async function processFiles(
             .filter((path): path is string => typeof path === 'string' && path.length > 0);
           if (tailPaths.length > 0) {
             tailScanAttempts += tailPaths.length;
+            const tailStart = performance.now();
             const tailResult = await (window as any).electronAPI.readFilesTailBatch({
               filePaths: tailPaths,
               maxBytes: TAIL_READ_MAX_BYTES
             });
+            const tailDuration = performance.now() - tailStart;
+            phaseBStats.tailReadFiles += tailPaths.length;
+            phaseBStats.tailReadMs += tailDuration;
             phaseBStats.ipcCalls += 1;
 
             const tailMap = new Map<string, ArrayBuffer>();
@@ -2351,6 +2384,7 @@ export async function processFiles(
               }
               const metaHubData = await tryParseMetaHubFromTail(tailBuffer);
               if (metaHubData) {
+                phaseBStats.tailReadHits += 1;
                 tailScanHits += 1;
                 const existing = resultsById.get(entry.image.id);
                 const updated = await applyMetaHubOverride(existing?.enriched ?? null, metaHubData);
@@ -2374,7 +2408,11 @@ export async function processFiles(
             .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
             .filter((path): path is string => typeof path === 'string' && path.length > 0);
           if (fallbackPaths.length > 0) {
+            const fullReadStart = performance.now();
             const fullReadResult = await (window as any).electronAPI.readFilesBatch(fallbackPaths);
+            const fullReadDuration = performance.now() - fullReadStart;
+            phaseBStats.fullReadFiles += fallbackPaths.length;
+            phaseBStats.fullReadMs += fullReadDuration;
             phaseBStats.ipcCalls += 1;
 
             const fullDataMap = new Map<string, ArrayBuffer>();
