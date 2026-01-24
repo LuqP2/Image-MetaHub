@@ -198,6 +198,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
+  const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Zoom and pan states
   const [zoom, setZoom] = useState(1);
@@ -489,6 +490,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setIsDragging(false);
   }, []);
 
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLImageElement>) => {
+    if (!canDragExternally) {
+      return;
+    }
+
+    if (!directoryPath) {
+      return;
+    }
+
+    const [, relativeFromId] = image.id.split('::');
+    const relativePath = relativeFromId || image.name;
+
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'copy';
+    }
+    window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+  }, [canDragExternally, directoryPath, image.id, image.name]);
+
   const handleZoomIn = () => {
     setZoom(prev => Math.min(prev + 0.5, 5));
   };
@@ -748,11 +768,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
               alt={image.name}
               className="max-w-full max-h-full object-contain select-none"
               onContextMenu={handleContextMenu}
+              onDragStart={handleDragStart}
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transition: isDragging ? 'none' : 'transform 0.1s ease-out',
               }}
-              draggable={false}
+              draggable={canDragExternally && zoom === 1}
             />
           ) : (
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>

@@ -11,16 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Indexing Performance**: Faster Phase B indexing with head-only reads, deferred cache flushes, and batched UI merges/filter refresh to reduce stalls.
 - **Image Loading Speed**: Modal and preview images now load faster via thumbnail placeholders and Blob URLs instead of base64.
+- **Recent Tag Suggestions**: Newly added tags now show in suggestions and the list remains available when adding multiple tags.
+- **External Drag & Drop**: Enabled dragging images from ImageModal to other programs.
 
 ### Added
 
 - **Batch Export**: Export selected or filtered images in bulk to a folder or ZIP with progress tracking (desktop only).
-- **Grid Toolbar Selection Actions**: Added GridToolbar with Library/Smart Library toggle and selection actions.
-- **Settings Modal Double-Click Toggle**: Added double-click toggle behavior for the settings modal.
-
-### Fixed
-
-- **Recent Tag Suggestions**: Newly added tags now show in suggestions and the list remains available when adding multiple tags.
 
 ## [0.12.1] - 2025-01-13
 
