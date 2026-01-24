@@ -295,19 +295,29 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   let offset = 8;
   const decoder = new TextDecoder();
   const chunks: { [key: string]: string } = {};
+  let shouldTryExif = false;
   
   // OPTIMIZATION: Stop early if we found all needed chunks
   let foundChunks = 0;
   const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
+    if (offset + 8 > view.byteLength) {
+      break;
+    }
     const length = view.getUint32(offset);
     const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
+    if (offset + 12 + length > view.byteLength) {
+      break;
+    }
     
     if (type === 'tEXt') {
       const chunkData = buffer.slice(offset + 8, offset + 8 + length);
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
+      if (keyword.toLowerCase() === 'xml:com.adobe.xmp') {
+        shouldTryExif = true;
+      }
       
       if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
         chunks[keyword.toLowerCase()] = text;
@@ -321,6 +331,9 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
         continue;
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
+      if (keyword.toLowerCase() === 'xml:com.adobe.xmp') {
+        shouldTryExif = true;
+      }
 
       if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
@@ -346,6 +359,8 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
           foundChunks++;
         }
       }
+    } else if (type === 'eXIf') {
+      shouldTryExif = true;
     }
     if (type === 'IEND') break;
     offset += 12 + length;
@@ -384,14 +399,16 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     return { prompt: chunks.prompt };
   }
 
-  // Always try to extract EXIF/XMP data from PNG (many modern apps like Draw Things use XMP)
-  try {
-    const exifResult = await parseJPEGMetadata(buffer);
-    if (exifResult) {
-      return exifResult;
+  // Try EXIF/XMP extraction only when PNG has XMP or EXIF chunks present.
+  if (shouldTryExif) {
+    try {
+      const exifResult = await parseJPEGMetadata(buffer);
+      if (exifResult) {
+        return exifResult;
+      }
+    } catch {
+      // Silent error - EXIF extraction may fail
     }
-  } catch {
-    // Silent error - EXIF extraction may fail
   }
 
   // If no EXIF found, try PNG chunks as fallback
@@ -1023,6 +1040,38 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
   return { metadata: null, buffer };
 }
 
+const buildNormalizedMetadataFromMetaHubChunk = async (
+  metaHubData: unknown,
+  fallbackDims?: { width?: number; height?: number }
+): Promise<BaseMetadata> => {
+  const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: metaHubData });
+  const width = fallbackDims?.width ?? 0;
+  const height = fallbackDims?.height ?? 0;
+
+  return {
+    prompt: enhancedResult.prompt || '',
+    negativePrompt: enhancedResult.negativePrompt || '',
+    model: enhancedResult.model || '',
+    models: enhancedResult.model ? [enhancedResult.model] : [],
+    width,
+    height,
+    seed: enhancedResult.seed,
+    steps: enhancedResult.steps || 0,
+    cfg_scale: enhancedResult.cfg,
+    scheduler: enhancedResult.scheduler || '',
+    sampler: enhancedResult.sampler_name || '',
+    loras: enhancedResult.loras || [],
+    tags: enhancedResult.tags || [],
+    notes: enhancedResult.notes || '',
+    vae: enhancedResult.vae,
+    denoise: enhancedResult.denoise,
+    _analytics: enhancedResult._analytics || null,
+    _metahub_pro: enhancedResult._metahub_pro || null,
+    _detection_method: enhancedResult._detection_method,
+    generator: 'ComfyUI',
+  };
+};
+
 /**
  * Processes a single file entry to extract metadata and create an IndexedImage object.
  * Optimized version that accepts pre-loaded file data to avoid redundant IPC calls.
@@ -1030,9 +1079,12 @@ async function parseImageMetadata(file: File): Promise<{ metadata: ImageMetadata
 async function processSingleFileOptimized(
   fileEntry: CatalogFileEntry,
   directoryId: string,
-  fileData?: ArrayBuffer
+  fileData?: ArrayBuffer,
+  profile?: PhaseProfileSample
 ): Promise<IndexedImage | null> {
   try {
+    const totalStart = profile ? performance.now() : 0;
+    const parseStart = profile ? performance.now() : 0;
     let rawMetadata: ImageMetadata | null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
@@ -1070,6 +1122,11 @@ async function processSingleFileOptimized(
         rawMetadata = sidecarJson;
       }
     }
+    if (profile) {
+      profile.parseMs = performance.now() - parseStart;
+    }
+
+    const normalizeStart = profile ? performance.now() : 0;
 
 // ==============================================================================
 // SUBSTITUA o bloco inteiro de parsing (linhas ~304-360) por este código:
@@ -1084,29 +1141,8 @@ if (rawMetadata) {
   // This has highest priority as it contains pre-extracted, validated metadata
   if ('imagemetahub_data' in rawMetadata) {
     try {
-      const enhancedResult = await parseComfyUIMetadataEnhanced(rawMetadata);
-      normalizedMetadata = {
-        prompt: enhancedResult.prompt || '',
-        negativePrompt: enhancedResult.negativePrompt || '',
-        model: enhancedResult.model || '',
-        models: enhancedResult.model ? [enhancedResult.model] : [],
-        width: 0, // Will be set from actual image dimensions below
-        height: 0,
-        seed: enhancedResult.seed,
-        steps: enhancedResult.steps || 0,
-        cfg_scale: enhancedResult.cfg,
-        scheduler: enhancedResult.scheduler || '',
-        sampler: enhancedResult.sampler_name || '',
-        loras: enhancedResult.loras || [],
-        tags: enhancedResult.tags || [],
-        notes: enhancedResult.notes || '',
-        vae: enhancedResult.vae,
-        denoise: enhancedResult.denoise,
-        _analytics: enhancedResult._analytics || null,
-        _metahub_pro: enhancedResult._metahub_pro || null,
-        _detection_method: enhancedResult._detection_method,
-        generator: 'ComfyUI',
-      };
+      const metaHubData = (rawMetadata as { imagemetahub_data: unknown }).imagemetahub_data;
+      normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData);
     } catch (e) {
       console.error('[FileIndexer] Failed to parse MetaHub chunk:', e);
       // Fall through to other parsers
@@ -1255,11 +1291,15 @@ if (rawMetadata) {
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
 // deve permanecer como está
 // ==============================================================================
+    if (profile) {
+      profile.normalizeMs = performance.now() - normalizeStart;
+    }
     const fallbackType = inferMimeTypeFromName(fileEntry.handle.name);
     const normalizedFileType = inferredType ?? fallbackType;
     const normalizedFileSize = fileSizeValue ?? 0;
 
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
+    const dimensionsStart = profile ? performance.now() : 0;
     if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height) && bufferForDimensions) {
       const dims = extractDimensionsFromBuffer(bufferForDimensions);
       if (dims) {
@@ -1267,9 +1307,16 @@ if (rawMetadata) {
         normalizedMetadata.height = normalizedMetadata.height || dims.height;
       }
     }
+    if (profile) {
+      profile.dimensionsMs = performance.now() - dimensionsStart;
+    }
 
     // Determine the best date for sorting (generation date vs file date)
     const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
+
+    if (profile) {
+      profile.totalMs = performance.now() - totalStart;
+    }
 
     return {
       id: `${directoryId}::${fileEntry.path}`,
@@ -1319,6 +1366,27 @@ interface PhaseTelemetry {
   bytesWritten: number;
   ipcCalls: number;
   diskWrites: number;
+  flushMs: number;
+  flushChunks: number;
+  headReadMs: number;
+  headReadFiles: number;
+  tailReadMs: number;
+  tailReadFiles: number;
+  tailReadHits: number;
+  fullReadMs: number;
+  fullReadFiles: number;
+  profileSamples: number;
+  profileTotalMs: number;
+  profileParseMs: number;
+  profileNormalizeMs: number;
+  profileDimensionsMs: number;
+}
+
+interface PhaseProfileSample {
+  totalMs: number;
+  parseMs: number;
+  normalizeMs: number;
+  dimensionsMs: number;
 }
 
 interface ProcessFilesOptions {
@@ -1392,6 +1460,20 @@ export async function processFiles(
     bytesWritten: 0,
     ipcCalls: 0,
     diskWrites: 0,
+    flushMs: 0,
+    flushChunks: 0,
+    headReadMs: 0,
+    headReadFiles: 0,
+    tailReadMs: 0,
+    tailReadFiles: 0,
+    tailReadHits: 0,
+    fullReadMs: 0,
+    fullReadFiles: 0,
+    profileSamples: 0,
+    profileTotalMs: 0,
+    profileParseMs: 0,
+    profileNormalizeMs: 0,
+    profileDimensionsMs: 0,
   };
   const phaseBStats: PhaseTelemetry = {
     startTime: 0,
@@ -1399,6 +1481,20 @@ export async function processFiles(
     bytesWritten: 0,
     ipcCalls: 0,
     diskWrites: 0,
+    flushMs: 0,
+    flushChunks: 0,
+    headReadMs: 0,
+    headReadFiles: 0,
+    tailReadMs: 0,
+    tailReadFiles: 0,
+    tailReadHits: 0,
+    fullReadMs: 0,
+    fullReadFiles: 0,
+    profileSamples: 0,
+    profileTotalMs: 0,
+    profileParseMs: 0,
+    profileNormalizeMs: 0,
+    profileDimensionsMs: 0,
   };
 
   performance.mark('indexing:phaseA:start');
@@ -1702,7 +1798,15 @@ export async function processFiles(
   };
 
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
+  const useHeadRead = isElectron && (window as any).electronAPI?.readFilesHeadBatch;
+  const useTailRead = isElectron && (window as any).electronAPI?.readFilesTailBatch;
   const FILE_READ_BATCH_SIZE = 128;
+  const HEAD_READ_MAX_BYTES = 256 * 1024;
+  const TAIL_READ_MAX_BYTES = 512 * 1024;
+  const TAIL_SCAN_SAMPLE_LIMIT = 256;
+  let tailScanAttempts = 0;
+  let tailScanHits = 0;
+  let tailScanEnabled = true;
 
   const processEnrichmentResult = (entry: CatalogEntryState, enriched: IndexedImage | null) => {
     if (!enriched) {
@@ -1801,8 +1905,13 @@ export async function processFiles(
     return { phaseB: Promise.resolve() };
   }
 
-  const nextPhaseBLogInitial = 5000;
+  const nextPhaseBLogInitial = 500;
+  const nextPhaseBLogStep = 1000;
+  const phaseBLogIntervalMs = 60_000;
   let nextPhaseBLog = nextPhaseBLogInitial;
+  let lastPhaseBLogTime = 0;
+  const profileSampleRate = 100;
+  let profileCounter = 0;
 
   // Throttle progress updates to every 300ms to avoid excessive re-renders
   const throttledEnrichmentProgress = throttle(
@@ -1815,6 +1924,7 @@ export async function processFiles(
   const runEnrichmentPhase = async () => {
     console.log(`[indexing] Starting Phase B with ${totalEnrichment} images to enrich`);
     phaseBStats.startTime = performance.now();
+    lastPhaseBLogTime = phaseBStats.startTime;
     performance.mark('indexing:phaseB:start');
 
     const queue = [...needsEnrichment];
@@ -1825,6 +1935,55 @@ export async function processFiles(
     const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
     const DIRTY_FLUSH_INTERVAL_MS = 350;
     let lastFlushTime = performance.now();
+    const canWriteCache = Boolean(cacheWriter);
+    const DEFER_CACHE_FLUSH_THRESHOLD = 5000;
+    const deferCacheFlush = canWriteCache && totalEnrichment >= DEFER_CACHE_FLUSH_THRESHOLD;
+
+    const logPhaseBProgress = (queueLength: number) => {
+      const now = performance.now();
+      const elapsed = now - phaseBStats.startTime;
+      const shouldLogCount = phaseBStats.processed >= nextPhaseBLog;
+      const shouldLogTime = now - lastPhaseBLogTime >= phaseBLogIntervalMs;
+      if (shouldLogCount || shouldLogTime || phaseBStats.processed === queueLength) {
+        const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
+        const profileSamples = phaseBStats.profileSamples;
+        const profileAvgTotal = profileSamples > 0 ? phaseBStats.profileTotalMs / profileSamples : 0;
+        const profileAvgParse = profileSamples > 0 ? phaseBStats.profileParseMs / profileSamples : 0;
+        const profileAvgNormalize = profileSamples > 0 ? phaseBStats.profileNormalizeMs / profileSamples : 0;
+        const profileAvgDimensions = profileSamples > 0 ? phaseBStats.profileDimensionsMs / profileSamples : 0;
+        const flushAvgMs = phaseBStats.flushChunks > 0 ? phaseBStats.flushMs / phaseBStats.flushChunks : 0;
+        const headReadAvgMs = phaseBStats.headReadFiles > 0 ? phaseBStats.headReadMs / phaseBStats.headReadFiles : 0;
+        const tailReadAvgMs = phaseBStats.tailReadFiles > 0 ? phaseBStats.tailReadMs / phaseBStats.tailReadFiles : 0;
+        const fullReadAvgMs = phaseBStats.fullReadFiles > 0 ? phaseBStats.fullReadMs / phaseBStats.fullReadFiles : 0;
+
+        console.log('[indexing]', {
+          phase: 'B',
+          files: phaseBStats.processed,
+          ipc_calls: phaseBStats.ipcCalls,
+          writes: phaseBStats.diskWrites,
+          bytes_written: phaseBStats.bytesWritten,
+          avg_ms_per_file: Number(avg.toFixed(2)),
+          flush_avg_ms: Number(flushAvgMs.toFixed(2)),
+          head_read_files: phaseBStats.headReadFiles,
+          head_read_avg_ms: Number(headReadAvgMs.toFixed(2)),
+          tail_read_files: phaseBStats.tailReadFiles,
+          tail_read_hits: phaseBStats.tailReadHits,
+          tail_read_avg_ms: Number(tailReadAvgMs.toFixed(2)),
+          full_read_files: phaseBStats.fullReadFiles,
+          full_read_avg_ms: Number(fullReadAvgMs.toFixed(2)),
+          profile_samples: profileSamples,
+          profile_avg_total_ms: Number(profileAvgTotal.toFixed(2)),
+          profile_avg_parse_ms: Number(profileAvgParse.toFixed(2)),
+          profile_avg_normalize_ms: Number(profileAvgNormalize.toFixed(2)),
+          profile_avg_dimensions_ms: Number(profileAvgDimensions.toFixed(2)),
+        });
+
+        if (shouldLogCount) {
+          nextPhaseBLog += nextPhaseBLogStep;
+        }
+        lastPhaseBLogTime = now;
+      }
+    };
 
     const commitBatch = async (force = false) => {
       if (resultsBatch.length > 0) {
@@ -1832,7 +1991,12 @@ export async function processFiles(
         resultsBatch.length = 0;
       }
 
-      if (cacheWriter && touchedChunks.size > 0 && (force || touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)) {
+      if (
+        cacheWriter &&
+        touchedChunks.size > 0 &&
+        (force || !deferCacheFlush) &&
+        (force || touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD)
+      ) {
         const chunkIndices = Array.from(touchedChunks);
         const start = performance.now();
         await Promise.all(chunkIndices.map(async (chunkIndex) => {
@@ -1848,11 +2012,242 @@ export async function processFiles(
             detail: { chunkIndex, durationMs: duration, bytesWritten }
           });
         }));
+        const batchDuration = performance.now() - start;
+        phaseBStats.flushMs += batchDuration;
+        phaseBStats.flushChunks += chunkIndices.length;
         performance.mark('indexing:phaseB:chunk-flush-batch', {
-          detail: { chunks: chunkIndices.length, durationMs: performance.now() - start }
+          detail: { chunks: chunkIndices.length, durationMs: batchDuration }
         });
         touchedChunks.clear();
       }
+    };
+
+    const applyMergedEntry = async (
+      entry: CatalogEntryState,
+      enriched: IndexedImage | null,
+      profile: PhaseProfileSample | undefined,
+      queueLength: number
+    ) => {
+      const merged = processEnrichmentResult(entry, enriched);
+      if (!merged) {
+        return null;
+      }
+
+      entry.needsEnrichment = false;
+      resultsBatch.push(merged);
+      const loc = chunkMap.get(merged.id);
+      if (loc && canWriteCache) {
+        touchedChunks.add(loc.chunkIndex);
+      }
+
+      phaseBStats.processed += 1;
+      if (profile) {
+        phaseBStats.profileSamples += 1;
+        phaseBStats.profileTotalMs += profile.totalMs;
+        phaseBStats.profileParseMs += profile.parseMs;
+        phaseBStats.profileNormalizeMs += profile.normalizeMs;
+        phaseBStats.profileDimensionsMs += profile.dimensionsMs;
+      }
+
+      throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
+      logPhaseBProgress(queueLength);
+      performance.mark('indexing:phaseB:queue-depth', {
+        detail: { depth: queueLength - phaseBStats.processed }
+      });
+
+      const now = performance.now();
+      if (
+        resultsBatch.length >= enrichmentBatchSize ||
+        (canWriteCache && !deferCacheFlush && touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD) ||
+        now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
+      ) {
+        await commitBatch();
+        lastFlushTime = now;
+      }
+
+      return merged;
+    };
+
+    const METAHUB_KEYWORD_BYTES = new TextEncoder().encode('imagemetahub_data');
+    const metahubTailDecoder = new TextDecoder();
+    const bufferContainsBytes = (buffer: ArrayBuffer, needle: Uint8Array) => {
+      const haystack = new Uint8Array(buffer);
+      if (needle.length === 0 || haystack.length < needle.length) {
+        return false;
+      }
+      outer: for (let i = 0; i <= haystack.length - needle.length; i += 1) {
+        for (let j = 0; j < needle.length; j += 1) {
+          if (haystack[i + j] !== needle[j]) {
+            continue outer;
+          }
+        }
+        return true;
+      }
+      return false;
+    };
+
+    const tryParseMetaHubFromTail = async (buffer: ArrayBuffer): Promise<unknown | null> => {
+      const bytes = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      const typeA = 0x69; // i
+      const typeB = 0x54; // T
+      const typeC = 0x58; // X
+      const typeD = 0x74; // t
+
+      for (let i = 4; i <= bytes.length - 4; i += 1) {
+        if (
+          bytes[i] !== typeA ||
+          bytes[i + 1] !== typeB ||
+          bytes[i + 2] !== typeC ||
+          bytes[i + 3] !== typeD
+        ) {
+          continue;
+        }
+
+        const lengthOffset = i - 4;
+        if (lengthOffset < 0) {
+          continue;
+        }
+        const chunkLength = view.getUint32(lengthOffset);
+        const chunkDataStart = i + 4;
+        const chunkDataEnd = chunkDataStart + chunkLength;
+        if (chunkDataEnd > bytes.length) {
+          continue;
+        }
+
+        const chunkData = bytes.slice(chunkDataStart, chunkDataEnd);
+        const keywordEndIndex = chunkData.indexOf(0);
+        if (keywordEndIndex === -1) {
+          continue;
+        }
+        const keyword = metahubTailDecoder.decode(chunkData.slice(0, keywordEndIndex));
+        if (keyword !== 'imagemetahub_data') {
+          continue;
+        }
+
+        const compressionFlag = chunkData[keywordEndIndex + 1];
+        let currentIndex = keywordEndIndex + 3;
+        const langTagEndIndex = chunkData.indexOf(0, currentIndex);
+        if (langTagEndIndex === -1) {
+          continue;
+        }
+        currentIndex = langTagEndIndex + 1;
+        const translatedKwEndIndex = chunkData.indexOf(0, currentIndex);
+        if (translatedKwEndIndex === -1) {
+          continue;
+        }
+        currentIndex = translatedKwEndIndex + 1;
+
+        const text = await decodeITXtText(chunkData.slice(currentIndex), compressionFlag, metahubTailDecoder);
+        if (!text) {
+          continue;
+        }
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+
+    const deriveFallbackDims = (image: IndexedImage | null) => {
+      if (!image) {
+        return undefined;
+      }
+      const normalized = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+      const width = normalized?.width;
+      const height = normalized?.height;
+      if (width && height) {
+        return { width, height };
+      }
+      if (image.dimensions) {
+        const match = image.dimensions.match(/(\\d+)\\s*x\\s*(\\d+)/i);
+        if (match) {
+          return { width: Number(match[1]), height: Number(match[2]) };
+        }
+      }
+      return undefined;
+    };
+
+    const applyMetaHubOverride = async (image: IndexedImage | null, metaHubData: unknown) => {
+      if (!image) {
+        return image;
+      }
+      const fallbackDims = deriveFallbackDims(image);
+      const normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData, fallbackDims);
+      const rawMetadata = { ...(image.metadata || {}) } as Record<string, unknown>;
+      delete rawMetadata.normalizedMetadata;
+      rawMetadata.imagemetahub_data = metaHubData;
+
+      return {
+        ...image,
+        metadata: { ...rawMetadata, normalizedMetadata },
+        metadataString: Object.keys(rawMetadata).length > 0 ? JSON.stringify(rawMetadata) : '',
+        models: normalizedMetadata.models || [],
+        loras: normalizedMetadata.loras || [],
+        scheduler: normalizedMetadata.scheduler || '',
+        board: normalizedMetadata.board || '',
+        prompt: normalizedMetadata.prompt || '',
+        negativePrompt: normalizedMetadata.negativePrompt || '',
+        cfgScale: normalizedMetadata.cfgScale || normalizedMetadata.cfg_scale || null,
+        steps: normalizedMetadata.steps || null,
+        seed: normalizedMetadata.seed || null,
+        dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+      } as IndexedImage;
+    };
+
+    const shouldFallbackToFullRead = (
+      entry: CatalogEntryState,
+      buffer: ArrayBuffer | undefined,
+      enriched: IndexedImage | null
+    ) => {
+      if (!entry.source || !buffer) {
+        return false;
+      }
+      const fileSize = entry.source.size;
+      if (!fileSize || fileSize <= buffer.byteLength) {
+        return false;
+      }
+      const hasMetadata = Boolean(enriched?.metadataString) ||
+        (enriched?.metadata && Object.keys(enriched.metadata).length > 0);
+      if (hasMetadata) {
+        return false;
+      }
+      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
+      return fileType === 'image/png';
+    };
+
+    const shouldCheckTailForMetaHub = (
+      entry: CatalogEntryState,
+      buffer: ArrayBuffer | undefined,
+      enriched: IndexedImage | null
+    ) => {
+      if (!tailScanEnabled) {
+        return false;
+      }
+      if (tailScanHits === 0 && tailScanAttempts >= TAIL_SCAN_SAMPLE_LIMIT) {
+        return false;
+      }
+      if (!entry.source || !buffer || !enriched) {
+        return false;
+      }
+      const fileSize = entry.source.size;
+      if (!fileSize || fileSize <= buffer.byteLength) {
+        return false;
+      }
+      const fileType = entry.source.type ?? inferMimeTypeFromName(entry.source.handle.name);
+      if (fileType !== 'image/png') {
+        return false;
+      }
+      const metadata = enriched.metadata as Record<string, unknown> | undefined;
+      if (!metadata) {
+        return false;
+      }
+      if ('imagemetahub_data' in metadata) {
+        return false;
+      }
+      return 'parameters' in metadata;
     };
 
     const iterator = async (entry: CatalogEntryState) => {
@@ -1863,45 +2258,12 @@ export async function processFiles(
         return null;
       }
 
-      const enriched = await processSingleFileOptimized(entry.source, directoryId, undefined);
-      const merged = processEnrichmentResult(entry, enriched);
-      if (merged) {
-        entry.needsEnrichment = false;
-        resultsBatch.push(merged);
-        const loc = chunkMap.get(merged.id);
-        if (loc) {
-          touchedChunks.add(loc.chunkIndex);
-        }
-        phaseBStats.processed += 1;
-        throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
-        const elapsed = performance.now() - phaseBStats.startTime;
-        if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
-          const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
-          console.log('[indexing]', {
-            phase: 'B',
-            files: phaseBStats.processed,
-            ipc_calls: phaseBStats.ipcCalls,
-            writes: phaseBStats.diskWrites,
-            bytes_written: phaseBStats.bytesWritten,
-            avg_ms_per_file: Number(avg.toFixed(2)),
-          });
-          nextPhaseBLog += 5000;
-        }
-        performance.mark('indexing:phaseB:queue-depth', {
-          detail: { depth: queue.length - phaseBStats.processed }
-        });
-
-        const now = performance.now();
-        if (
-          resultsBatch.length >= enrichmentBatchSize ||
-          touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
-          now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
-        ) {
-          await commitBatch();
-          lastFlushTime = now;
-        }
-      }
-      return merged;
+      const shouldProfile = (profileCounter++ % profileSampleRate) === 0;
+      const profile = shouldProfile
+        ? { totalMs: 0, parseMs: 0, normalizeMs: 0, dimensionsMs: 0 }
+        : undefined;
+      const enriched = await processSingleFileOptimized(entry.source, directoryId, undefined, profile);
+      return applyMergedEntry(entry, enriched, profile, queue.length);
     };
 
     if (useOptimizedPath) {
@@ -1915,7 +2277,18 @@ export async function processFiles(
           continue;
         }
 
-        const readResult = await (window as any).electronAPI.readFilesBatch(filePaths);
+        const readStart = performance.now();
+        const readResult = useHeadRead
+          ? await (window as any).electronAPI.readFilesHeadBatch({ filePaths, maxBytes: HEAD_READ_MAX_BYTES })
+          : await (window as any).electronAPI.readFilesBatch(filePaths);
+        const readDuration = performance.now() - readStart;
+        if (useHeadRead) {
+          phaseBStats.headReadFiles += filePaths.length;
+          phaseBStats.headReadMs += readDuration;
+        } else {
+          phaseBStats.fullReadFiles += filePaths.length;
+          phaseBStats.fullReadMs += readDuration;
+        }
         phaseBStats.ipcCalls += 1;
 
         const dataMap = new Map<string, ArrayBuffer>();
@@ -1936,56 +2309,174 @@ export async function processFiles(
           }
         }
 
-        const batchIterator = async (entry: CatalogEntryState) => {
+        const resultsById = new Map<string, { enriched: IndexedImage | null; profile?: PhaseProfileSample }>();
+        const fallbackEntries: CatalogEntryState[] = [];
+        const tailCheckEntries: CatalogEntryState[] = [];
+        const missingEntries = new Set<string>();
+
+        const headIterator = async (entry: CatalogEntryState) => {
           if (!entry.source) {
             return null;
           }
           const filePath = (entry.source.handle as ElectronFileHandle)?._filePath;
           if (!filePath) {
+            missingEntries.add(entry.image.id);
             return null;
           }
           const buffer = dataMap.get(filePath);
-          const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer);
-          const merged = processEnrichmentResult(entry, enriched);
-          if (merged) {
-            entry.needsEnrichment = false;
-            resultsBatch.push(merged);
-            const loc = chunkMap.get(merged.id);
-            if (loc) {
-              touchedChunks.add(loc.chunkIndex);
-            }
-            phaseBStats.processed += 1;
-            throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
-            const elapsed = performance.now() - phaseBStats.startTime;
-            if (phaseBStats.processed >= nextPhaseBLog || phaseBStats.processed === queue.length) {
-              const avg = phaseBStats.processed > 0 ? elapsed / phaseBStats.processed : 0;
-              console.log('[indexing]', {
-                phase: 'B',
-                files: phaseBStats.processed,
-                ipc_calls: phaseBStats.ipcCalls,
-                writes: phaseBStats.diskWrites,
-                bytes_written: phaseBStats.bytesWritten,
-                avg_ms_per_file: Number(avg.toFixed(2)),
-              });
-              nextPhaseBLog += 5000;
-            }
-            performance.mark('indexing:phaseB:queue-depth', {
-              detail: { depth: queue.length - phaseBStats.processed }
-            });
-            const now = performance.now();
-            if (
-              resultsBatch.length >= enrichmentBatchSize ||
-              touchedChunks.size >= DIRTY_CHUNK_FLUSH_THRESHOLD ||
-              now - lastFlushTime >= DIRTY_FLUSH_INTERVAL_MS
-            ) {
-              await commitBatch();
-              lastFlushTime = now;
-            }
+          if (!buffer) {
+            missingEntries.add(entry.image.id);
+            return null;
           }
-          return merged;
+          const shouldProfile = (profileCounter++ % profileSampleRate) === 0;
+          const profile = shouldProfile
+            ? { totalMs: 0, parseMs: 0, normalizeMs: 0, dimensionsMs: 0 }
+            : undefined;
+          const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
+          if (shouldFallbackToFullRead(entry, buffer, enriched)) {
+            fallbackEntries.push(entry);
+            return null;
+          }
+          if (useTailRead && shouldCheckTailForMetaHub(entry, buffer, enriched)) {
+            tailCheckEntries.push(entry);
+          }
+          resultsById.set(entry.image.id, { enriched, profile });
+          return null;
         };
 
-        await asyncPool(concurrencyLimit, batch, batchIterator);
+        await asyncPool(concurrencyLimit, batch, headIterator);
+
+        if (tailCheckEntries.length > 0 && useTailRead) {
+          const tailPaths = tailCheckEntries
+            .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+            .filter((path): path is string => typeof path === 'string' && path.length > 0);
+          if (tailPaths.length > 0) {
+            tailScanAttempts += tailPaths.length;
+            const tailStart = performance.now();
+            const tailResult = await (window as any).electronAPI.readFilesTailBatch({
+              filePaths: tailPaths,
+              maxBytes: TAIL_READ_MAX_BYTES
+            });
+            const tailDuration = performance.now() - tailStart;
+            phaseBStats.tailReadFiles += tailPaths.length;
+            phaseBStats.tailReadMs += tailDuration;
+            phaseBStats.ipcCalls += 1;
+
+            const tailMap = new Map<string, ArrayBuffer>();
+            if (tailResult.success && Array.isArray(tailResult.files)) {
+              for (const file of tailResult.files) {
+                if (!file.success || !file.data) {
+                  continue;
+                }
+                const raw = file.data as ArrayBuffer | ArrayBufferView;
+                if (raw instanceof ArrayBuffer) {
+                  tailMap.set(file.path, raw);
+                } else if (ArrayBuffer.isView(raw)) {
+                  const view = raw as ArrayBufferView;
+                  const copy = new Uint8Array(view.byteLength);
+                  copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+                  tailMap.set(file.path, copy.buffer);
+                }
+              }
+            }
+
+            for (const entry of tailCheckEntries) {
+              const filePath = (entry.source?.handle as ElectronFileHandle)?._filePath;
+              if (!filePath) {
+                continue;
+              }
+              const tailBuffer = tailMap.get(filePath);
+              if (!tailBuffer || !bufferContainsBytes(tailBuffer, METAHUB_KEYWORD_BYTES)) {
+                continue;
+              }
+              const metaHubData = await tryParseMetaHubFromTail(tailBuffer);
+              if (metaHubData) {
+                phaseBStats.tailReadHits += 1;
+                tailScanHits += 1;
+                const existing = resultsById.get(entry.image.id);
+                const updated = await applyMetaHubOverride(existing?.enriched ?? null, metaHubData);
+                if (updated) {
+                  resultsById.set(entry.image.id, { enriched: updated, profile: existing?.profile });
+                  continue;
+                }
+              }
+              resultsById.delete(entry.image.id);
+              fallbackEntries.push(entry);
+            }
+            if (tailScanHits === 0 && tailScanAttempts >= TAIL_SCAN_SAMPLE_LIMIT && tailScanEnabled) {
+              tailScanEnabled = false;
+              console.log('[indexing] Tail scan disabled after sample: no MetaHub iTXt chunks detected.');
+            }
+          }
+        }
+
+        if (fallbackEntries.length > 0) {
+          const fallbackPaths = fallbackEntries
+            .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+            .filter((path): path is string => typeof path === 'string' && path.length > 0);
+          if (fallbackPaths.length > 0) {
+            const fullReadStart = performance.now();
+            const fullReadResult = await (window as any).electronAPI.readFilesBatch(fallbackPaths);
+            const fullReadDuration = performance.now() - fullReadStart;
+            phaseBStats.fullReadFiles += fallbackPaths.length;
+            phaseBStats.fullReadMs += fullReadDuration;
+            phaseBStats.ipcCalls += 1;
+
+            const fullDataMap = new Map<string, ArrayBuffer>();
+            if (fullReadResult.success && Array.isArray(fullReadResult.files)) {
+              for (const file of fullReadResult.files) {
+                if (!file.success || !file.data) {
+                  continue;
+                }
+                const raw = file.data as ArrayBuffer | ArrayBufferView;
+                if (raw instanceof ArrayBuffer) {
+                  fullDataMap.set(file.path, raw);
+                } else if (ArrayBuffer.isView(raw)) {
+                  const view = raw as ArrayBufferView;
+                  const copy = new Uint8Array(view.byteLength);
+                  copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+                  fullDataMap.set(file.path, copy.buffer);
+                }
+              }
+            }
+
+            const fallbackIterator = async (entry: CatalogEntryState) => {
+              if (!entry.source) {
+                return null;
+              }
+              const filePath = (entry.source.handle as ElectronFileHandle)?._filePath;
+              if (!filePath) {
+                missingEntries.add(entry.image.id);
+                return null;
+              }
+              const buffer = fullDataMap.get(filePath);
+              if (!buffer) {
+                missingEntries.add(entry.image.id);
+                return null;
+              }
+              const shouldProfile = (profileCounter++ % profileSampleRate) === 0;
+              const profile = shouldProfile
+                ? { totalMs: 0, parseMs: 0, normalizeMs: 0, dimensionsMs: 0 }
+                : undefined;
+              const enriched = await processSingleFileOptimized(entry.source, directoryId, buffer, profile);
+              resultsById.set(entry.image.id, { enriched, profile });
+              return null;
+            };
+
+            await asyncPool(concurrencyLimit, fallbackEntries, fallbackIterator);
+          }
+        }
+
+        for (const entry of batch) {
+          if (missingEntries.has(entry.image.id)) {
+            await iterator(entry);
+            continue;
+          }
+          const result = resultsById.get(entry.image.id);
+          if (result) {
+            await applyMergedEntry(entry, result.enriched, result.profile, queue.length);
+          }
+        }
       }
     } else {
       await asyncPool(concurrencyLimit, queue, iterator);

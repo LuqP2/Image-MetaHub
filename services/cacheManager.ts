@@ -393,6 +393,59 @@ class CacheManager {
     }
   }
 
+  async appendToCache(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    scanSubfolders: boolean,
+    options?: { chunkSize?: number }
+  ): Promise<void> {
+    if (!this.isElectron) return;
+    if (!images || images.length === 0) return;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const summaryResult = await summaryFn(cacheId);
+
+    if (!summaryResult.success || !summaryResult.data) {
+      await this.cacheData(directoryPath, directoryName, images, scanSubfolders);
+      return;
+    }
+
+    const summary = summaryResult.data as CacheEntry;
+    const chunkSize = options?.chunkSize ?? DEFAULT_INCREMENTAL_CHUNK_SIZE;
+    const metadata = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+
+    let chunkIndex = summary.chunkCount ?? 0;
+    for (let i = 0; i < metadata.length; i += chunkSize) {
+      const chunk = metadata.slice(i, i + chunkSize);
+      const result = await window.electronAPI.writeCacheChunk({
+        cacheId,
+        chunkIndex,
+        data: chunk,
+      });
+      if (!result.success) {
+        console.error('Failed to append cache chunk:', result.error);
+        return;
+      }
+      chunkIndex += 1;
+    }
+
+    const record = {
+      id: cacheId,
+      directoryPath,
+      directoryName: summary.directoryName ?? directoryName,
+      lastScan: Date.now(),
+      imageCount: (summary.imageCount ?? 0) + images.length,
+      chunkCount: chunkIndex,
+    } satisfies Omit<CacheEntry, 'metadata'>;
+
+    const finalizeResult = await window.electronAPI.finalizeCacheWrite({ cacheId, record });
+    if (!finalizeResult.success) {
+      console.error('Failed to finalize appended cache write:', finalizeResult.error);
+    }
+  }
+
   async createIncrementalWriter(
     directoryPath: string,
     directoryName: string,

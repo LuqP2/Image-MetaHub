@@ -518,7 +518,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.12.1');
+    mainWindow.setTitle('Image MetaHub v0.12.2');
   }
 
   // Load the app
@@ -1264,8 +1264,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.12.1',
-      releaseNotes: `## [0.12.1] - Release
+  version: '0.12.2',
+      releaseNotes: `## [0.12.2] - Release
 
 ### Major Performance Improvements
 - **3-5x Faster Loading**: Batch IPC operations reduce 1000+ calls to a single batch
@@ -1505,6 +1505,114 @@ function setupFileOperationHandlers() {
       return { success: true, files: data };
     } catch (error) {
       console.error('Error in read-files-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-files-head-batch', async (event, { filePaths, maxBytes }) => {
+    try {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+        return { success: false, error: 'No file paths provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      for (const filePath of filePaths) {
+        if (!isPathAllowed(filePath)) {
+          console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+          console.error('  Requested path:', filePath);
+          console.error('  Normalized path:', path.normalize(filePath));
+          console.error('  Allowed directories:', Array.from(allowedDirectoryPaths));
+          return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
+        }
+      }
+      // --- END SECURITY CHECK ---
+
+      const FALLBACK_HEAD_BYTES = 256 * 1024;
+      const MAX_HEAD_BYTES = 2 * 1024 * 1024;
+      const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
+      const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
+
+      const promises = filePaths.map(async (filePath) => {
+        const handle = await fs.open(filePath, 'r');
+        try {
+          const buffer = Buffer.allocUnsafe(safeBytes);
+          const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
+          return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
+        } finally {
+          await handle.close();
+        }
+      });
+      const results = await Promise.allSettled(promises);
+
+      const data = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        }
+        if (!result.reason.message?.includes('ENOENT')) {
+          console.error('Error reading file head in batch:', filePaths[index], result.reason);
+        }
+        return { success: false, error: result.reason.message, path: filePaths[index] };
+      });
+
+      return { success: true, files: data };
+    } catch (error) {
+      console.error('Error in read-files-head-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('read-files-tail-batch', async (event, { filePaths, maxBytes }) => {
+    try {
+      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+        return { success: false, error: 'No file paths provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      for (const filePath of filePaths) {
+        if (!isPathAllowed(filePath)) {
+          console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+          console.error('  Requested path:', filePath);
+          console.error('  Normalized path:', path.normalize(filePath));
+          console.error('  Allowed directories:', Array.from(allowedDirectoryPaths));
+          return { success: false, error: 'Access denied: Cannot read files outside of the allowed directories.' };
+        }
+      }
+      // --- END SECURITY CHECK ---
+
+      const FALLBACK_TAIL_BYTES = 256 * 1024;
+      const MAX_TAIL_BYTES = 2 * 1024 * 1024;
+      const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_TAIL_BYTES;
+      const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_TAIL_BYTES));
+
+      const promises = filePaths.map(async (filePath) => {
+        const handle = await fs.open(filePath, 'r');
+        try {
+          const stats = await handle.stat();
+          const fileSize = stats.size ?? 0;
+          const readSize = Math.min(safeBytes, fileSize);
+          const start = Math.max(0, fileSize - readSize);
+          const buffer = Buffer.allocUnsafe(readSize);
+          const { bytesRead } = await handle.read(buffer, 0, readSize, start);
+          return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
+        } finally {
+          await handle.close();
+        }
+      });
+      const results = await Promise.allSettled(promises);
+
+      const data = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        }
+        if (!result.reason.message?.includes('ENOENT')) {
+          console.error('Error reading file tail in batch:', filePaths[index], result.reason);
+        }
+        return { success: false, error: result.reason.message, path: filePaths[index] };
+      });
+
+      return { success: true, files: data };
+    } catch (error) {
+      console.error('Error in read-files-tail-batch handler:', error);
       return { success: false, error: error.message };
     }
   });

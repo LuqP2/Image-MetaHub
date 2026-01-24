@@ -299,12 +299,29 @@ export const useImageStore = create<ImageState>((set, get) => {
     let pendingImagesQueue: IndexedImage[] = [];
     let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const FLUSH_INTERVAL_MS = 100;
+    let pendingMergeQueue: IndexedImage[] = [];
+    let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
+    let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
+    const MERGE_FLUSH_INTERVAL_MS = 250;
+    const MERGE_FLUSH_INTERVAL_INDEXING_MS = 3000;
+    const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 15000;
+    const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
+    const FILTER_RECOMPUTE_INDEXING_MS = 5000;
 
     const clearPendingQueue = () => {
         pendingImagesQueue = [];
         if (pendingFlushTimer) {
             clearTimeout(pendingFlushTimer);
             pendingFlushTimer = null;
+        }
+        pendingMergeQueue = [];
+        if (pendingMergeTimer) {
+            clearTimeout(pendingMergeTimer);
+            pendingMergeTimer = null;
+        }
+        if (pendingFilterRecomputeTimer) {
+            clearTimeout(pendingFilterRecomputeTimer);
+            pendingFilterRecomputeTimer = null;
         }
     };
 
@@ -356,6 +373,139 @@ export const useImageStore = create<ImageState>((set, get) => {
         pendingFlushTimer = setTimeout(() => {
             flushPendingImages();
         }, FLUSH_INTERVAL_MS);
+    };
+
+    const flushPendingMerges = (forceFullRecompute: boolean = false) => {
+        if (pendingMergeQueue.length === 0) {
+            return;
+        }
+
+        const updatesToMerge = pendingMergeQueue;
+        pendingMergeQueue = [];
+        if (pendingMergeTimer) {
+            clearTimeout(pendingMergeTimer);
+            pendingMergeTimer = null;
+        }
+
+        set(state => {
+            const updates = new Map<string, IndexedImage>();
+            for (const img of updatesToMerge) {
+                if (img?.id) {
+                    updates.set(img.id, img);
+                }
+            }
+            if (updates.size === 0) {
+                return state;
+            }
+
+            let hasChanges = false;
+            const merged = state.images.map(img => {
+                const updated = updates.get(img.id);
+                if (updated) {
+                    hasChanges = true;
+                    return updated;
+                }
+                return img;
+            });
+
+            if (!hasChanges) {
+                return state;
+            }
+
+            const isIndexing = state.indexingState === 'indexing';
+            if (isIndexing && !forceFullRecompute) {
+                const filtersActive = isFilteringActive(state);
+                let nextFilteredImages = state.filteredImages;
+                let availableFiltersUpdate: Partial<ImageState> = {};
+
+                if (!filtersActive) {
+                    nextFilteredImages = merged;
+                    const models = new Set(state.availableModels);
+                    const loras = new Set(state.availableLoras);
+                    const schedulers = new Set(state.availableSchedulers);
+                    const dimensions = new Set(state.availableDimensions);
+
+                    for (const img of updates.values()) {
+                        img.models?.forEach(model => { if (typeof model === 'string' && model) models.add(model); });
+                        img.loras?.forEach(lora => {
+                            if (typeof lora === 'string' && lora) {
+                                loras.add(lora);
+                            } else if (lora && typeof lora === 'object' && lora.name) {
+                                loras.add(lora.name);
+                            }
+                        });
+                        if (img.scheduler) {
+                            schedulers.add(img.scheduler);
+                        }
+                        if (img.dimensions) {
+                            dimensions.add(img.dimensions);
+                        }
+                    }
+
+                    availableFiltersUpdate = {
+                        availableModels: Array.from(models),
+                        availableLoras: Array.from(loras),
+                        availableSchedulers: Array.from(schedulers),
+                        availableDimensions: Array.from(dimensions),
+                    };
+                } else {
+                    nextFilteredImages = state.filteredImages.map(img => updates.get(img.id) ?? img);
+                    scheduleFilterRecompute();
+                }
+
+                return {
+                    ...state,
+                    images: merged,
+                    filteredImages: nextFilteredImages,
+                    selectionTotalImages: merged.length,
+                    selectionDirectoryCount: state.directories.length,
+                    ...availableFiltersUpdate,
+                };
+            }
+
+            return _updateState(state, merged);
+        });
+    };
+
+    const scheduleMergeFlush = () => {
+        if (pendingMergeTimer) {
+            return;
+        }
+        const isIndexing = get().indexingState === 'indexing';
+        const interval = isIndexing
+            ? (get().images.length >= MERGE_FLUSH_LARGE_THRESHOLD
+                ? MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS
+                : MERGE_FLUSH_INTERVAL_INDEXING_MS)
+            : MERGE_FLUSH_INTERVAL_MS;
+        pendingMergeTimer = setTimeout(() => {
+            flushPendingMerges();
+        }, interval);
+    };
+
+    const isFilteringActive = (state: ImageState) => {
+        if (state.searchQuery) return true;
+        if (state.showFavoritesOnly) return true;
+        if (state.selectedTags?.length) return true;
+        if (state.selectedAutoTags?.length) return true;
+        if (state.selectedModels?.length || state.selectedLoras?.length || state.selectedSchedulers?.length) return true;
+        if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
+        if (state.selectedFolders && state.selectedFolders.size > 0) return true;
+        if (state.directories.some(dir => dir.visible === false)) return true;
+        return false;
+    };
+
+    const scheduleFilterRecompute = () => {
+        if (pendingFilterRecomputeTimer) {
+            return;
+        }
+        pendingFilterRecomputeTimer = setTimeout(() => {
+            pendingFilterRecomputeTimer = null;
+            set(state => {
+                const filteredResult = filterAndSort(state);
+                const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
+                return { ...state, ...filteredResult, ...availableFilters };
+            });
+        }, FILTER_RECOMPUTE_INDEXING_MS);
     };
 
     const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
@@ -906,7 +1056,12 @@ export const useImageStore = create<ImageState>((set, get) => {
         setLoading: (loading) => set({ isLoading: loading }),
         setProgress: (progress) => set({ progress }),
         setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
-        setIndexingState: (indexingState) => set({ indexingState }),
+        setIndexingState: (indexingState) => {
+            if (indexingState !== 'indexing') {
+                flushPendingMerges(true);
+            }
+            set({ indexingState });
+        },
         setError: (error) => set({ error, success: null }),
         setSuccess: (success) => set({ success, error: null }),
 
@@ -937,11 +1092,20 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         mergeImages: (updatedImages) => {
+            if (!updatedImages || updatedImages.length === 0) {
+                return;
+            }
+
+            const isIndexing = get().indexingState === 'indexing';
+            if (isIndexing) {
+                pendingMergeQueue.push(...updatedImages);
+                scheduleMergeFlush();
+                return;
+            }
+
             flushPendingImages();
+            flushPendingMerges();
             set(state => {
-                if (!updatedImages || updatedImages.length === 0) {
-                    return state;
-                }
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
                 const merged = state.images.map(img => updates.get(img.id) ?? img);
                 return _updateState(state, merged);
