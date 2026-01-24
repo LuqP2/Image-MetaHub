@@ -53,6 +53,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     };
   },
 
+  onExportBatchProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('export-batch-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('export-batch-progress', handler);
+    };
+  },
+
   // Menu event listeners
   onMenuAddFolder: (callback) => {
     const handler = (event, ...args) => callback(...args);

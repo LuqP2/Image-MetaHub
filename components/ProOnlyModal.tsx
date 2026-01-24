@@ -120,6 +120,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
     }
     return 'This is a Pro feature. Activate the trial or a license to continue.';
   })();
+  const showBatchExportLimitNote = feature === 'batch_export' && !isPro && !isTrialActive;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -156,6 +157,9 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-4 space-y-2">
             <p className="text-gray-100 font-semibold">This is a Pro feature.</p>
             <p className="text-gray-300 text-sm">{trialCopy}</p>
+            {showBatchExportLimitNote && (
+              <p className="text-gray-400 text-sm">Free users can export 1 image at a time.</p>
+            )}
           </div>
 
           {/* Benefits */}

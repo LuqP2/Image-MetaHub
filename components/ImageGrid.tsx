@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -354,12 +354,13 @@ interface ImageGridProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  onBatchExport: () => void;
   // Deduplication support (optional)
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
 
-const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, markedBestIds, markedArchivedIds }) => {
+const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const directories = useImageStore((state) => state.directories);
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -382,7 +383,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, initialized } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized } = useFeatureAccess();
+  const selectedCount = selectedImages.size;
 
   const handleImageLoad = (id: string, aspectRatio: number) => {
     setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
@@ -459,6 +461,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
     hideContextMenu();
   }, [contextMenu.image, comparisonFirstImage, setComparisonImages, openComparisonModal, hideContextMenu, canUseComparison, showProModal]);
+
+  const handleBatchExport = useCallback(() => {
+    hideContextMenu();
+    onBatchExport();
+  }, [hideContextMenu, onBatchExport]);
 
   // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -674,12 +681,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // Memoized callbacks - MUST be before early return
   const handleContextMenu = useCallback((image: IndexedImage, e: React.MouseEvent) => {
-    if (selectedImages.size > 1) {
-      return;
-    }
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
-  }, [selectedImages.size, directories, showContextMenu]);
+  }, [directories, showContextMenu]);
 
   // Memoized cardRef callback factory
   const createCardRef = useCallback((imageId: string) => {
@@ -825,15 +829,27 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             Show in Folder
           </button>
 
-          <button
-            onClick={exportImage}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Export Image
-          </button>
+            <button
+              onClick={exportImage}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export Image
+            </button>
 
-          <div className="border-t border-gray-600 my-1"></div>
+            {selectedCount > 1 && (
+              <button
+                onClick={handleBatchExport}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                title={!canUseBatchExport && initialized ? 'Pro feature - start trial' : undefined}
+              >
+                <Package className="w-4 h-4" />
+                <span className="flex-1">Batch Export Selected ({selectedCount})</span>
+                <ProBadge size="sm" />
+              </button>
+            )}
+
+            <div className="border-t border-gray-600 my-1"></div>
 
           <button
             onClick={copyMetadataToA1111}

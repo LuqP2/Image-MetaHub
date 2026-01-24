@@ -1634,7 +1634,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-batch', async (event, { files, destDir }) => {
+  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -1647,6 +1647,34 @@ function setupFileOperationHandlers() {
       const usedNames = new Set();
       let exportedCount = 0;
       let failedCount = 0;
+      let processedCount = 0;
+      let stage = 'copying';
+      const totalCount = files.length;
+      const progressId = exportId ? String(exportId) : null;
+      const PROGRESS_THROTTLE_MS = 200;
+      let lastProgressAt = 0;
+      const sendProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressAt < PROGRESS_THROTTLE_MS && processedCount < totalCount) {
+          return;
+        }
+        lastProgressAt = now;
+        try {
+          event.sender.send('export-batch-progress', {
+            exportId: progressId,
+            mode: 'folder',
+            total: totalCount,
+            processed: processedCount,
+            exportedCount,
+            failedCount,
+            stage,
+          });
+        } catch (err) {
+          // ignore sender errors (window closed)
+        }
+      };
+
+      sendProgress(true);
 
       for (const file of files) {
         try {
@@ -1659,13 +1687,18 @@ function setupFileOperationHandlers() {
           const baseName = path.basename(file.relativePath);
           const uniqueName = getUniqueName(baseName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          const data = await fs.readFile(sourcePath);
-          await fs.writeFile(destPath, data);
+          await fs.copyFile(sourcePath, destPath);
           exportedCount += 1;
         } catch (error) {
           failedCount += 1;
+        } finally {
+          processedCount += 1;
+          sendProgress();
         }
       }
+
+      stage = 'done';
+      sendProgress(true);
 
       const success = exportedCount > 0;
       return {
@@ -1680,7 +1713,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-zip', async (event, { files, destZipPath }) => {
+  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -1693,6 +1726,32 @@ function setupFileOperationHandlers() {
       const usedNames = new Set();
       let exportedCount = 0;
       let failedCount = 0;
+      let processedCount = 0;
+      let stage = 'copying';
+      const totalCount = files.length;
+      const progressId = exportId ? String(exportId) : null;
+      const PROGRESS_THROTTLE_MS = 200;
+      let lastProgressAt = 0;
+      const sendProgress = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastProgressAt < PROGRESS_THROTTLE_MS && processedCount < totalCount) {
+          return;
+        }
+        lastProgressAt = now;
+        try {
+          event.sender.send('export-batch-progress', {
+            exportId: progressId,
+            mode: 'zip',
+            total: totalCount,
+            processed: processedCount,
+            exportedCount,
+            failedCount,
+            stage,
+          });
+        } catch (err) {
+          // ignore sender errors (window closed)
+        }
+      };
 
       const output = fsSync.createWriteStream(destZipPath);
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -1704,6 +1763,8 @@ function setupFileOperationHandlers() {
       });
 
       archive.pipe(output);
+
+      sendProgress(true);
 
       for (const file of files) {
         try {
@@ -1720,11 +1781,20 @@ function setupFileOperationHandlers() {
           exportedCount += 1;
         } catch (error) {
           failedCount += 1;
+        } finally {
+          processedCount += 1;
+          sendProgress();
         }
       }
 
+      stage = 'finalizing';
+      sendProgress(true);
+
       await archive.finalize();
       await finalizePromise;
+
+      stage = 'done';
+      sendProgress(true);
 
       const success = exportedCount > 0;
       return {

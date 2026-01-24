@@ -789,47 +789,47 @@ export default function App() {
 
           {hasDirectories && (
             <>
-              <GridToolbar
-                libraryView={libraryView}
-                onLibraryViewChange={setLibraryView}
-                clustersCount={clustersCount}
-                selectedImages={safeSelectedImages}
-                images={paginatedImages}
-                filteredCount={safeFilteredImages.length}
-                directories={safeDirectories}
-                onDeleteSelected={handleDeleteSelectedImages}
-                onGenerateA1111={(image) => {
-                  setSelectedImageForGeneration(image);
-                  setIsA1111GenerateModalOpen(true);
-                }}
-                onGenerateComfyUI={(image) => {
-                  setSelectedImageForGeneration(image);
-                  setIsComfyUIGenerateModalOpen(true);
-                }}
-                onCompare={(images) => {
-                  setComparisonImages(images);
-                  openComparisonModal();
-                }}
-                onBatchExport={handleOpenBatchExport}
-              />
+                <GridToolbar
+                  libraryView={libraryView}
+                  onLibraryViewChange={setLibraryView}
+                  clustersCount={clustersCount}
+                  selectedImages={safeSelectedImages}
+                  images={paginatedImages}
+                  directories={safeDirectories}
+                  onDeleteSelected={handleDeleteSelectedImages}
+                  onGenerateA1111={(image) => {
+                    setSelectedImageForGeneration(image);
+                    setIsA1111GenerateModalOpen(true);
+                  }}
+                  onGenerateComfyUI={(image) => {
+                    setSelectedImageForGeneration(image);
+                    setIsComfyUIGenerateModalOpen(true);
+                  }}
+                  onCompare={(images) => {
+                    setComparisonImages(images);
+                    openComparisonModal();
+                  }}
+                />
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
                   viewMode === 'grid' ? (
-                      <ImageGrid
-                        images={paginatedImages}
-                        onImageClick={handleImageSelection}
-                        selectedImages={safeSelectedImages}
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        onPageChange={setCurrentPage}
-                      />
-                    ) : (
-                      <ImageTable
-                        images={paginatedImages}
-                        onImageClick={handleImageSelection}
-                        selectedImages={safeSelectedImages}
-                      />
+                        <ImageGrid
+                          images={paginatedImages}
+                          onImageClick={handleImageSelection}
+                          selectedImages={safeSelectedImages}
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          onPageChange={setCurrentPage}
+                          onBatchExport={handleOpenBatchExport}
+                        />
+                      ) : (
+                        <ImageTable
+                          images={paginatedImages}
+                          onImageClick={handleImageSelection}
+                          selectedImages={safeSelectedImages}
+                          onBatchExport={handleOpenBatchExport}
+                        />
                   )
                 ) : (
                   <SmartLibrary

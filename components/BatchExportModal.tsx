@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { type IndexedImage } from '../types';
+import { type ExportBatchProgress, type IndexedImage } from '../types';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -30,6 +30,9 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [output, setOutput] = useState<BatchOutput>('folder');
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
+  const [activeExportId, setActiveExportId] = useState<string | null>(null);
+  const activeExportIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!hasSelected && source === 'selected') {
@@ -43,10 +46,38 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setIsExporting(false);
       setSource(hasSelected ? 'selected' : 'filtered');
       setOutput('folder');
+      setProgress(null);
+      setActiveExportId(null);
     }
   }, [isOpen, hasSelected]);
 
+  useEffect(() => {
+    activeExportIdRef.current = activeExportId;
+  }, [activeExportId]);
+
   const exportCount = source === 'selected' ? selectedImages.length : filteredImages.length;
+  const progressPercent = progress && progress.total > 0
+    ? Math.min(100, Math.round((progress.processed / progress.total) * 100))
+    : 0;
+
+  useEffect(() => {
+    if (!isOpen || !window.electronAPI?.onExportBatchProgress) {
+      return;
+    }
+
+    const unsubscribe = window.electronAPI.onExportBatchProgress((payload) => {
+      const currentExportId = activeExportIdRef.current;
+      if (!currentExportId) {
+        return;
+      }
+      if (payload.exportId && payload.exportId !== currentExportId) {
+        return;
+      }
+      setProgress(payload);
+    });
+
+    return unsubscribe;
+  }, [isOpen]);
 
   const handleExport = async () => {
     if (!window.electronAPI) {
@@ -90,9 +121,22 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           return;
         }
 
+        const exportId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setActiveExportId(exportId);
+        setProgress({
+          exportId,
+          mode: 'folder',
+          total: files.length,
+          processed: 0,
+          exportedCount: 0,
+          failedCount: 0,
+          stage: 'copying',
+        });
+
         const exportResult = await window.electronAPI.exportBatchToFolder({
           files,
           destDir: destResult.path,
+          exportId,
         });
 
         if (!exportResult.success) {
@@ -115,9 +159,22 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           return;
         }
 
+        const exportId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setActiveExportId(exportId);
+        setProgress({
+          exportId,
+          mode: 'zip',
+          total: files.length,
+          processed: 0,
+          exportedCount: 0,
+          failedCount: 0,
+          stage: 'copying',
+        });
+
         const exportResult = await window.electronAPI.exportBatchToZip({
           files,
           destZipPath: saveResult.path,
+          exportId,
         });
 
         if (!exportResult.success) {
@@ -134,6 +191,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setStatus({ type: 'error', message: error?.message || 'Batch export failed.' });
     } finally {
       setIsExporting(false);
+      setActiveExportId(null);
     }
   };
 
@@ -218,12 +276,36 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           </div>
 
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
-            Exporting <span className="font-semibold text-white">{exportCount}</span> images.
+            {isExporting && progress ? (
+              <span>
+                {progress.stage === 'finalizing'
+                  ? 'Finalizing ZIP...'
+                  : `Exporting ${progress.processed} of ${progress.total} images.`}
+              </span>
+            ) : (
+              <span>
+                Exporting <span className="font-semibold text-white">{exportCount}</span> images.
+              </span>
+            )}
             {output === 'folder' && (
               <span className="block text-xs text-gray-400 mt-1">All files will be flattened and renamed automatically if needed.</span>
             )}
             {output === 'zip' && (
               <span className="block text-xs text-gray-400 mt-1">ZIP will contain flattened files with auto-renamed collisions.</span>
+            )}
+            {isExporting && progress && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-xs text-gray-400">
+                  <span>{progressPercent}%</span>
+                  <span>{progress.exportedCount} ok / {progress.failedCount} failed</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
