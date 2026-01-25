@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
+import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -30,6 +30,16 @@ interface ImageCardProps {
   isBlurred?: boolean;
 }
 
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number>(1);
@@ -41,6 +51,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const isVideo = isVideoFileName(image.name, image.fileType);
 
   // Extract filename to display based on showFullFilePath setting
   const displayName = showFullFilePath
@@ -69,6 +80,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
   useEffect(() => {
     if (thumbnailsDisabled) {
+      setImageUrl(null);
+      return;
+    }
+
+    if (isVideo) {
       setImageUrl(null);
       return;
     }
@@ -290,6 +306,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           />
         ) : (
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
+        )}
+
+        {isVideo && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="rounded-full bg-black/50 p-2 shadow-lg">
+              <Play className="h-6 w-6 text-white/90" />
+            </div>
+          </div>
         )}
 
         {isBlurred && (

@@ -85,6 +85,14 @@ const formatGenerationTime = (ms: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
+const formatDurationSeconds = (seconds: number): string => {
+  if (!Number.isFinite(seconds)) return '';
+  if (seconds < 60) return `${seconds.toFixed(2)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
 // Format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
 const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   const vramGb = vramMb / 1024;
@@ -205,7 +213,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
@@ -305,6 +313,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
+  const videoInfo = (nMeta as any)?.video;
+  const motionModel = (nMeta as any)?.motion_model;
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) {
@@ -550,7 +560,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     let createdUrl: string | null = null;
     const hasPreview = Boolean(preferredThumbnailUrl);
 
-    setImageUrl(preferredThumbnailUrl ?? null);
+    setImageUrl(isVideo ? null : (preferredThumbnailUrl ?? null));
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -636,7 +646,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         URL.revokeObjectURL(createdUrl);
       }
     };
-  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl]);
+  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isVideo]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -775,25 +785,36 @@ const ImageModal: React.FC<ImageModalProps> = ({
         <div
           id="image-zoom-container"
           className={`w-full ${isFullscreen ? 'h-full' : 'md:w-3/4 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+          onMouseDown={isVideo ? undefined : handleMouseDown}
+          onMouseMove={isVideo ? undefined : handleMouseMove}
+          onMouseUp={isVideo ? undefined : handleMouseUp}
+          onMouseLeave={isVideo ? undefined : handleMouseUp}
+          style={{ cursor: !isVideo && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
           {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={image.name}
-              className="max-w-full max-h-full object-contain select-none"
-              onContextMenu={handleContextMenu}
-              onDragStart={handleDragStart}
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-              }}
-              draggable={canDragExternally && zoom === 1}
-            />
+            isVideo ? (
+              <video
+                src={imageUrl}
+                className="max-w-full max-h-full object-contain"
+                onContextMenu={handleContextMenu}
+                controls
+                playsInline
+                poster={preferredThumbnailUrl ?? undefined}
+              />
+            ) : (
+              <img
+                src={imageUrl}
+                alt={image.name}
+                className="max-w-full max-h-full object-contain select-none"
+                onContextMenu={handleContextMenu}
+                onDragStart={handleDragStart}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                }}
+                draggable={canDragExternally && zoom === 1}
+              />
+            )
           ) : (
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
           )}
@@ -805,38 +826,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
             {currentIndex + 1} / {totalImages}
           </div>
 
-          {/* Zoom Controls */}
-          <div className="absolute bottom-4 left-4 flex flex-col gap-2 bg-black/60 rounded-lg p-2 backdrop-blur-sm border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleZoomIn}
-              disabled={zoom >= 5}
-              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              title="Zoom In"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-            <div className="text-white text-xs text-center font-mono">{Math.round(zoom * 100)}%</div>
-            <button
-              onClick={handleZoomOut}
-              disabled={zoom <= 1}
-              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              title="Zoom Out"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-              </svg>
-            </button>
-            <button
-              onClick={handleResetZoom}
-              disabled={zoom <= 1}
-              className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs"
-              title="Reset Zoom"
-            >
-              Reset
-            </button>
-          </div>
+          {!isVideo && (
+            <div className="absolute bottom-4 left-4 flex flex-col gap-2 bg-black/60 rounded-lg p-2 backdrop-blur-sm border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={handleZoomIn}
+                disabled={zoom >= 5}
+                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Zoom In"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+              <div className="text-white text-xs text-center font-mono">{Math.round(zoom * 100)}%</div>
+              <button
+                onClick={handleZoomOut}
+                disabled={zoom <= 1}
+                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                title="Zoom Out"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                </svg>
+              </button>
+              <button
+                onClick={handleResetZoom}
+                disabled={zoom <= 1}
+                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs"
+                title="Reset Zoom"
+              >
+                Reset
+              </button>
+            </div>
+          )}
 
           <div className="absolute top-4 right-4 flex items-center gap-2">
             <button onClick={toggleFullscreen} className="bg-black/60 text-white rounded-full px-3 py-2 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1072,6 +1094,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
                     </div>
+                    {videoInfo && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <MetadataItem label="Frames" value={videoInfo.frame_count} />
+                        <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
+                        {videoInfo.duration_seconds != null && (
+                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
+                        )}
+                        <MetadataItem label="Video Codec" value={videoInfo.codec} />
+                        <MetadataItem label="Video Format" value={videoInfo.format} />
+                      </div>
+                    )}
+                    {motionModel?.name && (
+                      <MetadataItem label="Motion Model" value={motionModel.name} />
+                    )}
+                    {motionModel?.hash && (
+                      <MetadataItem label="Motion Model Hash" value={motionModel.hash} />
+                    )}
+                    {(nMeta as any)?._metahub_pro?.project_name && (
+                      <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
+                    )}
                   </div>
                 )}
               </div>
@@ -1175,7 +1217,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
 
           {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
-          {nMeta && (
+          {nMeta && !isVideo && (
             <div className="mt-3 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
@@ -1274,7 +1316,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           {/* ComfyUI Integration */}
-          {nMeta && (
+          {nMeta && !isVideo && (
             <div className="mt-3 pt-3 border-t border-gray-700">
               <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
 

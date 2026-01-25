@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -17,6 +17,16 @@ interface ImageTableProps {
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
 type SortDirection = 'asc' | 'desc' | null;
+
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
 
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
@@ -341,6 +351,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
+  const isVideo = isVideoFileName(image.name, image.fileType);
 
   useThumbnail(image);
 
@@ -427,6 +438,13 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
+              {isVideo && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="rounded-full bg-black/50 p-1.5">
+                    <Play className="h-4 w-4 text-white/90" />
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handlePreviewClick}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"

@@ -65,6 +65,7 @@ const buildVideoInfoFromProbe = (stream: any, format: any): VideoInfo => {
     width: typeof stream?.width === 'number' ? stream.width : null,
     height: typeof stream?.height === 'number' ? stream.height : null,
     codec: stream?.codec_name || null,
+    format: format?.format_name || null,
   };
 };
 
