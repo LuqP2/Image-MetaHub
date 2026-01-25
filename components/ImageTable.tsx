@@ -362,6 +362,12 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
+    if (isVideo) {
+      setImageUrl(null);
+      setIsLoading(false);
+      return;
+    }
+
     if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       setImageUrl(image.thumbnailUrl);
       setIsLoading(false);
@@ -410,7 +416,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled]);
+  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();

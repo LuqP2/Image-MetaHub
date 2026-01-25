@@ -79,9 +79,10 @@ async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment
       '-show_streams',
       '-show_format',
       filePath,
-    ]);
+    ], { encoding: 'utf8' });
 
-    const payload = JSON.parse(stdout);
+    const output = typeof stdout === 'string' ? stdout : stdout.toString('utf8');
+    const payload = JSON.parse(output);
     const format = payload?.format ?? {};
     const tags = format.tags ?? {};
     const streams = Array.isArray(payload?.streams) ? payload.streams : [];
