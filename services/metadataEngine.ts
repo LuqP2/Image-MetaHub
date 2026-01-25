@@ -34,7 +34,11 @@ function sanitizeJson(jsonString: string): string {
   return jsonString.replace(/:\s*NaN/g, ': null');
 }
 
-const execFileAsync = promisify(execFile);
+const execFileAsync = promisify(execFile) as (
+  file: string,
+  args: string[],
+  options: { encoding: BufferEncoding }
+) => Promise<{ stdout: string; stderr: string }>;
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 
 const isVideoFilePath = (filePath: string): boolean => {
@@ -81,8 +85,7 @@ async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment
       filePath,
     ], { encoding: 'utf8' });
 
-    const output = typeof stdout === 'string' ? stdout : stdout.toString('utf8');
-    const payload = JSON.parse(output);
+    const payload = JSON.parse(stdout);
     const format = payload?.format ?? {};
     const tags = format.tags ?? {};
     const streams = Array.isArray(payload?.streams) ? payload.streams : [];
