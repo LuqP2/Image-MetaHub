@@ -37,6 +37,20 @@ function getIconPath() {
 }
 
 const execFileAsync = promisify(execFile);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+
+const getMimeTypeFromName = (name) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  return 'application/octet-stream';
+};
 
 const parseFrameRate = (value) => {
   if (typeof value !== 'string' || !value.includes('/')) {
@@ -742,13 +756,11 @@ async function getFilesRecursively(directory, baseDirectory) {
                 files.push(...await getFilesRecursively(fullPath, baseDirectory));
             } else if (entry.isFile()) {
                 const lowerName = entry.name.toLowerCase();
-                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp')) {
+                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp');
+                const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
+                if (isImage || isVideo) {
                     const stats = await fs.stat(fullPath);
-                    const fileType = lowerName.endsWith('.png')
-                      ? 'image/png'
-                      : lowerName.endsWith('.webp')
-                        ? 'image/webp'
-                        : 'image/jpeg';
+                    const fileType = getMimeTypeFromName(lowerName);
                     files.push({
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
                         lastModified: stats.birthtimeMs,
@@ -1408,25 +1420,23 @@ function setupFileOperationHandlers() {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
 
         for (const file of files) {
-          if (file.isFile()) {
-            const name = file.name.toLowerCase();
-            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')) {
-              const filePath = path.join(dirPath, file.name);
-              const stats = await fs.stat(filePath);
-              const fileType = name.endsWith('.png')
-                ? 'image/png'
-                : name.endsWith('.webp')
-                  ? 'image/webp'
-                  : 'image/jpeg';
-              imageFiles.push({
-                name: file.name, // name is already relative for top-level
-                lastModified: stats.birthtimeMs,
-                size: stats.size,
-                type: fileType,
-                birthtimeMs: stats.birthtimeMs,
-              });
+            if (file.isFile()) {
+              const name = file.name.toLowerCase();
+              const isImage = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
+              const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => name.endsWith(ext));
+              if (isImage || isVideo) {
+                const filePath = path.join(dirPath, file.name);
+                const stats = await fs.stat(filePath);
+                const fileType = getMimeTypeFromName(name);
+                imageFiles.push({
+                  name: file.name, // name is already relative for top-level
+                  lastModified: stats.birthtimeMs,
+                  size: stats.size,
+                  type: fileType,
+                  birthtimeMs: stats.birthtimeMs,
+                });
+              }
             }
-          }
         }
       }
 
