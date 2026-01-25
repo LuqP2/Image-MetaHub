@@ -113,8 +113,23 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
 const resolveImageMimeType = (fileName: string): string => {
   const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.mp4')) return 'video/mp4';
+  if (lowerName.endsWith('.webm')) return 'video/webm';
+  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
+  if (lowerName.endsWith('.mov')) return 'video/quicktime';
+  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
   if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
   if (lowerName.endsWith('.webp')) return 'image/webp';
   return 'image/png';
@@ -233,6 +248,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     state.images.find(img => img.id === image.id) ||
     state.filteredImages.find(img => img.id === image.id)
   );
+  const isVideo = isVideoFileName(image.name, image.fileType);
   const currentTags = imageFromStore?.tags || image.tags || [];
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
@@ -358,6 +374,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const copyImage = async () => {
     hideContextMenu();
+    if (isVideo) {
+      return;
+    }
     const result = await copyImageToClipboard(image);
     if (result.success) {
       const notification = document.createElement('div');
@@ -1384,7 +1403,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           <button
             onClick={copyImage}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isVideo ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
+            disabled={isVideo}
           >
             <Copy className="w-4 h-4" />
             Copy to Clipboard

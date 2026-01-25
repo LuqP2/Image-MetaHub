@@ -1,8 +1,10 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createHash } from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import exifr from 'exifr';
-import { BaseMetadata, ImageMetadata, isEasyDiffusionJson } from '../types';
+import { BaseMetadata, ImageMetadata, type VideoInfo, isEasyDiffusionJson } from '../types';
 import { parseImageMetadata as normalizeMetadata } from './parsers/metadataParserFactory';
 
 interface Dimensions {
@@ -16,7 +18,7 @@ export interface MetadataEngineResult {
   rawMetadata: ImageMetadata | null;
   metadata: BaseMetadata | null;
   dimensions?: Dimensions | null;
-  rawSource?: 'png' | 'jpeg' | 'sidecar' | 'unknown';
+  rawSource?: 'png' | 'jpeg' | 'sidecar' | 'video' | 'unknown';
   errors?: string[];
   schema_version: string;
   _telemetry: {
@@ -30,6 +32,69 @@ export const SCHEMA_VERSION = '1.0.0';
 
 function sanitizeJson(jsonString: string): string {
   return jsonString.replace(/:\s*NaN/g, ': null');
+}
+
+const execFileAsync = promisify(execFile);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+
+const isVideoFilePath = (filePath: string): boolean => {
+  const ext = path.extname(filePath).toLowerCase();
+  return VIDEO_EXTENSIONS.has(ext);
+};
+
+const parseFrameRate = (value: unknown): number | null => {
+  if (typeof value !== 'string' || !value.includes('/')) {
+    return null;
+  }
+  const [num, den] = value.split('/').map((part) => Number(part));
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
+    return null;
+  }
+  return num / den;
+};
+
+const buildVideoInfoFromProbe = (stream: any, format: any): VideoInfo => {
+  const frameRate = parseFrameRate(stream?.r_frame_rate) ?? parseFrameRate(stream?.avg_frame_rate);
+  const frameCount = typeof stream?.nb_frames === 'string' ? Number(stream.nb_frames) : stream?.nb_frames;
+  const durationValue = typeof format?.duration === 'string' ? Number(format.duration) : format?.duration;
+
+  return {
+    frame_rate: Number.isFinite(frameRate) ? frameRate : null,
+    frame_count: Number.isFinite(frameCount) ? frameCount : null,
+    duration_seconds: Number.isFinite(durationValue) ? durationValue : null,
+    width: typeof stream?.width === 'number' ? stream.width : null,
+    height: typeof stream?.height === 'number' ? stream.height : null,
+    codec: stream?.codec_name || null,
+  };
+};
+
+async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo } | null> {
+  const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+
+  try {
+    const { stdout } = await execFileAsync(ffprobePath, [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_streams',
+      '-show_format',
+      filePath,
+    ]);
+
+    const payload = JSON.parse(stdout);
+    const format = payload?.format ?? {};
+    const tags = format.tags ?? {};
+    const streams = Array.isArray(payload?.streams) ? payload.streams : [];
+    const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+
+    return {
+      comment: tags.comment,
+      description: tags.description,
+      title: tags.title,
+      video: buildVideoInfoFromProbe(videoStream, format),
+    };
+  } catch (error) {
+    return null;
+  }
 }
 
 // Decode iTXt payloads (uncompressed or deflate-compressed)
@@ -308,14 +373,41 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
 
   let rawMetadata: ImageMetadata | null = null;
   let rawSource: MetadataEngineResult['rawSource'] = 'unknown';
+  let videoInfo: VideoInfo | null = null;
+  const isVideo = isVideoFilePath(absolutePath);
 
-  const view = new DataView(arrayBuffer);
-  if (view.getUint32(0) === 0x89504e47 && view.getUint32(4) === 0x0d0a1a0a) {
-    rawMetadata = await parsePNGMetadata(arrayBuffer);
-    rawSource = 'png';
-  } else if (view.getUint16(0) === 0xffd8) {
-    rawMetadata = await parseJPEGMetadata(arrayBuffer);
-    rawSource = 'jpeg';
+  if (isVideo) {
+    rawSource = 'video';
+    const videoMetadata = await readVideoMetadataWithFfprobe(absolutePath);
+    if (videoMetadata) {
+      const raw: Record<string, any> = {
+        description: videoMetadata.description,
+        comment: videoMetadata.comment,
+        title: videoMetadata.title,
+      };
+
+      if (videoMetadata.comment) {
+        try {
+          raw.videometahub_data = JSON.parse(videoMetadata.comment);
+        } catch (err: any) {
+          errors.push(`Failed to parse video metadata JSON: ${err?.message ?? 'unknown error'}`);
+        }
+      }
+
+      rawMetadata = raw as ImageMetadata;
+      videoInfo = videoMetadata.video ?? null;
+    } else {
+      errors.push('ffprobe not available or failed to read video metadata.');
+    }
+  } else {
+    const view = new DataView(arrayBuffer);
+    if (view.getUint32(0) === 0x89504e47 && view.getUint32(4) === 0x0d0a1a0a) {
+      rawMetadata = await parsePNGMetadata(arrayBuffer);
+      rawSource = 'png';
+    } else if (view.getUint16(0) === 0xffd8) {
+      rawMetadata = await parseJPEGMetadata(arrayBuffer);
+      rawSource = 'jpeg';
+    }
   }
 
   if (!rawMetadata) {
@@ -343,10 +435,33 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
     metadata = await normalizeMetadata(rawMetadata, arrayBuffer);
   }
 
-  const dimensions = extractDimensionsFromBuffer(arrayBuffer);
+  let dimensions = isVideo ? null : extractDimensionsFromBuffer(arrayBuffer);
   if (metadata && dimensions) {
     metadata.width = metadata.width || dimensions.width;
     metadata.height = metadata.height || dimensions.height;
+  }
+  if (metadata && isVideo && videoInfo) {
+    metadata.width = metadata.width || (videoInfo.width ?? 0);
+    metadata.height = metadata.height || (videoInfo.height ?? 0);
+    metadata.video = metadata.video ?? videoInfo;
+  }
+  if (!metadata && isVideo && videoInfo) {
+    metadata = {
+      prompt: '',
+      model: '',
+      width: videoInfo.width ?? 0,
+      height: videoInfo.height ?? 0,
+      steps: 0,
+      scheduler: '',
+      media_type: 'video',
+      video: videoInfo,
+    };
+  }
+  if (isVideo && metadata) {
+    dimensions = {
+      width: metadata.width || 0,
+      height: metadata.height || 0,
+    };
   }
 
   const sha256 = await computeSha256(arrayBuffer);

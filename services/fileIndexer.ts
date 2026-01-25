@@ -2,9 +2,10 @@
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
+import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
@@ -102,7 +103,68 @@ function inferMimeTypeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.avi')) return 'video/x-msvideo';
   return 'image/jpeg';
+}
+
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+
+function isVideoFileName(name: string): boolean {
+  const lower = name.toLowerCase();
+  for (const ext of VIDEO_EXTENSIONS) {
+    if (lower.endsWith(ext)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function readVideoMetadataFromElectron(
+  fileEntry: CatalogFileEntry
+): Promise<{ rawMetadata: VideoMetadata | null; videoInfo?: VideoInfo | null }> {
+  if (!isElectron || !(window as any).electronAPI?.readVideoMetadata) {
+    return { rawMetadata: null };
+  }
+
+  const absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
+  if (!absolutePath) {
+    return { rawMetadata: null };
+  }
+
+  try {
+    const result = await (window as any).electronAPI.readVideoMetadata({ filePath: absolutePath });
+    if (!result?.success) {
+      return { rawMetadata: null };
+    }
+
+    const rawMetadata: VideoMetadata = {
+      description: result.description || '',
+      comment: result.comment || '',
+      title: result.title || '',
+    };
+
+    let metaHubData: Record<string, any> | null = null;
+    if (result.comment) {
+      try {
+        metaHubData = JSON.parse(result.comment);
+      } catch {
+        metaHubData = null;
+      }
+    }
+
+    if (metaHubData) {
+      rawMetadata.videometahub_data = metaHubData;
+    }
+
+    return { rawMetadata, videoInfo: result.video || null };
+  } catch (error) {
+    console.error('[FileIndexer] Failed to read video metadata:', error);
+    return { rawMetadata: null };
+  }
 }
 
 function extractJpegComment(buffer: ArrayBuffer): string | null {
@@ -1097,9 +1159,14 @@ async function processSingleFileOptimized(
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
+    const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
+    let videoInfo: VideoInfo | null = null;
 
-    // If file data is provided (from batch read), parse directly from buffer
-    if (fileData) {
+    if (isVideo) {
+      const videoResult = await readVideoMetadataFromElectron(fileEntry);
+      rawMetadata = videoResult.rawMetadata;
+      videoInfo = videoResult.videoInfo ?? null;
+    } else if (fileData) {
       // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
       const detectedType = detectImageType(view);
@@ -1166,6 +1233,11 @@ if (rawMetadata) {
       console.error('[FileIndexer] Failed to parse MetaHub chunk:', e);
       // Fall through to other parsers
     }
+  }
+
+  // Priority 0.5: MetaHub Save Video metadata (container comment JSON)
+  if (!normalizedMetadata && 'videometahub_data' in rawMetadata) {
+    normalizedMetadata = parseVideoMetaHubMetadata(rawMetadata) ?? undefined;
   }
 
   // Priority 1: Check for text-based formats (A1111, Forge, Fooocus all use 'parameters' string)
@@ -1305,6 +1377,19 @@ if (rawMetadata) {
     // Unknown metadata format, no parser applied
   }
 }
+
+  if (!normalizedMetadata && isVideo && videoInfo) {
+    normalizedMetadata = {
+      prompt: '',
+      model: '',
+      width: videoInfo.width ?? 0,
+      height: videoInfo.height ?? 0,
+      steps: 0,
+      scheduler: '',
+      media_type: 'video',
+      video: videoInfo,
+    };
+  }
 
   // If we still couldn't normalize, try sidecar JSON as a final fallback.
   if (!normalizedMetadata) {
@@ -1799,7 +1884,7 @@ export async function processFiles(
     await pushUiBatch(true);
   }
 
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp)$/i.test(entry.handle.name));
+  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i.test(entry.handle.name));
 
   const asyncPool = async <T, R>(
     concurrency: number,

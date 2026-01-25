@@ -11,6 +11,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
 
@@ -32,6 +34,58 @@ function getIconPath() {
     // macOS and Linux prefer PNG
     return path.join(__dirname, 'public', 'logo1.png');
   }
+}
+
+const execFileAsync = promisify(execFile);
+
+const parseFrameRate = (value) => {
+  if (typeof value !== 'string' || !value.includes('/')) {
+    return null;
+  }
+  const [num, den] = value.split('/').map((part) => Number(part));
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
+    return null;
+  }
+  return num / den;
+};
+
+const buildVideoInfoFromProbe = (stream, format) => {
+  const frameRate = parseFrameRate(stream?.r_frame_rate) ?? parseFrameRate(stream?.avg_frame_rate);
+  const frameCount = typeof stream?.nb_frames === 'string' ? Number(stream.nb_frames) : stream?.nb_frames;
+  const durationValue = typeof format?.duration === 'string' ? Number(format.duration) : format?.duration;
+
+  return {
+    frame_rate: Number.isFinite(frameRate) ? frameRate : null,
+    frame_count: Number.isFinite(frameCount) ? frameCount : null,
+    duration_seconds: Number.isFinite(durationValue) ? durationValue : null,
+    width: typeof stream?.width === 'number' ? stream.width : null,
+    height: typeof stream?.height === 'number' ? stream.height : null,
+    codec: stream?.codec_name || null,
+  };
+};
+
+async function readVideoMetadataWithFfprobe(filePath) {
+  const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+  const { stdout } = await execFileAsync(ffprobePath, [
+    '-v', 'quiet',
+    '-print_format', 'json',
+    '-show_streams',
+    '-show_format',
+    filePath,
+  ]);
+
+  const payload = JSON.parse(stdout);
+  const format = payload?.format ?? {};
+  const tags = format.tags ?? {};
+  const streams = Array.isArray(payload?.streams) ? payload.streams : [];
+  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+
+  return {
+    comment: tags.comment,
+    description: tags.description,
+    title: tags.title,
+    video: buildVideoInfoFromProbe(videoStream, format),
+  };
 }
 
 let mainWindow;
@@ -1460,6 +1514,32 @@ function setupFileOperationHandlers() {
         error: error.message,
         errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
         errorCode: error.code
+      };
+    }
+  });
+
+  ipcMain.handle('read-video-metadata', async (event, args) => {
+    try {
+      const filePath = args?.filePath;
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+        console.error('  [read-video-metadata] Requested path:', filePath);
+        console.error('  [read-video-metadata] Normalized path:', path.normalize(filePath));
+        console.error('  [read-video-metadata] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      const metadata = await readVideoMetadataWithFfprobe(filePath);
+      return { success: true, ...metadata };
+    } catch (error) {
+      const isBinaryMissing = error?.code === 'ENOENT' || error?.message?.includes('ffprobe');
+      return {
+        success: false,
+        error: isBinaryMissing ? 'FFPROBE_NOT_FOUND' : (error?.message || String(error)),
       };
     }
   });

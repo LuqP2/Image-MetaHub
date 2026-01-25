@@ -1,4 +1,4 @@
-import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, isInvokeAIMetadata } from '../../types';
+import { ImageMetadata, BaseMetadata, ComfyUIMetadata, InvokeAIMetadata, Automatic1111Metadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, DreamStudioMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata, VideoMetadata, isInvokeAIMetadata } from '../../types';
 import { parseInvokeAIMetadata } from './invokeAIParser';
 import { parseA1111Metadata } from './automatic1111Parser';
 import { parseSwarmUIMetadata } from './swarmUIParser';
@@ -12,6 +12,7 @@ import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { parseDrawThingsMetadata } from './drawThingsParser';
 import { parseFooocusMetadata } from './fooocusParser';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './comfyUIParser';
+import { parseVideoMetaHubMetadata } from './videoMetaHubParser';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -92,6 +93,25 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     _metahub_pro: result._metahub_pro || null,
                     _detection_method: result._detection_method,
                 } as BaseMetadata;
+            },
+            generator: 'ComfyUI'
+        };
+    }
+
+    // MetaHub Save Video detection (video metadata stored in container comment)
+    if ('videometahub_data' in metadata || (metadata as any).media_type === 'video') {
+        return {
+            parse: (data: VideoMetadata) => {
+                const result = parseVideoMetaHubMetadata(data);
+                return (result ?? {
+                    prompt: '',
+                    model: '',
+                    width: 0,
+                    height: 0,
+                    steps: 0,
+                    scheduler: '',
+                    media_type: 'video',
+                }) as BaseMetadata;
             },
             generator: 'ComfyUI'
         };

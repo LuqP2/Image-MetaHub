@@ -100,7 +100,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+      const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
 
       if (ext === '.json') {
         const basePath = filePath.slice(0, -ext.length);
