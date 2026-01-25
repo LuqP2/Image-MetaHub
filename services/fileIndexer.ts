@@ -255,15 +255,18 @@ async function decodeITXtText(
  * @param imagePath Path to the image file (e.g., /path/to/image.png)
  * @returns Parsed JSON metadata or null if not found/valid
  */
-async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyDiffusionJson | null> {
+async function tryReadEasyDiffusionSidecarJson(imagePath: string, absolutePath?: string): Promise<EasyDiffusionJson | null> {
   try {
+    const preferredPath = absolutePath && (absolutePath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(absolutePath))
+      ? absolutePath
+      : imagePath;
     // Generate JSON path by replacing extension with .json
-    const jsonPath = imagePath.replace(/\.(png|jpg|jpeg|webp)$/i, '.json');
+    const jsonPath = preferredPath.replace(/\.(png|jpg|jpeg|webp)$/i, '.json');
     
     // Check if path is absolute (has drive letter on Windows or starts with / on Unix)
-    const isAbsolutePath = /^[a-zA-Z]:\\/.test(jsonPath) || jsonPath.startsWith('/');
+    const isAbsolutePath = /^[a-zA-Z]:[\\/]/.test(jsonPath) || jsonPath.startsWith('/');
     
-    if (!isElectron || !jsonPath || jsonPath === imagePath || !isAbsolutePath) {
+    if (!isElectron || !jsonPath || jsonPath === preferredPath || !isAbsolutePath) {
       return null; // Only works in Electron environment with absolute paths
     }
 
@@ -274,15 +277,19 @@ async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<EasyD
     }
 
     // Parse the JSON
-    const jsonText = result.data.toString('utf-8');
+    const rawData = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
+    const jsonText = new TextDecoder('utf-8').decode(rawData);
     const parsedJson = JSON.parse(jsonText);
     
     // Validate that it looks like Easy Diffusion JSON
-    if (typeof parsedJson === 'object' && parsedJson.prompt && typeof parsedJson.prompt === 'string') {
-      return parsedJson as EasyDiffusionJson;
-    } else {
-      return null;
+    if (typeof parsedJson === 'object' && parsedJson) {
+      const hasPrompt = 'prompt' in parsedJson && typeof parsedJson.prompt === 'string';
+      const hasNegativePrompt = 'negative_prompt' in parsedJson && typeof parsedJson.negative_prompt === 'string';
+      if (hasPrompt || hasNegativePrompt) {
+        return parsedJson as EasyDiffusionJson;
+      }
     }
+    return null;
   } catch {
     // Silent error - most images won't have sidecar JSON
     return null;
@@ -1086,6 +1093,7 @@ async function processSingleFileOptimized(
     const totalStart = profile ? performance.now() : 0;
     const parseStart = profile ? performance.now() : 0;
     let rawMetadata: ImageMetadata | null;
+    let sidecarJson: EasyDiffusionJson | null = null;
     let bufferForDimensions: ArrayBuffer | undefined;
     let fileSizeValue: number | undefined = fileEntry.size;
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
@@ -1116,8 +1124,19 @@ async function processSingleFileOptimized(
     }
 
     // Try to read sidecar JSON for Easy Diffusion (fallback if no embedded metadata)
+    let absolutePath = (fileEntry.handle as ElectronFileHandle)?._filePath;
+    if (!absolutePath && isElectron && (window as any).electronAPI?.joinPaths) {
+      try {
+        const joinResult = await (window as any).electronAPI.joinPaths(directoryId, fileEntry.path);
+        if (joinResult?.success && joinResult.path) {
+          absolutePath = joinResult.path;
+        }
+      } catch {
+        // Ignore join failures and keep existing path.
+      }
+    }
     if (!rawMetadata) {
-      const sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path);
+      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
       if (sidecarJson) {
         rawMetadata = sidecarJson;
       }
@@ -1286,6 +1305,17 @@ if (rawMetadata) {
     // Unknown metadata format, no parser applied
   }
 }
+
+  // If we still couldn't normalize, try sidecar JSON as a final fallback.
+  if (!normalizedMetadata) {
+    if (!sidecarJson) {
+      sidecarJson = await tryReadEasyDiffusionSidecarJson(fileEntry.path, absolutePath);
+    }
+    if (sidecarJson) {
+      rawMetadata = sidecarJson;
+      normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
+    }
+  }
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 

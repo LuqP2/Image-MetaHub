@@ -5,7 +5,7 @@ import fs from 'fs';
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
 
-// Pending files for batching
+// Pending files for batching (directoryId -> Map(filePath -> { forceReindex }))
 const pendingFiles = new Map();
 const processingTimeouts = new Map();
 
@@ -79,18 +79,15 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
     });
 
-    watcher.on('add', (filePath) => {
-      const ext = path.extname(filePath).toLowerCase();
-      if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
-        return;
-      }
-
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${filePath}`);
+    const enqueueImage = (imagePath, forceReindex = false) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${imagePath}`);
       if (!pendingFiles.has(directoryId)) {
-        pendingFiles.set(directoryId, new Set());
+        pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${filePath}`);
-      pendingFiles.get(directoryId).add(filePath);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${imagePath}`);
+      const pendingMap = pendingFiles.get(directoryId);
+      const existing = pendingMap.get(imagePath);
+      pendingMap.set(imagePath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
 
       if (processingTimeouts.has(directoryId)) {
         clearTimeout(processingTimeouts.get(directoryId));
@@ -99,6 +96,29 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       processingTimeouts.set(directoryId, setTimeout(() => {
         processBatch(directoryId, dirPath, mainWindow);
       }, 500));
+    };
+
+    watcher.on('add', (filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+      const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+
+      if (ext === '.json') {
+        const basePath = filePath.slice(0, -ext.length);
+        const matches = imageExts
+          .map((imageExt) => `${basePath}${imageExt}`)
+          .filter((candidate) => fs.existsSync(candidate));
+        if (matches.length === 0) {
+          return;
+        }
+        matches.forEach((match) => enqueueImage(match, true));
+        return;
+      }
+
+      if (!imageExts.includes(ext)) {
+        return;
+      }
+
+      enqueueImage(filePath, false);
     });
 
     watcher.on('error', (error) => {
@@ -175,17 +195,19 @@ function processBatch(directoryId, dirPath, mainWindow) {
 
   sendWatcherDebug(mainWindow, `[FileWatcher] Processing batch for ${directoryId}, ${files.size} files`);
 
-  const filePaths = Array.from(files);
+  const filePaths = Array.from(files.keys());
 
   const fileInfos = filePaths.map(filePath => {
     try {
       const stats = fs.statSync(filePath);
+      const pendingInfo = files.get(filePath) || {};
       return {
         name: path.basename(filePath),
         path: filePath,
         lastModified: stats.birthtimeMs ?? stats.mtimeMs,
         size: stats.size,
-        type: path.extname(filePath).slice(1)
+        type: path.extname(filePath).slice(1),
+        forceReindex: pendingInfo.forceReindex === true
       };
     } catch (err) {
       console.error(`Error getting stats for ${filePath}:`, err);

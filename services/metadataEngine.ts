@@ -272,7 +272,7 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): Dimensions | null {
 
 async function tryReadEasyDiffusionSidecarJson(imagePath: string): Promise<ImageMetadata | null> {
   const jsonPath = imagePath.replace(/\.(png|jpg|jpeg)$/i, '.json');
-  const isAbsolutePath = /^[a-zA-Z]:\\/.test(jsonPath) || jsonPath.startsWith('/');
+  const isAbsolutePath = /^[a-zA-Z]:[\\/]/.test(jsonPath) || jsonPath.startsWith('/');
 
   if (!isAbsolutePath || !jsonPath || jsonPath === imagePath) {
     return null;

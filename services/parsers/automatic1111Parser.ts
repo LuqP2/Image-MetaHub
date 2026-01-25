@@ -48,6 +48,11 @@ export function extractLorasFromAutomatic1111(metadata: Automatic1111Metadata): 
 // --- Detector de variantes ---
 
 function detectGenerator(parameters: string): string {
+  const generatorMatch = parameters.match(/Generator:\s*([^,\n]+)/i);
+  if (generatorMatch && generatorMatch[1]) {
+    return generatorMatch[1].trim();
+  }
+
   // Detecta ComfyUI explícito
   if (parameters.includes('Version: ComfyUI')) {
     return 'ComfyUI';
