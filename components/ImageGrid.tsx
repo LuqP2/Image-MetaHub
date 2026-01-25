@@ -84,13 +84,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       return;
     }
 
-    if (isVideo) {
-      setImageUrl(null);
+    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
+      setImageUrl(image.thumbnailUrl);
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (isVideo) {
+      setImageUrl(null);
       return;
     }
 

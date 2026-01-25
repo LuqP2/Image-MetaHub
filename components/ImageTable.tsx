@@ -362,14 +362,14 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (isVideo) {
-      setImageUrl(null);
+    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
+      setImageUrl(image.thumbnailUrl);
       setIsLoading(false);
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (isVideo) {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }

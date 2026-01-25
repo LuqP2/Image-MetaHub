@@ -7,13 +7,22 @@ const MAX_CONCURRENT_THUMBNAILS = 8; // Increased from 3: with Intersection Obse
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 
-const isVideoFile = (file: File): boolean => {
-  if (file.type?.startsWith('video/')) {
+const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
+  if (image.fileType && image.fileType.startsWith('video/')) {
     return true;
   }
-  const lowerName = file.name.toLowerCase();
+  const imageName = image.name?.toLowerCase() || '';
   for (const ext of VIDEO_EXTENSIONS) {
-    if (lowerName.endsWith(ext)) {
+    if (imageName.endsWith(ext)) {
+      return true;
+    }
+  }
+  if (file?.type?.startsWith('video/')) {
+    return true;
+  }
+  const fileName = file?.name?.toLowerCase() || '';
+  for (const ext of VIDEO_EXTENSIONS) {
+    if (fileName.endsWith(ext)) {
       return true;
     }
   }
@@ -91,10 +100,6 @@ async function generateVideoThumbnailBlob(file: File): Promise<Blob | null> {
 
 async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   try {
-    if (isVideoFile(file)) {
-      return await generateVideoThumbnailBlob(file);
-    }
-
     const bitmap = await createImageBitmap(file);
     const maxEdge = Math.max(bitmap.width, bitmap.height) || 1;
     const scale = Math.min(1, MAX_THUMBNAIL_EDGE / maxEdge);
@@ -236,7 +241,9 @@ class ThumbnailManager {
       }
 
       const file = await (image.thumbnailHandle ?? image.handle).getFile();
-      const blob = await generateThumbnailBlob(file);
+      const blob = isVideoAsset(image, file)
+        ? await generateVideoThumbnailBlob(file)
+        : await generateThumbnailBlob(file);
       if (!blob) {
         throw new Error('Thumbnail generation failed');
       }
