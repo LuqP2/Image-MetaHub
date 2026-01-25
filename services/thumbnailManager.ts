@@ -5,6 +5,99 @@ import { useImageStore } from '../store/useImageStore';
 const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 8; // Increased from 3: with Intersection Observer, only visible images load
 
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+
+const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
+  if (image.fileType && image.fileType.startsWith('video/')) {
+    return true;
+  }
+  const imageName = image.name?.toLowerCase() || '';
+  for (const ext of VIDEO_EXTENSIONS) {
+    if (imageName.endsWith(ext)) {
+      return true;
+    }
+  }
+  if (file?.type?.startsWith('video/')) {
+    return true;
+  }
+  const fileName = file?.name?.toLowerCase() || '';
+  for (const ext of VIDEO_EXTENSIONS) {
+    if (fileName.endsWith(ext)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const waitForVideoEvent = (video: HTMLVideoElement, eventName: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const onError = () => {
+      cleanup();
+      reject(new Error('Video load error'));
+    };
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      video.removeEventListener(eventName, onEvent);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener(eventName, onEvent, { once: true });
+    video.addEventListener('error', onError, { once: true });
+  });
+
+async function generateVideoThumbnailBlob(file: File): Promise<Blob | null> {
+  let objectUrl: string | null = null;
+  try {
+    objectUrl = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = objectUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    await waitForVideoEvent(video, 'loadeddata');
+
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    if (duration > 0) {
+      const targetTime = Math.min(0.1, Math.max(0, duration - 0.05));
+      if (targetTime > 0) {
+        video.currentTime = targetTime;
+        await waitForVideoEvent(video, 'seeked');
+      }
+    }
+
+    const width = video.videoWidth || 1;
+    const height = video.videoHeight || 1;
+    const maxEdge = Math.max(width, height);
+    const scale = Math.min(1, MAX_THUMBNAIL_EDGE / maxEdge);
+    const thumbWidth = Math.max(1, Math.round(width * scale));
+    const thumbHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = thumbWidth;
+    canvas.height = thumbHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return null;
+    }
+
+    ctx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', 0.82)
+    );
+    return blob;
+  } catch (error) {
+    console.error('Failed to generate video thumbnail blob:', error);
+    return null;
+  } finally {
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+}
+
 async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   try {
     const bitmap = await createImageBitmap(file);
@@ -148,7 +241,9 @@ class ThumbnailManager {
       }
 
       const file = await (image.thumbnailHandle ?? image.handle).getFile();
-      const blob = await generateThumbnailBlob(file);
+      const blob = isVideoAsset(image, file)
+        ? await generateVideoThumbnailBlob(file)
+        : await generateThumbnailBlob(file);
       if (!blob) {
         throw new Error('Thumbnail generation failed');
       }

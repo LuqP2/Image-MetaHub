@@ -25,6 +25,7 @@ export interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
+  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
@@ -171,6 +172,15 @@ export interface ComfyUIMetadata {
   [key: string]: any;
 }
 
+export interface VideoMetadata {
+  videometahub_data?: any;
+  description?: string;
+  comment?: string;
+  title?: string;
+  normalizedMetadata?: BaseMetadata;
+  [key: string]: any;
+}
+
 export interface SwarmUIMetadata {
   sui_image_params?: {
     prompt?: string;
@@ -293,7 +303,7 @@ export interface SDNextMetadata {
 }
 
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata | VideoMetadata;
 
 // LoRA interface for detailed LoRA information
 export interface LoRAInfo {
@@ -305,6 +315,21 @@ export interface LoRAInfo {
 }
 
 // Base normalized metadata interface for unified access
+export interface VideoInfo {
+  frame_rate?: number | null;
+  frame_count?: number | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  format?: string | null;
+  codec?: string | null;
+}
+
+export interface MotionModelInfo {
+  name?: string | null;
+  hash?: string | null;
+}
+
 export interface BaseMetadata {
   prompt: string;
   negativePrompt?: string;
@@ -321,6 +346,9 @@ export interface BaseMetadata {
   generator?: string; // Name of the AI generator/parser used
   version?: string;
   module?: string;
+  media_type?: 'image' | 'video';
+  video?: VideoInfo | null;
+  motion_model?: MotionModelInfo | null;
   // MetaHub Save Node user inputs
   tags?: string[]; // User-defined tags from MetaHub Save Node
   notes?: string; // User notes from MetaHub Save Node

@@ -43,7 +43,7 @@ function formatOutput(
 
 function isImageFile(entry: string) {
   const ext = path.extname(entry).toLowerCase();
-  return ['.png', '.jpg', '.jpeg'].includes(ext);
+  return ['.png', '.jpg', '.jpeg', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext);
 }
 
 async function collectFiles(dir: string, recursive: boolean): Promise<string[]> {
