@@ -520,7 +520,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.12.2');
+    mainWindow.setTitle('Image MetaHub v0.12.3');
   }
 
   // Load the app

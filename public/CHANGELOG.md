@@ -5,11 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-01-24
+
+### Improved
+
+- **Indexing Performance**: Faster Phase B indexing with head-only reads, deferred cache flushes, and batched UI merges/filter refresh to reduce stalls.
+- **Image Loading Speed**: Modal and preview images now load faster via thumbnail placeholders and Blob URLs instead of base64.
+- **ComfyUI LoRA Selection**: Added a searchable field for LoRAs in the "Generate with ComfyUI" modal.
+- **Recent Tag Suggestions**: Newly added tags now show in suggestions and the list remains available when adding multiple tags.
+- **External Drag & Drop**: Enabled dragging images from ImageModal to other programs.
+
+### Added
+
+- **Batch Export**: Export selected or filtered images in bulk to a folder or ZIP with progress tracking (desktop only).
+- **Privacy Settings Tab**: New Privacy tab with content filtering controls for sensitive tags and blur behavior.
+
 ## [0.12.1] - 2025-01-13
 
 ### Fixed
 
-- **V8  ache Serializer Chunking**: Implemented size-based chunking to prevent oversized cache writes.
+- **V8 Cache Serializer Chunking**: Implemented size-based chunking to prevent oversized cache writes.
 
 ### Added
 
