@@ -3,11 +3,9 @@
 export type StoredSelectionState = 'checked' | 'unchecked'; // Legacy type for migration
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 4; // Updated to match imageAnnotationsStorage.ts (Prompt Library Phase 4)
+const DB_VERSION = 6; // Universal Bump: Ensure Prompt Library exists
 const STORE_NAME = 'folderSelection';
 const RECORD_KEY = 'selection';
-const STORAGE_VERSION_KEY = 'folder-selection-version';
-const CURRENT_VERSION = 2; // Version 2: Array-based selection (v1 was Map-based)
 
 let inMemorySelection: string[] = [];
 let isPersistenceDisabled = false;
@@ -89,6 +87,12 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+        // Defensive: Ensure promptLibrary exists (Fix for race conditions)
+        if (!db.objectStoreNames.contains('promptLibrary')) {
+             const promptStore = db.createObjectStore('promptLibrary', { keyPath: 'id' });
+             promptStore.createIndex('createdAt', 'createdAt', { unique: false });
+             promptStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
         }
       };
 

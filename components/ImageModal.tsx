@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, BookPlus } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -14,6 +14,7 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+import { usePromptStore } from '../store/usePromptStore';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -227,6 +228,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
   const recentTags = useImageStore((state) => state.recentTags);
+
+  const { openSaveModal } = usePromptStore();
 
   // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore((state) =>
@@ -1125,6 +1128,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           <div className="flex flex-wrap gap-2 pt-2">
+            <button 
+                onClick={() => nMeta && openSaveModal(nMeta)}
+                disabled={!nMeta}
+                className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30 flex items-center gap-1.5"
+                title="Save prompt and parameters to library"
+            >
+                <BookPlus className="w-3 h-3" />
+                Save Preset
+            </button>
             <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Prompt</button>
             <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Raw Metadata</button>
             <button onClick={async () => {

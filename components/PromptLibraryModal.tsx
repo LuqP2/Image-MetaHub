@@ -7,8 +7,7 @@ const PromptLibraryModal: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  if (!isLibraryOpen) return null;
-
+  /* Hook order fix: Hooks must be called before conditional returns */
   const filteredPresets = useMemo(() => {
     if (!searchQuery.trim()) return presets;
     const lowerQuery = searchQuery.toLowerCase();
@@ -18,6 +17,8 @@ const PromptLibraryModal: React.FC = () => {
       p.tags?.some(t => t.toLowerCase().includes(lowerQuery))
     );
   }, [presets, searchQuery]);
+
+  if (!isLibraryOpen) return null;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);

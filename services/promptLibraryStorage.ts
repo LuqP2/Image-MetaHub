@@ -3,7 +3,7 @@
 import type { PromptPreset } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 4; // Phase 4: Prompt Library
+const DB_VERSION = 6; // Universal Bump: Ensure Prompt Library exists
 const STORE_NAME = 'promptLibrary';
 
 const inMemoryPresets: Map<string, PromptPreset> = new Map();

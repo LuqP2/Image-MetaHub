@@ -3,7 +3,7 @@
 import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 4; // Phase 4: Prompt Library
+const DB_VERSION = 6; // Universal Bump: Ensure Prompt Library exists
 const STORE_NAME = 'imageAnnotations';
 
 let inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
@@ -129,6 +129,16 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
             promptStore.createIndex('createdAt', 'createdAt', { unique: false });
             promptStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
             console.log('Created promptLibrary object store (v4)');
+          }
+        }
+
+        // Version 5: Ensure Prompt Library exists (Fix for potential race condition/missing store)
+        if (oldVersion < 5) {
+          if (!db.objectStoreNames.contains('promptLibrary')) {
+            const promptStore = db.createObjectStore('promptLibrary', { keyPath: 'id' });
+            promptStore.createIndex('createdAt', 'createdAt', { unique: false });
+            promptStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+            console.log('Created promptLibrary object store (v5 fix)');
           }
         }
       };
