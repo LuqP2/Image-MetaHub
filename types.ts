@@ -754,3 +754,26 @@ export interface TFIDFModel {
   idfScores: Map<string, number>;      // Term → IDF score
   documentCount: number;               // Total documents processed
 }
+
+/**
+ * Prompt Library Preset
+ */
+export interface PromptPreset {
+  id: string; // UUID
+  name: string;
+  createdAt: number;
+  
+  // Core metadata to restore
+  prompt: string;
+  negativePrompt?: string;
+  model?: string;
+  steps?: number;
+  cfg?: number;
+  width?: number;
+  height?: number;
+  sampler?: string;
+  scheduler?: string;
+  
+  // Organization
+  tags?: string[];
+}

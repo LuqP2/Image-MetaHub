@@ -3,7 +3,7 @@
 export type StoredSelectionState = 'checked' | 'unchecked'; // Legacy type for migration
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 3; // Updated to match imageAnnotationsStorage.ts (Smart Clustering Phase 1)
+const DB_VERSION = 4; // Updated to match imageAnnotationsStorage.ts (Prompt Library Phase 4)
 const STORE_NAME = 'folderSelection';
 const RECORD_KEY = 'selection';
 const STORAGE_VERSION_KEY = 'folder-selection-version';

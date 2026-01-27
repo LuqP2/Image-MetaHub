@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Book } from 'lucide-react';
 import { IndexedImage } from '../types';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useA1111Models } from '../hooks/useA1111Models';
+import { usePromptStore } from '../store/usePromptStore';
 import hotkeyManager from '../services/hotkeyManager';
 import { cleanLoraName, extractLoRAsWithWeights } from '../utils/promptCleaner';
 
@@ -43,6 +44,7 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
 }) => {
   // Feature access safety check
   const { canUseA1111 } = useFeatureAccess();
+  const { openLibrary } = usePromptStore();
 
   const { resources, isLoading: isLoadingResources, error: resourcesError } = useA1111Models();
 
@@ -226,6 +228,25 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
     setSelectedLoras([]);
   };
 
+
+  const handleLoadFromLibrary = () => {
+    openLibrary({
+      onSelect: (preset) => {
+        setParams(prev => ({
+          ...prev,
+          prompt: preset.prompt,
+          negativePrompt: preset.negativePrompt || '',
+          cfgScale: preset.cfg || prev.cfgScale,
+          steps: preset.steps || prev.steps,
+          width: preset.width || prev.width,
+          height: preset.height || prev.height,
+          model: preset.model || prev.model,
+          sampler: preset.sampler || prev.sampler,
+        }));
+      }
+    });
+  };
+
   const handleAddLora = (loraName: string) => {
     if (!loraName || selectedLoras.some(l => l.name === loraName)) {
       return;
@@ -289,6 +310,14 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-bold">Generate with A1111</h2>
           <div className="flex items-center gap-2">
+            <button
+               onClick={handleLoadFromLibrary}
+               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+               title="Load parameters from Prompt Library"
+             >
+               <Book size={14} />
+               Load Preset
+             </button>
             <button
               onClick={handleLoadFromImage}
               className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"

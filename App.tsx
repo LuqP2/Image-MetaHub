@@ -31,6 +31,8 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
+import PromptLibraryModal from './components/PromptLibraryModal';
+import SavePresetModal from './components/SavePresetModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -680,6 +682,9 @@ export default function App() {
         filteredImages={safeFilteredImages}
         directories={safeDirectories}
       />
+
+      <PromptLibraryModal />
+      <SavePresetModal />
 
       {hasDirectories && (
         <Sidebar

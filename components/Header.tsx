@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown, Book } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { usePromptStore } from '../store/usePromptStore';
 
 interface HeaderProps {
   onOpenSettings: () => void;
@@ -23,6 +24,8 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpen
     isExpired,
     isFree,
   } = useFeatureAccess();
+  
+  const { openLibrary } = usePromptStore();
 
   const [isGenerateDropdownOpen, setIsGenerateDropdownOpen] = useState(false);
 
@@ -173,6 +176,13 @@ const Header: React.FC<HeaderProps> = ({ onOpenSettings, onOpenAnalytics, onOpen
             <div className="absolute -top-1 -right-1">
               <Crown className={`w-3 h-3 ${analyticsBadgeClass}`} />
             </div>
+          </button>
+          <button
+            onClick={() => openLibrary()}
+            className="p-2 rounded-full hover:bg-gray-700 transition-colors hover:shadow-lg hover:shadow-purple-400/30"
+            title="Prompt Library"
+          >
+            <Book size={20} />
           </button>
           <button
             onClick={onOpenSettings}

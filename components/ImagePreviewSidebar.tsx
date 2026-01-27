@@ -1,6 +1,7 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, BookPlus } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
+import { usePromptStore } from '../store/usePromptStore';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -169,6 +170,7 @@ const ImagePreviewSidebar: React.FC = () => {
     removeAutoTagFromImage,
     availableTags
   } = useImageStore();
+  const { openSaveModal } = usePromptStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
     if (!state.previewImage) return null;
@@ -607,8 +609,21 @@ const ImagePreviewSidebar: React.FC = () => {
               </div>
             )}
 
+            {/* Preset Actions */}
+            <div className="mt-4 mb-2">
+              <button
+                onClick={() => nMeta && openSaveModal(nMeta)}
+                disabled={!nMeta}
+                className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-all"
+                title="Save prompt and parameters to library"
+              >
+                <BookPlus className="w-4 h-4" />
+                <span>Save as Preset</span>
+              </button>
+            </div>
+
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
-            <div className="mt-4 space-y-2">
+            <div className="mt-2 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
                 onClick={() => {

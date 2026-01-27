@@ -3,7 +3,7 @@
 import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 3; // Increment from 2 to 3 (Smart Clustering & Auto-Tagging)
+const DB_VERSION = 4; // Phase 4: Prompt Library
 const STORE_NAME = 'imageAnnotations';
 
 let inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
@@ -106,7 +106,7 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
           }
         }
 
-        // Versão 3: Create Smart Clustering stores (Phase 1)
+        // Version 3: Create Smart Clustering stores (Phase 1)
         if (oldVersion < 3) {
           // Cluster preferences store
           if (!db.objectStoreNames.contains('clusterPreferences')) {
@@ -119,6 +119,16 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
             const collectionsStore = db.createObjectStore('smartCollections', { keyPath: 'id' });
             collectionsStore.createIndex('type', 'type', { unique: false });
             console.log('Created smartCollections object store (v3)');
+          }
+        }
+
+        // Version 4: Prompt Library
+        if (oldVersion < 4) {
+          if (!db.objectStoreNames.contains('promptLibrary')) {
+            const promptStore = db.createObjectStore('promptLibrary', { keyPath: 'id' });
+            promptStore.createIndex('createdAt', 'createdAt', { unique: false });
+            promptStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+            console.log('Created promptLibrary object store (v4)');
           }
         }
       };
