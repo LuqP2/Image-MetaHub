@@ -635,7 +635,12 @@ export default function App() {
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
-    () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    () => {
+      if (itemsPerPage === -1) {
+        return safeFilteredImages;
+      }
+      return safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    },
     [safeFilteredImages, currentPage, itemsPerPage]
   );
   const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);

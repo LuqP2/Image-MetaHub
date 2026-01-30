@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
+
+import React, { useState, useEffect, useRef, useCallback, useMemo, CSSProperties } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -357,6 +360,86 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 });
 
 
+// --- Virtualized Cell Component ---
+interface CellData {
+  images: IndexedImage[];
+  columnCount: number;
+  onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  selectedImages: Set<string>;
+  focusedImageIndex: number | null;
+  imageSize: number;
+  handleImageLoad: (id: string, aspectRatio: number) => void;
+  handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
+  comparisonFirstImage: IndexedImage | null;
+  createCardRef: (imageId: string) => (el: HTMLDivElement | null) => void;
+  markedBestIds?: Set<string>;
+  markedArchivedIds?: Set<string>;
+  enableSafeMode: boolean;
+  sensitiveTagSet: Set<string>;
+  blurSensitiveImages: boolean;
+  toggleImageSelection: (id: string) => void;
+}
+
+const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildComponentProps<CellData>) => {
+  const {
+    images,
+    columnCount,
+    onImageClick,
+    selectedImages,
+    focusedImageIndex,
+    imageSize,
+    handleImageLoad,
+    handleContextMenu,
+    comparisonFirstImage,
+    createCardRef,
+    markedBestIds,
+    markedArchivedIds,
+    enableSafeMode,
+    sensitiveTagSet,
+    blurSensitiveImages,
+    toggleImageSelection
+  } = data;
+
+  const index = rowIndex * columnCount + columnIndex;
+
+  // Handle empty cells at the end of the grid
+  if (index >= images.length) {
+    return null;
+  }
+
+  const image = images[index];
+  const isFocused = focusedImageIndex === index;
+  const isSensitive = enableSafeMode &&
+    sensitiveTagSet.size > 0 &&
+    !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+  
+  // Center the card in the cell
+  const paddingX = (parseFloat(String(style.width)) - imageSize) / 2;
+
+  // We need to adjust style to add padding/centering
+  // But FixedSizeGrid styles are strict absolute positions.
+  // Best to render a div with 100% size and flex center
+  
+  return (
+    <div style={style} className="flex justify-center pt-2">
+      <ImageCard
+        image={image}
+        onImageClick={onImageClick}
+        isSelected={selectedImages.has(image.id)}
+        isFocused={isFocused}
+        onImageLoad={handleImageLoad}
+        onContextMenu={handleContextMenu}
+        baseWidth={imageSize}
+        isComparisonFirst={comparisonFirstImage?.id === image.id}
+        cardRef={createCardRef(image.id)}
+        isMarkedBest={markedBestIds?.has(image.id)}
+        isMarkedArchived={markedArchivedIds?.has(image.id)}
+        isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+      />
+    </div>
+  );
+}, areEqual);
+
 // --- ImageGrid Component ---
 interface ImageGridProps {
   images: IndexedImage[];
@@ -372,7 +455,7 @@ interface ImageGridProps {
 }
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
-  const imageSize = useSettingsStore((state) => state.imageSize);
+  const { imageSize, itemsPerPage } = useSettingsStore((state) => ({ imageSize: state.imageSize, itemsPerPage: state.itemsPerPage }));
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
@@ -727,67 +810,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
 
-  return (
-    <div
-      ref={gridRef}
-      className="h-full w-full p-4 outline-none overflow-auto"
-      style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
-      data-area="grid"
-      tabIndex={0}
-      onClick={() => gridRef.current?.focus()}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
-      <div
-        className="flex flex-wrap gap-4"
-        style={{
-          alignContent: 'flex-start',
-        }}
-        data-grid-background
-      >
-        {images.map((image, index) => {
-          const isFocused = focusedImageIndex === index;
-          const isSensitive = enableSafeMode &&
-            sensitiveTagSet.size > 0 &&
-            !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+  const isInfinite = itemsPerPage === -1;
+  const GAP_SIZE = 16; 
 
-          return (
-            <ImageCard
-              key={image.id}
-              image={image}
-              onImageClick={onImageClick}
-              isSelected={selectedImages.has(image.id)}
-              isFocused={isFocused}
-              onImageLoad={handleImageLoad}
-              onContextMenu={handleContextMenu}
-              baseWidth={imageSize}
-              isComparisonFirst={comparisonFirstImage?.id === image.id}
-              cardRef={createCardRef(image.id)}
-              isMarkedBest={markedBestIds?.has(image.id)}
-              isMarkedArchived={markedArchivedIds?.has(image.id)}
-              isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
-            />
-          );
-        })}
-      </div>
-
-      {/* Selection box visual */}
-      {isSelecting && selectionStart && selectionEnd && (
-        <div
-          className="absolute pointer-events-none z-30"
-          style={{
-            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
-            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
-            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
-            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
-            border: '2px solid rgba(59, 130, 246, 0.8)',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          }}
-        />
-      )}
-
-      {contextMenu.visible && (
+  const contextMenuContent = contextMenu.visible && (
         <div
           className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -914,8 +940,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <ProBadge size="sm" />
           </button>
         </div>
-      )}
+  );
 
+  const modalsContent = (
+    <>
       {/* Generate Variation Modal */}
       {isGenerateModalOpen && selectedImageForGeneration && (
         <A1111GenerateModal
@@ -980,6 +1008,147 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           isGenerating={isGeneratingComfyUI}
         />
       )}
+    </>
+  );
+
+  if (isInfinite) {
+    return (
+      <div
+        className="h-full w-full outline-none"
+        style={{ position: 'relative' }}
+        data-area="grid"
+        tabIndex={0}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
+        <AutoSizer>
+          {({ height, width }) => {
+            const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
+            const safeColumnCount = columnCount > 0 ? columnCount : 1;
+            const rowCount = Math.ceil(images.length / safeColumnCount);
+            
+            const cellData: CellData = {
+                images,
+                columnCount: safeColumnCount,
+                onImageClick,
+                selectedImages,
+                focusedImageIndex,
+                imageSize,
+                handleImageLoad,
+                handleContextMenu,
+                comparisonFirstImage,
+                createCardRef,
+                markedBestIds,
+                markedArchivedIds,
+                enableSafeMode,
+                sensitiveTagSet,
+                blurSensitiveImages,
+                toggleImageSelection
+            };
+
+            return (
+              <Grid
+                columnCount={safeColumnCount}
+                columnWidth={imageSize + GAP_SIZE}
+                height={height}
+                rowCount={rowCount}
+                rowHeight={(imageSize * 1.2) + GAP_SIZE}
+                width={width}
+                outerRef={gridRef}
+                className="no-scrollbar-if-needed"
+                itemData={cellData}
+                style={{ overflowX: 'hidden' }}
+              >
+                {Cell}
+              </Grid>
+            );
+          }}
+        </AutoSizer>
+
+        {/* Selection box visual */}
+        {isSelecting && selectionStart && selectionEnd && (
+            <div
+            className="absolute pointer-events-none z-30"
+            style={{
+                left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+                top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+                width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+                height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+                border: '2px solid rgba(59, 130, 246, 0.8)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            }}
+            />
+        )}
+
+        {contextMenuContent}
+        {modalsContent}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={gridRef}
+      className="h-full w-full p-4 outline-none overflow-auto"
+      style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
+      data-area="grid"
+      tabIndex={0}
+      onClick={() => gridRef.current?.focus()}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
+      <div
+        className="flex flex-wrap gap-4"
+        style={{
+          alignContent: 'flex-start',
+        }}
+        data-grid-background
+      >
+        {images.map((image, index) => {
+          const isFocused = focusedImageIndex === index;
+          const isSensitive = enableSafeMode &&
+            sensitiveTagSet.size > 0 &&
+            !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+          return (
+            <ImageCard
+              key={image.id}
+              image={image}
+              onImageClick={onImageClick}
+              isSelected={selectedImages.has(image.id)}
+              isFocused={isFocused}
+              onImageLoad={handleImageLoad}
+              onContextMenu={handleContextMenu}
+              baseWidth={imageSize}
+              isComparisonFirst={comparisonFirstImage?.id === image.id}
+              cardRef={createCardRef(image.id)}
+              isMarkedBest={markedBestIds?.has(image.id)}
+              isMarkedArchived={markedArchivedIds?.has(image.id)}
+              isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+            />
+          );
+        })}
+      </div>
+
+      {/* Selection box visual */}
+      {isSelecting && selectionStart && selectionEnd && (
+        <div
+          className="absolute pointer-events-none z-30"
+          style={{
+            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+            border: '2px solid rgba(59, 130, 246, 0.8)',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          }}
+        />
+      )}
+
+      {contextMenuContent}
+      {modalsContent}
     </div>
   );
 };
