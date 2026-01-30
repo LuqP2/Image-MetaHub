@@ -742,11 +742,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
+      className={`fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ${
+        isFullscreen ? 'bg-black p-0' : 'bg-black/90 backdrop-blur-md p-4 md:p-8'
+      }`}
       onClick={onClose}
     >
       <div
-        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-7xl h-full max-h-[95vh]'} flex flex-col md:flex-row overflow-hidden`}
+        className={`${
+          isFullscreen 
+            ? 'w-full h-full rounded-none' 
+            : 'w-full h-full max-w-[1600px] max-h-[90vh] bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
+        } flex flex-col md:flex-row transition-all duration-300 animate-in fade-in zoom-in-95`}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();

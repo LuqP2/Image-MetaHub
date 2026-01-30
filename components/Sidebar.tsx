@@ -113,17 +113,17 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         data-area="sidebar"
         tabIndex={-1}
-        className="fixed left-0 top-0 h-full w-12 bg-gray-800/80 backdrop-blur-sm border-r border-gray-700 z-40 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
+        className="fixed left-0 top-0 h-full w-16 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col items-center py-6 transition-all duration-300 ease-in-out shadow-lg shadow-black/20">
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-gray-50 transition-colors mb-4 hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
+          className="text-gray-400 hover:text-white transition-all duration-200 mb-6 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-xl p-2"
           title="Expand sidebar"
         >
-          <ChevronRight className="w-6 h-6" />
+          <ChevronRight className="w-5 h-5" />
         </button>
-        <div className="flex flex-col space-y-2">
+        <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
-            <div className="w-2 h-2 bg-accent rounded-full" title="Active filters"></div>
+            <div className="w-2 h-2 bg-purple-500 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.5)] animate-pulse" title="Active filters"></div>
           )}
         </div>
       </div>
@@ -134,13 +134,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div
       data-area="sidebar"
       tabIndex={-1}
-      className="fixed left-0 top-0 h-full w-80 bg-gray-800/80 backdrop-blur-sm border-r border-gray-700 z-40 flex flex-col transition-all duration-300 ease-in-out">
+      className="fixed left-0 top-0 h-full w-80 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-black/40">
       {/* Header with collapse button */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-200">Filters</h2>
+      <div className="flex items-center justify-between p-5 border-b border-gray-800/60 bg-gray-900/40">
+        <h2 className="text-lg font-bold text-gray-100 tracking-tight">Filters</h2>
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-gray-50 transition-colors hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
+          className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-xl p-2"
           title="Collapse sidebar"
         >
           <ChevronLeft className="w-5 h-5" />

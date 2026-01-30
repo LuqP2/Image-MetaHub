@@ -172,8 +172,10 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         ref={mergedRef}
-        className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
-          isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
+        className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
+          isSelected 
+            ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
+            : 'hover:shadow-2xl hover:shadow-black/50 hover:border-gray-600 hover:translate-y-[-4px]'
         } ${
           isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
         }`}
@@ -181,10 +183,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         onClick={(e) => {
           if (doubleClickToOpen) {
             if (e.ctrlKey || e.metaKey) {
-              // Ctrl/Cmd+click: toggle selection (add/remove from multi-select)
               toggleImageSelection(image.id);
             } else {
-              // Single click: select only this image and set as preview
               useImageStore.setState({
                 selectedImages: new Set([image.id]),
                 previewImage: image
@@ -199,6 +199,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             onImageClick(image, e);
           }
         }}
+
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
         draggable={canDragExternally}
@@ -729,7 +730,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   return (
     <div
       ref={gridRef}
-      className="h-full w-full p-1 outline-none overflow-auto"
+      className="h-full w-full p-4 outline-none overflow-auto"
       style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
       data-area="grid"
       tabIndex={0}
@@ -739,7 +740,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       onMouseUp={handleMouseUp}
     >
       <div
-        className="flex flex-wrap gap-2"
+        className="flex flex-wrap gap-4"
         style={{
           alignContent: 'flex-start',
         }}
