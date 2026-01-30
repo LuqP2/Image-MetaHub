@@ -1050,7 +1050,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />
-                      <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                      <MetadataItem label="CFG Scale" value={nMeta.cfg_scale} />
+                      {nMeta.clip_skip && nMeta.clip_skip > 1 && (
+                        <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
+                      )}
                       <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
