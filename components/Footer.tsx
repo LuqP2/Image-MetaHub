@@ -118,12 +118,13 @@ const Footer: React.FC<FooterProps> = ({
       </div>
       <nav className="flex items-center gap-4 text-xs">
         <div className="flex items-center gap-2">
-          <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">Rows:</label>
+          <label htmlFor="items-per-page" className="text-gray-500 hidden md:inline font-medium">Show:</label>
           <select id="items-per-page" value={itemsPerPage} onChange={handleItemsPerPageChange} className="bg-gray-800/80 border border-gray-700/60 rounded-lg px-2.5 py-1.5 text-gray-200 hover:bg-gray-700 hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition-all cursor-pointer">
             <option value={10}>10</option>
             <option value={20}>20</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
+            <option value={-1}>All</option>
           </select>
         </div>
         {showPageControls && (

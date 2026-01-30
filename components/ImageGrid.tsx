@@ -1,12 +1,12 @@
 import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo, CSSProperties } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { type IndexedImage, type BaseMetadata } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
+import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -35,7 +35,8 @@ interface ImageCardProps {
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<number>(1);
+
+  // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -414,11 +415,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
   
   // Center the card in the cell
-  const paddingX = (parseFloat(String(style.width)) - imageSize) / 2;
-
-  // We need to adjust style to add padding/centering
-  // But FixedSizeGrid styles are strict absolute positions.
-  // Best to render a div with 100% size and flex center
   
   return (
     <div style={style} className="flex justify-center pt-2">
@@ -455,7 +451,8 @@ interface ImageGridProps {
 }
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
-  const { imageSize, itemsPerPage } = useSettingsStore((state) => ({ imageSize: state.imageSize, itemsPerPage: state.itemsPerPage }));
+  const imageSize = useSettingsStore((state) => state.imageSize);
+  const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
@@ -467,7 +464,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const previewImage = useImageStore((state) => state.previewImage);
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
+
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -491,8 +488,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     );
   }, [sensitiveTags]);
 
-  const handleImageLoad = (id: string, aspectRatio: number) => {
-    setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
+  const handleImageLoad = () => {
+    // imageAspectRatios removed as unused
   };
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
