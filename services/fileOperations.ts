@@ -117,7 +117,7 @@ export class FileOperations {
    */
   static validateFilename(filename: string): { valid: boolean; error?: string } {
     // Remove common image extension for validation
-    const nameWithoutExt = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+    const nameWithoutExt = filename.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, '');
     
     if (!nameWithoutExt.trim()) {
       return { valid: false, error: 'Filename cannot be empty' };

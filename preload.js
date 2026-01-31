@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),
   readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
+  readVideoMetadata: (args) => ipcRenderer.invoke('read-video-metadata', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),

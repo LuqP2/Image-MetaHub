@@ -336,8 +336,8 @@ export function extractWorkflowFactsForImage(image: TaggingImage): WorkflowFacts
     return null;
   }
 
-  const workflow = metadata.workflow ?? metadata.imagemetahub_data?.workflow;
-  const prompt = metadata.prompt ?? metadata.imagemetahub_data?.prompt;
+  const workflow = metadata.workflow ?? metadata.imagemetahub_data?.workflow ?? metadata.videometahub_data?.workflow;
+  const prompt = metadata.prompt ?? metadata.imagemetahub_data?.prompt ?? metadata.videometahub_data?.prompt;
 
   if (!workflow && !prompt) {
     return null;

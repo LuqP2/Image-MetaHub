@@ -42,6 +42,16 @@ interface ImageCardProps {
   isBlurred?: boolean;
 }
 
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -54,6 +64,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const isVideo = isVideoFileName(image.name, image.fileType);
 
   // Extract filename to display based on showFullFilePath setting
   const displayName = showFullFilePath
@@ -88,6 +99,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
     if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       setImageUrl(image.thumbnailUrl);
+      return;
+    }
+
+    if (isVideo) {
+      setImageUrl(null);
       return;
     }
 
@@ -133,7 +149,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled]);
+  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -304,6 +320,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           />
         ) : (
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
+        )}
+
+        {isVideo && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="rounded-full bg-black/50 p-2 shadow-lg">
+              <Play className="h-6 w-6 text-white/90" />
+            </div>
+          </div>
         )}
 
         {isBlurred && (

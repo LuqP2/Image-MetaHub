@@ -96,8 +96,31 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
+const formatDurationSeconds = (seconds: number): string => {
+  if (!Number.isFinite(seconds)) return '';
+  if (seconds < 60) return `${seconds.toFixed(2)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
 const resolveImageMimeType = (fileName: string): string => {
   const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.mp4')) return 'video/mp4';
+  if (lowerName.endsWith('.webm')) return 'video/webm';
+  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
+  if (lowerName.endsWith('.mov')) return 'video/quicktime';
+  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
   if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
   if (lowerName.endsWith('.webp')) return 'image/webp';
   return 'image/png';
@@ -193,6 +216,7 @@ const ImagePreviewSidebar: React.FC = () => {
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
 
   const activeImage = previewImageFromStore || previewImage;
+  const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
   const preferredThumbnailUrl = activeImage?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, activeImage?.tags ?? []);
 
@@ -211,7 +235,7 @@ const ImagePreviewSidebar: React.FC = () => {
     }
 
     const hasPreview = Boolean(preferredThumbnailUrl);
-    setImageUrl(preferredThumbnailUrl);
+    setImageUrl(isVideo ? null : preferredThumbnailUrl);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -285,12 +309,14 @@ const ImagePreviewSidebar: React.FC = () => {
         }, 100);
       }
     };
-  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl]);
+  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
   if (!activeImage) {
     return null;
   }
 
   const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
+  const videoInfo = (nMeta as any)?.video;
+  const motionModel = (nMeta as any)?.motion_model;
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) return;
@@ -359,7 +385,21 @@ const ImagePreviewSidebar: React.FC = () => {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
-          {imageUrl ? <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" /> : <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>}
+          {imageUrl ? (
+            isVideo ? (
+              <video
+                src={imageUrl}
+                className="max-w-full max-h-96 object-contain"
+                controls
+                playsInline
+                poster={preferredThumbnailUrl ?? undefined}
+              />
+            ) : (
+              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" />
+            )
+          ) : (
+            <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>
+          )}
         </div>
 
         {/* Metadata */}
@@ -529,6 +569,26 @@ const ImagePreviewSidebar: React.FC = () => {
                     <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                   )}
               </div>
+              {videoInfo && (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <MetadataItem label="Frames" value={videoInfo.frame_count} />
+                  <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
+                  {videoInfo.duration_seconds != null && (
+                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
+                  )}
+                  <MetadataItem label="Video Codec" value={videoInfo.codec} />
+                  <MetadataItem label="Video Format" value={videoInfo.format} />
+                </div>
+              )}
+              {motionModel?.name && (
+                <MetadataItem label="Motion Model" value={motionModel.name} />
+              )}
+              {motionModel?.hash && (
+                <MetadataItem label="Motion Model Hash" value={motionModel.hash} />
+              )}
+              {(nMeta as any)?._metahub_pro?.project_name && (
+                <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
+              )}
             </div>
 
             {nMeta.loras && nMeta.loras.length > 0 && (
@@ -608,7 +668,8 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
-            <div className="mt-4 space-y-2">
+            {!isVideo && (
+              <div className="mt-4 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
                 onClick={() => {
@@ -703,6 +764,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 />
               )}
             </div>
+            )}
 
             {/* ComfyUI Actions */}
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -809,6 +871,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 />
               )}
             </div>
+            )}
           </>
         ) : (
           <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">
