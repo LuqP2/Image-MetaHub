@@ -1011,11 +1011,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
-            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+            <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
+                <span className="text-xs font-semibold text-purple-600 dark:text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
               </div>
-              <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+              <pre className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-white dark:bg-gray-800/50 p-2 rounded border border-gray-200 dark:border-gray-700/50">{nMeta.notes}</pre>
             </div>
           )}
 
@@ -1031,7 +1031,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div>
                 <button 
                   onClick={() => setShowDetails(!showDetails)} 
-                  className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                  className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   <span className="font-semibold">Generation Details</span>
                   {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1071,10 +1071,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <div>
                   <button
                     onClick={() => setShowPerformance(!showPerformance)}
-                    className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                    className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
                     <span className="font-semibold flex items-center gap-2">
-                      <Zap size={16} className="text-yellow-400" />
+                      <Zap size={16} className="text-yellow-600 dark:text-yellow-400" />
                       Performance
                     </span>
                     {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1117,7 +1117,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
                       {/* Tier 3: NICE-TO-HAVE (small text) */}
                       {(nMeta._analytics.torch_version || nMeta._analytics.python_version) && (
-                        <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700/50 pt-2 space-y-1">
                           {nMeta._analytics.torch_version && <div>PyTorch: {nMeta._analytics.torch_version}</div>}
                           {nMeta._analytics.python_version && <div>Python: {nMeta._analytics.python_version}</div>}
                         </div>
@@ -1133,16 +1133,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Prompt</button>
-            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Raw Metadata</button>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Prompt</button>
+            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Raw Metadata</button>
             <button onClick={async () => {
               if (!directoryPath) {
                 alert('Cannot determine file location: directory path is missing.');
                 return;
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
-            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
+            }} className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2">Show in Folder</button>
             <button
               onClick={() => {
                 if (!canUseComparison) {
@@ -1155,7 +1155,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }
               }}
               disabled={canUseComparison && comparisonCount >= 2}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="w-full justify-center bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
               title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
             >
               <GitCompare className="w-3 h-3" />

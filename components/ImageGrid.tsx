@@ -347,43 +347,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       )}
     </div>
   );
-  // Comparison function for React.memo
-  // Returns true if props are equal (prevent re-render)
-  
-  // Check simple props first
-  if (
-    prevProps.isSelected !== nextProps.isSelected ||
-    prevProps.isFocused !== nextProps.isFocused ||
-    prevProps.isBlurred !== nextProps.isBlurred ||
-    prevProps.baseWidth !== nextProps.baseWidth ||
-    prevProps.isComparisonFirst !== nextProps.isComparisonFirst ||
-    prevProps.isMarkedBest !== nextProps.isMarkedBest ||
-    prevProps.isMarkedArchived !== nextProps.isMarkedArchived
-  ) {
-    return false;
-  }
-
-  // Check image properties that affect rendering
-  if (
-    prevProps.image.id !== nextProps.image.id ||
-    prevProps.image.isFavorite !== nextProps.image.isFavorite ||
-    prevProps.image.thumbnailUrl !== nextProps.image.thumbnailUrl ||
-    prevProps.image.thumbnailStatus !== nextProps.image.thumbnailStatus
-  ) {
-    return false;
-  }
-
-  // Efficient tag comparison
-  const prevTags = prevProps.image.tags;
-  const nextTags = nextProps.image.tags;
-  const tagsEqual = (!prevTags && !nextTags) ||
-    (prevTags && nextTags && prevTags.length === nextTags.length && prevTags.join(',') === nextTags.join(','));
-
-  if (!tagsEqual) {
-    return false;
-  }
-
-  return true;
 });
 
 
