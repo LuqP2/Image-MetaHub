@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import { ChevronLeft, ChevronRight, X, ChevronDown, Plus } from 'lucide-react';
+import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SidebarProps {
@@ -29,6 +29,7 @@ interface SidebarProps {
   isIndexing?: boolean;
   sortOrder: string;
   onSortOrderChange: (value: string) => void;
+  onReshuffle?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -54,7 +55,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAddFolder,
   isIndexing = false,
   sortOrder,
-  onSortOrderChange
+  onSortOrderChange,
+  onReshuffle
 }) => {
 
   const [expandedSections, setExpandedSections] = useState({
@@ -113,17 +115,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         data-area="sidebar"
         tabIndex={-1}
-        className="fixed left-0 top-0 h-full w-12 bg-gray-800/80 backdrop-blur-sm border-r border-gray-700 z-40 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
+        className="fixed left-0 top-0 h-full w-16 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col items-center py-6 transition-all duration-300 ease-in-out shadow-lg shadow-black/20">
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-gray-50 transition-colors mb-4 hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
+          className="mt-4 mb-6 relative group"
           title="Expand sidebar"
         >
-          <ChevronRight className="w-6 h-6" />
+           <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
         </button>
-        <div className="flex flex-col space-y-2">
+        <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
-            <div className="w-2 h-2 bg-accent rounded-full" title="Active filters"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
       </div>
@@ -134,17 +137,30 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div
       data-area="sidebar"
       tabIndex={-1}
-      className="fixed left-0 top-0 h-full w-80 bg-gray-800/80 backdrop-blur-sm border-r border-gray-700 z-40 flex flex-col transition-all duration-300 ease-in-out">
+      className="fixed left-0 top-0 h-full w-80 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-black/40">
       {/* Header with collapse button */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-200">Filters</h2>
-        <button
-          onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-gray-50 transition-colors hover:shadow-lg hover:shadow-accent/30 rounded-full p-1"
-          title="Collapse sidebar"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
+      <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
+        <div className="flex items-center gap-3 p-4 pb-2">
+            <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
+                <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
+            </div>
+            <div className="flex flex-col overflow-hidden">
+                <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
+                <span className="text-[10px] font-mono font-normal text-gray-500">v0.12.2</span>
+            </div>
+        </div>
+
+        <div className="flex items-center justify-between px-4 pb-3 pt-1">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Filters</h2>
+            <button
+            onClick={onToggleCollapse}
+            className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
+            title="Collapse sidebar"
+            >
+            <ChevronLeft className="w-4 h-4" />
+            </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -160,6 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Sort Order - Moved from footer for semantic consistency with filters */}
         <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
+          <div className="flex items-center">
           <select
             id="sidebar-sort"
             value={sortOrder}
@@ -170,7 +187,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             <option value="date-asc">Oldest First</option>
             <option value="asc">A-Z</option>
             <option value="desc">Z-A</option>
+            <option value="random">Random</option>
           </select>
+          {sortOrder === 'random' && onReshuffle && (
+            <button
+                onClick={onReshuffle}
+                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
+                title="Reshuffle Random Order"
+            >
+                <RefreshCw className="h-5 w-5" />
+            </button>
+          )}
+          </div>
         </div>
 
         {/* Add Folder Button - Subtle and discrete */}
@@ -285,7 +313,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {availableLoras.length}
                 </span>
                 {selectedLoras.length > 0 && (
-                  <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded border border-purple-700/50">
+                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                     {selectedLoras.length} selected
                   </span>
                 )}
@@ -334,7 +362,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           type="checkbox"
                           checked={selectedLoras.includes(lora)}
                           onChange={(e) => handleLoraToggle(lora, e.target.checked)}
-                          className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded-md focus:ring-purple-500 focus:ring-2"
+                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={lora}>{lora}</span>
                       </label>
@@ -359,7 +387,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {availableSchedulers.length}
                 </span>
                 {selectedSchedulers.length > 0 && (
-                  <span className="text-xs bg-green-900/40 text-green-300 px-2 py-0.5 rounded border border-green-700/50">
+                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                     {selectedSchedulers.length} selected
                   </span>
                 )}
@@ -408,7 +436,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           type="checkbox"
                           checked={selectedSchedulers.includes(scheduler)}
                           onChange={(e) => handleSchedulerToggle(scheduler, e.target.checked)}
-                          className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded-md focus:ring-green-500 focus:ring-2"
+                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={scheduler}>{scheduler}</span>
                       </label>
@@ -434,7 +462,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClearAllFilters}
-            className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition-all duration-200 hover:shadow-lg hover:shadow-red-600/30"
+            className="w-full text-red-400 hover:text-white hover:bg-red-900/30 border border-red-900/30 hover:border-red-500/50 px-4 py-2 rounded-lg text-sm transition-all duration-200"
           >
             Clear All Filters
           </button>

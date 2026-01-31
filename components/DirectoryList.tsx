@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X } from 'lucide-react';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -270,25 +270,20 @@ export default function DirectoryList({
           <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
             {directories.length}
           </span>
-          {selectedFolders.size > 0 && (
-            <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded border border-blue-500">
-              {selectedFolders.size} selected
-            </span>
-          )}
           {onToggleIncludeSubfolders && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleIncludeSubfolders();
               }}
-              className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+              className={`p-1.5 rounded-md border transition-all ${
                 includeSubfolders
-                  ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-500'
-                  : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'
+                  ? 'bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600/30'
+                  : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
               }`}
-              title={includeSubfolders ? 'Including subfolders (click to disable)' : 'Not including subfolders (click to enable)'}
+              title={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
             >
-              {includeSubfolders ? '📁 + Subfolders' : '📁 Direct'}
+              {includeSubfolders ? <FolderTree className="w-3.5 h-3.5" /> : <Folder className="w-3.5 h-3.5" />}
             </button>
           )}
           {selectedFolders.size > 0 && onClearFolderSelection && (
@@ -297,10 +292,10 @@ export default function DirectoryList({
                 e.stopPropagation();
                 onClearFolderSelection();
               }}
-              className="text-xs px-2 py-0.5 rounded border transition-colors bg-gray-700 border-gray-600 text-gray-400 hover:bg-red-600 hover:border-red-500 hover:text-white"
-              title="Clear selection to show all folders"
+              className="p-1 rounded-full text-gray-500 hover:text-red-400 hover:bg-gray-700/50 transition-colors"
+              title="Clear folder selection"
             >
-              Clear
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

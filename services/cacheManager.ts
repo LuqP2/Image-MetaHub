@@ -172,7 +172,7 @@ class IncrementalCacheWriter {
       return [];
     }
 
-    let metadata = precomputed ?? toCacheMetadata(images);
+    const metadata = precomputed ?? toCacheMetadata(images);
     let preparedMetadata = sanitizeCacheMetadata(metadata);
     const chunkNumber = this.chunkIndex++;
     this.totalImages += images.length;

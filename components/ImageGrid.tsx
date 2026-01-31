@@ -1,9 +1,20 @@
+import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
+import AutoSizer from 'react-virtualized-auto-sizer';
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, ImageStack } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Check, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
+import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,  AlertCircle,
+  Archive,
+  Check,
+  CheckSquare,
+  Crown,
+  EyeOff,
+  Package,
+  Play
+} from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -13,6 +24,8 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import Toast from './Toast';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
+import { useImageStacking } from '../hooks/useImageStacking';
+import { Layers, Layers2 } from 'lucide-react';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -30,9 +43,20 @@ interface ImageCardProps {
   isBlurred?: boolean;
 }
 
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
+  if (fileType && fileType.startsWith('video/')) {
+    return true;
+  }
+  const lower = fileName.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState<number>(1);
+
+  // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -41,6 +65,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const [showToast, setShowToast] = useState(false);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const isVideo = isVideoFileName(image.name, image.fileType);
 
   // Extract filename to display based on showFullFilePath setting
   const displayName = showFullFilePath
@@ -75,6 +100,11 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
     if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       setImageUrl(image.thumbnailUrl);
+      return;
+    }
+
+    if (isVideo) {
+      setImageUrl(null);
       return;
     }
 
@@ -120,7 +150,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled]);
+  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -172,8 +202,10 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         ref={mergedRef}
-        className={`bg-gray-800 rounded-lg overflow-hidden shadow-md cursor-pointer transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/30 group relative flex items-center justify-center ${
-          isSelected ? 'ring-4 ring-blue-500 ring-opacity-75' : ''
+        className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
+          isSelected 
+            ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
+            : 'hover:shadow-2xl hover:shadow-black/50 hover:border-gray-600 hover:translate-y-[-4px]'
         } ${
           isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
         }`}
@@ -181,10 +213,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         onClick={(e) => {
           if (doubleClickToOpen) {
             if (e.ctrlKey || e.metaKey) {
-              // Ctrl/Cmd+click: toggle selection (add/remove from multi-select)
               toggleImageSelection(image.id);
             } else {
-              // Single click: select only this image and set as preview
               useImageStore.setState({
                 selectedImages: new Set([image.id]),
                 previewImage: image
@@ -199,6 +229,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             onImageClick(image, e);
           }
         }}
+
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
         draggable={canDragExternally}
@@ -292,6 +323,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           <div className="w-full h-full animate-pulse bg-gray-700"></div>
         )}
 
+        {isVideo && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="rounded-full bg-black/50 p-2 shadow-lg">
+              <Play className="h-6 w-6 text-white/90" />
+            </div>
+          </div>
+        )}
+
         {isBlurred && (
           <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
             <EyeOff className="h-8 w-8 text-white/80 drop-shadow" />
@@ -333,28 +372,155 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       )}
     </div>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if relevant data changed
-  // Efficient tag comparison using join instead of JSON.stringify
-  const prevTags = prevProps.image.tags;
-  const nextTags = nextProps.image.tags;
-  const tagsEqual = (!prevTags && !nextTags) ||
-    (prevTags && nextTags && prevTags.length === nextTags.length && prevTags.join(',') === nextTags.join(','));
-
-  return (
-    prevProps.image.id === nextProps.image.id &&
-    prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
-    prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
-    prevProps.image.isFavorite === nextProps.image.isFavorite &&
-    tagsEqual &&
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isFocused === nextProps.isFocused &&
-    prevProps.isComparisonFirst === nextProps.isComparisonFirst &&
-    prevProps.baseWidth === nextProps.baseWidth &&
-    prevProps.isBlurred === nextProps.isBlurred
-  );
 });
 
+
+// Type guard for ImageStack
+function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
+  return (item as ImageStack).coverImage !== undefined;
+}
+
+const GAP_SIZE = 16;
+const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
+
+// --- Virtualized Cell Component ---
+interface CellData {
+  items: (IndexedImage | ImageStack)[];
+  columnCount: number;
+  onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  onStackClick: (stack: ImageStack) => void;
+  selectedImages: Set<string>;
+  focusedImageIndex: number | null;
+  imageSize: number;
+  handleImageLoad: (id: string, aspectRatio: number) => void;
+  handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
+  comparisonFirstImage: IndexedImage | null;
+  createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
+  markedBestIds?: Set<string>;
+  markedArchivedIds?: Set<string>;
+  enableSafeMode?: boolean;
+  sensitiveTagSet?: Set<string>;
+  blurSensitiveImages?: boolean;
+  toggleImageSelection: (imageId: string, multiSelect: boolean) => void;
+}
+
+const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildComponentProps<CellData>) => {
+  const {
+    items,
+    columnCount,
+    onImageClick,
+    onStackClick,
+    selectedImages,
+    focusedImageIndex,
+    imageSize,
+    handleImageLoad,
+    handleContextMenu,
+    comparisonFirstImage,
+    createCardRef,
+    markedBestIds,
+    markedArchivedIds,
+    enableSafeMode,
+    sensitiveTagSet,
+    blurSensitiveImages,
+    toggleImageSelection
+  } = data;
+
+  const index = rowIndex * columnCount + columnIndex;
+
+  // Handle empty cells
+  if (index >= items.length) {
+    return <div style={style} />;
+  }
+
+  const item = items[index];
+
+  // Render Stack
+  if (isImageStack(item)) {
+    const isSensitive = enableSafeMode &&
+      sensitiveTagSet && sensitiveTagSet.size > 0 &&
+      !!item.coverImage.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+    return (
+      <div style={{
+        ...style,
+        left: (style.left as number) + GAP_SIZE,
+        top: (style.top as number) + GAP_SIZE,
+        width: (style.width as number) - GAP_SIZE,
+        height: (style.height as number) - GAP_SIZE,
+      }}>
+        <div
+          className="relative group cursor-pointer w-full h-full"
+          onClick={() => onStackClick(item)}
+        >
+          {/* Back cards effect */}
+          <div className="absolute top-[-4px] left-[4px] right-[-4px] bottom-[4px] bg-gray-700 rounded-lg border border-gray-600 shadow-sm z-0"></div>
+          <div className="absolute top-[-8px] left-[8px] right-[-8px] bottom-[8px] bg-gray-800 rounded-lg border border-gray-700 shadow-sm z-[-1]"></div>
+
+          {/* Main Card */}
+          <div className="relative z-10 w-full h-full">
+            <ImageCard
+              image={item.coverImage}
+              onImageClick={(img, e) => {
+                  e.stopPropagation();
+                  onStackClick(item);
+              }}
+              isSelected={selectedImages.has(item.coverImage.id)}
+              isFocused={false}
+              onImageLoad={handleImageLoad}
+              onContextMenu={(img, e) => handleContextMenu(img, e)}
+              baseWidth={imageSize}
+              isComparisonFirst={false}
+              cardRef={createCardRef(item.id)}
+              isMarkedBest={markedBestIds?.has(item.coverImage.id)}
+              isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
+              isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+            />
+
+            {/* Stack Badge */}
+            <div className="absolute top-2 right-2 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-md backdrop-blur-md z-20 border border-white/10 shadow-sm">
+              +{item.count}
+            </div>
+            <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none">
+              Stack
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render Single Image
+  const image = item;
+  const isFocused = focusedImageIndex === index;
+  const isSensitive = enableSafeMode &&
+    sensitiveTagSet && sensitiveTagSet.size > 0 &&
+    !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+  return (
+    <div style={{
+      ...style,
+      left: (style.left as number) + GAP_SIZE,
+      top: (style.top as number) + GAP_SIZE,
+      width: (style.width as number) - GAP_SIZE,
+      height: (style.height as number) - GAP_SIZE,
+    }}>
+      <ImageCard
+        image={image}
+        onImageClick={onImageClick}
+        isSelected={selectedImages.has(image.id)}
+        isFocused={isFocused}
+        onImageLoad={handleImageLoad}
+        onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
+        baseWidth={imageSize}
+        isComparisonFirst={comparisonFirstImage?.id === image.id}
+        cardRef={createCardRef(image.id)}
+        isMarkedBest={markedBestIds?.has(image.id)}
+        isMarkedArchived={markedArchivedIds?.has(image.id)}
+        isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+      />
+    </div>
+  );
+}, areEqual);
 
 // --- ImageGrid Component ---
 interface ImageGridProps {
@@ -372,6 +538,7 @@ interface ImageGridProps {
 
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
+  const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
@@ -381,9 +548,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
+
+  // --- Stacking Logic (Must be top-level) ---
+  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
+  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
+  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+  const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
+
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -407,9 +581,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     );
   }, [sensitiveTags]);
 
-  const handleImageLoad = (id: string, aspectRatio: number) => {
-    setImageAspectRatios(prev => ({ ...prev, [id]: aspectRatio }));
-  };
+
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
@@ -721,72 +893,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     };
   }, []);
 
-  // Early return AFTER all hooks
-  if (images.length === 0) {
-    return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
-  }
 
-  return (
-    <div
-      ref={gridRef}
-      className="h-full w-full p-1 outline-none overflow-auto"
-      style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
-      data-area="grid"
-      tabIndex={0}
-      onClick={() => gridRef.current?.focus()}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-    >
-      <div
-        className="flex flex-wrap gap-2"
-        style={{
-          alignContent: 'flex-start',
-        }}
-        data-grid-background
-      >
-        {images.map((image, index) => {
-          const isFocused = focusedImageIndex === index;
-          const isSensitive = enableSafeMode &&
-            sensitiveTagSet.size > 0 &&
-            !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
 
-          return (
-            <ImageCard
-              key={image.id}
-              image={image}
-              onImageClick={onImageClick}
-              isSelected={selectedImages.has(image.id)}
-              isFocused={isFocused}
-              onImageLoad={handleImageLoad}
-              onContextMenu={handleContextMenu}
-              baseWidth={imageSize}
-              isComparisonFirst={comparisonFirstImage?.id === image.id}
-              cardRef={createCardRef(image.id)}
-              isMarkedBest={markedBestIds?.has(image.id)}
-              isMarkedArchived={markedArchivedIds?.has(image.id)}
-              isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
-            />
-          );
-        })}
-      </div>
+ 
 
-      {/* Selection box visual */}
-      {isSelecting && selectionStart && selectionEnd && (
-        <div
-          className="absolute pointer-events-none z-30"
-          style={{
-            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
-            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
-            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
-            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
-            border: '2px solid rgba(59, 130, 246, 0.8)',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          }}
-        />
-      )}
-
-      {contextMenu.visible && (
+  const contextMenuContent = contextMenu.visible && (
         <div
           className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -913,8 +1024,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <ProBadge size="sm" />
           </button>
         </div>
-      )}
+  );
 
+  const modalsContent = (
+    <>
       {/* Generate Variation Modal */}
       {isGenerateModalOpen && selectedImageForGeneration && (
         <A1111GenerateModal
@@ -979,6 +1092,232 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           isGenerating={isGeneratingComfyUI}
         />
       )}
+    </>
+  );
+
+  // --- Stacking Logic ---
+  // Decide what to render based on stacking
+  const itemsToRender = isStackingEnabled ? stackedItems : images;
+
+  // Handle drill-down
+
+  const handleStackClick = React.useCallback((stack: ImageStack) => {
+    // Set search query to the prompt of the stack
+    const prompt = stack.coverImage.metadata?.normalizedMetadata?.prompt || stack.coverImage.metadata?.positive_prompt;
+    if (prompt) {
+        setSearchQuery(prompt);
+        setStackingEnabled(false); // Disable stacking when drilling down to see individual items
+        setViewingStackPrompt(prompt); // Enable "Back to Stacks" mode
+    }
+  }, [setStackingEnabled, setViewingStackPrompt]);
+
+  // Use itemsToRender for calculations
+  const isInfinite = itemsPerPage === -1;
+  const isEmpty = itemsToRender.length === 0;
+
+  // Dummy handler for image loading since aspect ratio tracking was removed but prop is required
+  const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
+    // No-op
+  }, []);
+
+  if (isEmpty) {
+     return (
+        <div className="flex flex-col h-full w-full">
+            <div className="flex-1 flex items-center justify-center h-64 text-gray-500">
+                No images found
+            </div>
+            {modalsContent}
+        </div>
+     );
+  }
+
+  if (isInfinite) {
+    return (
+      <div className="flex flex-col h-full w-full">
+         <div
+            className="flex-1 outline-none"
+            style={{ position: 'relative' }}
+            data-area="grid"
+            tabIndex={0}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          >
+            <AutoSizer>
+              {({ height, width }) => {
+                const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
+                const safeColumnCount = columnCount > 0 ? columnCount : 1;
+                const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
+                
+                const cellData: CellData = {
+                    items: itemsToRender,
+                    columnCount: safeColumnCount,
+                    onImageClick,
+                    onStackClick: handleStackClick,
+                    selectedImages,
+                    focusedImageIndex,
+                    imageSize,
+                    handleImageLoad,
+                    handleContextMenu,
+                    comparisonFirstImage,
+                    createCardRef,
+                    markedBestIds,
+                    markedArchivedIds,
+                    enableSafeMode,
+                    sensitiveTagSet,
+                    blurSensitiveImages,
+                    toggleImageSelection
+                };
+
+                return (
+                  <Grid
+                    columnCount={safeColumnCount}
+                    columnWidth={imageSize + GAP_SIZE}
+                    height={height}
+                    rowCount={rowCount}
+                    rowHeight={(imageSize * 1.2) + GAP_SIZE}
+                    width={width}
+                    outerRef={gridRef}
+                    className="no-scrollbar-if-needed"
+                    itemData={cellData}
+                    style={{ overflowX: 'hidden' }}
+                  >
+                    {Cell}
+                  </Grid>
+                );
+              }}
+            </AutoSizer>
+
+            {/* Selection box visual */}
+            {isSelecting && selectionStart && selectionEnd && (
+                <div
+                className="absolute pointer-events-none z-30"
+                style={{
+                    left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+                    top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+                    width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+                    height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+                    border: '2px solid rgba(59, 130, 246, 0.8)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                }}
+                />
+            )}
+
+            {contextMenuContent}
+            {modalsContent}
+          </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full w-full">
+      <div
+        ref={gridRef}
+        className="flex-1 p-4 outline-none overflow-auto"
+        style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
+        data-area="grid"
+        tabIndex={0}
+        onClick={() => gridRef.current?.focus()}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      >
+        <div
+          className="flex flex-wrap gap-4"
+          style={{
+            alignContent: 'flex-start',
+          }}
+          data-grid-background
+        >
+          {itemsToRender.map((item, index) => {
+            if (isImageStack(item)) {
+               const isSensitive = enableSafeMode &&
+                sensitiveTagSet && sensitiveTagSet.size > 0 &&
+                !!item.coverImage.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+                
+                return (
+                    <div 
+                        key={item.id}
+                        className="relative group cursor-pointer"
+                        style={{ width: imageSize, height: imageSize * 1.2 }}
+                        onClick={() => handleStackClick(item)}
+                    >
+                        {/* Back cards effect */}
+                        <div className="absolute top-[-4px] left-[4px] right-[-4px] bottom-[4px] bg-gray-700 rounded-lg border border-gray-600 shadow-sm z-0"></div>
+                        <div className="absolute top-[-8px] left-[8px] right-[-8px] bottom-[8px] bg-gray-800 rounded-lg border border-gray-700 shadow-sm z-[-1]"></div>
+                        
+                        <div className="relative z-10 w-full h-full">
+                            <ImageCard
+                                image={item.coverImage}
+                                onImageClick={() => handleStackClick(item)}
+                                isSelected={selectedImages.has(item.coverImage.id)}
+                                isFocused={false}
+                                onImageLoad={handleImageLoad}
+                                onContextMenu={(img, e) => handleContextMenu(img, e)}
+                                baseWidth={imageSize}
+                                isComparisonFirst={false}
+                                cardRef={createCardRef(item.id)}
+                                isMarkedBest={markedBestIds?.has(item.coverImage.id)}
+                                isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
+                                isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+                            />
+                            {/* Low prominence Stack Badge */}
+                            <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg z-20 border border-blue-400">
+                                +{item.count}
+                            </div>
+                            <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none">
+                                Stack
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const image = item;
+            const isFocused = focusedImageIndex === index;
+            const isSensitive = enableSafeMode &&
+              sensitiveTagSet.size > 0 &&
+              !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+            return (
+              <ImageCard
+                key={image.id}
+                image={image}
+                onImageClick={onImageClick}
+                isSelected={selectedImages.has(image.id)}
+                isFocused={isFocused}
+                onImageLoad={handleImageLoad}
+                onContextMenu={handleContextMenu}
+                baseWidth={imageSize}
+                isComparisonFirst={comparisonFirstImage?.id === image.id}
+                cardRef={createCardRef(image.id)}
+                isMarkedBest={markedBestIds?.has(image.id)}
+                isMarkedArchived={markedArchivedIds?.has(image.id)}
+                isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+              />
+            );
+          })}
+        </div>
+
+        {/* Selection box visual */}
+        {isSelecting && selectionStart && selectionEnd && (
+          <div
+            className="absolute pointer-events-none z-30"
+            style={{
+              left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+              top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+              width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+              height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+              border: '2px solid rgba(59, 130, 246, 0.8)',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            }}
+          />
+        )}
+
+        {contextMenuContent}
+        {modalsContent}
+      </div>
     </div>
   );
 };
