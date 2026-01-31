@@ -9,7 +9,10 @@ import {
   Trash2,
   ChevronDown,
   Eye,
-  EyeOff
+  EyeOff,
+  Layers,
+  Layers2,
+  ArrowLeft
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -62,6 +65,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal } = useFeatureAccess();
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
+  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
+  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
+  const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
+  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+
+  // ... (rest of the file)
 
   const selectedCount = selectedImages.size;
   const selectedImagesList = images.filter(img => selectedImages.has(img.id));
@@ -206,7 +216,40 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               </span>
             )}
           </button>
+          
+          <div className="w-px h-3 bg-gray-700 mx-0.5" />
+
+          {/* Stacking Toggle */}
+          <button
+             type="button"
+             onClick={() => setStackingEnabled(!isStackingEnabled)}
+             className={`px-3 py-1 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
+                 isStackingEnabled 
+                 ? 'bg-blue-600/30 text-blue-200 border border-blue-500/30' 
+                 : 'text-gray-400 hover:text-gray-200'
+             }`}
+             title={isStackingEnabled ? "Disable stacking" : "Stack items by identical prompt"}
+          >
+             {isStackingEnabled ? <Layers2 size={12} /> : <Layers size={12} />}
+             <span>Stack Similar</span>
+          </button>
+
         </div>
+
+        {/* Back to Stacks Button */}
+        {viewingStackPrompt && (
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setStackingEnabled(true);
+              setViewingStackPrompt(null);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 text-blue-200 border border-blue-500/30 rounded-full hover:bg-blue-600/30 transition-colors text-xs font-medium"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to Stacks
+          </button>
+        )}
         <button
           onClick={() => setEnableSafeMode(!enableSafeMode)}
           className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"

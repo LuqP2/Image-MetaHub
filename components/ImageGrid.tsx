@@ -2,11 +2,18 @@ import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { type IndexedImage, type BaseMetadata } from '../types';
+import { type IndexedImage, type BaseMetadata, ImageStack } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square, CheckSquare, Crown, Archive, Package, EyeOff } from 'lucide-react';
+import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,  AlertCircle,
+  Archive,
+  Check,
+  CheckSquare,
+  Crown,
+  EyeOff,
+  Package
+} from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
@@ -16,6 +23,8 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import Toast from './Toast';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
+import { useImageStacking } from '../hooks/useImageStacking';
+import { Layers, Layers2 } from 'lucide-react';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -351,37 +360,26 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   );
 });
 
-import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
-import { useSettingsStore } from '../store/useSettingsStore';
-import { useImageStore } from '../store/useImageStore';
-import { IndexedImage, ImageStack } from '../types';
-import { ContextMenu } from './ContextMenu';
-import { ImageModal } from './ImageModal';
-import { A1111GenerateModal } from './A1111GenerateModal'; // Ensure this matches actual filename
-import { ComfyUIGenerateModal } from './ComfyUIGenerateModal'; // Ensure this matches actual filename
-import { useImageStacking } from '../hooks/useImageStacking';
-import { Layers, Layers2 } from 'lucide-react'; // Icons for stacking toggle
 
 // Type guard for ImageStack
 function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
   return (item as ImageStack).coverImage !== undefined;
 }
 
-const GAP_SIZE = 8;
+const GAP_SIZE = 16;
 const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
 
 // --- Virtualized Cell Component ---
 interface CellData {
   items: (IndexedImage | ImageStack)[];
   columnCount: number;
-  onImageClick: (imageId: string, multiSelect: boolean) => void;
+  onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   onStackClick: (stack: ImageStack) => void;
   selectedImages: Set<string>;
   focusedImageIndex: number | null;
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
-  handleContextMenu: (event: React.MouseEvent, image: IndexedImage) => void;
+  handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
   comparisonFirstImage: IndexedImage | null;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
   markedBestIds?: Set<string>;
@@ -422,11 +420,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
 
   const item = items[index];
 
-  // Adapter for ImageCard click
-  const handleCardClick = (img: IndexedImage, e: React.MouseEvent) => {
-      onImageClick(img.id, e.metaKey || e.ctrlKey || e.shiftKey);
-  };
-  
   // Render Stack
   if (isImageStack(item)) {
     const isSensitive = enableSafeMode &&
@@ -460,7 +453,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isSelected={selectedImages.has(item.coverImage.id)}
               isFocused={false}
               onImageLoad={handleImageLoad}
-              onContextMenu={(img, e) => handleContextMenu(e, img)}
+              onContextMenu={(img, e) => handleContextMenu(img, e)}
               baseWidth={imageSize}
               isComparisonFirst={false}
               cardRef={createCardRef(item.id)}
@@ -499,11 +492,11 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     }}>
       <ImageCard
         image={image}
-        onImageClick={handleCardClick}
+        onImageClick={onImageClick}
         isSelected={selectedImages.has(image.id)}
         isFocused={isFocused}
         onImageLoad={handleImageLoad}
-        onContextMenu={(img, e) => handleContextMenu(e, img)} // Adapter for context menu signature
+        onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImage?.id === image.id}
         cardRef={createCardRef(image.id)}
@@ -541,6 +534,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
+
+  // --- Stacking Logic (Must be top-level) ---
+  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
+  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
+  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
+  const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -567,9 +566,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     );
   }, [sensitiveTags]);
 
-  const handleImageLoad = () => {
-    // imageAspectRatios removed as unused
-  };
+
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
@@ -886,8 +883,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
   }
 
-  const isInfinite = itemsPerPage === -1;
-  const GAP_SIZE = 16; 
+ 
 
   const contextMenuContent = contextMenu.visible && (
         <div
@@ -1088,48 +1084,24 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   );
 
   // --- Stacking Logic ---
-  const [isStackingEnabled, setIsStackingEnabled] = React.useState(false);
-  const { stackedItems } = useImageStacking(images, isStackingEnabled);
-  
   // Decide what to render based on stacking
   const itemsToRender = isStackingEnabled ? stackedItems : images;
 
+  // Handle drill-down
   // Handle drill-down
   const handleStackClick = React.useCallback((stack: ImageStack) => {
     // Set search query to the prompt of the stack
     const prompt = stack.coverImage.metadata?.normalizedMetadata?.prompt || stack.coverImage.metadata?.positive_prompt;
     if (prompt) {
         useImageStore.setState({ searchQuery: prompt });
-        setIsStackingEnabled(false); // Disable stacking when drilling down to see individual items
+        setStackingEnabled(false); // Disable stacking when drilling down to see individual items
+        setViewingStackPrompt(prompt); // Enable "Back to Stacks" mode
     }
-  }, []);
+  }, [setStackingEnabled, setViewingStackPrompt]);
 
   // Use itemsToRender for calculations
   const isInfinite = itemsPerPage === -1;
   const isEmpty = itemsToRender.length === 0;
-
-  // Render Header with Toggle
-  const renderHeader = () => (
-    <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-800/50">
-       <div className="flex items-center gap-2">
-         {/* Left side content if any */}
-       </div>
-       <div className="flex items-center gap-2">
-         <button
-            onClick={() => setIsStackingEnabled(!isStackingEnabled)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all ${
-                isStackingEnabled 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-             title={isStackingEnabled ? "Disable stacking" : "Stack items by identical prompt"}
-         >
-            {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
-            <span>{isStackingEnabled ? 'Stacked' : 'Stack Similar'}</span>
-         </button>
-       </div>
-    </div>
-  );
 
   // Dummy handler for image loading since aspect ratio tracking was removed but prop is required
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
@@ -1139,7 +1111,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   if (isEmpty) {
      return (
         <div className="flex flex-col h-full w-full">
-            {renderHeader()}
             <div className="flex-1 flex items-center justify-center h-64 text-gray-500">
                 No images found
             </div>
@@ -1151,7 +1122,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   if (isInfinite) {
     return (
       <div className="flex flex-col h-full w-full">
-         {renderHeader()}
          <div
             className="flex-1 outline-none"
             style={{ position: 'relative' }}
@@ -1230,7 +1200,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   return (
     <div className="flex flex-col h-full w-full">
-      {renderHeader()}
       <div
         ref={gridRef}
         className="flex-1 p-4 outline-none overflow-auto"
@@ -1272,7 +1241,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                                 onImageClick={() => handleStackClick(item)}
                                 isSelected={selectedImages.has(item.coverImage.id)}
                                 isFocused={false}
-                                onContextMenu={(e) => handleContextMenu(e, item.coverImage)}
+                                onImageLoad={handleImageLoad}
+                                onContextMenu={(img, e) => handleContextMenu(img, e)}
                                 baseWidth={imageSize}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.id)}
@@ -1305,6 +1275,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 onImageClick={onImageClick}
                 isSelected={selectedImages.has(image.id)}
                 isFocused={isFocused}
+                onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
                 baseWidth={imageSize}
                 isComparisonFirst={comparisonFirstImage?.id === image.id}

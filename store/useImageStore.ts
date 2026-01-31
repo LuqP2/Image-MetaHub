@@ -178,7 +178,9 @@ interface ImageState {
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
+  isStackingEnabled: boolean;
   scanSubfolders: boolean;
+  viewingStackPrompt: string | null;  // For Back to Stacks navigation
   isFullscreenMode: boolean;
 
   // Comparison State
@@ -279,6 +281,7 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
+  setViewingStackPrompt: (prompt: string | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
 
   // Clustering Actions (Phase 2)
@@ -332,6 +335,7 @@ interface ImageState {
 
   // Cleanup invalid images
   cleanupInvalidImages: () => void;
+  setStackingEnabled: (enabled: boolean) => void;
 
   // Reset Actions
   resetState: () => void;
@@ -918,6 +922,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         previewImage: null,
         selectedImages: new Set(),
         focusedImageIndex: null,
+        isStackingEnabled: false,
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -2198,6 +2203,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             previewImage: null,
             focusedImageIndex: null,
             scanSubfolders: true,
+            viewingStackPrompt: null,
             sortOrder: 'desc',
             isFullscreenMode: false,
             comparisonImages: [null, null],
@@ -2238,7 +2244,16 @@ export const useImageStore = create<ImageState>((set, get) => {
                     images: validImages,
                     ...filterAndSort({ ...state, images: validImages })
                 }));
+
             }
+        },
+
+        setStackingEnabled: (enabled: boolean) => {
+            set({ isStackingEnabled: enabled });
+        },
+
+        setViewingStackPrompt: (prompt: string | null) => {
+            set({ viewingStackPrompt: prompt });
         }
     }
 });
