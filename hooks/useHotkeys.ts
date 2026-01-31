@@ -108,8 +108,8 @@ export const useHotkeys = ({
       if (isCommandPaletteOpen) setIsCommandPaletteOpen(false);
       else if (isHotkeyHelpOpen) setIsHotkeyHelpOpen(false);
       else if (isSettingsModalOpen) setIsSettingsModalOpen(false);
-      else if (previewImage) setPreviewImage(null);
       else if (selectedImage) setSelectedImage(null);
+      else if (previewImage) setPreviewImage(null);
       else if (selectedImages.size > 0) clearImageSelection();
     });
 
