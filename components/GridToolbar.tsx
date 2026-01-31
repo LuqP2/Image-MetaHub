@@ -247,7 +247,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 text-blue-200 border border-blue-500/30 rounded-full hover:bg-blue-600/30 transition-colors text-xs font-medium"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Stacks
+            Back
           </button>
         )}
         <button

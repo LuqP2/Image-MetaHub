@@ -539,6 +539,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -878,10 +879,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     };
   }, []);
 
-  // Early return AFTER all hooks
-  if (images.length === 0) {
-    return <div className="text-center py-16 text-gray-500">No images found. Try a different search term.</div>;
-  }
+
 
  
 
@@ -1088,12 +1086,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const itemsToRender = isStackingEnabled ? stackedItems : images;
 
   // Handle drill-down
-  // Handle drill-down
+
   const handleStackClick = React.useCallback((stack: ImageStack) => {
     // Set search query to the prompt of the stack
     const prompt = stack.coverImage.metadata?.normalizedMetadata?.prompt || stack.coverImage.metadata?.positive_prompt;
     if (prompt) {
-        useImageStore.setState({ searchQuery: prompt });
+        setSearchQuery(prompt);
         setStackingEnabled(false); // Disable stacking when drilling down to see individual items
         setViewingStackPrompt(prompt); // Enable "Back to Stacks" mode
     }
