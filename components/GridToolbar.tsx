@@ -7,8 +7,6 @@ import {
   GitCompare,
   Sparkles,
   Trash2,
-  ChevronDown,
-  Trash2,
   ChevronDown
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';

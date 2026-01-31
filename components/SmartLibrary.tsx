@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useImageSelection } from '../hooks/useImageSelection';
+
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ImageCluster, IndexedImage } from '../types';
@@ -37,20 +37,19 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
-  const selectedImages = useImageStore((state) => state.selectedImages);
+  // const selectedImages = useImageStore((state) => state.selectedImages); // Unused in this file directly
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
 
   const { itemsPerPage, setItemsPerPage, viewMode, toggleViewMode } = useSettingsStore();
-  const { handleDeleteSelectedImages, clearSelection } = useImageSelection();
+  // const { handleDeleteSelectedImages, clearSelection } = useImageSelection(); // Unused
   const { progressState: a1111Progress } = useA1111ProgressContext();
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
-  const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
 
   const [expandedClusterId, setExpandedClusterId] = useState<string | null>(null);
   const [stackPage, setStackPage] = useState(1);
