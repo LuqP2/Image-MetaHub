@@ -6,7 +6,7 @@ const DB_NAME = 'image-metahub-preferences';
 const DB_VERSION = 3; // Increment from 2 to 3 (Smart Clustering & Auto-Tagging)
 const STORE_NAME = 'imageAnnotations';
 
-let inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
+const inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
 let isPersistenceDisabled = false;
 let hasResetAttempted = false;
 

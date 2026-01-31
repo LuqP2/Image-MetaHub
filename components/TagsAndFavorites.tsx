@@ -217,10 +217,10 @@ const TagsAndFavorites: React.FC = () => {
                 <div className="space-y-2 pt-4 border-t border-gray-700/50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <Tag className="w-4 h-4 text-purple-400" />
-                      <span className="text-sm text-purple-400 font-medium">Auto Tags</span>
+                      <Tag className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-400 font-medium">Auto Tags</span>
                       {selectedAutoTags.length > 0 && (
-                        <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded border border-purple-700/50">
+                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                           {selectedAutoTags.length} selected
                         </span>
                       )}
@@ -263,7 +263,7 @@ const TagsAndFavorites: React.FC = () => {
                             type="checkbox"
                             checked={selectedAutoTags.includes(tag.name)}
                             onChange={(e) => handleAutoTagToggle(tag.name, e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0 cursor-pointer"
+                            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
                           />
                           <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
                             {tag.name}

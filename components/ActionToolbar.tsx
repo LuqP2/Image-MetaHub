@@ -1,6 +1,6 @@
 import React from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List } from 'lucide-react';
+import { Grid3X3, List, RefreshCw } from 'lucide-react';
 
 interface ActionToolbarProps {
   sortOrder: string;
@@ -15,6 +15,7 @@ interface ActionToolbarProps {
   totalCount?: number;
   directoryCount?: number;
   enrichmentProgress?: { processed: number; total: number } | null;
+  onReshuffle?: () => void;
 }
 
 const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -29,7 +30,8 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
   filteredCount,
   totalCount,
   directoryCount,
-  enrichmentProgress
+  enrichmentProgress,
+  onReshuffle
 }) => {
   const folderText = directoryCount === 1 ? 'folder' : 'folders';
   
@@ -48,7 +50,18 @@ const ActionToolbar: React.FC<ActionToolbarProps> = ({
             <option value="date-asc">Oldest First</option>
             <option value="asc">A-Z</option>
             <option value="desc">Z-A</option>
+            <option value="random">Random</option>
           </select>
+          
+          {sortOrder === 'random' && onReshuffle && (
+            <button
+              onClick={onReshuffle}
+              className="p-1.5 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+              title="Reshuffle Random Order"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          )}
           
           {filteredCount !== undefined && totalCount !== undefined && directoryCount !== undefined && (
             <>
