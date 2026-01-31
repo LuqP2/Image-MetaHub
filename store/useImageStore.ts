@@ -196,7 +196,8 @@ interface ImageState {
   selectedModels: string[];
   selectedLoras: string[];
   selectedSchedulers: string[];
-  sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc';
+  sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
+  randomSeed: number;
   advancedFilters: any;
 
   // Annotations State
@@ -268,7 +269,8 @@ interface ImageState {
   setSearchQuery: (query: string) => void;
   setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[]; dimensions: string[] }) => void;
   setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
-  setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc') => void;
+  setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
+  reshuffle: () => void;
   setAdvancedFilters: (filters: any) => void;
   filterAndSortImages: () => void;
 
@@ -886,11 +888,42 @@ export const useImageStore = create<ImageState>((set, get) => {
             return compareByNameAsc(a, b);
         };
 
+        // Seeded random number generator helper
+        const seededRandom = (seed: number) => {
+            const x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        };
+
+        // Simple string hash function
+        const stringHash = (str: string) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return hash;
+        };
+
+        const compareRandom = (a: IndexedImage, b: IndexedImage) => {
+            // Combine image ID with state.randomSeed to create a stable sort key for this seed
+            // We use the stringHash of the ID + seed to get a pseudo-random value fixed for this session/seed
+            const seed = state.randomSeed || 0;
+            const hashA = stringHash(a.id + seed.toString());
+            const hashB = stringHash(b.id + seed.toString());
+            
+            if (hashA !== hashB) {
+                return hashA - hashB;
+            }
+            return a.id.localeCompare(b.id);
+        };
+
         const sorted = [...results].sort((a, b) => {
             if (sortOrder === 'asc') return compareByNameAsc(a, b);
             if (sortOrder === 'desc') return compareByNameDesc(a, b);
             if (sortOrder === 'date-asc') return compareByDateAsc(a, b);
             if (sortOrder === 'date-desc') return compareByDateDesc(a, b);
+            if (sortOrder === 'random') return compareRandom(a, b);
             return compareById(a, b);
         });
 
@@ -932,6 +965,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedLoras: [],
         selectedSchedulers: [],
         sortOrder: 'date-desc',
+        randomSeed: Date.now(),
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
         viewingStackPrompt: null,
@@ -1387,6 +1421,14 @@ export const useImageStore = create<ImageState>((set, get) => {
         })),
 
         setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
+        
+        reshuffle: () => set(state => {
+            const newSeed = Date.now();
+            return {
+                ...filterAndSort({ ...state, randomSeed: newSeed }),
+                randomSeed: newSeed
+            };
+        }),
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),

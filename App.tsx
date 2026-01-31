@@ -121,6 +121,7 @@ export default function App() {
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const reshuffle = useImageStore((state) => state.reshuffle);
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
@@ -717,6 +718,7 @@ export default function App() {
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
+          onReshuffle={reshuffle}
         >
           <DirectoryList
             directories={safeDirectories}

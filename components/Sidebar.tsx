@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import { ChevronLeft, X, ChevronDown, Plus } from 'lucide-react';
+import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SidebarProps {
@@ -29,6 +29,7 @@ interface SidebarProps {
   isIndexing?: boolean;
   sortOrder: string;
   onSortOrderChange: (value: string) => void;
+  onReshuffle?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -54,7 +55,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onAddFolder,
   isIndexing = false,
   sortOrder,
-  onSortOrderChange
+  onSortOrderChange,
+  onReshuffle
 }) => {
 
   const [expandedSections, setExpandedSections] = useState({
@@ -174,6 +176,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Sort Order - Moved from footer for semantic consistency with filters */}
         <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
+          <div className="flex items-center">
           <select
             id="sidebar-sort"
             value={sortOrder}
@@ -184,7 +187,18 @@ const Sidebar: React.FC<SidebarProps> = ({
             <option value="date-asc">Oldest First</option>
             <option value="asc">A-Z</option>
             <option value="desc">Z-A</option>
+            <option value="random">Random</option>
           </select>
+          {sortOrder === 'random' && onReshuffle && (
+            <button
+                onClick={onReshuffle}
+                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
+                title="Reshuffle Random Order"
+            >
+                <RefreshCw className="h-5 w-5" />
+            </button>
+          )}
+          </div>
         </div>
 
         {/* Add Folder Button - Subtle and discrete */}
