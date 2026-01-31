@@ -871,7 +871,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 />
               )}
             </div>
-            )}
+
           </>
         ) : (
           <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 px-4 py-3 rounded-lg text-sm">

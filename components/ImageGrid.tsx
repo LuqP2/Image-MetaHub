@@ -12,7 +12,8 @@ import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Sq
   CheckSquare,
   Crown,
   EyeOff,
-  Package
+  Package,
+  Play
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
