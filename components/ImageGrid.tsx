@@ -957,7 +957,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <span className="flex-1">
               {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
             </span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>
