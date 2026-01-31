@@ -571,7 +571,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -597,7 +597,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyModel,
     showInFolder,
     exportImage,
-    copyMetadataToA1111
+    copyMetadataToA1111,
+    copyRawMetadata
   } = useContextMenu();
 
   const openGenerateModal = useCallback(() => {
@@ -962,6 +963,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <div className="border-t border-gray-600 my-1"></div>
 
           <button
+              onClick={copyRawMetadata}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              disabled={!contextMenu.image?.metadata}
+            >
+              <Copy className="w-4 h-4" />
+              Copy Raw Metadata
+            </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
             onClick={showInFolder}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
           >
@@ -985,7 +997,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               >
                 <Package className="w-4 h-4" />
                 <span className="flex-1">Batch Export Selected ({selectedCount})</span>
-                <ProBadge size="sm" />
+                {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
               </button>
             )}
 
@@ -999,7 +1011,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Clipboard className="w-4 h-4" />
             <span className="flex-1">Copy to A1111</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <button
@@ -1010,7 +1022,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate with A1111</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <button
@@ -1021,7 +1033,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate with ComfyUI</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
         </div>
   );

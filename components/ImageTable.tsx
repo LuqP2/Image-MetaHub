@@ -44,7 +44,8 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     copyImage,
     copyModel,
     showInFolder,
-    exportImage
+    exportImage,
+    copyRawMetadata
   } = useContextMenu();
 
   const selectedCount = selectedImages.size;
@@ -304,6 +305,17 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             <Copy className="w-4 h-4" />
             Copy Model
           </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+              onClick={copyRawMetadata}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              disabled={!contextMenu.image?.metadata}
+            >
+              <Copy className="w-4 h-4" />
+              Copy Raw Metadata
+            </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
