@@ -342,6 +342,7 @@ export interface BaseMetadata {
   cfg_scale?: number;
   scheduler: string;
   sampler?: string;
+  clip_skip?: number;
   loras?: (string | LoRAInfo)[]; // Support both string and detailed LoRA info
   generator?: string; // Name of the AI generator/parser used
   version?: string;
@@ -781,4 +782,14 @@ export interface TFIDFModel {
   vocabulary: string[];                // All unique terms
   idfScores: Map<string, number>;      // Term → IDF score
   documentCount: number;               // Total documents processed
+}
+
+/**
+ * Stack of images grouped by similar prompt
+ */
+export interface ImageStack {
+  id: string;                      // Unique stack ID (e.g. "stack-" + coverImage.id)
+  coverImage: IndexedImage;        // The representative image (first in group)
+  images: IndexedImage[];          // All images in this stack
+  count: number;                   // Total number of images in stack
 }

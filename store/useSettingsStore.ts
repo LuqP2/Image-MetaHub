@@ -148,8 +148,8 @@ export const useSettingsStore = create<SettingsState>()(
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
       setItemsPerPage: (count) => {
-        // Ensure valid number, default to 100 for invalid values
-        const validCount = Number.isFinite(count) && count > 0 ? count : 100;
+        // Ensure valid number, allow -1 for infinite, default to 100 for invalid values
+        const validCount = Number.isFinite(count) && (count > 0 || count === -1) ? count : 100;
         set({ itemsPerPage: validCount });
       },
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
@@ -231,7 +231,7 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
       onRehydrateStorage: () => (state) => {
         // Migration: Fix invalid itemsPerPage values from older versions
-        if (state && (typeof state.itemsPerPage !== 'number' || state.itemsPerPage <= 0 || state.itemsPerPage > 100)) {
+        if (state && (typeof state.itemsPerPage !== 'number' || (state.itemsPerPage <= 0 && state.itemsPerPage !== -1) || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
         }
 

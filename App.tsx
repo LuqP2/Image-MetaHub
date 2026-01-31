@@ -121,6 +121,7 @@ export default function App() {
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const reshuffle = useImageStore((state) => state.reshuffle);
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
@@ -598,7 +599,11 @@ export default function App() {
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
     removeImage(imageId);
-    setSelectedImage(null);
+    // Only close modal if the deleted image is still the one currently selected
+    // (This allows ImageModal to navigate to next image BEFORE deletion without App closing it)
+    if (useImageStore.getState().selectedImage?.id === imageId) {
+      setSelectedImage(null);
+    }
   }, [removeImage, setSelectedImage]);
 
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
@@ -635,7 +640,12 @@ export default function App() {
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
-    () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    () => {
+      if (itemsPerPage === -1) {
+        return safeFilteredImages;
+      }
+      return safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    },
     [safeFilteredImages, currentPage, itemsPerPage]
   );
   const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
@@ -708,6 +718,7 @@ export default function App() {
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
+          onReshuffle={reshuffle}
         >
           <DirectoryList
             directories={safeDirectories}
@@ -739,6 +750,8 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onOpenA1111Generate={() => setIsA1111GenerateModalOpen(true)}
           onOpenComfyUIGenerate={() => setIsComfyUIGenerateModalOpen(true)}
+          libraryView={libraryView}
+          onLibraryViewChange={setLibraryView}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -790,9 +803,6 @@ export default function App() {
           {hasDirectories && (
             <>
                 <GridToolbar
-                  libraryView={libraryView}
-                  onLibraryViewChange={setLibraryView}
-                  clustersCount={clustersCount}
                   selectedImages={safeSelectedImages}
                   images={paginatedImages}
                   directories={safeDirectories}

@@ -667,6 +667,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       // Escape = Exit fullscreen first, then close modal
       if (event.key === 'Escape') {
+        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
         if (isFullscreen) {
           // Call toggleFullscreen to actually exit Electron fullscreen
           toggleFullscreen();
@@ -678,6 +679,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
       if (event.key === 'ArrowRight') onNavigateNext?.();
+      if (event.key === 'Delete') handleDelete();
     };
 
     const handleClickOutside = () => {
@@ -709,10 +711,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
-      const result = await FileOperations.deleteFile(image);
+      const idToDelete = image.id;
+      const imageToDelete = image; // Capture reference
+
+      // Navigate to next/previous image BEFORE deletion to keep modal open
+      // Check if we have other images to navigate to
+      const hasMoreImages = totalImages > 1;
+      
+      if (hasMoreImages) {
+        // Prefer next image, fallback to previous if at the end
+        if (currentIndex < totalImages - 1) {
+          onNavigateNext?.();
+        } else {
+          onNavigatePrevious?.();
+        }
+      }
+
+      const result = await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        onImageDeleted?.(image.id);
-        onClose();
+        onImageDeleted?.(idToDelete);
+        
+        // Only close if we didn't have anywhere to navigate (last image deleted)
+        if (!hasMoreImages) {
+          onClose();
+        }
       } else {
         alert(`Failed to delete file: ${result.error}`);
       }
@@ -771,11 +793,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 ${isFullscreen ? 'bg-black' : 'bg-black/80'} flex items-center justify-center z-50 ${isFullscreen ? '' : 'backdrop-blur-sm'} ${isFullscreen ? 'p-0' : ''}`}
+      className={`fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ${
+        isFullscreen ? 'bg-black p-0' : 'bg-black/90 backdrop-blur-md p-4 md:p-8'
+      }`}
       onClick={onClose}
     >
       <div
-        className={`${isFullscreen ? 'w-full h-full' : 'bg-gray-800 rounded-lg shadow-2xl w-full max-w-7xl h-full max-h-[95vh]'} flex flex-col md:flex-row overflow-hidden`}
+        className={`${
+          isFullscreen 
+            ? 'w-full h-full rounded-none' 
+            : 'w-full h-full max-w-[1600px] max-h-[90vh] bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
+        } flex flex-col md:flex-row transition-all duration-300 animate-in fade-in zoom-in-95`}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
@@ -1046,11 +1074,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
-            <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+            <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
+                <span className="text-xs font-semibold text-purple-600 dark:text-purple-300 uppercase tracking-wider">Notes (MetaHub Save Node)</span>
               </div>
-              <pre className="text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-gray-800/50 p-2 rounded">{nMeta.notes}</pre>
+              <pre className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words font-mono text-sm bg-white dark:bg-gray-800/50 p-2 rounded border border-gray-200 dark:border-gray-700/50">{nMeta.notes}</pre>
             </div>
           )}
 
@@ -1066,7 +1094,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div>
                 <button 
                   onClick={() => setShowDetails(!showDetails)} 
-                  className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                  className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   <span className="font-semibold">Generation Details</span>
                   {showDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1085,7 +1113,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={nMeta.steps} />
-                      <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                      <MetadataItem label="CFG Scale" value={nMeta.cfg_scale} />
+                      {nMeta.clip_skip && nMeta.clip_skip > 1 && (
+                        <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
+                      )}
                       <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
                       <MetadataItem label="Scheduler" value={nMeta.scheduler} />
@@ -1123,10 +1154,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <div>
                   <button
                     onClick={() => setShowPerformance(!showPerformance)}
-                    className="text-gray-300 text-sm w-full text-left py-2 border-t border-gray-700 flex items-center justify-between hover:text-white transition-colors"
+                    className="text-gray-600 dark:text-gray-300 text-sm w-full text-left py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
                     <span className="font-semibold flex items-center gap-2">
-                      <Zap size={16} className="text-yellow-400" />
+                      <Zap size={16} className="text-yellow-600 dark:text-yellow-400" />
                       Performance
                     </span>
                     {showPerformance ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -1169,7 +1200,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
                       {/* Tier 3: NICE-TO-HAVE (small text) */}
                       {(nMeta._analytics.torch_version || nMeta._analytics.python_version) && (
-                        <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-2 space-y-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700/50 pt-2 space-y-1">
                           {nMeta._analytics.torch_version && <div>PyTorch: {nMeta._analytics.torch_version}</div>}
                           {nMeta._analytics.python_version && <div>Python: {nMeta._analytics.python_version}</div>}
                         </div>
@@ -1185,16 +1216,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 pt-2">
-            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Prompt</button>
-            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="bg-accent hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-lg hover:shadow-accent/30">Copy Raw Metadata</button>
+          <div className="grid grid-cols-2 gap-2 pt-2">
+            <button onClick={() => copyToClipboard(nMeta?.prompt || '', 'Prompt')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Prompt</button>
+            <button onClick={() => copyToClipboard(JSON.stringify(image.metadata, null, 2), 'Raw Metadata')} className="w-full justify-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-2">Copy Raw Metadata</button>
             <button onClick={async () => {
               if (!directoryPath) {
                 alert('Cannot determine file location: directory path is missing.');
                 return;
               }
               await showInExplorer(`${directoryPath}/${image.name}`);
-            }} className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors">Show in Folder</button>
+            }} className="w-full justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2">Show in Folder</button>
             <button
               onClick={() => {
                 if (!canUseComparison) {
@@ -1207,7 +1238,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 }
               }}
               disabled={canUseComparison && comparisonCount >= 2}
-              className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="w-full justify-center bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
               title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
             >
               <GitCompare className="w-3 h-3" />
@@ -1229,7 +1260,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setIsGenerateModalOpen(true);
                 }}
                 disabled={canUseA1111 && !nMeta.prompt}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
+                className="w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-200 dark:border-blue-500/50 hover:border-blue-300 dark:hover:border-blue-400 text-blue-700 dark:text-blue-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isGenerating && canUseA1111 ? (
                   <>
@@ -1258,7 +1289,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   copyToA1111(image);
                 }}
                 disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
-                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+                className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopying && canUseA1111 ? (
                   <>
@@ -1330,7 +1361,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   setIsComfyUIGenerateModalOpen(true);
                 }}
                 disabled={canUseComfyUI && !nMeta.prompt}
-                className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl mb-2"
+                className="w-full bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-200 dark:border-purple-500/50 hover:border-purple-300 dark:hover:border-purple-400 text-purple-700 dark:text-purple-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 mb-2"
               >
                 {isGeneratingComfyUI && canUseComfyUI ? (
                   <>
@@ -1359,7 +1390,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   copyToComfyUI(image);
                 }}
                 disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
-                className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 border border-gray-600"
+                className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopyingComfyUI && canUseComfyUI ? (
                   <>
