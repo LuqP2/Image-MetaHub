@@ -126,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         </button>
         <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
-            <div className="w-2 h-2 bg-purple-500 rounded-full shadow-[0_0_8px_rgba(168,85,247,0.5)] animate-pulse" title="Active filters"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
       </div>
@@ -313,7 +313,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {availableLoras.length}
                 </span>
                 {selectedLoras.length > 0 && (
-                  <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded border border-purple-700/50">
+                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                     {selectedLoras.length} selected
                   </span>
                 )}
@@ -362,7 +362,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           type="checkbox"
                           checked={selectedLoras.includes(lora)}
                           onChange={(e) => handleLoraToggle(lora, e.target.checked)}
-                          className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded-md focus:ring-purple-500 focus:ring-2"
+                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={lora}>{lora}</span>
                       </label>
@@ -387,7 +387,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {availableSchedulers.length}
                 </span>
                 {selectedSchedulers.length > 0 && (
-                  <span className="text-xs bg-green-900/40 text-green-300 px-2 py-0.5 rounded border border-green-700/50">
+                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                     {selectedSchedulers.length} selected
                   </span>
                 )}
@@ -436,7 +436,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           type="checkbox"
                           checked={selectedSchedulers.includes(scheduler)}
                           onChange={(e) => handleSchedulerToggle(scheduler, e.target.checked)}
-                          className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded-md focus:ring-green-500 focus:ring-2"
+                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={scheduler}>{scheduler}</span>
                       </label>

@@ -80,7 +80,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             <Settings className="w-4 h-4 text-gray-400" />
             <span className="text-gray-300 font-medium">Advanced Filters</span>
             {hasActiveFilters && (
-              <span className="text-xs bg-purple-600 text-purple-100 px-2 py-1 rounded-lg">
+              <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
                 {Object.keys(advancedFilters).length} active
               </span>
             )}
