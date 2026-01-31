@@ -649,6 +649,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       if (event.key === 'ArrowLeft') onNavigatePrevious?.();
       if (event.key === 'ArrowRight') onNavigateNext?.();
+      if (event.key === 'Delete') handleDelete();
     };
 
     const handleClickOutside = () => {
@@ -680,10 +681,30 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
-      const result = await FileOperations.deleteFile(image);
+      const idToDelete = image.id;
+      const imageToDelete = image; // Capture reference
+
+      // Navigate to next/previous image BEFORE deletion to keep modal open
+      // Check if we have other images to navigate to
+      const hasMoreImages = totalImages > 1;
+      
+      if (hasMoreImages) {
+        // Prefer next image, fallback to previous if at the end
+        if (currentIndex < totalImages - 1) {
+          onNavigateNext?.();
+        } else {
+          onNavigatePrevious?.();
+        }
+      }
+
+      const result = await FileOperations.deleteFile(imageToDelete);
       if (result.success) {
-        onImageDeleted?.(image.id);
-        onClose();
+        onImageDeleted?.(idToDelete);
+        
+        // Only close if we didn't have anywhere to navigate (last image deleted)
+        if (!hasMoreImages) {
+          onClose();
+        }
       } else {
         alert(`Failed to delete file: ${result.error}`);
       }

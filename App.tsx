@@ -598,7 +598,11 @@ export default function App() {
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
     removeImage(imageId);
-    setSelectedImage(null);
+    // Only close modal if the deleted image is still the one currently selected
+    // (This allows ImageModal to navigate to next image BEFORE deletion without App closing it)
+    if (useImageStore.getState().selectedImage?.id === imageId) {
+      setSelectedImage(null);
+    }
   }, [removeImage, setSelectedImage]);
 
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {

@@ -84,6 +84,9 @@ export const useHotkeys = ({
     });
     hotkeyManager.registerAction('selectAll', selectAllImages);
     hotkeyManager.registerAction('deleteSelected', () => {
+      // If an image is open in the modal, do not trigger global delete
+      if (useImageStore.getState().selectedImage) return;
+
       handleDeleteSelectedImages().catch((error) => {
         console.error('Error deleting selected images:', error);
       });
