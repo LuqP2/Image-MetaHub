@@ -934,6 +934,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         sortOrder: 'date-desc',
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
+        viewingStackPrompt: null,
         isFullscreenMode: false,
         comparisonImages: [null, null],
         isComparisonModalOpen: false,
