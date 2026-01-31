@@ -677,7 +677,7 @@ export function useImageLoader() {
                         directoryName: directory.name,
                         thumbnailStatus: 'pending',
                         thumbnailError: null,
-                        enrichmentState: 'enriched',
+                        enrichmentState: img.enrichmentState ?? 'enriched',
                         fileSize: stats?.size,
                         fileType: stats?.type,
                     } as IndexedImage;

@@ -552,6 +552,15 @@ class CacheManager {
           type: file.type,
           birthtimeMs: file.birthtimeMs,
         });
+      // CRITICAL FIX: If file is in 'catalog' state (incomplete), force re-indexing
+      } else if (cachedFile.enrichmentState === 'catalog') {
+        newAndModifiedFiles.push({
+          name: file.name,
+          lastModified: file.lastModified, // Use current file time to be safe
+          size: file.size,
+          type: file.type,
+          birthtimeMs: file.birthtimeMs,
+        });
       // File is unchanged, add it to the list of images to be loaded from cache
       } else {
         cachedImages.push({
