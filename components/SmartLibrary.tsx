@@ -188,56 +188,8 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
 
   return (
     <section className="flex flex-col h-full min-h-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-100">Smart Library</h2>
-          <p className="text-xs text-gray-400">
-            Visual stacks grouped by prompt similarity. Scrub to preview variations.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {clusters.length > 0 && !activeCluster && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-400 font-medium">Sort by:</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'count' | 'similarity')}
-                className="px-3 py-2 bg-gray-900/60 border border-gray-700 rounded-md text-xs text-gray-200 hover:bg-gray-800/80 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              >
-                <option value="count">Image Count</option>
-                <option value="similarity">Similarity</option>
-              </select>
-            </div>
-          )}
-          <button
-            onClick={handleGenerateClusters}
-            disabled={!hasDirectories || isClustering}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border transition-colors ${
-              isClustering
-                ? 'bg-blue-500/20 text-blue-200 border-blue-500/40'
-                : 'bg-gray-900/60 text-gray-200 border-gray-700 hover:bg-gray-800/80'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            {isClustering ? 'Clustering...' : 'Generate Clusters'}
-          </button>
-          <button
-            onClick={handleGenerateAutoTags}
-            disabled={!hasDirectories || isAutoTagging}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold border transition-colors ${
-              isAutoTagging
-                ? 'bg-purple-500/20 text-purple-200 border-purple-500/40'
-                : 'bg-gray-900/60 text-gray-200 border-gray-700 hover:bg-gray-800/80'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            {isAutoTagging ? 'Tagging...' : 'Generate Auto-Tags'}
-          </button>
-        </div>
-      </div>
-
       {(clusteringProgress || autoTaggingProgress) && (
-        <div className="grid gap-2 mb-3">
+        <div className="grid gap-2 mb-3 mt-2">
           {clusteringProgress && (
             <div className="px-3 py-2 rounded-md bg-blue-500/10 border border-blue-500/20 text-xs text-blue-200">
               <div className="flex items-center justify-between mb-1">

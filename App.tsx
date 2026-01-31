@@ -744,6 +744,8 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onOpenA1111Generate={() => setIsA1111GenerateModalOpen(true)}
           onOpenComfyUIGenerate={() => setIsComfyUIGenerateModalOpen(true)}
+          libraryView={libraryView}
+          onLibraryViewChange={setLibraryView}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -795,9 +797,6 @@ export default function App() {
           {hasDirectories && (
             <>
                 <GridToolbar
-                  libraryView={libraryView}
-                  onLibraryViewChange={setLibraryView}
-                  clustersCount={clustersCount}
                   selectedImages={safeSelectedImages}
                   images={paginatedImages}
                   directories={safeDirectories}

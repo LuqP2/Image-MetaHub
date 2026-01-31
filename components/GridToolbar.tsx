@@ -8,11 +8,8 @@ import {
   Sparkles,
   Trash2,
   ChevronDown,
-  Eye,
-  EyeOff,
-  Layers,
-  Layers2,
-  ArrowLeft
+  Trash2,
+  ChevronDown
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -21,9 +18,7 @@ import { type IndexedImage } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 interface GridToolbarProps {
-  libraryView: 'library' | 'smart';
-  onLibraryViewChange: (view: 'library' | 'smart') => void;
-  clustersCount: number;
+
   selectedImages: Set<string>;
   images: IndexedImage[];
   directories: { id: string; path: string }[];
@@ -47,9 +42,6 @@ const showNotification = (message: string, type: 'success' | 'error' = 'success'
 };
 
 const GridToolbar: React.FC<GridToolbarProps> = ({
-  libraryView,
-  onLibraryViewChange,
-  clustersCount,
   selectedImages,
   images,
   directories,
@@ -63,13 +55,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal } = useFeatureAccess();
-  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
-  const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
-  const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
-  const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
-  const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
-  const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
-  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+
 
   // ... (rest of the file)
 
@@ -184,93 +170,15 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setGenerateDropdownOpen(false);
   };
 
+  if (selectedCount === 0) {
+    return null;
+  }
+
   return (
     <div className="flex items-center justify-between gap-2 mb-1 px-5">
-      {/* Left side: Library toggle */}
-      <div className="flex items-center gap-2">
-        <div className="inline-flex rounded-full bg-gray-900/60 border border-gray-800 p-0.5">
-          <button
-            type="button"
-            onClick={() => onLibraryViewChange('library')}
-            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-              libraryView === 'library'
-                ? 'bg-blue-500/20 text-blue-200'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            Library
-          </button>
-          <button
-            type="button"
-            onClick={() => onLibraryViewChange('smart')}
-            className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-              libraryView === 'smart'
-                ? 'bg-purple-500/20 text-purple-200'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            Smart Library
-            {clustersCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-purple-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-purple-100">
-                {clustersCount}
-              </span>
-            )}
-          </button>
-          
-          <div className="w-px h-3 bg-gray-700 mx-0.5" />
-
-          {/* Stacking Toggle */}
-          <button
-             type="button"
-             onClick={() => setStackingEnabled(!isStackingEnabled)}
-             className={`px-3 py-1 text-xs font-medium rounded-full transition-colors flex items-center gap-1.5 ${
-                 isStackingEnabled 
-                 ? 'bg-blue-600/30 text-blue-200 border border-blue-500/30' 
-                 : 'text-gray-400 hover:text-gray-200'
-             }`}
-             title={isStackingEnabled ? "Disable stacking" : "Stack items by identical prompt"}
-          >
-             {isStackingEnabled ? <Layers2 size={12} /> : <Layers size={12} />}
-             <span>Stack Similar</span>
-          </button>
-
-        </div>
-
-        {/* Back to Stacks Button */}
-        {viewingStackPrompt && (
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setStackingEnabled(true);
-              setViewingStackPrompt(null);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 text-blue-200 border border-blue-500/30 rounded-full hover:bg-blue-600/30 transition-colors text-xs font-medium"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back
-          </button>
-        )}
-        <button
-          onClick={() => setEnableSafeMode(!enableSafeMode)}
-          className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-          title={enableSafeMode ? 'Safe Mode on: sensitive tags are filtered or blurred' : 'Safe Mode off: sensitive tags are ignored'}
-        >
-          {enableSafeMode ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-        </button>
-        {libraryView === 'library' && (
-          <span className="text-[11px] text-gray-500">All indexed images</span>
-        )}
-        {libraryView === 'smart' && (
-          <span className="text-[11px] text-gray-500">Similarity stacks</span>
-        )}
-      </div>
-
-      {/* Right side: Actions */}
-      {selectedCount > 0 && (
-        <div className="flex items-center gap-1">
-          {selectedCount > 0 && (
-            <span className="text-[11px] text-gray-400 mr-2">{selectedCount} selected</span>
-          )}
+      {/* Selection Context Toolbar - Centered or justified as needed */}
+      <div className="flex items-center gap-1">
+          <span className="text-[11px] text-gray-400 mr-2">{selectedCount} selected</span>
 
           {/* Copy to Clipboard */}
           <button
@@ -374,8 +282,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
           >
             <Trash2 className="w-4 h-4" />
           </button>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

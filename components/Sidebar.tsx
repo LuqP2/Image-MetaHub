@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import { ChevronLeft, ChevronRight, X, ChevronDown, Plus } from 'lucide-react';
+import { ChevronLeft, X, ChevronDown, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SidebarProps {
@@ -116,10 +116,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="fixed left-0 top-0 h-full w-16 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col items-center py-6 transition-all duration-300 ease-in-out shadow-lg shadow-black/20">
         <button
           onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-white transition-all duration-200 mb-6 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-xl p-2"
+          className="mt-4 mb-6 relative group"
           title="Expand sidebar"
         >
-          <ChevronRight className="w-5 h-5" />
+           <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
         </button>
         <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
@@ -136,15 +137,28 @@ const Sidebar: React.FC<SidebarProps> = ({
       tabIndex={-1}
       className="fixed left-0 top-0 h-full w-80 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-black/40">
       {/* Header with collapse button */}
-      <div className="flex items-center justify-between p-5 border-b border-gray-800/60 bg-gray-900/40">
-        <h2 className="text-lg font-bold text-gray-100 tracking-tight">Filters</h2>
-        <button
-          onClick={onToggleCollapse}
-          className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-xl p-2"
-          title="Collapse sidebar"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
+      <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
+        <div className="flex items-center gap-3 p-4 pb-2">
+            <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
+                <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
+            </div>
+            <div className="flex flex-col overflow-hidden">
+                <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
+                <span className="text-[10px] font-mono font-normal text-gray-500">v0.12.2</span>
+            </div>
+        </div>
+
+        <div className="flex items-center justify-between px-4 pb-3 pt-1">
+            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Filters</h2>
+            <button
+            onClick={onToggleCollapse}
+            className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
+            title="Collapse sidebar"
+            >
+            <ChevronLeft className="w-4 h-4" />
+            </button>
+        </div>
       </div>
 
       {/* Search Bar */}
