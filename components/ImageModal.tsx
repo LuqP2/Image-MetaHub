@@ -638,6 +638,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
       // Escape = Exit fullscreen first, then close modal
       if (event.key === 'Escape') {
+        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
         if (isFullscreen) {
           // Call toggleFullscreen to actually exit Electron fullscreen
           toggleFullscreen();
