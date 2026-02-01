@@ -120,6 +120,7 @@ export const useFeatureAccess = () => {
 
     // Clustering limits
     canUseFullClustering: canUseDuringTrialOrPro,
+    canUseDuringTrialOrPro,
     clusteringImageLimit: canUseDuringTrialOrPro ? Infinity : CLUSTERING_FREE_TIER_LIMIT,
 
     // Status

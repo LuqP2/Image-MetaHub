@@ -207,7 +207,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
             : 'hover:shadow-2xl hover:shadow-black/50 hover:border-gray-600 hover:translate-y-[-4px]'
         } ${
-          isFocused ? 'ring-2 ring-yellow-400 ring-opacity-75' : ''
+          isFocused ? 'outline outline-2 outline-dashed outline-blue-400 outline-offset-2 z-10' : ''
         }`}
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
         onClick={(e) => {
@@ -237,7 +237,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         {/* Checkbox for selection - always visible on hover or when selected */}
         <button
           onClick={handleCheckboxClick}
-          className={`absolute top-2 left-2 z-20 p-1 rounded transition-all ${
+          className={`absolute top-2 left-2 z-20 p-1 rounded transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
             isSelected
               ? 'bg-blue-500 text-white opacity-100'
               : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-blue-500/80'
@@ -274,7 +274,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         )}
         <button
           onClick={handlePreviewClick}
-          className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500"
+          className="absolute top-11 left-2 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:opacity-100"
           title="Show details"
         >
           <Info className="h-4 w-4" />
@@ -282,7 +282,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
         <button
           onClick={handleFavoriteClick}
-          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all ${
+          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:opacity-100 ${
             image.isFavorite
               ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
               : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
@@ -293,7 +293,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         </button>
         <button
           onClick={handleCopyClick}
-          className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500"
+          className="absolute top-2 right-11 z-10 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:opacity-100"
           title="Copy Prompt"
           disabled={!image.prompt}
         >
@@ -571,7 +571,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized } = useFeatureAccess();
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -597,7 +597,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyModel,
     showInFolder,
     exportImage,
-    copyMetadataToA1111
+    copyMetadataToA1111,
+    copyRawMetadata
   } = useContextMenu();
 
   const openGenerateModal = useCallback(() => {
@@ -667,6 +668,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       return;
     }
 
+    // Windows behavior: Clicking background deselects everything (unless Ctrl/Shift is held)
+    if (!e.ctrlKey && !e.shiftKey) {
+        useImageStore.setState({ selectedImages: new Set() });
+        setFocusedImageIndex(-1); // Also clear focus
+    }
+
     e.preventDefault();
     const rect = gridRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -677,7 +684,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setIsSelecting(true);
     setSelectionStart({ x, y });
     setSelectionEnd({ x, y });
-    setInitialSelectedImages(new Set(selectedImages));
+    // If we just cleared selection, initial is empty. If we held Ctrl/Shift, we keep it.
+    // However, since we updated store generated state above, we should read from it? 
+    // Actually, React state updates are scheduled.
+    // If we want to support "Add to selection with Drag", we need to handle that.
+    
+    // For now, if no modifiers, start fresh.
+    const currentSelection = (!e.ctrlKey && !e.shiftKey) ? new Set<string>() : new Set(selectedImages);
+    setInitialSelectedImages(currentSelection);
   }, [selectedImages]);
 
   // Throttled with requestAnimationFrame for performance
@@ -808,10 +822,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       }
 
       const currentIndex = focusedImageIndex ?? -1;
+      let nextIndex = currentIndex;
 
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
-        const nextIndex = currentIndex + 1;
+        nextIndex = currentIndex + 1;
         if (nextIndex < images.length) {
           setFocusedImageIndex(nextIndex);
           setPreviewImage(images[nextIndex]);
@@ -819,38 +834,58 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           // Chegou no final da página, vai pra próxima
           onPageChange(currentPage + 1);
           setFocusedImageIndex(0);
+          nextIndex = -1; // Wait for page change
+        } else {
+            nextIndex = -1; // End of list
         }
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const prevIndex = currentIndex - 1;
-        if (prevIndex >= 0) {
-          setFocusedImageIndex(prevIndex);
-          setPreviewImage(images[prevIndex]);
+        nextIndex = currentIndex - 1;
+        if (nextIndex >= 0) {
+          setFocusedImageIndex(nextIndex);
+          setPreviewImage(images[nextIndex]);
         } else if (currentPage > 1) {
           // Chegou no início da página, vai pra anterior
           onPageChange(currentPage - 1);
           setFocusedImageIndex(-1); // Será ajustado quando as imagens mudarem
+          nextIndex = -1; // Wait for page change
+        } else {
+            nextIndex = -1; // Start of list
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
         if (currentPage < totalPages) {
           onPageChange(currentPage + 1);
           setFocusedImageIndex(0);
+          nextIndex = -1;
         }
       } else if (e.key === 'PageUp') {
         e.preventDefault();
         if (currentPage > 1) {
           onPageChange(currentPage - 1);
           setFocusedImageIndex(0);
+          nextIndex = -1;
         }
       } else if (e.key === 'Home') {
         e.preventDefault();
         onPageChange(1);
         setFocusedImageIndex(0);
+        nextIndex = -1;
       } else if (e.key === 'End') {
         e.preventDefault();
         onPageChange(totalPages);
         setFocusedImageIndex(0);
+        nextIndex = -1;
+      }
+
+      // Sync selection if navigation occurred and no modifiers (or Shift) are held
+      // Standard Windows behavior: Arrow key moves focus AND selects, deselecting others (unless Ctrl is held)
+      if (nextIndex !== -1 && nextIndex !== currentIndex) {
+         if (!e.ctrlKey && !e.shiftKey) {
+             useImageStore.setState({ selectedImages: new Set([images[nextIndex].id]) });
+         }
+         // TODO: Implement Shift range selection if needed, but for now just preserving Selection if Ctrl is held,
+         // or resetting if neither. (User request: "Arrow key -> all should lose selection" [except new one])
       }
     };
 
@@ -956,8 +991,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <span className="flex-1">
               {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
             </span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
+              onClick={copyRawMetadata}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              disabled={!contextMenu.image?.metadata}
+            >
+              <Copy className="w-4 h-4" />
+              Copy Raw Metadata
+            </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -985,7 +1031,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               >
                 <Package className="w-4 h-4" />
                 <span className="flex-1">Batch Export Selected ({selectedCount})</span>
-                <ProBadge size="sm" />
+                {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
               </button>
             )}
 
@@ -999,7 +1045,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Clipboard className="w-4 h-4" />
             <span className="flex-1">Copy to A1111</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <button
@@ -1010,7 +1056,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate with A1111</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <button
@@ -1021,7 +1067,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate with ComfyUI</span>
-            <ProBadge size="sm" />
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
         </div>
   );

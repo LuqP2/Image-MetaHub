@@ -233,7 +233,11 @@ class ThumbnailManager {
         return;
       }
 
-      const cachedBlob = await cacheManager.getCachedThumbnail(image.id);
+      // Create a cache key that includes validation data (timestamp)
+      // This ensures we don't serve stale thumbnails if the file changes but path remains same
+      const thumbnailKey = `${image.id}-${image.lastModified}`;
+
+      const cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
       if (cachedBlob) {
         const url = this.updateObjectUrl(image.id, cachedBlob);
         setSafe({ status: 'ready', thumbnailUrl: url });
@@ -248,7 +252,7 @@ class ThumbnailManager {
         throw new Error('Thumbnail generation failed');
       }
 
-      await cacheManager.cacheThumbnail(image.id, blob);
+      await cacheManager.cacheThumbnail(thumbnailKey, blob);
       const url = this.updateObjectUrl(image.id, blob);
       setSafe({ status: 'ready', thumbnailUrl: url });
     } catch (error) {

@@ -282,6 +282,12 @@ export const useContextMenu = () => {
     }
   };
 
+  const copyRawMetadata = () => {
+    if (!contextMenu.image || !contextMenu.image.metadata) return;
+    const metadataString = JSON.stringify(contextMenu.image.metadata, null, 2);
+    copyToClipboardElectron(metadataString, 'Raw Metadata');
+  };
+
   return {
     contextMenu,
     showContextMenu,
@@ -294,6 +300,7 @@ export const useContextMenu = () => {
     showInFolder,
     exportImage,
     copyMetadataToA1111,
-    quickGenerateInA1111
+    quickGenerateInA1111,
+    copyRawMetadata
   };
 };

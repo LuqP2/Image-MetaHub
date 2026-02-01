@@ -1,5 +1,5 @@
 import React, { useState, useEffect, FC } from 'react';
-import { X, Repeat } from 'lucide-react';
+import { X, Repeat, ArrowLeft } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { ComparisonModalProps, ZoomState, ComparisonViewMode } from '../types';
 import ComparisonPane from './ComparisonPane';
@@ -144,27 +144,41 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Mode</span>
-          <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
-            {viewModes.map(mode => (
-              <button
-                key={mode.id}
-                onClick={() => setViewMode(mode.id)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 last:border-r-0
-                           ${viewMode === mode.id
-                             ? 'bg-blue-600 text-white border-blue-500/60'
-                             : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
-                           }`}
-                title={mode.hint}
-              >
-                {mode.label}
-              </button>
-            ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Mode</span>
+            <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
+              {viewModes.map(mode => (
+                <button
+                  key={mode.id}
+                  onClick={() => setViewMode(mode.id)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 last:border-r-0
+                             ${viewMode === mode.id
+                               ? 'bg-blue-600 text-white border-blue-500/60'
+                               : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+                             }`}
+                  title={mode.hint}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-gray-500 hidden lg:inline">
+              Slider: drag the divider | Side-by-Side: synced zoom | Hover: reveal the second image
+            </span>
           </div>
-          <span className="text-xs text-gray-500 hidden lg:inline">
-            Slider: drag the divider | Side-by-Side: synced zoom | Hover: reveal the second image
-          </span>
+
+          <button
+            onClick={handleClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                     bg-gray-700/50 hover:bg-gray-700
+                     text-gray-300 hover:text-white
+                     border border-gray-600/50
+                     text-sm font-medium transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Grid</span>
+          </button>
         </div>
       </div>
 

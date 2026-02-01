@@ -76,6 +76,8 @@ export default function App() {
   // Filter state selectors
   const searchQuery = useImageStore((state) => state.searchQuery);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
+  const excludedFolders = useImageStore((state) => state.excludedFolders);
+  const addExcludedFolder = useImageStore((state) => state.addExcludedFolder);
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
@@ -716,6 +718,9 @@ export default function App() {
           availableDimensions={availableDimensions}
           onAddFolder={handleSelectFolder}
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
+          scanSubfolders={scanSubfolders}
+          excludedFolders={excludedFolders}
+          onExcludeFolder={addExcludedFolder}
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
           onReshuffle={reshuffle}
