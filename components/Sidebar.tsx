@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
@@ -26,7 +27,10 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onAddFolder?: () => void;
-  isIndexing?: boolean;
+  isIndexing: boolean;
+  scanSubfolders: boolean;
+  excludedFolders: Set<string>;
+  onExcludeFolder: (path: string) => void;
   sortOrder: string;
   onSortOrderChange: (value: string) => void;
   onReshuffle?: () => void;
@@ -54,6 +58,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   onAddFolder,
   isIndexing = false,
+  scanSubfolders,
+  excludedFolders,
+  onExcludeFolder,
   sortOrder,
   onSortOrderChange,
   onReshuffle
@@ -221,7 +228,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Render children, which will be the DirectoryList */}
-        {children}
+        {children && React.isValidElement(children) ? (
+          React.cloneElement(children as React.ReactElement<any>, {
+            isIndexing,
+            scanSubfolders,
+            excludedFolders,
+            onExcludeFolder
+          })
+        ) : (
+          children
+        )}
 
         {/* Tags and Favorites Section */}
         <TagsAndFavorites />

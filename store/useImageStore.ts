@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
-import { loadSelectedFolders, saveSelectedFolders } from '../services/folderSelectionStorage';
+import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
   saveAnnotation,
@@ -164,6 +164,7 @@ interface ImageState {
   selectionDirectoryCount: number;
   directories: Directory[];
   selectedFolders: Set<string>;
+  excludedFolders: Set<string>;
   isFolderSelectionLoaded: boolean;
   includeSubfolders: boolean;
 
@@ -239,6 +240,9 @@ interface ImageState {
   initializeFolderSelection: () => Promise<void>;
   toggleFolderSelection: (path: string, ctrlKey: boolean) => void;
   clearFolderSelection: () => void;
+  // Excluded Folders Actions
+  addExcludedFolder: (path: string) => void;
+  removeExcludedFolder: (path: string) => void;
   isFolderSelected: (path: string) => boolean;
   toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
@@ -664,7 +668,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, includeSubfolders } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, excludedFolders, includeSubfolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -676,15 +680,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             directoryPathMap.set(dir.id, normalized);
         });
 
-        // Filter images based on folder selection
+        // Filter images based on folder selection and exclusion
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
-            }
-
-            // If no folders are selected, show all images from visible directories
-            if (selectedFolders.size === 0) {
-                return true;
             }
 
             const parentPath = directoryPathMap.get(img.directoryId || '');
@@ -693,6 +692,24 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             const folderPath = normalizePath(getImageFolderPath(img, parentPath));
+
+            // EXCLUSION CHECK: If folder is excluded, hide image
+            if (excludedFolders && excludedFolders.size > 0) {
+                for (const excludedFolder of excludedFolders) {
+                    const normalizedExcluded = normalizePath(excludedFolder);
+                    // Check if folderPath IS the excluded folder or IS A CHILD of the excluded folder
+                    if (folderPath === normalizedExcluded ||
+                        folderPath.startsWith(normalizedExcluded + '/') ||
+                        folderPath.startsWith(normalizedExcluded + '\\')) {
+                        return false;
+                    }
+                }
+            }
+
+            // If no folders are selected, show all images from visible directories (unless excluded)
+            if (selectedFolders.size === 0) {
+                return true;
+            }
 
             // Direct matching - check if folder is explicitly selected
             if (selectedFolders.has(folderPath)) {
@@ -943,6 +960,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectionDirectoryCount: 0,
         directories: [],
         selectedFolders: new Set(),
+        excludedFolders: new Set(),
         isFolderSelectionLoaded: false,
         includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
@@ -1043,18 +1061,55 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         initializeFolderSelection: async () => {
-            const selectedPaths = await loadSelectedFolders();
-            set(state => {
-                const selection = new Set<string>();
-                selectedPaths.forEach(path => {
-                    selection.add(normalizePath(path));
+            Promise.all([
+                loadSelectedFolders(),
+                loadExcludedFolders()
+            ]).then(([selectedPaths, excludedPaths]) => {
+                set(state => {
+                    // Only update if not already loaded to avoid overwriting current selection during re-renders
+                    if (state.isFolderSelectionLoaded) {
+                        return state;
+                    }
+
+                    const newState = {
+                        selectedFolders: new Set(selectedPaths),
+                        excludedFolders: new Set(excludedPaths),
+                        isFolderSelectionLoaded: true
+                    };
+                    
+                    return _updateState(state, state.images); // Re-run filtering
                 });
-                const newState = { ...state, selectedFolders: selection, isFolderSelectionLoaded: true };
-                return { ...newState, ...filterAndSort(newState) };
             });
         },
 
-        toggleFolderSelection: (path, ctrlKey) => {
+        addExcludedFolder: (path: string) => {
+            set(state => {
+                const newExcluded = new Set(state.excludedFolders);
+                newExcluded.add(path);
+                
+                // If the folder was selected, deselect it
+                const newSelected = new Set(state.selectedFolders);
+                if (newSelected.has(path)) {
+                    newSelected.delete(path);
+                }
+
+                saveExcludedFolders(Array.from(newExcluded));
+                saveSelectedFolders(Array.from(newSelected));
+
+                return _updateState({ ...state, excludedFolders: newExcluded, selectedFolders: newSelected }, state.images);
+            });
+        },
+
+        removeExcludedFolder: (path: string) => {
+            set(state => {
+                const newExcluded = new Set(state.excludedFolders);
+                newExcluded.delete(path);
+                saveExcludedFolders(Array.from(newExcluded));
+                return _updateState({ ...state, excludedFolders: newExcluded }, state.images);
+            });
+        },
+
+        toggleFolderSelection: (path: string, ctrlKey: boolean) => {
             const normalizedPath = normalizePath(path);
             set(state => {
                 const selection = new Set(state.selectedFolders);

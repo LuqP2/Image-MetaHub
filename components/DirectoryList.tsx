@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Directory } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff } from 'lucide-react';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -15,6 +15,8 @@ interface DirectoryListProps {
   onToggleIncludeSubfolders?: () => void;
   isIndexing?: boolean;
   scanSubfolders?: boolean;
+  excludedFolders?: Set<string>;
+  onExcludeFolder?: (path: string) => void;
 }
 
 interface SubfolderNode {
@@ -54,7 +56,9 @@ export default function DirectoryList({
   includeSubfolders = true,
   onToggleIncludeSubfolders,
   isIndexing = false,
-  scanSubfolders = false
+  scanSubfolders = false,
+  excludedFolders,
+  onExcludeFolder
 }: DirectoryListProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [subfolderCache, setSubfolderCache] = useState<Map<string, SubfolderNode[]>>(new Map());
@@ -193,8 +197,8 @@ export default function DirectoryList({
   useEffect(() => {
     const handleClickOutside = () => setContextMenu(null);
     if (contextMenu) {
-      window.addEventListener('click', handleClickOutside);
-      return () => window.removeEventListener('click', handleClickOutside);
+      window.addEventListener('click', handleClickOutside, true);
+      return () => window.removeEventListener('click', handleClickOutside, true);
     }
   }, [contextMenu]);
 
@@ -207,6 +211,11 @@ export default function DirectoryList({
       const isLoadingNode = loadingNodes.has(childKey);
       const grandchildren = subfolderCache.get(childKey) || [];
       const isSelected = isFolderSelected ? isFolderSelected(child.path) : false;
+
+      // Skip excluded folders
+      if (excludedFolders && excludedFolders.has(normalizePath(child.path))) {
+        return null;
+      }
 
       return (
         <li key={childKey} className="py-1">
@@ -248,7 +257,7 @@ export default function DirectoryList({
         </li>
       );
     });
-  }, [expandedNodes, handleFolderClick, handleContextMenu, handleToggleNode, isFolderSelected, loadingNodes, subfolderCache]);
+  }, [expandedNodes, handleFolderClick, handleContextMenu, handleToggleNode, isFolderSelected, loadingNodes, subfolderCache, excludedFolders]);
 
   return (
     <div className="border-b border-gray-700">
@@ -432,6 +441,19 @@ export default function DirectoryList({
             <FolderOpen className="w-4 h-4" />
             Open in Explorer
           </button>
+          {onExcludeFolder && (
+            <button
+              className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+              onClick={() => {
+                // No confirmation dialog as requested
+                onExcludeFolder(contextMenu.path);
+                setContextMenu(null);
+              }}
+            >
+              <EyeOff className="w-4 h-4" />
+              Exclude Folder
+            </button>
+          )}
         </div>
       )}
     </div>
