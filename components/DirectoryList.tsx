@@ -25,8 +25,8 @@ interface SubfolderNode {
   relativePath: string;
 }
 
-const normalizePath = (path: string) => path.replace(/[\\/]+$/, '');
-const toForwardSlashes = (path: string) => normalizePath(path).replace(/\\/g, '/');
+const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+const toForwardSlashes = (path: string) => normalizePath(path);
 const makeNodeKey = (rootId: string, relativePath: string) => `${rootId}::${relativePath === '' ? '.' : relativePath}`;
 
 const getRelativePath = (rootPath: string, targetPath: string) => {
@@ -446,7 +446,7 @@ export default function DirectoryList({
               className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
               onClick={() => {
                 // No confirmation dialog as requested
-                onExcludeFolder(contextMenu.path);
+                onExcludeFolder(normalizePath(contextMenu.path));
                 setContextMenu(null);
               }}
             >
