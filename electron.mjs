@@ -590,7 +590,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.12.2');
+    mainWindow.setTitle('Image MetaHub v0.13.0');
   }
 
   // Load the app
@@ -1359,8 +1359,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.12.2',
-      releaseNotes: `## [0.12.2] - Release
+  version: '0.13.0',
+      releaseNotes: `## [0.13.0] - Release
 
 ### Major Performance Improvements
 - **3-5x Faster Loading**: Batch IPC operations reduce 1000+ calls to a single batch
