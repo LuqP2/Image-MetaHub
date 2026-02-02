@@ -118,6 +118,29 @@ export interface InvokeAIMetadata {
   [key: string]: any;
 }
 
+export interface ShadowResource {
+  id: string; // Unique ID for list management
+  type: 'model' | 'lora' | 'embedding';
+  name: string;
+  weight?: number;
+}
+
+export interface ShadowMetadata {
+  imageId: string; // Key, links to IndexedImage.id
+  // Essentials
+  prompt?: string;
+  negativePrompt?: string;
+  seed?: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  // Resources
+  resources?: ShadowResource[];
+  // Workflow
+  notes?: string;
+  updatedAt: number;
+}
+
 export interface Automatic1111Metadata {
   parameters: string; // Formatted string containing all generation parameters
   // Additional fields that might be present
