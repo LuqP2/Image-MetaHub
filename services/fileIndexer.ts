@@ -1916,8 +1916,8 @@ export async function processFiles(
   const useOptimizedPath = isElectron && (window as any).electronAPI?.readFilesBatch;
   const useHeadRead = isElectron && (window as any).electronAPI?.readFilesHeadBatch;
   const useTailRead = isElectron && (window as any).electronAPI?.readFilesTailBatch;
-  const FILE_READ_BATCH_SIZE = 128;
-  const HEAD_READ_MAX_BYTES = 256 * 1024;
+  const FILE_READ_BATCH_SIZE = 64; // Reduced from 128 to avoid IPC clogging
+  const HEAD_READ_MAX_BYTES = 64 * 1024; // Reduced from 256KB to 64KB
   const TAIL_READ_MAX_BYTES = 512 * 1024;
   const TAIL_SCAN_SAMPLE_LIMIT = 256;
   let tailScanAttempts = 0;

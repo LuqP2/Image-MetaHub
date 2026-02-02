@@ -1652,17 +1652,37 @@ function setupFileOperationHandlers() {
       const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
       const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
 
-      const promises = filePaths.map(async (filePath) => {
-        const handle = await fs.open(filePath, 'r');
-        try {
-          const buffer = Buffer.allocUnsafe(safeBytes);
-          const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
-          return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
-        } finally {
-          await handle.close();
-        }
-      });
-      const results = await Promise.allSettled(promises);
+      const CONCURRENCY_LIMIT = 6; // Conservative concurrency to reduce GC pressure
+      const results = new Array(filePaths.length);
+
+      // Process files in chunks to control concurrency
+      for (let i = 0; i < filePaths.length; i += CONCURRENCY_LIMIT) {
+        const chunkPaths = filePaths.slice(i, i + CONCURRENCY_LIMIT);
+        const chunkPromises = chunkPaths.map(async (filePath, chunkIndex) => {
+          let handle;
+          try {
+            handle = await fs.open(filePath, 'r');
+            const buffer = Buffer.allocUnsafe(safeBytes);
+            const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
+            return { status: 'fulfilled', value: { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath } };
+          } catch (error) {
+            return { status: 'rejected', reason: error };
+          } finally {
+            if (handle) {
+              await handle.close();
+            }
+          }
+        });
+
+        const chunkResults = await Promise.all(chunkPromises);
+        
+        chunkResults.forEach((result, chunkIndex) => {
+          results[i + chunkIndex] = result;
+        });
+
+        // Yield to event loop to allow GC and other IPC messages to process
+        await new Promise(resolve => setImmediate(resolve));
+      }
 
       const data = results.map((result, index) => {
         if (result.status === 'fulfilled') {
