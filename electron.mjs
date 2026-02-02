@@ -1658,15 +1658,18 @@ function setupFileOperationHandlers() {
       for (let i = 0; i < filePaths.length; i += CONCURRENCY_LIMIT) {
         const chunkPaths = filePaths.slice(i, i + CONCURRENCY_LIMIT);
         const chunkPromises = chunkPaths.map(async (filePath, chunkIndex) => {
-          const handle = await fs.open(filePath, 'r');
+          let handle;
           try {
+            handle = await fs.open(filePath, 'r');
             const buffer = Buffer.allocUnsafe(safeBytes);
             const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
             return { status: 'fulfilled', value: { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath } };
           } catch (error) {
             return { status: 'rejected', reason: error };
           } finally {
-            await handle.close();
+            if (handle) {
+              await handle.close();
+            }
           }
         });
 
