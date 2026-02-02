@@ -126,7 +126,7 @@ const Header: React.FC<HeaderProps> = ({
 
         {/* Center Side - View Controls (Only visible if libraryView is provided) */}
         {libraryView && onLibraryViewChange && (
-            <div className="flex items-center gap-3 absolute left-1/2 transform -translate-x-1/2">
+            <div className="flex items-center gap-3">
                 <div className="flex items-center bg-gray-800/50 rounded-full p-1 border border-gray-700/50">
                     <button
                         onClick={() => onLibraryViewChange('library')}
@@ -163,54 +163,59 @@ const Header: React.FC<HeaderProps> = ({
                     </button>
                 </div>
 
-                 <div className="w-px h-4 bg-gray-700/50 mx-1"></div>
-
-                 {/* Stacking Toggle */}
-                  <button
-                     onClick={() => setStackingEnabled(!isStackingEnabled)}
-                     className={`p-1.5 rounded-lg transition-all duration-200 ${
-                         isStackingEnabled 
-                         ? 'text-blue-400 bg-blue-500/10' 
-                         : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-                     }`}
-                     title={isStackingEnabled ? "Disable stacking" : "Stack items by identical prompt"}
-                  >
-                     {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
-                  </button>
-
-                  {/* Back from Stack Button */}
-                  {viewingStackPrompt && (
-                    <button
-                        onClick={() => {
-                        setSearchQuery('');
-                        setStackingEnabled(true);
-                        setViewingStackPrompt(null);
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors text-xs font-medium"
-                    >
-                        <ArrowLeft size={12} />
-                        Back
-                    </button>
-                  )}
-
-                  {/* Safe Mode Toggle */}
-                  <button
-                    onClick={() => setEnableSafeMode(!enableSafeMode)}
-                    className={`p-1.5 rounded-lg transition-all duration-200 ${
-                        enableSafeMode
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-600 hover:text-gray-400'
-                    }`}
-                    title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
-                  >
-                    {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
             </div>
         )}
 
+
         {/* Right Side - Actions */}
         <div className="flex items-center gap-3">
-          
+            
+                   {/* Stacking Toggle - Only relevant for Library view */}
+                   {libraryView === 'library' && (
+                     <>
+                        <button
+                          onClick={() => setStackingEnabled(!isStackingEnabled)}
+                          className={`p-1.5 rounded-lg transition-all duration-200 ${
+                              isStackingEnabled 
+                              ? 'text-blue-400 bg-blue-500/10' 
+                              : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                          }`}
+                          title={isStackingEnabled ? "Disable stacking" : "Stack items by identical prompt"}
+                        >
+                          {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
+                        </button>
+                        
+                         {/* Back from Stack Button */}
+                        {viewingStackPrompt && (
+                            <button
+                                onClick={() => {
+                                setSearchQuery('');
+                                setStackingEnabled(true);
+                                setViewingStackPrompt(null);
+                                }}
+                                className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md hover:bg-blue-500/20 transition-colors text-xs font-medium"
+                            >
+                                <ArrowLeft size={12} />
+                                Back
+                            </button>
+                        )}
+                        <div className="w-px h-4 bg-gray-700/50 mx-1"></div>
+                     </>
+                   )}
+
+                   {/* Safe Mode Toggle */}
+                   <button
+                     onClick={() => setEnableSafeMode(!enableSafeMode)}
+                     className={`p-1.5 rounded-lg transition-all duration-200 ${
+                         enableSafeMode
+                         ? 'text-gray-400 hover:text-white'
+                         : 'text-gray-600 hover:text-gray-400'
+                     }`}
+                     title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
+                   >
+                     {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
+                   </button>
+           
           {/* Smart Library Actions (Contextual) */}
           {libraryView === 'smart' && (
              <div className="flex items-center gap-2 mr-2 animate-in fade-in duration-300">
