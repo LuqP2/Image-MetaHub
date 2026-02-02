@@ -73,9 +73,10 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
     });
   }, [images, sortBy]);
 
-  const totalPages = Math.ceil(modelEntries.length / itemsPerPage);
+  const totalPages = itemsPerPage === -1 ? 1 : Math.ceil(modelEntries.length / itemsPerPage);
   
   const paginatedEntries = useMemo(() => {
+    if (itemsPerPage === -1) return modelEntries;
     const start = (page - 1) * itemsPerPage;
     return modelEntries.slice(start, start + itemsPerPage);
   }, [modelEntries, page, itemsPerPage]);
