@@ -1373,8 +1373,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <div className="grid grid-cols-2 gap-2">
                         <MetadataItem label="Frames" value={videoInfo.frame_count} />
                         <MetadataItem label="FPS" value={videoInfo.frame_rate != null ? Number(videoInfo.frame_rate).toFixed(2) : undefined} />
-                        {videoInfo.duration_seconds != null && (
-                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
+                        {effectiveDuration != null && (
+                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
                         )}
                         <MetadataItem label="Video Codec" value={videoInfo.codec} />
                         <MetadataItem 

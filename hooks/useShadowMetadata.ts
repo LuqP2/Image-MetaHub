@@ -58,7 +58,7 @@ export function useShadowMetadata(imageId?: string) {
         const newMetadata: ShadowMetadata = {
           imageId,
           updatedAt: Date.now(),
-          ...metadata,
+          ...(metadata || {}),
           ...updates,
         };
 
