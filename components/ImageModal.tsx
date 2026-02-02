@@ -1398,6 +1398,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {(nMeta as any)?._metahub_pro?.project_name && (
                       <MetadataItem label="Project" value={(nMeta as any)._metahub_pro.project_name} />
                     )}
+                    {shadowMetadata?.notes && (
+                      <div className="col-span-2 pt-2 border-t border-gray-700/50 mt-2">
+                         <h4 className="text-xs text-gray-500 uppercase tracking-wider mb-1">Workflow Notes</h4>
+                         <div className="text-sm text-gray-300 whitespace-pre-wrap font-mono bg-gray-900/50 p-2 rounded border border-gray-800">
+                           {shadowMetadata.notes}
+                         </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
