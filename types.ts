@@ -25,6 +25,7 @@ export interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
+  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
@@ -117,6 +118,29 @@ export interface InvokeAIMetadata {
   [key: string]: any;
 }
 
+export interface ShadowResource {
+  id: string; // Unique ID for list management
+  type: 'model' | 'lora' | 'embedding';
+  name: string;
+  weight?: number;
+}
+
+export interface ShadowMetadata {
+  imageId: string; // Key, links to IndexedImage.id
+  // Essentials
+  prompt?: string;
+  negativePrompt?: string;
+  seed?: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  // Resources
+  resources?: ShadowResource[];
+  // Workflow
+  notes?: string;
+  updatedAt: number;
+}
+
 export interface Automatic1111Metadata {
   parameters: string; // Formatted string containing all generation parameters
   // Additional fields that might be present
@@ -167,6 +191,15 @@ export interface ComfyUIMetadata {
   parameters?: string // Can be object or JSON string
   prompt?: ComfyUIPrompt | string; // Can be object or JSON string
   // Additional fields that might be present
+  normalizedMetadata?: BaseMetadata;
+  [key: string]: any;
+}
+
+export interface VideoMetadata {
+  videometahub_data?: any;
+  description?: string;
+  comment?: string;
+  title?: string;
   normalizedMetadata?: BaseMetadata;
   [key: string]: any;
 }
@@ -293,7 +326,7 @@ export interface SDNextMetadata {
 }
 
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata;
+export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata | VideoMetadata;
 
 // LoRA interface for detailed LoRA information
 export interface LoRAInfo {
@@ -305,6 +338,21 @@ export interface LoRAInfo {
 }
 
 // Base normalized metadata interface for unified access
+export interface VideoInfo {
+  frame_rate?: number | null;
+  frame_count?: number | null;
+  duration_seconds?: number | null;
+  width?: number | null;
+  height?: number | null;
+  format?: string | null;
+  codec?: string | null;
+}
+
+export interface MotionModelInfo {
+  name?: string | null;
+  hash?: string | null;
+}
+
 export interface BaseMetadata {
   prompt: string;
   negativePrompt?: string;
@@ -317,10 +365,14 @@ export interface BaseMetadata {
   cfg_scale?: number;
   scheduler: string;
   sampler?: string;
+  clip_skip?: number;
   loras?: (string | LoRAInfo)[]; // Support both string and detailed LoRA info
   generator?: string; // Name of the AI generator/parser used
   version?: string;
   module?: string;
+  media_type?: 'image' | 'video';
+  video?: VideoInfo | null;
+  motion_model?: MotionModelInfo | null;
   // MetaHub Save Node user inputs
   tags?: string[]; // User-defined tags from MetaHub Save Node
   notes?: string; // User notes from MetaHub Save Node
@@ -753,4 +805,14 @@ export interface TFIDFModel {
   vocabulary: string[];                // All unique terms
   idfScores: Map<string, number>;      // Term → IDF score
   documentCount: number;               // Total documents processed
+}
+
+/**
+ * Stack of images grouped by similar prompt
+ */
+export interface ImageStack {
+  id: string;                      // Unique stack ID (e.g. "stack-" + coverImage.id)
+  coverImage: IndexedImage;        // The representative image (first in group)
+  images: IndexedImage[];          // All images in this stack
+  count: number;                   // Total number of images in stack
 }

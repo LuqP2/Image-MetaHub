@@ -172,7 +172,7 @@ class IncrementalCacheWriter {
       return [];
     }
 
-    let metadata = precomputed ?? toCacheMetadata(images);
+    const metadata = precomputed ?? toCacheMetadata(images);
     let preparedMetadata = sanitizeCacheMetadata(metadata);
     const chunkNumber = this.chunkIndex++;
     this.totalImages += images.length;
@@ -548,6 +548,15 @@ class CacheManager {
         newAndModifiedFiles.push({
           name: file.name,
           lastModified: file.lastModified,
+          size: file.size,
+          type: file.type,
+          birthtimeMs: file.birthtimeMs,
+        });
+      // CRITICAL FIX: If file is in 'catalog' state (incomplete), force re-indexing
+      } else if (cachedFile.enrichmentState === 'catalog') {
+        newAndModifiedFiles.push({
+          name: file.name,
+          lastModified: file.lastModified, // Use current file time to be safe
           size: file.size,
           type: file.type,
           birthtimeMs: file.birthtimeMs,

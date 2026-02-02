@@ -6,6 +6,7 @@ const DB_NAME = 'image-metahub-preferences';
 const DB_VERSION = 3; // Updated to match imageAnnotationsStorage.ts (Smart Clustering Phase 1)
 const STORE_NAME = 'folderSelection';
 const RECORD_KEY = 'selection';
+const EXCLUDED_FOLDERS_KEY = 'excluded-folders';
 const STORAGE_VERSION_KEY = 'folder-selection-version';
 const CURRENT_VERSION = 2; // Version 2: Array-based selection (v1 was Map-based)
 
@@ -278,6 +279,87 @@ export async function saveFolderSelection(selection: Record<string, StoredSelect
     }
   });
   await saveSelectedFolders(selectedPaths);
+}
+
+export async function loadExcludedFolders(): Promise<string[]> {
+  if (isPersistenceDisabled) {
+    return []; // No in-memory fallback for exclusion yet, but could add if needed
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return [];
+  }
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(EXCLUDED_FOLDERS_KEY);
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close folder selection storage after load excluded', error);
+      }
+    };
+
+    transaction.oncomplete = close;
+    transaction.onabort = close;
+    transaction.onerror = close;
+
+    request.onsuccess = () => {
+      const result = request.result;
+      if (!result || !result.data) {
+        resolve([]);
+        return;
+      }
+      resolve([...result.data]);
+    };
+
+    request.onerror = () => {
+      console.error('Failed to load excluded folders', request.error);
+      resolve([]);
+    };
+  });
+}
+
+export async function saveExcludedFolders(excludedPaths: string[]): Promise<void> {
+  if (isPersistenceDisabled) {
+    return;
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put({ id: EXCLUDED_FOLDERS_KEY, data: excludedPaths });
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close folder selection storage after save excluded', error);
+      }
+    };
+
+    transaction.oncomplete = close;
+    transaction.onabort = close;
+    transaction.onerror = close;
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Failed to save excluded folders', request.error);
+      reject(request.error);
+    };
+  }).catch((error) => {
+    console.error('IndexedDB save error for excluded folders:', error);
+    disablePersistence(error);
+  });
 }
 
 export async function clearSelectedFolders(): Promise<void> {

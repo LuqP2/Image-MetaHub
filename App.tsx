@@ -29,6 +29,7 @@ import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
+import { ModelView } from './components/ModelView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -76,6 +77,8 @@ export default function App() {
   // Filter state selectors
   const searchQuery = useImageStore((state) => state.searchQuery);
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
+  const excludedFolders = useImageStore((state) => state.excludedFolders);
+  const addExcludedFolder = useImageStore((state) => state.addExcludedFolder);
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
@@ -121,6 +124,7 @@ export default function App() {
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
+  const reshuffle = useImageStore((state) => state.reshuffle);
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
@@ -150,7 +154,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -598,7 +602,11 @@ export default function App() {
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
     removeImage(imageId);
-    setSelectedImage(null);
+    // Only close modal if the deleted image is still the one currently selected
+    // (This allows ImageModal to navigate to next image BEFORE deletion without App closing it)
+    if (useImageStore.getState().selectedImage?.id === imageId) {
+      setSelectedImage(null);
+    }
   }, [removeImage, setSelectedImage]);
 
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
@@ -635,10 +643,17 @@ export default function App() {
 
   // --- Render Logic ---
   const paginatedImages = useMemo(
-    () => safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    () => {
+      if (itemsPerPage === -1) {
+        return safeFilteredImages;
+      }
+      return safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    },
     [safeFilteredImages, currentPage, itemsPerPage]
   );
-  const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
+  const totalPages = itemsPerPage === -1
+    ? 1
+    : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 
@@ -706,8 +721,12 @@ export default function App() {
           availableDimensions={availableDimensions}
           onAddFolder={handleSelectFolder}
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
+          scanSubfolders={scanSubfolders}
+          excludedFolders={excludedFolders}
+          onExcludeFolder={addExcludedFolder}
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
+          onReshuffle={reshuffle}
         >
           <DirectoryList
             directories={safeDirectories}
@@ -739,6 +758,8 @@ export default function App() {
           onOpenLicense={handleOpenLicenseSettings}
           onOpenA1111Generate={() => setIsA1111GenerateModalOpen(true)}
           onOpenComfyUIGenerate={() => setIsComfyUIGenerateModalOpen(true)}
+          libraryView={libraryView}
+          onLibraryViewChange={setLibraryView}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
@@ -790,9 +811,6 @@ export default function App() {
           {hasDirectories && (
             <>
                 <GridToolbar
-                  libraryView={libraryView}
-                  onLibraryViewChange={setLibraryView}
-                  clustersCount={clustersCount}
                   selectedImages={safeSelectedImages}
                   images={paginatedImages}
                   directories={safeDirectories}
@@ -832,6 +850,15 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                         />
                   )
+                ) : libraryView === 'model' ? (
+                  <ModelView
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onModelSelect={(modelName) => {
+                      setSelectedFilters({ models: [modelName] });
+                      setLibraryView('library');
+                    }}
+                  />
                 ) : (
                   <SmartLibrary
                     isQueueOpen={isQueueOpen}

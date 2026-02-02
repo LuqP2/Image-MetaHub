@@ -3,10 +3,10 @@
 import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 3; // Increment from 2 to 3 (Smart Clustering & Auto-Tagging)
+const DB_VERSION = 4; // Increment from 3 to 4 (Shadow Metadata)
 const STORE_NAME = 'imageAnnotations';
 
-let inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
+const inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
 let isPersistenceDisabled = false;
 let hasResetAttempted = false;
 
@@ -119,6 +119,14 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
             const collectionsStore = db.createObjectStore('smartCollections', { keyPath: 'id' });
             collectionsStore.createIndex('type', 'type', { unique: false });
             console.log('Created smartCollections object store (v3)');
+          }
+        }
+
+        // Versão 4: Create Shadow Metadata store
+        if (oldVersion < 4) {
+          if (!db.objectStoreNames.contains('shadowMetadata')) {
+            db.createObjectStore('shadowMetadata', { keyPath: 'imageId' });
+            console.log('Created shadowMetadata object store (v4)');
           }
         }
       };
@@ -797,9 +805,7 @@ export async function getAllSmartCollections(): Promise<SmartCollection[]> {
 /**
  * Get smart collections by type
  */
-export async function getSmartCollectionsByType(
-  type: 'model' | 'style' | 'subject' | 'custom'
-): Promise<SmartCollection[]> {
+export async function getSmartCollectionsByType(type: SmartCollection['type']): Promise<SmartCollection[]> {
   const db = await openDatabase();
   if (!db) return [];
 
@@ -816,3 +822,88 @@ export async function getSmartCollectionsByType(
     };
   });
 }
+
+// ===== Shadow Metadata Functions =====
+
+import type { ShadowMetadata } from '../types';
+
+/**
+ * Get shadow metadata for an image
+ */
+export async function getShadowMetadata(imageId: string): Promise<ShadowMetadata | null> {
+  const db = await openDatabase();
+  if (!db) return null;
+
+  return new Promise((resolve) => {
+    // Check if store exists first (safety check for old versions or partial migrations)
+    if (!db.objectStoreNames.contains('shadowMetadata')) {
+      resolve(null);
+      return;
+    }
+
+    const transaction = db.transaction(['shadowMetadata'], 'readonly');
+    const store = transaction.objectStore('shadowMetadata');
+    const request = store.get(imageId);
+
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => {
+      console.error('Error getting shadow metadata:', request.error);
+      resolve(null);
+    };
+  });
+}
+
+/**
+ * Save shadow metadata for an image
+ */
+export async function saveShadowMetadata(metadata: ShadowMetadata): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  metadata.updatedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+     // Check if store exists
+    if (!db.objectStoreNames.contains('shadowMetadata')) {
+      reject(new Error('Shadow metadata store not found'));
+      return;
+    }
+
+    const transaction = db.transaction(['shadowMetadata'], 'readwrite');
+    const store = transaction.objectStore('shadowMetadata');
+    const request = store.put(metadata);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error saving shadow metadata:', request.error);
+      reject(request.error);
+    };
+  });
+}
+
+/**
+ * Delete shadow metadata for an image
+ */
+export async function deleteShadowMetadata(imageId: string): Promise<void> {
+  const db = await openDatabase();
+  if (!db) return;
+
+  return new Promise((resolve, reject) => {
+     // Check if store exists
+    if (!db.objectStoreNames.contains('shadowMetadata')) {
+      resolve(); // Treat as success if store doesn't exist
+      return;
+    }
+
+    const transaction = db.transaction(['shadowMetadata'], 'readwrite');
+    const store = transaction.objectStore('shadowMetadata');
+    const request = store.delete(imageId);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => {
+      console.error('Error deleting shadow metadata:', request.error);
+      reject(request.error);
+    };
+  });
+}
+

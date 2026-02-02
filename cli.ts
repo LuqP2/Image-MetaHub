@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('imagemetahub-cli')
   .description('Image MetaHub CLI - Parse AI-generated image metadata')
-  .version('0.12.2');
+  .version('0.13.0');
 
 type ParseOptions = { json: boolean; pretty: boolean; raw?: boolean; quiet?: boolean };
 type IndexOptions = { out: string; recursive: boolean; raw?: boolean; quiet?: boolean; concurrency?: string };
@@ -43,7 +43,7 @@ function formatOutput(
 
 function isImageFile(entry: string) {
   const ext = path.extname(entry).toLowerCase();
-  return ['.png', '.jpg', '.jpeg'].includes(ext);
+  return ['.png', '.jpg', '.jpeg', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext);
 }
 
 async function collectFiles(dir: string, recursive: boolean): Promise<string[]> {

@@ -86,7 +86,7 @@ export function startWatching(
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
+      if (!['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext)) {
         return;
       }
 

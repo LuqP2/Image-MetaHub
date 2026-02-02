@@ -11,6 +11,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
 
@@ -32,6 +34,75 @@ function getIconPath() {
     // macOS and Linux prefer PNG
     return path.join(__dirname, 'public', 'logo1.png');
   }
+}
+
+const execFileAsync = promisify(execFile);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+
+const getMimeTypeFromName = (name) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.mkv')) return 'video/x-matroska';
+  if (lower.endsWith('.mov')) return 'video/quicktime';
+  if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  return 'application/octet-stream';
+};
+
+const parseFrameRate = (value) => {
+  if (typeof value !== 'string' || !value.includes('/')) {
+    return null;
+  }
+  const [num, den] = value.split('/').map((part) => Number(part));
+  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
+    return null;
+  }
+  return num / den;
+};
+
+const buildVideoInfoFromProbe = (stream, format) => {
+  const frameRate = parseFrameRate(stream?.r_frame_rate) ?? parseFrameRate(stream?.avg_frame_rate);
+  const frameCount = typeof stream?.nb_frames === 'string' ? Number(stream.nb_frames) : stream?.nb_frames;
+  const durationValue = typeof format?.duration === 'string' ? Number(format.duration) : format?.duration;
+
+  return {
+    frame_rate: Number.isFinite(frameRate) ? frameRate : null,
+    frame_count: Number.isFinite(frameCount) ? frameCount : null,
+    duration_seconds: Number.isFinite(durationValue) ? durationValue : null,
+    width: typeof stream?.width === 'number' ? stream.width : null,
+    height: typeof stream?.height === 'number' ? stream.height : null,
+    codec: stream?.codec_name || null,
+    format: format?.format_name || null,
+  };
+};
+
+async function readVideoMetadataWithFfprobe(filePath) {
+  const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+  const { stdout } = await execFileAsync(ffprobePath, [
+    '-v', 'quiet',
+    '-print_format', 'json',
+    '-show_streams',
+    '-show_format',
+    filePath,
+  ], { encoding: 'utf8' });
+
+  const output = typeof stdout === 'string' ? stdout : stdout.toString('utf8');
+  const payload = JSON.parse(output);
+  const format = payload?.format ?? {};
+  const tags = format.tags ?? {};
+  const streams = Array.isArray(payload?.streams) ? payload.streams : [];
+  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+
+  return {
+    comment: tags.comment,
+    description: tags.description,
+    title: tags.title,
+    video: buildVideoInfoFromProbe(videoStream, format),
+  };
 }
 
 let mainWindow;
@@ -520,7 +591,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.12.2');
+    mainWindow.setTitle('Image MetaHub v0.13.0');
   }
 
   // Load the app
@@ -686,13 +757,11 @@ async function getFilesRecursively(directory, baseDirectory) {
                 files.push(...await getFilesRecursively(fullPath, baseDirectory));
             } else if (entry.isFile()) {
                 const lowerName = entry.name.toLowerCase();
-                if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp')) {
+                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
+                const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
+                if (isImage || isVideo) {
                     const stats = await fs.stat(fullPath);
-                    const fileType = lowerName.endsWith('.png')
-                      ? 'image/png'
-                      : lowerName.endsWith('.webp')
-                        ? 'image/webp'
-                        : 'image/jpeg';
+                    const fileType = getMimeTypeFromName(lowerName);
                     files.push({
                         name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
                         lastModified: stats.birthtimeMs,
@@ -1291,8 +1360,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.12.2',
-      releaseNotes: `## [0.12.2] - Release
+  version: '0.13.0',
+      releaseNotes: `## [0.13.0] - Release
 
 ### Major Performance Improvements
 - **3-5x Faster Loading**: Batch IPC operations reduce 1000+ calls to a single batch
@@ -1352,25 +1421,23 @@ function setupFileOperationHandlers() {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
 
         for (const file of files) {
-          if (file.isFile()) {
-            const name = file.name.toLowerCase();
-            if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')) {
-              const filePath = path.join(dirPath, file.name);
-              const stats = await fs.stat(filePath);
-              const fileType = name.endsWith('.png')
-                ? 'image/png'
-                : name.endsWith('.webp')
-                  ? 'image/webp'
-                  : 'image/jpeg';
-              imageFiles.push({
-                name: file.name, // name is already relative for top-level
-                lastModified: stats.birthtimeMs,
-                size: stats.size,
-                type: fileType,
-                birthtimeMs: stats.birthtimeMs,
-              });
+            if (file.isFile()) {
+              const name = file.name.toLowerCase();
+              const isImage = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
+              const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => name.endsWith(ext));
+              if (isImage || isVideo) {
+                const filePath = path.join(dirPath, file.name);
+                const stats = await fs.stat(filePath);
+                const fileType = getMimeTypeFromName(name);
+                imageFiles.push({
+                  name: file.name, // name is already relative for top-level
+                  lastModified: stats.birthtimeMs,
+                  size: stats.size,
+                  type: fileType,
+                  birthtimeMs: stats.birthtimeMs,
+                });
+              }
             }
-          }
         }
       }
 
@@ -1460,6 +1527,32 @@ function setupFileOperationHandlers() {
         error: error.message,
         errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
         errorCode: error.code
+      };
+    }
+  });
+
+  ipcMain.handle('read-video-metadata', async (event, args) => {
+    try {
+      const filePath = args?.filePath;
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to read file outside of allowed directories.');
+        console.error('  [read-video-metadata] Requested path:', filePath);
+        console.error('  [read-video-metadata] Normalized path:', path.normalize(filePath));
+        console.error('  [read-video-metadata] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      const metadata = await readVideoMetadataWithFfprobe(filePath);
+      return { success: true, ...metadata };
+    } catch (error) {
+      const isBinaryMissing = error?.code === 'ENOENT' || error?.message?.includes('ffprobe');
+      return {
+        success: false,
+        error: isBinaryMissing ? 'FFPROBE_NOT_FOUND' : (error?.message || String(error)),
       };
     }
   });
@@ -1559,17 +1652,37 @@ function setupFileOperationHandlers() {
       const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
       const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
 
-      const promises = filePaths.map(async (filePath) => {
-        const handle = await fs.open(filePath, 'r');
-        try {
-          const buffer = Buffer.allocUnsafe(safeBytes);
-          const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
-          return { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath };
-        } finally {
-          await handle.close();
-        }
-      });
-      const results = await Promise.allSettled(promises);
+      const CONCURRENCY_LIMIT = 6; // Conservative concurrency to reduce GC pressure
+      const results = new Array(filePaths.length);
+
+      // Process files in chunks to control concurrency
+      for (let i = 0; i < filePaths.length; i += CONCURRENCY_LIMIT) {
+        const chunkPaths = filePaths.slice(i, i + CONCURRENCY_LIMIT);
+        const chunkPromises = chunkPaths.map(async (filePath, chunkIndex) => {
+          let handle;
+          try {
+            handle = await fs.open(filePath, 'r');
+            const buffer = Buffer.allocUnsafe(safeBytes);
+            const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
+            return { status: 'fulfilled', value: { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath } };
+          } catch (error) {
+            return { status: 'rejected', reason: error };
+          } finally {
+            if (handle) {
+              await handle.close();
+            }
+          }
+        });
+
+        const chunkResults = await Promise.all(chunkPromises);
+        
+        chunkResults.forEach((result, chunkIndex) => {
+          results[i + chunkIndex] = result;
+        });
+
+        // Yield to event loop to allow GC and other IPC messages to process
+        await new Promise(resolve => setImmediate(resolve));
+      }
 
       const data = results.map((result, index) => {
         if (result.status === 'fulfilled') {

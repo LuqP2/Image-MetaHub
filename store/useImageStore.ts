@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
-import { loadSelectedFolders, saveSelectedFolders } from '../services/folderSelectionStorage';
+import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
   saveAnnotation,
@@ -164,6 +164,7 @@ interface ImageState {
   selectionDirectoryCount: number;
   directories: Directory[];
   selectedFolders: Set<string>;
+  excludedFolders: Set<string>;
   isFolderSelectionLoaded: boolean;
   includeSubfolders: boolean;
 
@@ -178,7 +179,9 @@ interface ImageState {
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
+  isStackingEnabled: boolean;
   scanSubfolders: boolean;
+  viewingStackPrompt: string | null;  // For Back to Stacks navigation
   isFullscreenMode: boolean;
 
   // Comparison State
@@ -194,7 +197,8 @@ interface ImageState {
   selectedModels: string[];
   selectedLoras: string[];
   selectedSchedulers: string[];
-  sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc';
+  sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
+  randomSeed: number;
   advancedFilters: any;
 
   // Annotations State
@@ -236,6 +240,9 @@ interface ImageState {
   initializeFolderSelection: () => Promise<void>;
   toggleFolderSelection: (path: string, ctrlKey: boolean) => void;
   clearFolderSelection: () => void;
+  // Excluded Folders Actions
+  addExcludedFolder: (path: string) => void;
+  removeExcludedFolder: (path: string) => void;
   isFolderSelected: (path: string) => boolean;
   toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
@@ -266,7 +273,8 @@ interface ImageState {
   setSearchQuery: (query: string) => void;
   setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[]; dimensions: string[] }) => void;
   setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
-  setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc') => void;
+  setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
+  reshuffle: () => void;
   setAdvancedFilters: (filters: any) => void;
   filterAndSortImages: () => void;
 
@@ -279,6 +287,7 @@ interface ImageState {
   deleteSelectedImages: () => Promise<void>; // This will require file operations logic
   setScanSubfolders: (scan: boolean) => void;
   setFocusedImageIndex: (index: number | null) => void;
+  setViewingStackPrompt: (prompt: string | null) => void;
   setFullscreenMode: (isFullscreen: boolean) => void;
 
   // Clustering Actions (Phase 2)
@@ -332,6 +341,7 @@ interface ImageState {
 
   // Cleanup invalid images
   cleanupInvalidImages: () => void;
+  setStackingEnabled: (enabled: boolean) => void;
 
   // Reset Actions
   resetState: () => void;
@@ -658,7 +668,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, includeSubfolders } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, excludedFolders, includeSubfolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -670,15 +680,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             directoryPathMap.set(dir.id, normalized);
         });
 
-        // Filter images based on folder selection
+        // Filter images based on folder selection and exclusion
         const selectionFiltered = images.filter((img) => {
             if (!visibleDirectoryIds.has(img.directoryId || '')) {
                 return false;
-            }
-
-            // If no folders are selected, show all images from visible directories
-            if (selectedFolders.size === 0) {
-                return true;
             }
 
             const parentPath = directoryPathMap.get(img.directoryId || '');
@@ -687,6 +692,24 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             const folderPath = normalizePath(getImageFolderPath(img, parentPath));
+
+            // EXCLUSION CHECK: If folder is excluded, hide image
+            if (excludedFolders && excludedFolders.size > 0) {
+                for (const excludedFolder of excludedFolders) {
+                    const normalizedExcluded = normalizePath(excludedFolder);
+                    // Check if folderPath IS the excluded folder or IS A CHILD of the excluded folder
+                    if (folderPath === normalizedExcluded ||
+                        folderPath.startsWith(normalizedExcluded + '/') ||
+                        folderPath.startsWith(normalizedExcluded + '\\')) {
+                        return false;
+                    }
+                }
+            }
+
+            // If no folders are selected, show all images from visible directories (unless excluded)
+            if (selectedFolders.size === 0) {
+                return true;
+            }
 
             // Direct matching - check if folder is explicitly selected
             if (selectedFolders.has(folderPath)) {
@@ -882,11 +905,42 @@ export const useImageStore = create<ImageState>((set, get) => {
             return compareByNameAsc(a, b);
         };
 
+        // Seeded random number generator helper
+        const seededRandom = (seed: number) => {
+            const x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        };
+
+        // Simple string hash function
+        const stringHash = (str: string) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return hash;
+        };
+
+        const compareRandom = (a: IndexedImage, b: IndexedImage) => {
+            // Combine image ID with state.randomSeed to create a stable sort key for this seed
+            // We use the stringHash of the ID + seed to get a pseudo-random value fixed for this session/seed
+            const seed = state.randomSeed || 0;
+            const hashA = stringHash(a.id + seed.toString());
+            const hashB = stringHash(b.id + seed.toString());
+            
+            if (hashA !== hashB) {
+                return hashA - hashB;
+            }
+            return a.id.localeCompare(b.id);
+        };
+
         const sorted = [...results].sort((a, b) => {
             if (sortOrder === 'asc') return compareByNameAsc(a, b);
             if (sortOrder === 'desc') return compareByNameDesc(a, b);
             if (sortOrder === 'date-asc') return compareByDateAsc(a, b);
             if (sortOrder === 'date-desc') return compareByDateDesc(a, b);
+            if (sortOrder === 'random') return compareRandom(a, b);
             return compareById(a, b);
         });
 
@@ -906,6 +960,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectionDirectoryCount: 0,
         directories: [],
         selectedFolders: new Set(),
+        excludedFolders: new Set(),
         isFolderSelectionLoaded: false,
         includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
@@ -918,6 +973,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         previewImage: null,
         selectedImages: new Set(),
         focusedImageIndex: null,
+        isStackingEnabled: false,
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
@@ -927,8 +983,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedLoras: [],
         selectedSchedulers: [],
         sortOrder: 'date-desc',
+        randomSeed: Date.now(),
         advancedFilters: {},
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
+        viewingStackPrompt: null,
         isFullscreenMode: false,
         comparisonImages: [null, null],
         isComparisonModalOpen: false,
@@ -1003,18 +1061,55 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         initializeFolderSelection: async () => {
-            const selectedPaths = await loadSelectedFolders();
-            set(state => {
-                const selection = new Set<string>();
-                selectedPaths.forEach(path => {
-                    selection.add(normalizePath(path));
+            Promise.all([
+                loadSelectedFolders(),
+                loadExcludedFolders()
+            ]).then(([selectedPaths, excludedPaths]) => {
+                set(state => {
+                    // Only update if not already loaded to avoid overwriting current selection during re-renders
+                    if (state.isFolderSelectionLoaded) {
+                        return state;
+                    }
+
+                    const newState = {
+                        selectedFolders: new Set(selectedPaths),
+                        excludedFolders: new Set(excludedPaths),
+                        isFolderSelectionLoaded: true
+                    };
+                    
+                    return _updateState({ ...state, ...newState }, state.images); // Re-run filtering
                 });
-                const newState = { ...state, selectedFolders: selection, isFolderSelectionLoaded: true };
-                return { ...newState, ...filterAndSort(newState) };
             });
         },
 
-        toggleFolderSelection: (path, ctrlKey) => {
+        addExcludedFolder: (path: string) => {
+            set(state => {
+                const newExcluded = new Set(state.excludedFolders);
+                newExcluded.add(path);
+                
+                // If the folder was selected, deselect it
+                const newSelected = new Set(state.selectedFolders);
+                if (newSelected.has(path)) {
+                    newSelected.delete(path);
+                }
+
+                saveExcludedFolders(Array.from(newExcluded));
+                saveSelectedFolders(Array.from(newSelected));
+
+                return _updateState({ ...state, excludedFolders: newExcluded, selectedFolders: newSelected }, state.images);
+            });
+        },
+
+        removeExcludedFolder: (path: string) => {
+            set(state => {
+                const newExcluded = new Set(state.excludedFolders);
+                newExcluded.delete(path);
+                saveExcludedFolders(Array.from(newExcluded));
+                return _updateState({ ...state, excludedFolders: newExcluded }, state.images);
+            });
+        },
+
+        toggleFolderSelection: (path: string, ctrlKey: boolean) => {
             const normalizedPath = normalizePath(path);
             set(state => {
                 const selection = new Set(state.selectedFolders);
@@ -1381,6 +1476,14 @@ export const useImageStore = create<ImageState>((set, get) => {
         })),
 
         setSortOrder: (order) => set(state => ({ ...filterAndSort({ ...state, sortOrder: order }), sortOrder: order })),
+        
+        reshuffle: () => set(state => {
+            const newSeed = Date.now();
+            return {
+                ...filterAndSort({ ...state, randomSeed: newSeed }),
+                randomSeed: newSeed
+            };
+        }),
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
@@ -2198,6 +2301,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             previewImage: null,
             focusedImageIndex: null,
             scanSubfolders: true,
+            viewingStackPrompt: null,
             sortOrder: 'desc',
             isFullscreenMode: false,
             comparisonImages: [null, null],
@@ -2238,7 +2342,16 @@ export const useImageStore = create<ImageState>((set, get) => {
                     images: validImages,
                     ...filterAndSort({ ...state, images: validImages })
                 }));
+
             }
+        },
+
+        setStackingEnabled: (enabled: boolean) => {
+            set({ isStackingEnabled: enabled });
+        },
+
+        setViewingStackPrompt: (prompt: string | null) => {
+            set({ viewingStackPrompt: prompt });
         }
     }
 });
