@@ -20,7 +20,8 @@ interface ModelViewProps {
   onModelSelect: (modelName: string) => void;
 }
 
-const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect }) => {
+
+export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect }) => {
   const images = useImageStore((state) => state.images); // Use all images, not filtered ones
   const filteredImages = useImageStore((state) => state.filteredImages); // For footer stats
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
@@ -102,7 +103,7 @@ const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueu
               <ModelCard
                 key={entry.name}
                 modelName={entry.name}
-                coverImage={entry.images[0] || null}
+                images={entry.images}
                 imageCount={entry.count}
                 onClick={() => onModelSelect(entry.name)}
               />
@@ -133,4 +134,4 @@ const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueu
   );
 };
 
-export default ModelView;
+

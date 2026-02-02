@@ -29,7 +29,7 @@ import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
-import ModelView from './components/ModelView';
+import { ModelView } from './components/ModelView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
