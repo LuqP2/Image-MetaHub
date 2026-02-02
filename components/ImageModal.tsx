@@ -1322,7 +1322,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                           <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
                         )}
                         <MetadataItem label="Video Codec" value={videoInfo.codec} />
-                        <MetadataItem label="Video Format" value={videoInfo.format?.split(',')[0]} />
+                        <MetadataItem 
+                          label="Video Format" 
+                          value={(() => {
+                            if (!videoInfo.format) return undefined;
+                            const formats = videoInfo.format.split(',');
+                            const ext = image.name.split('.').pop()?.toLowerCase();
+                            if (ext && formats.includes(ext)) return ext;
+                            return formats[0];
+                          })()} 
+                        />
                       </div>
                     )}
                     {motionModel?.name && (
