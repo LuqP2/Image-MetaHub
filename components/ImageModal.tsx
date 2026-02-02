@@ -822,10 +822,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
           {imageUrl ? (
             isVideo ? (
               <video
+                key={image.id}
                 src={imageUrl}
                 className="max-w-full max-h-full object-contain"
                 onContextMenu={handleContextMenu}
                 controls
+                autoPlay
                 playsInline
                 poster={preferredThumbnailUrl ?? undefined}
               />
