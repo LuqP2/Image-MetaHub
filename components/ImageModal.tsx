@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -197,6 +197,196 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
     </div>
   );
 };
+
+// Helper to format time
+const formatTime = (seconds: number) => {
+  if (!Number.isFinite(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const VideoPlayer: React.FC<{
+  src: string;
+  poster?: string;
+  onContextMenu?: React.MouseEventHandler;
+}> = ({ src, poster, onContextMenu }) => {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  
+  // State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
+  
+  // Persistent state
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('video_player_volume');
+    return saved ? parseFloat(saved) : 1;
+  });
+  const [isMuted, setIsMuted] = useState(() => {
+    return localStorage.getItem('video_player_muted') === 'true';
+  });
+  const [isLooping, setIsLooping] = useState(() => {
+    return localStorage.getItem('video_player_loop') === 'true';
+  });
+
+  // Apply properties when video ref changes or state changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
+      videoRef.current.loop = isLooping;
+    }
+  }, [volume, isMuted, isLooping]);
+
+  useEffect(() => {
+     localStorage.setItem('video_player_volume', volume.toString());
+     localStorage.setItem('video_player_muted', isMuted.toString());
+     localStorage.setItem('video_player_loop', isLooping.toString());
+  }, [volume, isMuted, isLooping]);
+
+  const togglePlay = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(console.error);
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, []);
+
+  const toggleMute = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsMuted(prev => !prev);
+  }, []);
+
+  const toggleLoop = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsLooping(prev => !prev);
+  }, []);
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+      // Auto-enable loop for short videos (< 5s) if not manually set? 
+      // For now, respect user preference only to avoid confusion.
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVol = parseFloat(e.target.value);
+    setVolume(newVol);
+    if (newVol > 0 && isMuted) {
+      setIsMuted(false);
+    }
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full flex items-center justify-center bg-black group/video"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+      onClick={togglePlay}
+      onContextMenu={onContextMenu}
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        className="max-w-full max-h-full object-contain"
+        poster={poster}
+        autoPlay
+        playsInline
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+      />
+
+      {/* Center Play Button Overlay (only when paused and not hovering controls) */}
+      {!isPlaying && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-black/50 backdrop-blur-sm rounded-full p-4 text-white hover:bg-black/70 transition-all pointer-events-auto cursor-pointer transform hover:scale-110" onClick={togglePlay}>
+            <Play size={48} fill="currentColor" />
+          </div>
+        </div>
+      )}
+
+      {/* Controls Overlay */}
+      <div 
+        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent transition-opacity duration-300 ${isHovering || !isPlaying ? 'opacity-100' : 'opacity-0'}`}
+        onClick={(e) => e.stopPropagation()} // Prevent clicking controls from toggling play
+      >
+        {/* Progress Bar */}
+        <div className="w-full mb-2 flex items-center gap-2 group/progress">
+            <span className="text-xs font-mono text-gray-300">{formatTime(currentTime)}</span>
+            <input
+                type="range"
+                min={0}
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all accent-blue-500"
+            />
+            <span className="text-xs font-mono text-gray-300">{formatTime(duration)}</span>
+        </div>
+
+        {/* Buttons Row */}
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+                <button onClick={togglePlay} className="text-white hover:text-blue-400 transition-colors">
+                    {isPlaying ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor"/>}
+                </button>
+                
+                <div className="flex items-center gap-2 group/volume">
+                    <button onClick={toggleMute} className="text-white hover:text-blue-400 transition-colors">
+                        {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                    </button>
+                    <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={isMuted ? 0 : volume}
+                        onChange={handleVolumeChange}
+                        className="w-0 overflow-hidden group-hover/volume:w-20 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+                <button 
+                  onClick={toggleLoop} 
+                  className={`transition-colors ${isLooping ? 'text-blue-400' : 'text-gray-400 hover:text-white'}`}
+                  title={isLooping ? "Loop On" : "Loop Off"}
+                >
+                    <Repeat size={18} />
+                </button>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 
 const ImageModal: React.FC<ImageModalProps> = ({
@@ -821,15 +1011,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           {imageUrl ? (
             isVideo ? (
-              <video
+              <VideoPlayer
                 key={image.id}
                 src={imageUrl}
-                className="max-w-full max-h-full object-contain"
-                onContextMenu={handleContextMenu}
-                controls
-                autoPlay
-                playsInline
                 poster={preferredThumbnailUrl ?? undefined}
+                onContextMenu={handleContextMenu}
               />
             ) : (
               <img
