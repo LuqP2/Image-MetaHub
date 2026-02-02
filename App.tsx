@@ -651,7 +651,9 @@ export default function App() {
     },
     [safeFilteredImages, currentPage, itemsPerPage]
   );
-  const totalPages = Math.ceil(safeFilteredImages.length / itemsPerPage);
+  const totalPages = itemsPerPage === -1
+    ? 1
+    : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
 

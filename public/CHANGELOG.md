@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-02-02
+
+### Added
+
+- **Metadata Editing**: Enable direct editing of image metadata (positive/negative prompts, parameters) within the ImageModal. Includes "View Original" and "Revert" functionality to manage edits safely.
+- **Image Stacking Navigation**: Fully implemented stack navigation, allowing users to browse clustered images, drill down into stacks, and navigate back to the main view seamlessly.
+- **Video & GIF Support**: Complete support for video formats (MP4, WEBM) and GIFs, ensuring they are correctly indexed, displayed with thumbnails, and playable within the viewer.
+- **Subfolder Removal**: Added ability to exclude specific subfolders from the index directly from the directory tree context menu.
+- **Random Sort**: New "Random" sort order with a "Reshuffle" option for rediscovering copies.
+- **UI & UX Improvements**:
+  - Added dedicated "Back" button to Compare Mode header.
+  - Added "Copy Raw Metadata" to context menus.
+  - Optimized header layout to prevent UI element overlap on smaller screens.
+
+### Improved
+
+- **Indexing Performance**: Major underlying optimization to file indexing (Phase B), significantly reducing time and UI lag for large libraries.
+
+### Fixed
+
+- **Thumbnail Staling**: Resolved issue where thumbnails stuck to old versions after overwriting files.
+- **Prompt Library**: Fixed crashes/instability in the Prompt Library (IndexedDB errors).
+- **Cache Management**: Refactored cache manager code to adhere to best practices.
+
+## [0.12.3] - 2026-01-26
+
+### Fixed
+
+- **Indexing Resiliency**: Fixed an issue where interrupted indexing operations left files with incomplete metadata (stubs) in the cache that never got re-indexed. The system now automatically detects these incomplete entries on startup/refresh and forces them to be fully enriched, eliminating the need to clear cache after an interrupted scan.
+
 ## [0.12.2] - 2026-01-24
 
 ### Improved
@@ -43,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - StackExpandedView for browsing images within each cluster
   - Real-time progress streaming across clustering phases
   - File watcher integration: deletions automatically update clusters and remove empty ones
- 
+
 - **TF-IDF Auto-Tagging Engine**: Intelligent automatic tag generation from image metadata:
   - Metadata-weighted boosts for model and LoRA names for more relevant tags
   - ComfyUI workflow facts resolver for enhanced metadata extraction
@@ -78,8 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Directory Navigation**
- - Refactored root folder behavior to align with standard Explorer patterns. Clicking a root folder row now selects and filters its content directly instead of opening the system file explorer.
- - "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
+- Refactored root folder behavior to align with standard Explorer patterns. Clicking a root folder row now selects and filters its content directly instead of opening the system file explorer.
+- "Auto-watch" and recursive subfolder scanning are now enabled by default. New folders automatically index and watch all nested subdirectories.
 
 ### Improved
 
@@ -402,7 +432,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Used `React.useMemo` for tag counting optimization in `TagsAndFavorites` component
 - Maintained backward compatibility with existing IndexedDB v1 folderSelection store
 
-
 ## [0.9.6-rc] - 2025-11-29
 
 ### Fixed
@@ -430,7 +459,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - IndexedDB databases
   - `localStorage` and `sessionStorage`
   - Zustand store state and persistence  
-  Now triggers complete app restart for clean recovery.
+    Now triggers complete app restart for clean recovery.
 - **ComfyUI Parser Enhancements**:
   - Added support for SDXL Loader and Unpacker nodes
   - Parser now skips muted nodes in terminal node search
@@ -470,7 +499,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance Improvements
 
-- **Optimized Indexing Phase B**: 
+- **Optimized Indexing Phase B**:
   - Propagated file size, type, and birthtime details from Electron's directory listing through the entire indexing pipeline to eliminate per-file IPC calls for stat information during enrichment phase.
   - Increased enrichment batch size from 128 to 256 to reduce cache flushes while maintaining UI responsiveness.
   - Skip unnecessary Easy Diffusion sidecar reads when metadata is already detected from PNG chunks.
@@ -540,7 +569,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI Polish**: Corrected various UI issues, including context menus not closing properly.
 - **Full Screen**: Fixed full screen mode to properly use the entire screen instead of being limited to the application window.
 
-
 ### Technical Improvements
 
 - Migrated testing framework to Vitest for more robust unit testing.
@@ -548,15 +576,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Significantly enhanced the ComfyUI parser for more reliable and comprehensive metadata extraction.
 - Refactored the parser architecture to be more modular and easily extensible.
 
-
 ## [0.9.1] - 2025-10-08
 
 ### Added
+
 - **Right Sidebar Image Preview**: New collapsible sidebar that displays image preview and metadata when hovering over thumbnails in the grid
 - **Enhanced Cache Management**: Added "Clear All Cache" button in Settings modal with confirmation dialog and automatic state reset
 - **Improved ComfyUI Support**: Enhanced grouped workflow parsing with proper widget value extraction and custom node extractors
 
 ### Fixed
+
 - **ComfyUI NaN Parsing**: Fixed "Unexpected token 'N', ...\"changed\": NaN..." JSON parsing errors for ComfyUI workflows with invalid numeric values
 - **Cache Clearing**: Fixed cache clearing functionality to properly reset application state and reload the page
 - **Grouped Workflows**: Fixed parsing of ComfyUI grouped workflow nodes (e.g., "workflow>Load Model - Flux") by using prompt.inputs data directly
@@ -564,9 +593,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI Directory Loading**: Fixed command-line directory loading to properly initialize Directory objects
 
 ### Changed
+
 - **Version Numbering**: Reset version to 0.9.x series, indicating pre-1.0 beta status
 
 ### Technical Improvements
+
 - Enhanced ComfyUI traversal engine with better link following and custom extractors for complex nodes (ttN concat, CFGGuider)
 - Improved error handling and validation in ImageModal to prevent crashes
 - Better state management and cleanup for orphaned image references
@@ -574,6 +605,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.0] - 2025-10-03
 
 ### Added
+
 - Multiple Directory Support: Add and manage multiple image directories simultaneously
 - New Settings Modal: Configure cache location and automatic update preferences
 - Resizable Image Grid: Adjustable thumbnail sizes for better display on high-resolution screens
@@ -581,6 +613,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exposed Development Server: Access dev server from local network devices
 
 ### Fixed
+
 - Cross-platform path construction issues resolved
 - Improved file operations reliability
 - Fixed cached image loading problems
@@ -588,17 +621,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.8.1] - 2025-09-30
 
 ### Added
-- **Subfolder Scanning Control**: Added configurable subfolder scanning with checkbox in folder selector and toggle in header, allowing users to choose whether to scan subdirectories or limit to selected folder only
 
+- **Subfolder Scanning Control**: Added configurable subfolder scanning with checkbox in folder selector and toggle in header, allowing users to choose whether to scan subdirectories or limit to selected folder only
 
 ## [1.8.0] - 2025-09-30
 
 ### Major Architectural Changes
+
 - **Complete Application Refactoring**: Migrated from monolithic App.tsx to modular architecture with Zustand state management, custom hooks, and component modularization for improved maintainability and LLM-friendliness
 - **Parser Modularization**: Split monolithic fileIndexer.ts into modular parsers (InvokeAI, A1111, ComfyUI) with factory pattern for automatic format detection
 - **State Management Migration**: All component state migrated to centralized Zustand store (useImageStore.ts) for better predictability and debugging
 
 ### New Features
+
 - **Automatic1111 Support**: Full PNG and JPEG metadata parsing with model, LoRA, and generation parameter extraction
 - **ComfyUI Support (Partial)**: Workflow detection and basic metadata parsing for ComfyUI-generated images
 - **JPEG File Support**: Added support for .jpg/.jpeg files with EXIF metadata extraction using exifr library
@@ -609,6 +644,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-Format Support**: Unified filtering system working seamlessly across InvokeAI, A1111, and ComfyUI formats
 
 ### Performance Improvements
+
 - **🚀 Record Performance**: Successfully indexed 18,000 images in 3.5 minutes (~85 images/second)
 - **Async Pool Concurrency**: 10 simultaneous file operations with memory safety controls
 - **Throttled Progress Updates**: UI updates at 5Hz (200ms intervals) to prevent interface freezing
@@ -616,6 +652,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Memory Management**: File handles instead of blob storage for better memory efficiency
 
 ### Technical Improvements
+
 - **Enhanced Metadata Parsing**: Intelligent detection prioritizing ComfyUI workflow > InvokeAI metadata > A1111 parameters
 - **Cross-Platform Compatibility**: Improved Electron/browser environment detection and path handling
 - **Date Sorting Accuracy**: Uses file creation date (birthtime) instead of modification date for AI-generated images
@@ -623,6 +660,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console Optimization**: Cleaned up excessive logging for better performance and debugging experience
 
 ### Fixed
+
 - **Cache Collision Bug**: Fixed cache system incorrectly treating folders with same names as identical entries, causing unnecessary re-indexing when switching between different folders with similar names
 - **Refresh Re-indexing Bug**: Fixed refresh functionality re-indexing entire folders instead of only changed files due to timestamp inconsistency between initial indexing (creation time) and refresh (modification time)
 - **Show in Folder Button**: Fixed "Show in Folder" button in image modal interface that was failing due to incorrect async handling and parameter passing
@@ -636,6 +674,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model Filter Issues**: Enhanced InvokeAI model extraction to work across multiple field names and formats
 
 ### Dependencies Updated
+
 - **Tailwind CSS v4**: Updated PostCSS configuration and styling system
 - **Zustand v5**: Migrated to latest version with improved TypeScript support
 - **exifr Library**: Added for professional JPEG EXIF metadata extraction
@@ -643,12 +682,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.6] - 2025-09-28
 
 ### Fixed
+
 - **Critical Performance Issue**: Eliminated console logging spam that was generating 40,000+ messages and severely impacting UI responsiveness
 - **Image Duplication Bug**: Fixed critical bug where processDirectory was calling getFileHandlesRecursive redundantly, causing 36,884 images to be processed instead of the actual 18,452 files
 - **Syntax Errors**: Resolved critical syntax errors in electron.mjs that were preventing the application from starting
 - **File Processing**: Corrected image counting logic to prevent double-processing of files
 
 ### Technical Improvements
+
 - **Automated Release Workflow**: Added complete automated release system with multi-platform builds (Windows, macOS, Linux)
 - **GitHub Actions**: Enhanced CI/CD pipeline for automatic installer generation and release publishing
 - **Error Handling**: Improved error handling in file operations and metadata extraction
@@ -657,6 +698,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.5] - 2025-09-28
 
 ### Added
+
 - **Automatic1111 Integration**: Parse PNG metadata from Automatic1111's "parameters" chunk with model, LoRA, and generation parameter extraction
 - **Universal Metadata Parser**: Intelligent detection and parsing of different metadata formats based on PNG chunk keywords
 - **Enhanced Model Filtering**: Improved model extraction and filtering that works across all supported AI image generation tools
@@ -667,6 +709,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Improved File Operations**: Fixed "Show in Folder" functionality to use correct file paths instead of UUIDs
 
 ### Technical Improvements
+
 - **Type-Safe Metadata Handling**: New TypeScript interfaces for Automatic1111Metadata and ComfyUIMetadata with proper type guards
 - **Dynamic Metadata Extraction**: Re-extraction of models, LoRAs, and schedulers during cache reconstruction for data consistency
 - **Backward Compatibility**: Maintained full compatibility with existing InvokeAI metadata and caching system
@@ -675,6 +718,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Build System Optimization**: Cleaned up duplicate workflow configurations and ensured proper artifact generation
 
 ### Fixed
+
 - **Model Filter Issues**: Resolved problem where InvokeAI model filters weren't working due to cache reconstruction using stale metadata
 - **Cache Data Consistency**: Fixed cache loading to dynamically re-extract metadata fields instead of using potentially outdated cached values
 - **File Path Handling**: Fixed "Show in Folder" and "Copy File Path" to use actual filenames instead of internal UUIDs
@@ -687,23 +731,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.4] - 2025-09-24
 
 ### Fixed
+
 - **Critical macOS Electron Bug**: Fixed "zero images found" issue on macOS by implementing robust Electron detection and cross-platform path joining
 - **IPC Handler Bug**: Fixed critical bug where `listDirectoryFiles` handler wasn't returning success object, causing "Cannot read properties of undefined" errors
 - **Excessive Console Logging**: Reduced thousands of repetitive "reading file" messages to essential diagnostic logs only
 - **Cross-Platform Path Handling**: Fixed Windows-style path joining (`\`) that broke file access on macOS and Linux
 
 ### Added
+
 - **macOS Auto-Updater Configuration**: Added proper entitlements, hardened runtime, and platform-specific error handling for macOS auto-updates
 - **Robust Error Handling**: Enhanced validation in frontend to prevent crashes when IPC calls fail
 - **Cross-Platform Build Verification**: Comprehensive testing and validation of build configuration for Windows, macOS, and Linux
 
 ### Technical Improvements
+
 - **Electron Detection**: More robust detection using multiple checks (`window.electronAPI` + method existence)
 - **Path Joining**: Cross-platform compatible path construction using `/` separator
 - **Build System**: Verified and corrected electron-builder configuration for all 3 platforms
 - **Code Quality**: Improved error handling and validation throughout the application
 
 ### Platforms
+
 - **Windows**: NSIS installer with desktop/start menu shortcuts
 - **macOS**: DMG packages for Intel and Apple Silicon with proper entitlements
 - **Linux**: AppImage for portable distribution
@@ -711,32 +759,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.3] - 2025-09-23
 
 ### Added
+
 - **Click-to-Edit Pagination**: Click any page number to jump directly to that page for instant navigation
 - **Smart Cache Cleanup**: Automatic removal of stale cache entries without full reindexing for faster refresh operations
 - **Enhanced Refresh Folder**: Improved incremental indexing that detects new images reliably without performance degradation
 
 ### UI Improvements
+
 - **Modern Pagination UI**: Redesigned pagination controls with better error feedback, accessibility, and user experience
 - **Complete README Overhaul**: Restructured documentation to emphasize offline-first desktop application with clearer feature organization
 - **Streamlined Installation**: Simplified installation instructions focusing on desktop app usage
 
 ### Technical Improvements
+
 - **Intelligent Cache Management**: Smart cleanup system that preserves valid cache while removing stale entries for deleted files
 - **Consistent PNG Filtering**: Standardized filtering logic across all file detection operations to prevent refresh issues
 - **Enhanced User Experience**: Improved navigation and feedback throughout the application
 
 ### Fixed
+
 - **Refresh Folder Reliability**: Fixed inconsistent behavior where new images weren't appearing after folder refresh
 - **Cache Stale Entry Handling**: Resolved issues with cache containing references to deleted files causing performance problems
 
 ## [1.7.2] - 2025-09-23
 
 ### Fixed
+
 - **Refresh Folder Bug**: Fixed critical issue where clicking "Refresh Folder" would return 0 results on first click due to stale cache data
 - **Cache Validation**: Improved cache validation logic to detect when cached data doesn't match current folder contents
 - **Cache Fallback**: Added automatic fallback to full reindexing when cache reconstruction fails but PNG files exist
 
 ### Technical Improvements
+
 - Enhanced cache management to prevent showing empty results when folder contents change
 - Improved error handling for cache reconstruction failures
 - Better user feedback during folder refresh operations
@@ -745,11 +799,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.1] - 2025-09-20
 
 ### Added
+
 - **Fullscreen Viewing**: Added fullscreen functionality to ImageModal with dedicated button, ESC key support, and hover controls
 - **Refresh Folder**: Added incremental indexing capability with "Update" button for processing only new images without re-indexing entire collections
 - **Enhanced Image Viewing**: Improved image viewing experience with fullscreen mode and clean UI controls
 
 ### Technical
+
 - Implemented fullscreen state management in ImageModal component
 - Added keyboard event handling for ESC key to exit fullscreen
 - Enhanced UI with hover-based controls for better user experience
@@ -760,11 +816,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.7.0] - 2025-09-20
 
 ### Fixed
+
 - **Performance Issue**: Fixed infinite console logging loop that was generating thousands of log entries during file discovery
 - **Electron Detection**: Corrected Electron environment detection in `getAllFileHandles` function to properly use Electron APIs instead of browser APIs
 - **Caching System**: Added caching mechanism to prevent repeated file discovery calls and improve performance
 
 ### Technical
+
 - Enhanced file discovery performance with useRef-based caching
 - Reduced excessive console logging in file reading operations
 - Improved Electron API detection and usage patterns
@@ -773,15 +831,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.6.1] - 2025-09-19
 
 ### Added
+
 - **Privacy-First Auto-Updates**: Enhanced auto-updater with user choice controls and manual update checks
 - **User Control**: Better update notifications with skip options and user preferences
 
 ### Fixed
+
 - **Electron Compatibility**: Fixed "UnknownError: Internal error" when selecting directories in Electron app
 - **Cross-Platform File Access**: Implemented proper file system handling for both browser and desktop environments
 - **IPC Communication**: Added missing preload.js functions for directory listing and file reading
 
 ### Technical
+
 - Enhanced Electron environment detection in `getAllFileHandles` function
 - Added `listDirectoryFiles` and `readFile` IPC handlers
 - Improved error handling for file system operations
@@ -790,11 +851,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.6.0] - 2025-09-19
 
 ### Added
+
 - **Enhanced Auto-Updater**: Manual update check functionality with user prompts
 - **Show in Folder**: Added ability to show selected images in system file explorer
 - **File Explorer Integration**: Cross-platform file explorer opening functionality
 
 ### Technical
+
 - Integrated `showItemInFolder` functionality in Electron
 - Enhanced UI integration for file operations
 - Improved user experience for file management
@@ -802,15 +865,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.3] - 2025-09-18
 
 ### Added
+
 - **Advanced Filtering**: Steps range slider for precise filtering by inference steps
 - **Range Filtering**: CFG Scale and Steps range filtering components
 - **Enhanced Filtering UI**: Improved filtering interface with range controls
 
 ### Fixed
+
 - **Documentation**: Clarified privacy policies and removed duplicate content in README
 - **Board Filtering**: Removed unreliable board filtering due to inconsistent metadata
 
 ### Technical
+
 - Implemented `StepsRangeSlider` component for advanced filtering
 - Enhanced filtering system with range-based controls
 - Improved documentation clarity and organization
@@ -818,14 +884,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.2] - 2025-09-17
 
 ### Added
+
 - **Board Filtering**: Added filtering by board/workspace information
 - **Navigation Controls**: Enhanced image navigation and browsing controls
 
 ### Fixed
+
 - **Board Metadata**: Removed board filtering due to unreliable metadata availability
 - **Package Dependencies**: Updated and cleaned up package dependencies
 
 ### Technical
+
 - Enhanced image browsing functionality
 - Improved metadata handling for board information
 - Updated dependency management
@@ -833,16 +902,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.1] - 2025-09-17
 
 ### Added
+
 - **File System Access API**: Enhanced browser compatibility with File System Access API
 - **Electron Integration**: Improved Electron app integration and scripts
 - **Scheduler Filtering**: Added scheduler type filtering (DPMSolverMultistepScheduler, etc.)
 - **Metadata Export**: TXT and JSON export functionality for image metadata
 
 ### Fixed
+
 - **Selection Behavior**: Fixed image selection and interaction behavior
 - **Documentation**: Updated documentation for new features
 
 ### Technical
+
 - Enhanced Window interface for File System Access API support
 - Updated package.json with new Electron scripts
 - Improved metadata extraction and filtering systems
@@ -851,12 +923,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.5.0] - 2025-09-17
 
 ### Added
+
 - **Multi-Selection**: Added Ctrl+click support for selecting multiple images similar to Windows Explorer
 - **Bulk Operations**: Added ability to delete multiple selected images at once from the main grid
 - **Selection Toolbar**: Added selection counter and bulk action toolbar when images are selected
 - **Visual Feedback**: Selected images now show blue ring and checkmark overlay
 
 ### UI Improvements
+
 - **Simplified Modal Controls**: Redesigned image modal with cleaner interface
 - **Inline File Actions**: Rename and delete buttons now appear as small icons next to filename
 - **Export Dropdown**: Combined TXT and JSON export into a single dropdown menu
@@ -864,6 +938,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Keyboard Navigation**: Enhanced keyboard shortcuts and dropdown interactions
 
 ### User Experience
+
 - **Windows-like Selection**: Familiar multi-selection behavior matching Windows file explorer
 - **Quick Actions**: Faster access to common file operations with simplified UI
 - **Bulk Management**: Efficient handling of multiple images for organization workflows
@@ -872,18 +947,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2025-09-17
 
 ### Added
+
 - **File Management**: Added rename and delete functionality for image files (Electron app only)
 - **Rename Files**: Click rename button in image modal to change filename with validation
 - **Delete Files**: Delete images with confirmation dialog, files are moved to system trash/recycle bin
 - **File Operations**: Added secure IPC communication between renderer and main process for file operations
 
 ### UI Improvements
+
 - Added rename and delete buttons in image detail modal with clear icons and colors
 - Rename dialog with inline text input and validation feedback
 - Confirmation dialogs for destructive operations
 - Disabled state management during operations to prevent conflicts
 
 ### Technical
+
 - Created fileOperations service for handling file management
 - Enhanced Electron IPC handlers with proper file path resolution
 - Added proper error handling and user feedback for file operations
@@ -892,20 +970,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.0] - 2025-09-17
 
 ### Added
+
 - **Metadata Export**: Added export buttons in image modal to save metadata as TXT or JSON files
 - **TXT Export**: Readable text format with organized sections for models, LoRAs, scheduler, and complete metadata
 - **JSON Export**: Structured JSON format with export info, extracted data, and raw metadata
 
 ### UI Improvements
+
 - Added export buttons with distinctive icons and colors in image detail modal
 - Enhanced modal layout to accommodate new export functionality
 
 ## [1.2.0] - 2025-09-17
 
 ### Added
+
 - **Scheduler Filtering**: Added new filter option to search images by scheduler type (DPMSolverMultistepScheduler, EulerDiscreteScheduler, etc.)
 
 ### UI Improvements
+
 - Added scheduler dropdown filter alongside model and LoRA filters
 - Enhanced filter extraction system to parse scheduler metadata from images
 - Improved filter layout and accessibility
@@ -913,27 +995,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2025-09-17
 
 ### Added
+
 - **Intelligent Cache System**: Implemented proper incremental cache updates
 - **Enhanced LoRA Extraction**: Robust parsing of complex LoRA object structures
 - **Performance Optimization**: Subsequent directory loads now take ~10 seconds instead of 3-4 minutes
 
 ### Fixed
+
 - **Cache Invalidation Bug**: Cache was being cleared on every directory selection
 - **LoRA Filter Broken**: LoRAs were appearing as `[object Object]` instead of readable names
 - **Unnecessary Reindexing**: Application now properly detects and processes only new images
 
 ### Changed
+
 - **Cache Logic**: Restructured cache validation and update flow
 - **Metadata Parsing**: Improved extraction of nested object properties in LoRA metadata
 - **Error Handling**: Better validation of extracted metadata values
 
 ### Technical Improvements
+
 - Incremental cache updates instead of full reindexing
 - Enhanced object property traversal for complex metadata structures
 - Optimized file handle management for large collections
 - Improved memory efficiency during indexing
 
 ### Performance
+
 - **Initial Load**: 3-4 minutes (unchanged)
 - **Subsequent Loads**: ~10 seconds (previously 3-4 minutes)
 - **New Image Detection**: Only processes new/changed files
@@ -942,6 +1029,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-09-17
 
 ### Added
+
 - Initial release
 - Local directory browsing with File System Access API
 - PNG metadata extraction (InvokeAI format)
@@ -954,6 +1042,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Intermediate image filtering
 
 ### Features
+
 - React 18 + TypeScript frontend
 - Vite build system
 - Browser-based file system access

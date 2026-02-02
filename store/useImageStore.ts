@@ -1077,7 +1077,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                         isFolderSelectionLoaded: true
                     };
                     
-                    return _updateState(state, state.images); // Re-run filtering
+                    return _updateState({ ...state, ...newState }, state.images); // Re-run filtering
                 });
             });
         },
