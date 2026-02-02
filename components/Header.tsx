@@ -10,8 +10,8 @@ interface HeaderProps {
     onOpenLicense: () => void;
     onOpenA1111Generate?: () => void;
     onOpenComfyUIGenerate?: () => void;
-    libraryView?: 'library' | 'smart';
-    onLibraryViewChange?: (view: 'library' | 'smart') => void;
+    libraryView?: 'library' | 'smart' | 'model';
+    onLibraryViewChange?: (view: 'library' | 'smart' | 'model') => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -150,6 +150,16 @@ const Header: React.FC<HeaderProps> = ({
                         {clustersCount > 0 && (
                             <span className="bg-black/20 px-1.5 rounded-full text-[10px]">{clustersCount}</span>
                         )}
+                    </button>
+                    <button
+                        onClick={() => onLibraryViewChange('model')}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 flex items-center gap-1.5 ${
+                            libraryView === 'model' 
+                            ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/20' 
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        Model View
                     </button>
                 </div>
 

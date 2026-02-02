@@ -12,6 +12,7 @@ interface FooterProps {
   onItemsPerPageChange: (items: number) => void;
   viewMode: 'grid' | 'list';
   onViewModeChange: (mode: 'grid' | 'list') => void;
+  customText?: string;
   filteredCount?: number;
   totalCount?: number;
   directoryCount?: number;
@@ -39,6 +40,7 @@ const Footer: React.FC<FooterProps> = ({
   onItemsPerPageChange,
   viewMode,
   onViewModeChange,
+  customText,
   filteredCount,
   totalCount,
   directoryCount,
@@ -70,17 +72,25 @@ const Footer: React.FC<FooterProps> = ({
   return (
     <footer className={`sticky bottom-0 px-6 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
       <div className="min-w-0 flex-1 flex items-center gap-3 text-xs">
-        {filteredCount !== undefined && totalCount !== undefined && (
-          <Token title="Images in current view / Total images">
-            <span className="font-semibold text-gray-200">{filteredCount.toLocaleString()}</span>
-            <span className="text-gray-600 mx-1">/</span>
-            <span className="text-gray-400">{totalCount.toLocaleString()}</span>
-          </Token>
-        )}
-        {directoryCount !== undefined && directoryCount > 0 && (
-          <Token title="Number of folders">
-            <span className="font-medium text-gray-200">{directoryCount}</span> <span className="text-gray-400 ml-1">{folderText}</span>
-          </Token>
+        {customText ? (
+           <Token>
+             <span className="font-semibold text-gray-200">{customText}</span>
+           </Token>
+        ) : (
+          <>
+            {filteredCount !== undefined && totalCount !== undefined && (
+              <Token title="Images in current view / Total images">
+                <span className="font-semibold text-gray-200">{filteredCount.toLocaleString()}</span>
+                <span className="text-gray-600 mx-1">/</span>
+                <span className="text-gray-400">{totalCount.toLocaleString()}</span>
+              </Token>
+            )}
+            {directoryCount !== undefined && directoryCount > 0 && (
+              <Token title="Number of folders">
+                <span className="font-medium text-gray-200">{directoryCount}</span> <span className="text-gray-400 ml-1">{folderText}</span>
+              </Token>
+            )}
+          </>
         )}
         {hasEnrichmentJob && (
           <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs shadow-sm animate-in fade-in slide-in-from-bottom-2">

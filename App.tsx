@@ -29,6 +29,7 @@ import HotkeyHelp from './components/HotkeyHelp';
 import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
+import ModelView from './components/ModelView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -153,7 +154,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model'>('library');
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -847,6 +848,15 @@ export default function App() {
                           onBatchExport={handleOpenBatchExport}
                         />
                   )
+                ) : libraryView === 'model' ? (
+                  <ModelView
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onModelSelect={(modelName) => {
+                      setSelectedFilters({ models: [modelName] });
+                      setLibraryView('library');
+                    }}
+                  />
                 ) : (
                   <SmartLibrary
                     isQueueOpen={isQueueOpen}
