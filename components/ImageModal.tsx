@@ -14,7 +14,11 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { useShadowMetadata } from '../hooks/useShadowMetadata';
+import { MetadataEditorModal } from './MetadataEditorModal';
+
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -440,7 +444,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
+
   const recentTags = useImageStore((state) => state.recentTags);
+
+  // Shadow Metadata Hook
+  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(image.id);
+  const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
 
   // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore((state) =>
@@ -504,6 +513,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
+  // Apply Shadow Metadata Overrides
+  const effectiveMetadata: BaseMetadata | undefined = nMeta ? {
+    ...nMeta,
+    prompt: shadowMetadata?.prompt ?? nMeta.prompt,
+    negativePrompt: shadowMetadata?.negativePrompt ?? nMeta.negativePrompt,
+    seed: shadowMetadata?.seed ?? nMeta.seed,
+    width: shadowMetadata?.width ?? nMeta.width,
+    height: shadowMetadata?.height ?? nMeta.height,
+    // Note: Model override handled below or needs to be mapped if nMeta has it
+    model: (shadowMetadata?.resources?.find(r => r.type === 'model')?.name) ?? nMeta.model, 
+    // We can append resources to loras or handle them separately.
+    // For now, let's keep nMeta.loras but we might want to override/append if shadow has loras.
+  } : shadowMetadata ? {
+     // If no original metadata, create from shadow
+     prompt: shadowMetadata.prompt || '',
+     negativePrompt: shadowMetadata.negativePrompt,
+     seed: shadowMetadata.seed,
+     width: shadowMetadata.width || 0,
+     height: shadowMetadata.height || 0,
+     model: shadowMetadata.resources?.find(r => r.type === 'model')?.name || 'Unknown',
+     steps: 0,
+     scheduler: 'Unknown',
+     topics: [],
+  } as BaseMetadata : undefined;
+
+  // If we have shadow duration, we might need a way to override video info if it exists, or just use it in display
+  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds;
+
+
   const videoInfo = (nMeta as any)?.video;
   const motionModel = (nMeta as any)?.motion_model;
 
@@ -1275,8 +1313,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="space-y-4">
               {/* Prompt Section - Always Visible */}
               <div className="space-y-3">
-                <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
-                <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
+                <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt')} />
+                <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt')} />
+                
+                {/* Shadow Resources List */}
+                {shadowMetadata?.resources && shadowMetadata.resources.length > 0 && (
+                  <div className="bg-gray-900/50 p-3 rounded-md border border-gray-700/50">
+                     <p className="font-semibold text-gray-400 text-xs uppercase tracking-wider mb-2">Resources (Overrides)</p>
+                     <ul className="space-y-1">
+                       {shadowMetadata.resources.map(r => (
+                         <li key={r.id} className="text-sm text-gray-200 flex justify-between">
+                           <span>{r.name} <span className="text-gray-500 text-xs">({r.type})</span></span>
+                           {r.weight !== undefined && <span className="text-gray-400 text-xs">{r.weight}</span>}
+                         </li>
+                       ))}
+                     </ul>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={() => copyToClipboard(String(effectiveMetadata?.seed || ''), 'Seed')} />
+                  <MetadataItem label="Model" value={effectiveMetadata?.model} onCopy={() => copyToClipboard(effectiveMetadata?.model || '', 'Model')} />
+                </div>
               </div>
 
               {/* Details Section - Collapsible */}
@@ -1301,15 +1359,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                      <MetadataItem label="Steps" value={nMeta.steps} />
-                      <MetadataItem label="CFG Scale" value={nMeta.cfg_scale} />
+                      <MetadataItem label="Steps" value={effectiveMetadata?.steps} />
+                      <MetadataItem label="CFG Scale" value={effectiveMetadata?.cfg_scale} />
                       {nMeta.clip_skip && nMeta.clip_skip > 1 && (
                         <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
                       )}
                       <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
                       <MetadataItem label="Sampler" value={nMeta.sampler} />
-                      <MetadataItem label="Scheduler" value={nMeta.scheduler} />
-                      <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}×${nMeta.height}` : undefined} />
+                      <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
+                      <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
                       {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
                         <MetadataItem label="Denoise" value={(nMeta as any).denoise} />
                       )}
@@ -1653,9 +1711,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           <div>
-            <button onClick={() => setShowRawMetadata(!showRawMetadata)} className="text-gray-400 text-sm w-full text-left mt-4 py-1 border-t border-gray-700 flex items-center gap-1">
-              {showRawMetadata ? <ChevronDown size={16} /> : <ChevronRight size={16} />} Raw Metadata
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-400" />
+                Generation Data
+                {shadowMetadata && (
+                  <span className="text-[10px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">
+                    EDITED
+                  </span>
+                )}
+              </h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsMetadataEditorOpen(true)}
+                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
+                  title="Edit Metadata (Shadow)"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => setShowRawMetadata(!showRawMetadata)}
+                  className="text-xs text-gray-400 hover:text-white underline"
+                >
+                  {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
+                </button>
+              </div>
+            </div>
             {showRawMetadata && (
               <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
                 {JSON.stringify(image.metadata, null, 2)}
@@ -1664,6 +1745,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Metadata Editor Modal */}
+      <MetadataEditorModal
+        isOpen={isMetadataEditorOpen}
+        onClose={() => setIsMetadataEditorOpen(false)}
+        initialMetadata={shadowMetadata}
+        onSave={async (m) => { await saveShadowMetadata(m); }}
+        imageId={image.id}
+      />
 
       {/* Context Menu */}
       {contextMenu.visible && (
