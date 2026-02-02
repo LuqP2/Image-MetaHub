@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -448,8 +448,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const recentTags = useImageStore((state) => state.recentTags);
 
   // Shadow Metadata Hook
-  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata } = useShadowMetadata(image.id);
+  const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore((state) =>
@@ -512,21 +513,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, []);
 
+   // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
-  // Apply Shadow Metadata Overrides
-  const effectiveMetadata: BaseMetadata | undefined = nMeta ? {
+  const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
     ...nMeta,
     prompt: shadowMetadata?.prompt ?? nMeta.prompt,
     negativePrompt: shadowMetadata?.negativePrompt ?? nMeta.negativePrompt,
     seed: shadowMetadata?.seed ?? nMeta.seed,
     width: shadowMetadata?.width ?? nMeta.width,
     height: shadowMetadata?.height ?? nMeta.height,
-    // Note: Model override handled below or needs to be mapped if nMeta has it
-    model: (shadowMetadata?.resources?.find(r => r.type === 'model')?.name) ?? nMeta.model, 
-    // We can append resources to loras or handle them separately.
-    // For now, let's keep nMeta.loras but we might want to override/append if shadow has loras.
-  } : shadowMetadata ? {
-     // If no original metadata, create from shadow
+    model: (shadowMetadata?.resources?.find(r => r.type === 'model')?.name) ?? nMeta.model,
+  } : (shadowMetadata && !showOriginal) ? {
      prompt: shadowMetadata.prompt || '',
      negativePrompt: shadowMetadata.negativePrompt,
      seed: shadowMetadata.seed,
@@ -536,7 +533,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
      steps: 0,
      scheduler: 'Unknown',
      topics: [],
-  } as BaseMetadata : undefined;
+  } as BaseMetadata : nMeta;
 
   // If we have shadow duration, we might need a way to override video info if it exists, or just use it in display
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds;
@@ -1722,6 +1719,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
               </h3>
               <div className="flex gap-2">
+                {shadowMetadata && (
+                  <>
+                    <button
+                      onClick={() => setShowOriginal(!showOriginal)}
+                      className={`p-1.5 rounded-md transition-colors ${showOriginal ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                      title={showOriginal ? "Back to Edited" : "See Original"}
+                    >
+                      {showOriginal ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                     <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to delete all edited metadata and revert to the original?')) {
+                          deleteShadowMetadata();
+                        }
+                      }}
+                      className="p-1.5 bg-gray-800 hover:bg-red-900/50 rounded-md transition-colors text-gray-400 hover:text-red-400"
+                      title="Revert to Original (Delete Edits)"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => setIsMetadataEditorOpen(true)}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
