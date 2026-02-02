@@ -140,6 +140,7 @@ const resolveImageMimeType = (fileName: string): string => {
   if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
   if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
   if (lowerName.endsWith('.webp')) return 'image/webp';
+  if (lowerName.endsWith('.gif')) return 'image/gif';
   return 'image/png';
 };
 
@@ -1321,7 +1322,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                           <MetadataItem label="Duration" value={formatDurationSeconds(Number(videoInfo.duration_seconds))} />
                         )}
                         <MetadataItem label="Video Codec" value={videoInfo.codec} />
-                        <MetadataItem label="Video Format" value={videoInfo.format} />
+                        <MetadataItem label="Video Format" value={videoInfo.format?.split(',')[0]} />
                       </div>
                     )}
                     {motionModel?.name && (
