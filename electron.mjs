@@ -43,6 +43,7 @@ const getMimeTypeFromName = (name) => {
   const lower = name.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.gif')) return 'image/gif';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.mp4')) return 'video/mp4';
   if (lower.endsWith('.webm')) return 'video/webm';
@@ -756,7 +757,7 @@ async function getFilesRecursively(directory, baseDirectory) {
                 files.push(...await getFilesRecursively(fullPath, baseDirectory));
             } else if (entry.isFile()) {
                 const lowerName = entry.name.toLowerCase();
-                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp');
+                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
                 const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
                 if (isImage || isVideo) {
                     const stats = await fs.stat(fullPath);

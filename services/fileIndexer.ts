@@ -108,6 +108,7 @@ function inferMimeTypeFromName(name: string): string {
   if (lower.endsWith('.mkv')) return 'video/x-matroska';
   if (lower.endsWith('.mov')) return 'video/quicktime';
   if (lower.endsWith('.avi')) return 'video/x-msvideo';
+  if (lower.endsWith('.gif')) return 'image/gif';
   return 'image/jpeg';
 }
 
