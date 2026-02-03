@@ -5,7 +5,7 @@ import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeO
 interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
-  onUpdateDirectory: (directoryId: string) => void;
+  onUpdateDirectory: (directoryId: string, subPath?: string) => void;
   refreshingDirectories?: Set<string>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   onClearFolderSelection?: () => void;
@@ -220,7 +220,7 @@ export default function DirectoryList({
       return (
         <li key={childKey} className="py-1">
           <div
-            className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors ${
+            className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
                 ? 'bg-blue-600/30 hover:bg-blue-600/40'
                 : 'hover:bg-gray-700/50'
@@ -241,7 +241,40 @@ export default function DirectoryList({
               />
             </button>
             <Folder className="w-3 h-3 mr-2 text-gray-400" />
-            <span className="text-sm text-gray-300">{child.name}</span>
+            <span className="text-sm text-gray-300 truncate flex-1">{child.name}</span>
+            
+            {/* Action Buttons (Visible on Hover) */}
+            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                 <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // Refresh via parent, passing specific subpath
+                        onUpdateDirectory(rootDirectory.id, child.path);
+                    }}
+                    disabled={isIndexing}
+                    className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                        isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Refresh folder"
+                >
+                    <RotateCcw className="w-3 h-3" />
+                </button>
+                {onExcludeFolder && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onExcludeFolder(normalizePath(child.path));
+                        }}
+                        disabled={isIndexing}
+                        className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
+                        }`}
+                        title="Exclude folder"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
           </div>
           {isExpandedNode && (
             <ul className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-2">
@@ -441,6 +474,26 @@ export default function DirectoryList({
             <FolderOpen className="w-4 h-4" />
             Open in Explorer
           </button>
+          
+          <button
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+            onClick={() => {
+                // Find root directory for this path to trigger refresh
+                const rootDir = directories.find(d => contextMenu.path.startsWith(d.path));
+                if (rootDir) {
+                    onUpdateDirectory(rootDir.id, contextMenu.path);
+                } else {
+                    // Fallback or specific logic if needed
+                    console.warn("Could not find root directory for", contextMenu.path);
+                }
+                setContextMenu(null);
+            }}
+            disabled={isIndexing}
+          >
+            <RotateCcw className={`w-4 h-4 ${isIndexing ? 'text-gray-600' : ''}`} />
+            Refresh Folder
+          </button>
+
           {onExcludeFolder && (
             <button
               className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"

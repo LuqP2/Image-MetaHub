@@ -511,7 +511,8 @@ class CacheManager {
     directoryPath: string,
     directoryName: string,
     currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[],
-    scanSubfolders: boolean
+    scanSubfolders: boolean,
+    scopePath?: string
   ): Promise<CacheDiff> {
     const cached = await this.getCachedData(directoryPath, scanSubfolders);
     
@@ -529,6 +530,10 @@ class CacheManager {
     const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
+
+    // Helper to normalize paths for comparison (ensure forward slashes)
+    const normalize = (p: string) => p.replace(/\\/g, '/');
+    const normalizedScope = scopePath ? normalize(scopePath) : undefined;
 
     for (const file of currentFiles) {
       currentFileNames.add(file.name);
@@ -571,15 +576,24 @@ class CacheManager {
     }
 
     // Find files that were in the cache but are no longer on disk
+    // If scopePath is provided, ONLY consider files within that scope for deletion
     const deletedFileIds = cached.metadata
-      .filter(m => !currentFileNames.has(m.name))
+      .filter(m => {
+        // If scope is defined, ignore files outside the scope
+        if (normalizedScope) {
+           const authorized = m.name.startsWith(normalizedScope + '/') || m.name === normalizedScope;
+           if (!authorized) return false;
+        }
+        return !currentFileNames.has(m.name);
+      })
       .map(m => m.id);
 
     return {
       newAndModifiedFiles,
       deletedFileIds,
       cachedImages,
-      needsFullRefresh: false,
+      // If scoped, we NEVER need a full refresh, just an update
+      needsFullRefresh: false, 
     };
   }
 }
