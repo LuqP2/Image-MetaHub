@@ -38,7 +38,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "Generating release notes for version $VERSION"
-          node scripts/generate-release.js $VERSION
+          node generate-release.js $VERSION
 
       - name: Build Windows installer
         shell: bash

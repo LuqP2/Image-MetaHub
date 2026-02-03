@@ -19,7 +19,7 @@
     "electron-pack": "npm run build && electron-builder",
     "electron-dist": "npm run build && electron-builder --publish=never",
     "release": "npm run build && electron-builder --publish=always",
-    "generate-release": "node scripts/generate-release.js",
+    "generate-release": "node generate-release.js",
     "release-workflow": "node scripts/release-workflow.js",
     "auto-release": "node scripts/auto-release.js",
     "reset-cache": "node scripts/reset-cache.js",
