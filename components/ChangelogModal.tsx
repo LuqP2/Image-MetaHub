@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, Github, Heart, Puzzle } from 'lucide-react';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -25,12 +25,12 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
       try {
         response = await fetch('/CHANGELOG.md');
         text = await response.text();
-      } catch (err) {
+      } catch {
         // Electron fallback
         try {
           response = await fetch('CHANGELOG.md');
           text = await response.text();
-        } catch (err2) {
+        } catch {
           setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
           setLoading(false);
           return;
@@ -49,7 +49,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         const firstMatch = text.match(firstVersionRegex);
         setChangelog(firstMatch ? firstMatch[0] : text);
       }
-    } catch (error) {
+    } catch {
       setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
     } finally {
       setLoading(false);
@@ -126,63 +126,49 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
                 <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
                   <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
 
-                  <p><strong className="text-white">Yeah, I know: v0.11 was released just a few days ago...</strong></p>
+                  <p>Video support is finally starting to land! This update lays the critical foundation for video management. It is still early days, but you can now start indexing, previewing, and organizing your motion generations right alongside your images.</p>
 
-                  <p>The thing is, I wanted to quickly push <strong>v0.12.3</strong> to fix a critical indexing issue where interrupted scans could leave files with missing metadata. This maintenance release ensures your library always stays complete, even if you close the app while indexing.</p>
+                  <p>Beyond video, I’ve focused heavily on workflow improvements in this release. The new Stack by Prompt feature helps tame the chaos of your grid by grouping iterations together, and the dedicated Model View gives you a completely new way to browse your library based on your checkpoints. An early implementation of metadata editing is also available in the Image Modal.</p>
 
-                  <p>This update brings local intelligence to your chaos. Using <strong>TF-IDF vectorization</strong> and clustering algorithms, the app now automatically detects similar images (like variations of the same prompt) and stacks them for you.</p>
+                  <p>I want to take a quick moment to be transparent about the project itself.</p>
 
-                  <div className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded-lg">
-                    <p className="font-semibold text-purple-300 mb-2">Introducing MetaHub Custom Nodes for ComfyUI</p>
-                    <p className="mb-3">Two new custom nodes designed specifically for Image MetaHub:</p>
-                    <ul className="list-disc list-inside space-y-1 mb-3 ml-2">
-                      <li><strong className="text-white">MetaHub Save Node</strong> - Guarantees full metadata compatibility with auto-extraction of all generation parameters</li>
-                      <li><strong className="text-white">MetaHub Timer Node</strong> - Provides accurate performance tracking (generation time, steps/second)</li>
-                    </ul>
-                    <div className="flex flex-wrap gap-2">
-                      <a
-                        href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-full transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z"/>
-                        </svg>
-                        ComfyUI Registry
-                      </a>
-                      <a
-                        href="https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white text-xs font-medium rounded-full transition-colors"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                          <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-                        </svg>
-                        GitHub
-                      </a>
-                    </div>
+                  <p>Image MetaHub is not a side project or a weekend hobby for me. This is my full-time job. I am at my desk every single day, committed to building the best possible tool for local AI organization. The rapid pace of updates and bug fixes is possible because I am dedicating all my time to this.</p>
+
+                  <p>However, being an independent developer means I don't have investors or a corporate safety net—I only have you, the community.</p>
+
+                  <p className="font-medium mt-4">To everyone who has already supported the project with a <strong className="text-white">Pro license</strong>: thank you. You are literally keeping the lights on. If you haven't yet, and you have the means, purchasing a license is the single most effective way to ensure I can maintain this momentum. It validates the work and allows me to keep focusing 100% on making Image MetaHub better for everyone.</p>
+
+                  <p className="mt-4">Enjoy the update!</p>
+
+                  <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
+                    <a
+                      href="https://github.com/LuqP2/Image-MetaHub"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-full transition-colors"
+                    >
+                      <Github size={16} />
+                      GitHub Project
+                    </a>
+                    <a
+                      href="https://lucasphere4660.gumroad.com/l/qmjima"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
+                    >
+                       <Heart size={16} className="fill-current" />
+                       Get Pro License
+                    </a>
+                    <a
+                      href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-full transition-colors"
+                    >
+                       <Puzzle size={16} />
+                       ComfyUI Save Node
+                    </a>
                   </div>
-
-                  <div className="mt-3">
-                    <p className="font-semibold text-gray-200">New Organizational Tools (Early Access):</p>
-                    <ul className="list-disc list-inside space-y-1 ml-2">
-                      <li><strong className="text-white">Auto-Tagging</strong>: The engine now suggests tags based on your metadata. (Note: tools to manually refine/edit these auto-tags are coming in the next update.)</li>
-                    </ul>
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="font-semibold text-gray-200">Experimental / Alpha Features:</p>
-                    <p><strong className="text-white">Deduplication Helper</strong>: I included a very early prototype of the deduplication tool. It is currently extremely basic/experimental. Feel free to poke around, but please wait for v0.13.0 before relying on it for heavy cleaning. I decided to leave it visible so you can see the direction we are heading.</p>
-                  </div>
-
-                  <div className="mt-3">
-                    <p className="font-semibold text-gray-200">Work in Progress:</p>
-                    <p>Because we moved so fast, some UI aspects might still need tweaking. If you spot something weird, please open an <strong className="text-white">Issue on GitHub</strong>. This project thrives on your reports and contributions.</p>
-                  </div>
-
-                  <p className="font-medium mt-4">A big thank you to everyone who jumped on board with the last update, submitting reports and feedback. And especially to the <strong className="text-white">Pro supporters</strong> - this weekend sprint was fueled directly by your support. Thank you for believing in the project!</p>
                 </div>
               </div>
 

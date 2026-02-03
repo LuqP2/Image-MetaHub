@@ -203,6 +203,25 @@ const toRelativeWatchPath = (filePath: string, rootPath: string) => {
         return normalizedFilePath.slice(prefix.length);
     }
     return normalizedFilePath;
+    return normalizedFilePath;
+};
+
+const getRelativePath = (rootPath: string, targetPath: string) => {
+  const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+  const toForwardSlashes = (path: string) => normalizePath(path);
+  
+  const normalizedRoot = toForwardSlashes(rootPath);
+  const normalizedTarget = toForwardSlashes(targetPath);
+  if (!normalizedRoot) {
+    return normalizedTarget;
+  }
+  if (normalizedRoot === normalizedTarget) {
+    return '';
+  }
+  if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+    return normalizedTarget.slice(normalizedRoot.length + 1);
+  }
+  return normalizedTarget;
 };
 
 export function useImageLoader() {
@@ -577,8 +596,8 @@ export function useImageLoader() {
         }
     }, [addImages]);
 
-    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean) => {
-        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}`);
+    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
+        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}, refreshPath: ${refreshPath || 'full'}`);
         const suppressIndexingState = isUpdate;
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
@@ -599,23 +618,34 @@ export function useImageLoader() {
         abortControllerRef.current = new AbortController();
 
         try {
-      // Always update the allowed paths in the main process
-      if (getIsElectron()) {
-        const allPaths = useImageStore.getState().directories.map(d => d.path);
-        await window.electronAPI.updateAllowedPaths(allPaths);
+            // Always update the allowed paths in the main process
+            if (getIsElectron()) {
+                const allPaths = useImageStore.getState().directories.map(d => d.path);
+                await window.electronAPI.updateAllowedPaths(allPaths);
             }
 
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
 
-            // Note: We do NOT clear images before validation!
-            // validateCacheAndGetDiff will intelligently detect:
-            // - New files (to be processed)
-            // - Deleted files (to be removed from UI)
-            // - Modified files (to be re-processed)
-            // - Unchanged files (loaded from cache - super fast!)
+            // Determine what to scan
+            const scanPath = refreshPath || directory.path;
             
-            const allCurrentFiles = await getDirectoryFiles(directory.handle, directory.path, shouldScanSubfolders);
+            // Get files from disk (either full directory or specific subfolder)
+            let allCurrentFiles = await getDirectoryFiles(directory.handle, scanPath, shouldScanSubfolders);
+
+            // If we scanned a subfolder, we need to adjust the file paths to be relative to the ROOT directory
+            // because the cache expects paths relative to directory.path, not scanPath
+            let relativePrefix = '';
+            if (refreshPath) {
+                relativePrefix = getRelativePath(directory.path, refreshPath);
+                if (relativePrefix) {
+                    allCurrentFiles = allCurrentFiles.map(f => ({
+                        ...f,
+                        name: `${relativePrefix}/${f.name}`
+                    }));
+                }
+            }
+
             const fileStatsMap = new Map(
                 allCurrentFiles.map(file => [file.name, {
                     size: file.size,
@@ -623,7 +653,16 @@ export function useImageLoader() {
                     birthtimeMs: file.birthtimeMs ?? file.lastModified,
                 }])
             );
-            const diff = await cacheManager.validateCacheAndGetDiff(directory.path, directory.name, allCurrentFiles, shouldScanSubfolders);
+
+            // Pass the relative prefix as the scopePath to validateCacheAndGetDiff
+            // This ensures we only delete files within that scope
+            const diff = await cacheManager.validateCacheAndGetDiff(
+                directory.path, 
+                directory.name, 
+                allCurrentFiles, 
+                shouldScanSubfolders,
+                refreshPath ? relativePrefix : undefined
+            );
 
             let cacheWriter: IncrementalCacheWriter | null = null;
             const shouldUseWriter = getIsElectron() && (diff.needsFullRefresh || diff.newAndModifiedFiles.length > 0 || diff.deletedFileIds.length > 0);
@@ -904,13 +943,13 @@ export function useImageLoader() {
         }
     }, [loadDirectory, addDirectory, setError]);
 
-    const handleUpdateFolder = useCallback(async (directoryId: string) => {
+    const handleUpdateFolder = useCallback(async (directoryId: string, subPath?: string) => {
         const directory = useImageStore.getState().directories.find(d => d.id === directoryId);
         if (!directory) {
             setError("Directory not found for update.");
             return;
         }
-        await loadDirectory(directory, true);
+        await loadDirectory(directory, true, subPath);
     }, [loadDirectory, setError]);
     
     const handleLoadFromStorage = useCallback(async () => {

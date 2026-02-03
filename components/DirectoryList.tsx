@@ -5,7 +5,7 @@ import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeO
 interface DirectoryListProps {
   directories: Directory[];
   onRemoveDirectory: (directoryId: string) => void;
-  onUpdateDirectory: (directoryId: string) => void;
+  onUpdateDirectory: (directoryId: string, subPath?: string) => void;
   refreshingDirectories?: Set<string>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   onClearFolderSelection?: () => void;
@@ -217,10 +217,12 @@ export default function DirectoryList({
         return null;
       }
 
+      const hasSubfolders = isLoadingNode || !subfolderCache.has(childKey) || (subfolderCache.get(childKey)?.length ?? 0) > 0;
+
       return (
         <li key={childKey} className="py-1">
           <div
-            className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors ${
+            className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
                 ? 'bg-blue-600/30 hover:bg-blue-600/40'
                 : 'hover:bg-gray-700/50'
@@ -228,30 +230,76 @@ export default function DirectoryList({
             onClick={(e) => handleFolderClick(child.path, e)}
             onContextMenu={(e) => handleContextMenu(e, child.path)}
           >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleNode(childKey, child.path, rootDirectory);
-              }}
-              className="text-gray-500 hover:text-gray-300 transition-colors mr-1 flex-shrink-0"
-              title={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
-            >
-              <ChevronDown
-                className={`w-3 h-3 transition-transform ${isExpandedNode ? 'rotate-0' : '-rotate-90'}`}
-              />
-            </button>
+            {hasSubfolders ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleNode(childKey, child.path, rootDirectory);
+                }}
+                className="text-gray-500 hover:text-gray-300 transition-colors mr-1 flex-shrink-0"
+                title={isExpandedNode ? 'Hide subfolders' : 'Show subfolders'}
+              >
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform ${isExpandedNode ? 'rotate-0' : '-rotate-90'}`}
+                />
+              </button>
+            ) : (
+              <div className="w-4 mr-1 flex-shrink-0" /> // Spacer
+            )}
+            
             <Folder className="w-3 h-3 mr-2 text-gray-400" />
-            <span className="text-sm text-gray-300">{child.name}</span>
+            <span className="text-sm text-gray-300 truncate flex-1">{child.name}</span>
+            
+            {/* Action Buttons (Visible on Hover) */}
+            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                 <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // Refresh via parent, passing specific subpath
+                        onUpdateDirectory(rootDirectory.id, child.path);
+                        
+                        // Also refresh subfolders for this specific node
+                        setSubfolderCache(prev => {
+                          const next = new Map(prev);
+                          next.delete(childKey);
+                          return next;
+                        });
+                        // If it was expanded or has subfolders, reload them
+                        // Even if it wasn't, checking again is good practice on refresh
+                        void loadSubfolders(childKey, child.path, rootDirectory);
+                    }}
+                    disabled={isIndexing}
+                    className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                        isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Refresh folder"
+                >
+                    <RotateCcw className="w-3 h-3" />
+                </button>
+                {onExcludeFolder && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onExcludeFolder(normalizePath(child.path));
+                        }}
+                        disabled={isIndexing}
+                        className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
+                        }`}
+                        title="Exclude folder"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
           </div>
-          {isExpandedNode && (
+          {isExpandedNode && hasSubfolders && (
             <ul className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-2">
               {isLoadingNode ? (
                 <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
               ) : grandchildren.length > 0 ? (
                 renderSubfolderList(rootDirectory, childKey)
-              ) : (
-                <li className="text-xs text-gray-500 italic py-1">No subfolders found</li>
-              )}
+              ) : null}
             </ul>
           )}
         </li>
@@ -322,6 +370,10 @@ export default function DirectoryList({
               const rootChildren = subfolderCache.get(rootKey) || [];
               const isRefreshing = refreshingDirectories?.has(dir.id) ?? false;
               const isRootSelected = isFolderSelected ? isFolderSelected(dir.path) : false;
+              
+              // Determine if we should show the expander
+              // Show if loading, or if not yet loaded (not in cache), or if loaded and has children
+              const hasSubfolders = isRootLoading || !subfolderCache.has(rootKey) || (subfolderCache.get(rootKey)?.length ?? 0) > 0;
 
               return (
                 <li key={dir.id}>
@@ -333,15 +385,20 @@ export default function DirectoryList({
                     }`}
                   >
                     <div className="flex items-center overflow-hidden flex-1">
-                      <button
-                        onClick={() => handleToggleNode(rootKey, dir.path, dir)}
-                        className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
-                        title={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
-                      >
-                        <ChevronDown
-                          className={`w-4 h-4 transition-transform ${isRootExpanded ? 'rotate-0' : '-rotate-90'}`}
-                        />
-                      </button>
+                      {hasSubfolders ? (
+                        <button
+                          onClick={() => handleToggleNode(rootKey, dir.path, dir)}
+                          className="text-gray-400 hover:text-gray-300 transition-colors flex-shrink-0"
+                          title={isRootExpanded ? 'Hide subfolders' : 'Show subfolders'}
+                        >
+                          <ChevronDown
+                            className={`w-4 h-4 transition-transform ${isRootExpanded ? 'rotate-0' : '-rotate-90'}`}
+                          />
+                        </button>
+                      ) : (
+                        <div className="w-4 h-4 ml-1 flex-shrink-0" /> // Spacer
+                      )}
+                      
                       <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
                       <button
                         onClick={(e) => handleFolderClick(dir.path, e)}
@@ -356,7 +413,16 @@ export default function DirectoryList({
                     </div>
                     <div className="flex items-center space-x-2 flex-shrink-0">
                       <button
-                        onClick={() => onUpdateDirectory(dir.id)}
+                        onClick={() => {
+                            onUpdateDirectory(dir.id);
+                            // Also refresh subfolders
+                            setSubfolderCache(prev => {
+                                const next = new Map(prev);
+                                next.delete(rootKey);
+                                return next;
+                            });
+                            void loadSubfolders(rootKey, dir.path, dir);
+                        }}
                         disabled={isIndexing || isRefreshing}
                         className={`transition-colors ${
                           isRefreshing
@@ -396,7 +462,7 @@ export default function DirectoryList({
                     </div>
                   </div>
 
-                  {isRootExpanded && (
+                  {isRootExpanded && hasSubfolders && (
                     <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-700 pl-2">
                       {scanSubfolders ? (
                         <>
@@ -405,9 +471,7 @@ export default function DirectoryList({
                               <li className="text-xs text-gray-500 italic py-1">Loading subfolders...</li>
                             ) : rootChildren.length > 0 ? (
                               renderSubfolderList(dir, rootKey)
-                            ) : (
-                              <li className="text-xs text-gray-500 italic py-1">No subfolders found</li>
-                            )}
+                            ) : null}
                           </ul>
                         </>
                       ) : (
@@ -441,6 +505,26 @@ export default function DirectoryList({
             <FolderOpen className="w-4 h-4" />
             Open in Explorer
           </button>
+          
+          <button
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+            onClick={() => {
+                // Find root directory for this path to trigger refresh
+                const rootDir = directories.find(d => contextMenu.path.startsWith(d.path));
+                if (rootDir) {
+                    onUpdateDirectory(rootDir.id, contextMenu.path);
+                } else {
+                    // Fallback or specific logic if needed
+                    console.warn("Could not find root directory for", contextMenu.path);
+                }
+                setContextMenu(null);
+            }}
+            disabled={isIndexing}
+          >
+            <RotateCcw className={`w-4 h-4 ${isIndexing ? 'text-gray-600' : ''}`} />
+            Refresh Folder
+          </button>
+
           {onExcludeFolder && (
             <button
               className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"

@@ -2398,6 +2398,10 @@ export async function processFiles(
           ? await (window as any).electronAPI.readFilesHeadBatch({ filePaths, maxBytes: HEAD_READ_MAX_BYTES })
           : await (window as any).electronAPI.readFilesBatch(filePaths);
         const readDuration = performance.now() - readStart;
+
+        if (readResult.debug) {
+            console.log('[Phase B Debug] Batch Stats:', readResult.debug);
+        }
         if (useHeadRead) {
           phaseBStats.headReadFiles += filePaths.length;
           phaseBStats.headReadMs += readDuration;
