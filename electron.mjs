@@ -1630,6 +1630,7 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('read-files-head-batch', async (event, { filePaths, maxBytes }) => {
+    const start = performance.now();
     try {
       if (!Array.isArray(filePaths) || filePaths.length === 0) {
         return { success: false, error: 'No file paths provided' };
@@ -1652,37 +1653,44 @@ function setupFileOperationHandlers() {
       const requestedBytes = typeof maxBytes === 'number' ? maxBytes : FALLBACK_HEAD_BYTES;
       const safeBytes = Math.max(1, Math.min(requestedBytes, MAX_HEAD_BYTES));
 
-      const CONCURRENCY_LIMIT = 6; // Conservative concurrency to reduce GC pressure
+      // Use Synchronous operations to bypass UV Threadpool overhead
+      // This emulates the performance characteristics of PowerShell/CMD
       const results = new Array(filePaths.length);
+      
+      let totalOpenTime = 0;
+      let totalReadTime = 0;
 
-      // Process files in chunks to control concurrency
-      for (let i = 0; i < filePaths.length; i += CONCURRENCY_LIMIT) {
-        const chunkPaths = filePaths.slice(i, i + CONCURRENCY_LIMIT);
-        const chunkPromises = chunkPaths.map(async (filePath, chunkIndex) => {
-          let handle;
-          try {
-            handle = await fs.open(filePath, 'r');
-            const buffer = Buffer.allocUnsafe(safeBytes);
-            const { bytesRead } = await handle.read(buffer, 0, safeBytes, 0);
-            return { status: 'fulfilled', value: { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath } };
-          } catch (error) {
-            return { status: 'rejected', reason: error };
-          } finally {
-            if (handle) {
-              await handle.close();
-            }
-          }
-        });
-
-        const chunkResults = await Promise.all(chunkPromises);
+      for (let i = 0; i < filePaths.length; i++) {
+        const filePath = filePaths[i];
         
-        chunkResults.forEach((result, chunkIndex) => {
-          results[i + chunkIndex] = result;
-        });
+        // Yield every 5 files to prevent Main Process freeze
+        if (i > 0 && i % 5 === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
 
-        // Yield to event loop to allow GC and other IPC messages to process
-        await new Promise(resolve => setImmediate(resolve));
+        try {
+            const t0 = performance.now();
+            const fd = fsSync.openSync(filePath, 'r');
+            const t1 = performance.now();
+            totalOpenTime += (t1 - t0);
+
+            try {
+                const buffer = Buffer.allocUnsafe(safeBytes);
+                // readSync returns bytesRead directly
+                const bytesRead = fsSync.readSync(fd, buffer, 0, safeBytes, 0);
+                const t2 = performance.now();
+                totalReadTime += (t2 - t1);
+                
+                results[i] = { status: 'fulfilled', value: { success: true, data: buffer.subarray(0, bytesRead), bytesRead, path: filePath } };
+            } finally {
+                fsSync.closeSync(fd);
+            }
+        } catch (error) {
+            results[i] = { status: 'rejected', reason: error };
+        }
       }
+
+      console.log(`[Main] Batch(${filePaths.length}) - Sync Open: ${totalOpenTime.toFixed(1)}ms, Sync Read: ${totalReadTime.toFixed(1)}ms`);
 
       const data = results.map((result, index) => {
         if (result.status === 'fulfilled') {
@@ -1694,7 +1702,19 @@ function setupFileOperationHandlers() {
         return { success: false, error: result.reason.message, path: filePaths[index] };
       });
 
-      return { success: true, files: data };
+      const response = { 
+        success: true, 
+        files: data,
+        debug: {
+          totalTime: performance.now() - start,
+          openTime: totalOpenTime,
+          readTime: totalReadTime,
+          avgPerFile: (totalOpenTime + totalReadTime) / filePaths.length,
+          concurrency: 1
+        }
+      };
+      
+      return response;
     } catch (error) {
       console.error('Error in read-files-head-batch handler:', error);
       return { success: false, error: error.message };
