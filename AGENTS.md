@@ -28,6 +28,7 @@ Image MetaHub is a desktop application (Electron + React + TypeScript) for brows
 ├── utils/                 # Utility functions
 ├── hooks/                 # Custom React hooks
 ├── src/                   # Additional source files
+├── scripts/               # Maintenance and release scripts
 ├── __tests__/             # Test files
 └── public/                # Static assets
 ```
@@ -179,6 +180,13 @@ The application supports multiple AI image generators:
 - Adobe Firefly
 - DreamStudio
 - Draw Things
+- Flux (via various UIs)
+
+Supported File Formats:
+
+- Images: PNG, JPEG, WEBP
+- Animation: GIF
+- Video: MP4, WEBM
 
 Metadata sources:
 
@@ -195,6 +203,9 @@ Metadata sources:
 4. **Multi-Format Support**: Handle various AI generator formats
 5. **File Operations**: Rename, delete, export metadata (desktop only)
 6. **A1111 Integration**: Send images back to Automatic1111 for editing or regeneration
+7. **Video & GIF Support**: Indexing, playback, and thumbnail support for MP4, WEBM, and GIF files
+8. **Shadow Metadata**: View original metadata and revert changes (non-destructive editing)
+9. **Subfolder Management**: Ability to exclude specific subfolders from indexing
 
 ## Smart Library & Auto-Tags
 
@@ -202,7 +213,6 @@ Metadata sources:
 - **Auto-Tags (TF-IDF)**: `services/autoTaggingEngine.ts`, `services/workers/autoTaggingWorker.ts`, `components/TagsAndFavorites.tsx`, `components/ImageModal.tsx`, `components/ImagePreviewSidebar.tsx`
 - **Deduplication Helper**: `services/deduplicationEngine.ts`, `components/DeduplicationHelper.tsx`, `components/ImageGrid.tsx`
 - **Cluster Cache**: `services/clusterCacheManager.ts` (atomic writes, userData path resolution)
-
 
 ## A1111 Integration
 
@@ -263,6 +273,7 @@ The application includes bidirectional workflow with Automatic1111 WebUI, allowi
 **Configuration:**
 
 Settings in `store/useSettingsStore.ts`:
+
 - `a1111ServerUrl`: Default `http://127.0.0.1:7860`
 - `a1111LastConnectionStatus`: Connection state tracking
 - Connection test button in Settings modal
@@ -270,6 +281,7 @@ Settings in `store/useSettingsStore.ts`:
 **A1111 Setup Requirements:**
 
 User must start A1111 with API flags:
+
 ```bash
 --api --cors-allow-origins=http://localhost:5173
 ```
@@ -380,6 +392,7 @@ The ComfyUI integration relies on the [MetaHub Save Node](https://github.com/Luq
 **Repository:** `d:\ImageMetaHub-ComfyUI-Save` (additional working directory)
 
 **Features:**
+
 - **Auto-Extraction:** Detects sampler params, prompts, model/VAE, and LoRAs directly from workflow
 - **Performance Metrics:** Auto-tracks GPU usage, VRAM peak, generation time, and software versions
 - **User Inputs:** Supports custom tags and notes fields that are automatically imported into Image MetaHub
@@ -392,14 +405,15 @@ The ComfyUI integration relies on the [MetaHub Save Node](https://github.com/Luq
 - **Never Fails:** Silent fallback on errors - generation never stops
 
 **Performance Metrics Structure:**
+
 ```json
 {
   "_analytics": {
-    "vram_peak_mb": 3165.44,           // CUDA GPUs only
+    "vram_peak_mb": 3165.44, // CUDA GPUs only
     "gpu_device": "NVIDIA GeForce RTX 3060 Ti",
-    "generation_time_ms": 1523,        // Requires MetaHub Timer node
-    "steps_per_second": 13.2,          // Calculated from time + steps
-    "comfyui_version": "0.1.0",        // Can be null (Colab environments)
+    "generation_time_ms": 1523, // Requires MetaHub Timer node
+    "steps_per_second": 13.2, // Calculated from time + steps
+    "comfyui_version": "0.1.0", // Can be null (Colab environments)
     "torch_version": "2.6.0+cu124",
     "python_version": "3.10.6"
   }
@@ -407,6 +421,7 @@ The ComfyUI integration relies on the [MetaHub Save Node](https://github.com/Luq
 ```
 
 **Installation:**
+
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/LuqP2/ImageMetaHub-ComfyUI-Save.git
@@ -440,6 +455,7 @@ The app includes a visual badge and filter system to distinguish images generate
 **Detection Logic (`hasVerifiedTelemetry()`):**
 
 Images are considered to have "verified telemetry" if they contain:
+
 - **VRAM Peak** (`vram_peak_mb`): Must be number > 0
 - **GPU Device** (`gpu_device`): Must be non-empty string
 - **Software Versions**: At least one of:
@@ -448,47 +464,57 @@ Images are considered to have "verified telemetry" if they contain:
   - `python_version`
 
 **Optional Metrics (Not Required):**
+
 - `generation_time_ms`: Only present if MetaHub Timer node in workflow
 - `steps_per_second`: Only present if MetaHub Timer node in workflow
 
 **Metadata Field Access Pattern:**
+
 ```typescript
 // Try both analytics and _analytics (underscore version used in normalizedMetadata)
-const analytics = image.metadata?.normalizedMetadata?.analytics ||
-                  (image.metadata?.normalizedMetadata as any)?._analytics;
+const analytics =
+  image.metadata?.normalizedMetadata?.analytics ||
+  (image.metadata?.normalizedMetadata as any)?._analytics;
 ```
 
 **Badge UI Implementation:**
 
 **ImageModal.tsx (lines 592-602):**
+
 ```tsx
-{hasVerifiedTelemetry(image) && (
-  <span
-    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
-    title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
-  >
-    <CheckCircle size={14} className="flex-shrink-0" />
-    <span className="whitespace-nowrap">Verified Telemetry</span>
-  </span>
-)}
+{
+  hasVerifiedTelemetry(image) && (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+      title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+    >
+      <CheckCircle size={14} className="flex-shrink-0" />
+      <span className="whitespace-nowrap">Verified Telemetry</span>
+    </span>
+  );
+}
 ```
 
 **ImagePreviewSidebar.tsx (lines 275-286):**
+
 - Same badge design with shorter text: "Verified" instead of "Verified Telemetry"
 
 **AdvancedFilters.tsx (lines 362-382):**
+
 - Checkbox filter with green styling
 - Label: "Verified Telemetry Only (MetaHub Save Node)"
 - Explanation text about complete performance metrics
 
 **Filter Implementation (`store/useImageStore.ts`, lines 603-605):**
+
 ```typescript
 if (advancedFilters.hasVerifiedTelemetry === true) {
-  results = results.filter(image => hasVerifiedTelemetry(image));
+  results = results.filter((image) => hasVerifiedTelemetry(image));
 }
 ```
 
 **Design Intent:**
+
 - Create "desire for completeness" encouraging users to use MetaHub Save Node
 - Visual distinction between images with/without complete metrics
 - Easy filtering to find images with verified telemetry data
@@ -526,6 +552,7 @@ if (advancedFilters.hasVerifiedTelemetry === true) {
 **Configuration:**
 
 Settings in `store/useSettingsStore.ts`:
+
 - `comfyUIServerUrl`: Default `http://127.0.0.1:8188`
 - `comfyUIConnectionStatus`: Connection state tracking ('connected' | 'disconnected' | 'checking')
 - Connection test button in Settings modal (tests `/system_stats` endpoint)
@@ -533,6 +560,7 @@ Settings in `store/useSettingsStore.ts`:
 **ComfyUI Setup Requirements:**
 
 User must:
+
 1. Install ComfyUI locally
 2. Install MetaHub Save Node custom node
 3. Install MetaHub Timer node (included with Save Node package)
@@ -597,6 +625,7 @@ python main.py
 **MetaHub Timer Node Integration:**
 
 Generated workflows automatically include the MetaHub Timer node for accurate timing:
+
 - Placed between CheckpointLoader and CLIPTextEncode nodes
 - Records timestamp when it executes
 - Save Node calculates elapsed time from this timestamp
@@ -606,12 +635,14 @@ Generated workflows automatically include the MetaHub Timer node for accurate ti
 **Workflow Generation vs Original Workflow:**
 
 IMPORTANT: Image MetaHub does NOT attempt to recreate the original workflow used to generate an image. Instead, it:
+
 1. Extracts normalized parameters from metadata (regardless of source: A1111, ComfyUI, Fooocus, etc.)
 2. Generates a **minimal txt2img workflow** with those parameters
 3. Focuses on core parameters: prompts, model, seed, steps, CFG, sampler, dimensions
 4. Omits advanced features like ControlNet, upscalers, refiner models, custom nodes
 
 **Why This Approach:**
+
 - Universal compatibility: works with images from any AI generator
 - Consistent behavior: same workflow structure every time
 - Reliability: no dependency on custom nodes or complex setups
@@ -619,6 +650,7 @@ IMPORTANT: Image MetaHub does NOT attempt to recreate the original workflow used
 - Starting point: users can load and enhance workflow in ComfyUI if needed
 
 For advanced workflows (ControlNet, upscaling, multi-stage), users should:
+
 1. Use "Copy to ComfyUI" to get basic workflow
 2. Load in ComfyUI web interface
 3. Manually add advanced nodes (ControlNet, upscaler, etc.)
@@ -690,6 +722,7 @@ Browser version uses File System Access API with limited capabilities.
 - Implement proper virtualization for lists
 - Cache metadata aggressively in IndexedDB
 - Process files in background threads when possible
+- Use synchronous I/O (`fs.openSync`) for header reads during indexing to prevent disk contention (Phase B optimization)
 
 ## Common Pitfalls
 
@@ -708,11 +741,13 @@ This is an Electron desktop app with a robust multi-platform release pipeline co
 **Pattern:** Semantic Versioning (SemVer) - `MAJOR.MINOR.PATCH[-PRERELEASE]`
 
 **Files to sync:**
+
 - `package.json` - version field
 - `ARCHITECTURE.md` - version field
 - Git tags - format `v{VERSION}` (e.g., `v0.9.6`)
 
 **Prerelease Support:**
+
 - Format: `0.9.6-rc`, `1.0.0-beta.1`
 - Used for testing before stable releases
 
@@ -721,11 +756,13 @@ This is an Electron desktop app with a robust multi-platform release pipeline co
 Three main scripts available in `package.json`:
 
 **1. `npm run auto-release <version>` (Fully Automated - RECOMMENDED)**
+
 ```bash
 npm run auto-release 0.9.6
 ```
 
 Executes complete pipeline:
+
 - Runs `npm run build` (compile + test)
 - Updates `package.json` version
 - Updates `ARCHITECTURE.md` version
@@ -736,17 +773,20 @@ Executes complete pipeline:
 - Waits for GitHub Actions to trigger
 
 **2. `npm run release-workflow <version>` (Automated, No Build)**
+
 ```bash
 npm run release-workflow 0.9.6
 ```
 
 Same as above but **skips build step** (safe for pre-tested changes):
+
 - Does NOT run tests/build
 - Updates versions and creates tag
 - Generates release notes
 - Opens GitHub releases page for final manual step
 
 **3. Manual Process** (see RELEASE-GUIDE.md)
+
 ```bash
 npm version 0.9.6
 node generate-release.js 0.9.6
@@ -757,18 +797,21 @@ git push origin main v0.9.6
 ### Git Tags and Triggering Builds
 
 **Tag Creation:**
+
 ```bash
 git tag v0.9.6           # Create locally
 git push origin v0.9.6   # Push to GitHub
 ```
 
 **GitHub Actions Trigger:**
+
 - `.github/workflows/publish.yml` automatically triggers on any tag matching `v*`
 - Builds Windows, macOS, and Linux installers **in parallel**
 - Creates draft GitHub Release and uploads all artifacts
 - Publishes release (removes draft flag) after all builds complete
 
 **Tag Convention:**
+
 - Always use `v` prefix
 - Match version in `package.json` exactly
 - Never push tags directly to main branch; push separately
@@ -778,17 +821,20 @@ git push origin v0.9.6   # Push to GitHub
 Three parallel build jobs execute on tag push:
 
 **build-windows** (runs-on: windows-latest)
+
 - Builds Electron app with electron-builder
 - Generates Windows installer (`.exe`) and ZIP
 - Creates GitHub Release (draft mode)
 - Uploads assets and YAML update manifest
 
 **build-macos** (runs-on: macos-latest)
+
 - Builds for macOS
 - Generates DMG installer
 - Uploads to same GitHub Release
 
 **build-linux** (runs-on: ubuntu-latest)
+
 - Builds for Linux
 - Generates AppImage
 - Uploads to same GitHub Release
@@ -800,6 +846,7 @@ All jobs upload to the **same release draft**, ensuring single unified release w
 **Script:** `generate-release.js`
 
 Reads `CHANGELOG.md` and generates `release-v{VERSION}.md` with:
+
 - Changelog content from new version section
 - Download links for all platforms (Windows/macOS/Linux)
 - System requirements
@@ -807,16 +854,20 @@ Reads `CHANGELOG.md` and generates `release-v{VERSION}.md` with:
 - Release date
 
 **CHANGELOG.md Format Requirements:**
+
 ```markdown
 ## [0.9.6] - 2025-11-23
 
 ### Fixed
+
 - **Bug title**: Description
 
 ### Added
+
 - **Feature title**: Description
 
 ### Improved
+
 - **Item**: Technical details
 ```
 
@@ -853,11 +904,13 @@ Format must match exactly for parser to extract correct section.
 ### Auto-Updater (electron-updater)
 
 **Configuration:**
+
 - Provider: GitHub
 - Delta updates: Uses `.blockmap` files for efficient downloads
 - Settings: Users can disable auto-check in app preferences
 
 **Update Flow:**
+
 1. App checks for updates 3 seconds after startup
 2. If new version available, shows dialog with:
    - Version number
@@ -868,6 +921,7 @@ Format must match exactly for parser to extract correct section.
 5. After download: Restart app to install
 
 **Skip Version Handling:**
+
 - Users can skip individual versions
 - Skipped versions stored in memory (session-based)
 - Next manual check or app restart resets
@@ -875,16 +929,19 @@ Format must match exactly for parser to extract correct section.
 ### Multi-Platform Distribution
 
 **Windows:**
+
 - NSIS installer: `ImageMetaHub-Setup-{version}.exe`
 - Portable ZIP: `ImageMetaHub-{version}.zip`
 - Auto-update manifest: `latest.yml`
 
 **macOS:**
+
 - DMG installer: `ImageMetaHub-{version}.dmg`
 - Auto-update manifest: `latest-mac.yml`
 - Notarization: Configured in `electron-builder.json`
 
 **Linux:**
+
 - AppImage: `ImageMetaHub-{version}.AppImage`
 - Auto-update manifest: `latest-linux.yml`
 - One-file deployment (no dependencies)
@@ -894,18 +951,21 @@ All artifacts uploaded to GitHub Releases automatically by CI/CD.
 ### Configuration Files
 
 **`electron-builder.json`**
+
 - Target platforms and formats
 - GitHub publish configuration
 - Code signing settings
 - Update manifest generation
 
 **`.github/workflows/publish.yml`**
+
 - Triggers on `v*` tags
 - Build matrix for Windows, macOS, Linux
 - Release creation and artifact upload
 - Runs: Node.js v22 (fixed version)
 
 **`electron.mjs`**
+
 - Auto-updater initialization
 - Update checking and download logic
 - Dialog handling with user preferences
@@ -914,11 +974,13 @@ All artifacts uploaded to GitHub Releases automatically by CI/CD.
 ### Cache Invalidation
 
 **Parser Version:**
+
 ```javascript
 const PARSER_VERSION = 3;
 ```
 
 Located in `electron.mjs`, used for metadata cache invalidation:
+
 - Increment when parser logic changes significantly
 - Forces reprocessing of all cached metadata
 - Current version affects ComfyUI parser improvements
@@ -926,21 +988,25 @@ Located in `electron.mjs`, used for metadata cache invalidation:
 ### Release Troubleshooting
 
 **GitHub Actions fails to build:**
+
 - Verify tag is pushed to origin (not just created locally)
 - Check that `PARSER_VERSION` in electron.mjs is valid
 - Ensure `package.json` version matches tag (without `v` prefix)
 
 **Auto-updater not detecting new version:**
+
 - Check that GitHub Release is published (not draft)
 - Verify latest.yml was created in Release assets
 - Clear IndexedDB cache if testing locally
 
 **Release notes look wrong:**
+
 - Verify CHANGELOG.md uses exact format: `## [VERSION] - YYYY-MM-DD`
 - Check section headers: `### Fixed`, `### Added`, `### Improved`
 - Run `npm run generate-release VERSION` to test
 
 **Version mismatch across files:**
+
 - Always use `npm run release-workflow` (updates both files)
 - Or manually sync: `package.json`, `ARCHITECTURE.md`, git tag
 - Check with: `npm run build` before final push

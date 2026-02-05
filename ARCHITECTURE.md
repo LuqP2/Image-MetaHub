@@ -6,19 +6,20 @@
 
 ### Current Version
 
-- **Version:** 0.12.3
+- **Version:** 0.13.0
 - **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
 - **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
 - **State Management:** Zustand stores for both image data and application settings
 - **Build Tooling:** Vite 5 for development and bundling, Vitest for unit tests, ESLint 9 for linting
 
-### Release Highlights (v0.12.0)
+### Release Highlights (v0.13.0)
 
-- Smart Library clustering view with stack cards and expanded stack browsing
-- Background clustering and auto-tagging workers for large libraries
-- TF-IDF auto-tags with filtering/promote-to-tag workflows
-- Deduplication helper with smart keep/archive suggestions and disk savings
-- Cache reliability improvements (atomic writes, userData fallbacks)
+- **Video & GIF Support**: Full indexing and playback support for MP4, WEBM, and GIF files.
+- **Image Stacking Navigation**: Drill-down navigation for prompt-based stacks with maintaining context.
+- **Subfolder Management**: Ability to exclude specific subfolders and partial folder refresh.
+- **Shadow Metadata**: Non-destructive metadata editing with "View Original" and "Revert" capabilities.
+- **Indexing Performance**: Switch to synchronous I/O for header reads, reducing disk contention and improving speed by ~98%.
+- **Random Sort**: New sorting option with reshuffle capability.
 
 ## Runtime Architecture
 
@@ -30,6 +31,7 @@
 - **Folder Selector (`components/FolderSelector.tsx`)** is shown before any directory is loaded. It enables recursive scanning on mount and introduces the refreshed logo artwork during onboarding.
 - **Status surfaces** such as `components/Header.tsx` and `components/StatusBar.tsx` expose the unified `v0.9.5` version information for quick sanity checks.
 - **Performance Patterns (v0.10.5)**: Critical components like `ImageCard` and `ImageTableRow` use `React.memo` with custom comparison functions to prevent unnecessary re-renders. Expensive operations like drag-to-select use `requestAnimationFrame` throttling, and filter inputs are debounced (300ms) to reduce computational overhead.
+- **Shadow Metadata Editor (v0.13.0)**: The `ImageModal` now supports a "Shadow Metadata" mode, allowing users to edit metadata without modifying the actual file. It uses a `shadowMetadata` property on the image object to store overrides, with UI controls to view original vs. edited values and revert changes.
 
 ### State Management
 
@@ -54,7 +56,7 @@
 
 ### File Indexing Pipeline
 
-- **Discovery (`services/fileIndexer.ts`)** walks directories either recursively or flat based on the `scanSubfolders` flag. It extracts metadata through parser modules that understand InvokeAI, Automatic1111, ComfyUI, DreamStudio, Fooocus, SD.Next, SwarmUI, Midjourney, Draw Things, and more.
+- **Discovery (`services/fileIndexer.ts`)** walks directories either recursively or flat based on the `scanSubfolders` flag. It extracts metadata through parser modules that understand InvokeAI, Automatic1111, ComfyUI, DreamStudio, Fooocus, SD.Next, SwarmUI, Midjourney, Draw Things, and more. It now supports video files (MP4, WEBM) and animations (GIF), extracting duration and dimensions where applicable.
 - **Caching (`services/cacheManager.ts`)** persists intermediate results so subsequent launches only process new or changed files.
 - **Enrichment (`hooks/useImageLoader.ts`)** coordinates indexing jobs, respects user-controlled concurrency, and updates progress indicators exposed through `useImageStore`.
 
@@ -138,6 +140,10 @@ The application provides bidirectional workflow with Automatic1111 WebUI, enabli
 ├── hooks/
 │   ├── useImageLoader.ts
 │   ├── useHotkeys.ts
+│   └── ...
+├── scripts/
+│   ├── release-workflow.js
+│   ├── generate-release.js
 │   └── ...
 ├── services/
 │   ├── cacheManager.ts
