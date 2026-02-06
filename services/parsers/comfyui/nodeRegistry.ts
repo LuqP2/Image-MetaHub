@@ -1373,5 +1373,64 @@ PrimitiveNode: {
     denoise: { source: 'widget', key: 'value' }
   },
   widget_order: ['value', 'control_after_generate']
-}
+},
+
+  KSamplerAdvanced: {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent_image: { type: 'LATENT' }
+    },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'noise_seed' },
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      denoise: { source: 'widget', key: 'add_noise' } // Approximate mapping
+    },
+    widget_order: ['add_noise', 'noise_seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'start_at_step', 'end_at_step', 'return_with_leftover_noise']
+  },
+  VHS_VideoCombine: {
+    category: 'IO', roles: ['SINK'],
+    inputs: { images: { type: 'IMAGE' } },
+    outputs: {},
+    param_mapping: {},
+    widget_order: ['frame_rate', 'loop_count', 'filename_prefix', 'format', 'pix_fmt', 'crf', 'save_metadata', 'trim_to_audio', 'pingpong', 'save_output']
+  },
+  WanImageToVideo: {
+    category: 'TRANSFORM',
+    roles: ['TRANSFORM', 'PASS_THROUGH'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      length: { type: 'INT' },
+      batch_size: { type: 'INT' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      vae: { type: 'VAE' },
+      start_image: { type: 'IMAGE' }
+    },
+    outputs: {
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent: { type: 'LATENT' }
+    },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      width: { source: 'widget', key: 'width' },
+      height: { source: 'widget', key: 'height' },
+      vae: { source: 'trace', input: 'vae' },
+      model: { source: 'trace', input: 'vae' }
+    },
+    widget_order: ['width', 'height', 'length', 'batch_size']
+  }
 };
+
