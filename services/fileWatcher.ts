@@ -8,7 +8,9 @@ const activeWatchers = new Map<string, FSWatcher>();
 
 // Pending files for batching
 const pendingFiles = new Map<string, Set<string>>();
+const pendingDeletions = new Map<string, Set<string>>();
 const processingTimeouts = new Map<string, NodeJS.Timeout>();
+const deletionTimeouts = new Map<string, NodeJS.Timeout>();
 
 const WATCHER_READY_TIMEOUT_MS = 10000;
 
@@ -106,6 +108,27 @@ export function startWatching(
       }, 500));
     });
 
+    watcher.on('unlink', (filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+      if (!['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext)) {
+        return;
+      }
+
+      sendWatcherDebug(mainWindow, `[FileWatcher] File deleted: ${filePath}`);
+      if (!pendingDeletions.has(directoryId)) {
+        pendingDeletions.set(directoryId, new Set());
+      }
+      pendingDeletions.get(directoryId)!.add(filePath);
+
+      if (deletionTimeouts.has(directoryId)) {
+        clearTimeout(deletionTimeouts.get(directoryId)!);
+      }
+
+      deletionTimeouts.set(directoryId, setTimeout(() => {
+        processDeletionBatch(directoryId, mainWindow);
+      }, 500));
+    });
+
     watcher.on('error', (error) => {
       if (isPermissionError(error)) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -149,6 +172,12 @@ export function stopWatching(directoryId: string): { success: boolean } {
       processingTimeouts.delete(directoryId);
     }
     pendingFiles.delete(directoryId);
+
+    if (deletionTimeouts.has(directoryId)) {
+      clearTimeout(deletionTimeouts.get(directoryId)!);
+      deletionTimeouts.delete(directoryId);
+    }
+    pendingDeletions.delete(directoryId);
   }
 
   return { success: true };
@@ -212,4 +241,32 @@ function processBatch(
 
   pendingFiles.delete(directoryId);
   processingTimeouts.delete(directoryId);
+}
+
+/**
+ * Process a batch of deleted files.
+ */
+function processDeletionBatch(
+  directoryId: string,
+  mainWindow: BrowserWindow
+): void {
+  const files = pendingDeletions.get(directoryId);
+
+  if (!files || files.size === 0) return;
+
+  sendWatcherDebug(mainWindow, `[FileWatcher] Processing deletion batch for ${directoryId}, ${files.size} files`);
+
+  const filePaths = Array.from(files);
+
+  if (filePaths.length > 0) {
+    sendWatcherDebug(mainWindow, `[FileWatcher] Sending ${filePaths.length} deleted files to renderer for directory ${directoryId}`);
+    // Send just the paths of the deleted files
+    mainWindow.webContents.send('images-removed', {
+      directoryId,
+      paths: filePaths
+    });
+  }
+
+  pendingDeletions.delete(directoryId);
+  deletionTimeouts.delete(directoryId);
 }

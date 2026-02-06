@@ -119,6 +119,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showDirectoryDialog: () => ipcRenderer.invoke('show-directory-dialog'),
   showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
   showItemInFolder: (filePath) => ipcRenderer.invoke('show-item-in-folder', filePath),
+  openPath: (filePath) => ipcRenderer.invoke('open-path', filePath),
   openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
@@ -167,6 +168,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('new-images-detected', subscription);
     return () => ipcRenderer.removeListener('new-images-detected', subscription);
+  },
+  onImagesRemoved: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('images-removed', subscription);
+    return () => ipcRenderer.removeListener('images-removed', subscription);
   },
   onWatcherDebug: (callback) => {
     const subscription = (event, data) => callback(data);

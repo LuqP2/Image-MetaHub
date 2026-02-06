@@ -1161,7 +1161,27 @@ export function useImageLoader() {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
-        }
+        },
+        processRemovedFiles: useCallback((
+            directory: Directory,
+            filePaths: string[]
+        ) => {
+            const imageIdsToRemove: string[] = [];
+
+            for (const filePath of filePaths) {
+                const relativePath = toRelativeWatchPath(filePath, directory.path);
+                
+                if (relativePath) {
+                     const imageId = `${directory.id}::${relativePath}`;
+                     imageIdsToRemove.push(imageId);
+                }
+            }
+
+            if (imageIdsToRemove.length > 0) {
+                console.log(`[processRemovedFiles] Removing ${imageIdsToRemove.length} images from ${directory.name}`);
+                removeImages(imageIdsToRemove);
+            }
+        }, [removeImages])
     };
 }
 

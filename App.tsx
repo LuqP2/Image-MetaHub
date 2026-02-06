@@ -48,7 +48,7 @@ export default function App() {
   useGenerationQueueSync();
 
   // --- Hooks ---
-  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles } = useImageLoader();
+  const { handleSelectFolder, handleUpdateFolder, handleLoadFromStorage, handleRemoveDirectory, loadDirectory, processNewWatchedFiles, processRemovedFiles } = useImageLoader();
   const { handleImageSelection, handleDeleteSelectedImages } = useImageSelection();
   const { generateWithA1111, isGenerating: isGeneratingA1111 } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
@@ -424,6 +424,22 @@ export default function App() {
 
     return () => unsubscribe();
   }, [directories, processNewWatchedFiles, sortOrder]);
+
+  // Listen for removed images from file watcher
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubscribe = window.electronAPI.onImagesRemoved((data) => {
+      const { directoryId, paths } = data;
+      const directory = directories.find(d => d.id === directoryId);
+
+      if (!directory || !paths || paths.length === 0) return;
+
+      processRemovedFiles(directory, paths);
+    });
+
+    return () => unsubscribe();
+  }, [directories, processRemovedFiles]);
 
   // Watcher debug logs
   useEffect(() => {

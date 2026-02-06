@@ -159,14 +159,35 @@ export default function DirectoryList({
   const handleOpenInExplorer = async (path: string) => {
     try {
       const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
-      if (isElectron && (window as any).electronAPI.showItemInFolder) {
-        await (window as any).electronAPI.showItemInFolder(path);
-      } else {
+      
+      if (!isElectron) {
         alert('This feature requires the desktop app. Please use the Image MetaHub application.');
+        return;
+      }
+
+      // Prefer openPath to actually enter/open the directory
+      if ((window as any).electronAPI.openPath) {
+        const result = await (window as any).electronAPI.openPath(path);
+        if (!result.success) {
+            console.error('Failed to open folder:', result.error);
+            // Display error to user so they know why "nothing happened"
+            alert(`Failed to open folder: ${result.error}`);
+        }
+      } 
+      // Fallback to showItemInFolder (reveal parent)
+      else if ((window as any).electronAPI.showItemInFolder) {
+        const result = await (window as any).electronAPI.showItemInFolder(path);
+        if (!result.success) {
+             console.error('Failed to reveal folder:', result.error);
+             alert(`Failed to reveal folder: ${result.error}`);
+        }
+      } else {
+         console.error('Electron API found but file operations missing.');
+         alert('File operations are not supported in this version.');
       }
     } catch (error) {
       console.error('Error opening folder:', error);
-      alert('Failed to open folder. Please check the path.');
+      alert('Failed to open folder. Please check the path and try again.');
     }
   };
 

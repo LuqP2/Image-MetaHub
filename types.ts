@@ -16,6 +16,7 @@ export interface ElectronAPI {
   showDirectoryDialog: () => Promise<{ success: boolean; path?: string; name?: string; canceled?: boolean; error?: string }>;
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  openPath: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
@@ -75,6 +76,7 @@ export interface ElectronAPI {
   stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
   onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
+  onImagesRemoved: (callback: (data: { directoryId: string; paths: string[] }) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
 

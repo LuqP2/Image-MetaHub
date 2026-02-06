@@ -783,8 +783,21 @@ function setupFileOperationHandlers() {
   // Security helper to check if a file path is within one of the allowed directories
   const isPathAllowed = (filePath) => {
     if (allowedDirectoryPaths.size === 0) return false;
+    
+    // Normalize and lower case for comparison to handle Windows case-insensitivity
     const normalizedFilePath = path.normalize(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => normalizedFilePath.startsWith(allowedPath));
+    const lowerFilePath = normalizedFilePath.toLowerCase();
+    
+    return Array.from(allowedDirectoryPaths).some(allowedPath => {
+       const lowerAllowedPath = allowedPath.toLowerCase();
+       // Check for exact match
+       if (lowerFilePath === lowerAllowedPath) return true;
+       // Check for subdirectory (ensure trailing separator to prevent partial name matches)
+       const allowedPathWithSep = lowerAllowedPath.endsWith(path.sep) 
+         ? lowerAllowedPath 
+         : lowerAllowedPath + path.sep;
+       return lowerFilePath.startsWith(allowedPathWithSep);
+    });
   };
   const userDataPath = path.normalize(app.getPath('userData'));
   const isInternalPath = (filePath) => {
@@ -1277,6 +1290,41 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       console.error('❌ Error showing item in folder:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle open path (folder or file)
+  ipcMain.handle('open-path', async (event, filePath) => {
+    try {
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open path outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot open paths outside of the allowed directories.' };
+      }
+
+      const normalizedFilePath = path.normalize(filePath);
+      console.log('📂 Attempting to open path:', normalizedFilePath);
+
+      // Verify the file/folder exists
+      try {
+        await fs.access(normalizedFilePath);
+        console.log('✅ Path exists:', normalizedFilePath);
+      } catch (accessError) {
+        console.error('❌ Path does not exist:', normalizedFilePath, accessError);
+        return { success: false, error: `Path does not exist: ${normalizedFilePath}` };
+      }
+
+      const errorMessage = await shell.openPath(normalizedFilePath);
+      
+      if (errorMessage) {
+        console.error('❌ shell.openPath failed:', errorMessage);
+        return { success: false, error: errorMessage };
+      }
+
+      console.log('✅ shell.openPath called successfully for:', normalizedFilePath);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error opening path:', error);
       return { success: false, error: error.message };
     }
   });
