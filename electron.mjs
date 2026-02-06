@@ -196,6 +196,14 @@ async function saveSettings(settings) {
     console.error('Error saving settings:', error);
   }
 }
+
+async function getCacheRootPath() {
+  const settings = await readSettings();
+  if (settings && typeof settings.cachePath === 'string' && settings.cachePath.trim().length > 0) {
+    return settings.cachePath;
+  }
+  return app.getPath('userData');
+}
 // --- End Settings Management ---
 
 // --- Application Menu ---
@@ -844,13 +852,14 @@ function setupFileOperationHandlers() {
   // --- End Settings IPC ---
 
   // --- Cache IPC Handlers ---
-  const getCacheFilePath = (cacheId) => {
+  const getCacheFilePath = async (cacheId) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
-    return path.join(app.getPath('userData'), `${safeCacheId}.json`);
+    const rootPath = await getCacheRootPath();
+    return path.join(rootPath, `${safeCacheId}.json`);
   };
 
   ipcMain.handle('get-cached-data', async (event, cacheId) => {
-    const filePath = getCacheFilePath(cacheId);
+    const filePath = await getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
       const parsed = JSON.parse(data);
@@ -871,7 +880,7 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('get-cache-summary', async (event, cacheId) => {
-    const filePath = getCacheFilePath(cacheId);
+    const filePath = await getCacheFilePath(cacheId);
     try {
       const data = await fs.readFile(filePath, 'utf-8');
       return { success: true, data: JSON.parse(data) };
@@ -888,7 +897,8 @@ function setupFileOperationHandlers() {
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
     const { metadata, ...cacheRecord } = data;
-    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'json_cache');
     await fs.mkdir(cacheDir, { recursive: true });
 
     // Write chunk files
@@ -900,7 +910,7 @@ function setupFileOperationHandlers() {
     }
 
     // Write main cache record (without metadata) with parser version
-    const mainCachePath = getCacheFilePath(cacheId);
+    const mainCachePath = await getCacheFilePath(cacheId);
     cacheRecord.chunkCount = chunkCount;
     cacheRecord.parserVersion = PARSER_VERSION; // Add parser version
     await fs.writeFile(mainCachePath, JSON.stringify(cacheRecord, null, 2));
@@ -911,7 +921,8 @@ function setupFileOperationHandlers() {
   ipcMain.handle('prepare-cache-write', async (event, { cacheId }) => {
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
-      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
       await fs.mkdir(cacheDir, { recursive: true });
 
       try {
@@ -938,7 +949,8 @@ function setupFileOperationHandlers() {
   ipcMain.handle('write-cache-chunk', async (event, { cacheId, chunkIndex, data }) => {
     try {
       const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
-      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
       await fs.mkdir(cacheDir, { recursive: true });
       const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
       await fs.writeFile(chunkPath, JSON.stringify(data));
@@ -950,7 +962,7 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('finalize-cache-write', async (event, { cacheId, record }) => {
     try {
-      const mainCachePath = getCacheFilePath(cacheId);
+      const mainCachePath = await getCacheFilePath(cacheId);
       // Add parser version to cache record
       const recordWithVersion = { ...record, parserVersion: PARSER_VERSION };
       await fs.writeFile(mainCachePath, JSON.stringify(recordWithVersion, null, 2));
@@ -962,7 +974,8 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-cache-chunk', async (event, { cacheId, chunkIndex }) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
-    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'json_cache');
     const chunkPath = path.join(cacheDir, `${safeCacheId}_${chunkIndex}.json`);
     try {
       const data = await fs.readFile(chunkPath, 'utf-8');
@@ -974,8 +987,9 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('clear-cache-data', async (event, cacheId) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
-    const cacheDir = path.join(app.getPath('userData'), 'json_cache');
-    const mainCachePath = getCacheFilePath(cacheId);
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'json_cache');
+    const mainCachePath = await getCacheFilePath(cacheId);
 
     try {
         // Delete main cache file
@@ -999,7 +1013,8 @@ function setupFileOperationHandlers() {
 
   // --- Thumbnail Cache IPC Handlers ---
   const getThumbnailCachePath = async (thumbnailId) => {
-    const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+    const rootPath = await getCacheRootPath();
+    const cacheDir = path.join(rootPath, 'thumbnails');
     await fs.mkdir(cacheDir, { recursive: true });
 
     // Use MD5 hash for long IDs to avoid Windows MAX_PATH (260 char) limit
@@ -1059,7 +1074,8 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('clear-metadata-cache', async () => {
     try {
-      const cacheDir = path.join(app.getPath('userData'), 'json_cache');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'json_cache');
       if (fs.existsSync(cacheDir)) {
         await fs.promises.rm(cacheDir, { recursive: true, force: true });
         await fs.promises.mkdir(cacheDir, { recursive: true });
@@ -1072,7 +1088,8 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('clear-thumbnail-cache', async () => {
     try {
-      const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+      const rootPath = await getCacheRootPath();
+      const cacheDir = path.join(rootPath, 'thumbnails');
       if (fs.existsSync(cacheDir)) {
         await fs.promises.rm(cacheDir, { recursive: true, force: true });
         await fs.promises.mkdir(cacheDir, { recursive: true });
