@@ -1892,7 +1892,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId } = {}) => {
+  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId, deleteAfterExport } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -1947,6 +1947,16 @@ function setupFileOperationHandlers() {
           const destPath = path.resolve(destDir, uniqueName);
           await fs.copyFile(sourcePath, destPath);
           exportedCount += 1;
+
+          if (deleteAfterExport) {
+             try {
+               await shell.trashItem(sourcePath);
+             } catch (trashError) {
+               console.error('Failed to trash file after export:', sourcePath, trashError);
+               // We don't fail the export if trash fails, but we should probably log it
+             }
+          }
+
         } catch (error) {
           failedCount += 1;
         } finally {
@@ -1971,7 +1981,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId } = {}) => {
+  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId, deleteAfterExport } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -2024,6 +2034,8 @@ function setupFileOperationHandlers() {
 
       sendProgress(true);
 
+      const successfulFiles = [];
+
       for (const file of files) {
         try {
           const sourcePath = path.resolve(file.directoryPath, file.relativePath);
@@ -2037,6 +2049,11 @@ function setupFileOperationHandlers() {
           const uniqueName = getUniqueName(baseName, usedNames);
           archive.file(sourcePath, { name: uniqueName });
           exportedCount += 1;
+          
+          if (deleteAfterExport) {
+            successfulFiles.push(sourcePath);
+          }
+
         } catch (error) {
           failedCount += 1;
         } finally {
@@ -2050,6 +2067,17 @@ function setupFileOperationHandlers() {
 
       await archive.finalize();
       await finalizePromise;
+
+      // Logic to delete files after successful ZIP creation
+      if (deleteAfterExport && exportedCount > 0) {
+         for (const filePath of successfulFiles) {
+            try {
+               await shell.trashItem(filePath);
+            } catch (trashError) {
+               console.error('Failed to trash file after ZIP export:', filePath, trashError);
+            }
+         }
+      }
 
       stage = 'done';
       sendProgress(true);

@@ -28,6 +28,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
   const [source, setSource] = useState<BatchSource>(hasSelected ? 'selected' : 'filtered');
   const [output, setOutput] = useState<BatchOutput>('folder');
+  const [deleteAfterExport, setDeleteAfterExport] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
@@ -46,6 +47,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setIsExporting(false);
       setSource(hasSelected ? 'selected' : 'filtered');
       setOutput('folder');
+      setDeleteAfterExport(false);
       setProgress(null);
       setActiveExportId(null);
     }
@@ -137,6 +139,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destDir: destResult.path,
           exportId,
+          deleteAfterExport,
         });
 
         if (!exportResult.success) {
@@ -146,7 +149,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           const summary = failures > 0
             ? `Exported ${exportResult.exportedCount} images with ${failures} failures.`
             : `Exported ${exportResult.exportedCount} images.`;
-          setStatus({ type: failures > 0 ? 'error' : 'success', message: summary });
+          
+          if (failures === 0) {
+              onClose();
+          } else {
+              setStatus({ type: 'error', message: summary });
+          }
         }
       } else {
         const saveResult = await window.electronAPI.showSaveDialog({
@@ -175,6 +183,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destZipPath: saveResult.path,
           exportId,
+          deleteAfterExport,
         });
 
         if (!exportResult.success) {
@@ -184,7 +193,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           const summary = failures > 0
             ? `Created ZIP with ${exportResult.exportedCount} images and ${failures} failures.`
             : `Created ZIP with ${exportResult.exportedCount} images.`;
-          setStatus({ type: failures > 0 ? 'error' : 'success', message: summary });
+
+          if (failures === 0) {
+             onClose();
+          } else {
+             setStatus({ type: 'error', message: summary });
+          }
         }
       }
     } catch (error: any) {
@@ -274,6 +288,22 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               </button>
             </div>
           </div>
+
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50">
+            <input
+              type="checkbox"
+              id="deleteAfterExport"
+              checked={deleteAfterExport}
+              onChange={(e) => setDeleteAfterExport(e.target.checked)}
+              disabled={isExporting}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-0"
+            />
+            <label htmlFor="deleteAfterExport" className="text-sm text-gray-300 select-none cursor-pointer">
+              Delete files upon completion
+              <span className="block text-xs text-gray-500">Files will be moved to Recycle Bin</span>
+            </label>
+          </div>
+
 
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
             {isExporting && progress ? (
