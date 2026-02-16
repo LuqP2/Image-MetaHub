@@ -7,7 +7,8 @@ import {
   GitCompare,
   Sparkles,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Tag
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -15,6 +16,7 @@ import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
+import TagManagerModal from './TagManagerModal';
 
 interface GridToolbarProps {
 
@@ -51,9 +53,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
-  const { canUseComparison, canUseA1111, canUseComfyUI, showProModal } = useFeatureAccess();
+  const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
 
 
   // ... (rest of the file)
@@ -169,6 +172,14 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setGenerateDropdownOpen(false);
   };
 
+  const handleTagClick = () => {
+    if (selectedCount > 1 && !canUseBulkTagging) {
+      showProModal('bulk_tagging');
+      return;
+    }
+    setIsTagModalOpen(true);
+  };
+
   const selectedModels = useImageStore((state) => state.selectedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
@@ -200,127 +211,147 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
-      {/* Selection Context Toolbar - Centered or justified as needed */}
-      <div className="flex items-center gap-1 flex-1 overflow-hidden">
-          {selectedCount > 0 && (
-            <>
-              <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
+    <>
+      <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
+        {/* Selection Context Toolbar - Centered or justified as needed */}
+        <div className="flex items-center gap-1 flex-1 overflow-hidden">
+            {selectedCount > 0 && (
+              <>
+                <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
 
-              {/* Copy to Clipboard */}
-              <button
-                onClick={handleCopyToClipboard}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                title="Copy to Clipboard"
-                disabled={selectedCount !== 1}
-              >
-                <Copy className="w-4 h-4" />
-              </button>
-
-              {/* Show in Folder */}
-              <button
-                onClick={handleShowInFolder}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                title="Show in Folder"
-                disabled={selectedCount !== 1}
-              >
-                <Folder className="w-4 h-4" />
-              </button>
-
-              {/* Export */}
-              <button
-                onClick={handleExport}
-                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                title={selectedCount > 1 ? 'Export selected images' : 'Export'}
-                disabled={selectedCount === 0}
-              >
-                <Download className="w-4 h-4" />
-              </button>
-
-              {/* Favorites */}
-              <button
-                onClick={handleToggleFavorites}
-                className={`p-1.5 rounded transition-colors ${
-                  allFavorites
-                    ? 'text-yellow-400 hover:text-yellow-300 hover:bg-gray-700'
-                    : 'text-gray-400 hover:text-yellow-400 hover:bg-gray-700'
-                }`}
-                title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
-              >
-                <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
-              </button>
-
-              {/* Divider */}
-              <div className="w-px h-4 bg-gray-700 mx-1" />
-
-              {/* Compare (only with exactly 2 images) */}
-              <button
-                onClick={handleCompare}
-                className={`p-1.5 rounded transition-colors ${
-                  selectedCount === 2
-                    ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
-                    : 'text-gray-600 cursor-not-allowed'
-                }`}
-                title={selectedCount === 2 ? 'Compare Images' : 'Select exactly 2 images to compare'}
-                disabled={selectedCount !== 2}
-              >
-                <GitCompare className="w-4 h-4" />
-              </button>
-
-              {/* Generate Dropdown */}
-              <div className="relative" ref={dropdownRef}>
+                {/* Copy to Clipboard */}
                 <button
-                  onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
-                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
-                  title="Generate"
+                  onClick={handleCopyToClipboard}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                  title="Copy to Clipboard"
                   disabled={selectedCount !== 1}
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <ChevronDown className="w-3 h-3" />
+                  <Copy className="w-4 h-4" />
                 </button>
-                {generateDropdownOpen && selectedCount === 1 && (
-                  <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
-                    <button
-                      onClick={handleGenerateA1111}
-                      className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      with A1111
-                    </button>
-                    <button
-                      onClick={handleGenerateComfyUI}
-                      className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      with ComfyUI
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              {/* Divider */}
-              <div className="w-px h-4 bg-gray-700 mx-1" />
+                {/* Show in Folder */}
+                <button
+                  onClick={handleShowInFolder}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                  title="Show in Folder"
+                  disabled={selectedCount !== 1}
+                >
+                  <Folder className="w-4 h-4" />
+                </button>
 
-              {/* Delete */}
-              <button
-                onClick={onDeleteSelected}
-                className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
-                title="Delete Selected"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              
-              {/* Divider between selection tools and filters if both exist */}
-              {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
-            </>
-          )}
+                {/* Export */}
+                <button
+                  onClick={handleExport}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                  title={selectedCount > 1 ? 'Export selected images' : 'Export'}
+                  disabled={selectedCount === 0}
+                >
+                  <Download className="w-4 h-4" />
+                </button>
 
-          {/* Active Filters */}
-          <div className="flex-1 min-w-0">
-             <ActiveFilters />
-          </div>
+                {/* Favorites */}
+                <button
+                  onClick={handleToggleFavorites}
+                  className={`p-1.5 rounded transition-colors ${
+                    allFavorites
+                      ? 'text-yellow-400 hover:text-yellow-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-yellow-400 hover:bg-gray-700'
+                  }`}
+                  title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
+                </button>
+
+                {/* Divider */}
+                <div className="w-px h-4 bg-gray-700 mx-1" />
+
+                 {/* Tagging */}
+                 <button
+                  onClick={handleTagClick}
+                  className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors"
+                  title="Add/Remove Tags"
+                >
+                  <Tag className="w-4 h-4" />
+                </button>
+  
+                {/* Divider */}
+                <div className="w-px h-4 bg-gray-700 mx-1" />
+
+                {/* Compare (only with exactly 2 images) */}
+                <button
+                  onClick={handleCompare}
+                  className={`p-1.5 rounded transition-colors ${
+                    selectedCount === 2
+                      ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
+                      : 'text-gray-600 cursor-not-allowed'
+                  }`}
+                  title={selectedCount === 2 ? 'Compare Images' : 'Select exactly 2 images to compare'}
+                  disabled={selectedCount !== 2}
+                >
+                  <GitCompare className="w-4 h-4" />
+                </button>
+
+                {/* Generate Dropdown */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                    title="Generate"
+                    disabled={selectedCount !== 1}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {generateDropdownOpen && selectedCount === 1 && (
+                    <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
+                      <button
+                        onClick={handleGenerateA1111}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        with A1111
+                      </button>
+                      <button
+                        onClick={handleGenerateComfyUI}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        with ComfyUI
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="w-px h-4 bg-gray-700 mx-1" />
+
+                {/* Delete */}
+                <button
+                  onClick={onDeleteSelected}
+                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                  title="Delete Selected"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                
+                {/* Divider between selection tools and filters if both exist */}
+                {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
+              </>
+            )}
+
+            {/* Active Filters */}
+            <div className="flex-1 min-w-0">
+               <ActiveFilters />
+            </div>
+        </div>
       </div>
-    </div>
+
+      <TagManagerModal
+        isOpen={isTagModalOpen}
+        onClose={() => setIsTagModalOpen(false)}
+        selectedImageIds={Array.from(selectedImages)}
+      />
+    </>
   );
 };
 

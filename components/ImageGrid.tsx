@@ -6,14 +6,14 @@ import { type IndexedImage, type BaseMetadata, ImageStack } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,  AlertCircle,
+import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,
   Archive,
-  Check,
   CheckSquare,
   Crown,
   EyeOff,
   Package,
-  Play
+  Play,
+  Tag
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
@@ -25,7 +25,7 @@ import Toast from './Toast';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
-import { Layers, Layers2 } from 'lucide-react';
+import TagManagerModal from './TagManagerModal';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -571,7 +571,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -598,8 +599,27 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     showInFolder,
     exportImage,
     copyMetadataToA1111,
-    copyRawMetadata
+    copyRawMetadata,
+    addTag
   } = useContextMenu();
+
+  const handleAddTag = useCallback(() => {
+    // Calculate effective target count
+    const isContextImageSelected = contextMenu.image && selectedImages.has(contextMenu.image.id);
+    const effectiveCount = contextMenu.image 
+        ? (isContextImageSelected ? selectedCount : 1)
+        : selectedCount;
+
+    if (effectiveCount > 1 && !canUseBulkTagging) {
+        showProModal('bulk_tagging');
+        hideContextMenu();
+        return;
+    }
+    const result = addTag();
+    if (result === 'open-tag-modal') {
+        setIsTagManagerOpen(true);
+    }
+  }, [addTag, selectedCount, canUseBulkTagging, showProModal, hideContextMenu]);
 
   const openGenerateModal = useCallback(() => {
     if (!contextMenu.image) return;
@@ -948,6 +968,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <div className="border-t border-gray-600 my-1"></div>
 
           <button
+            onClick={handleAddTag}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Tag className="w-4 h-4" />
+            <span className="flex-1">Add/Remove Tags</span>
+            {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
+          <button
             onClick={copyPrompt}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
@@ -1074,6 +1105,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   const modalsContent = (
     <>
+      <TagManagerModal
+        isOpen={isTagManagerOpen}
+        onClose={() => setIsTagManagerOpen(false)}
+        selectedImageIds={contextMenu.image ? (selectedImages.has(contextMenu.image.id) ? Array.from(selectedImages) : [contextMenu.image.id]) : []}
+      />
+
       {/* Generate Variation Modal */}
       {isGenerateModalOpen && selectedImageForGeneration && (
         <A1111GenerateModal
