@@ -536,18 +536,14 @@ interface ImageGridProps {
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
 
+// Custom Inner Element to ensure clicks on empty space are detected
+const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
+  <div ref={ref} {...props} data-grid-background="true" />
+));
+
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
-  const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
-  const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
-  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
-  const directories = useImageStore((state) => state.directories);
-  const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
-  const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
-  const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
-  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
-  const previewImage = useImageStore((state) => state.previewImage);
 
   // --- Stacking Logic (Must be top-level) ---
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
@@ -555,8 +551,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
+  
+  // Decide what to render based on stacking
+  const itemsToRender = isStackingEnabled ? stackedItems : images;
+  const isInfinite = itemsPerPage === -1;
+
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const columnCountRef = useRef<number>(1);
+
 
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -745,35 +748,65 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
 
-      imageCardsRef.current.forEach((element, imageId) => {
-        const imageRect = element.getBoundingClientRect();
-        const scrollTop = gridRef.current?.scrollTop || 0;
-        const scrollLeft = gridRef.current?.scrollLeft || 0;
+      if (isInfinite) {
+        // Coordinate-based selection for virtualized grid
+        const columnCount = columnCountRef.current;
+        const colWidth = imageSize + GAP_SIZE;
+        const rowHeight = (imageSize * 1.2) + GAP_SIZE;
 
-        const imageBox = {
-          left: imageRect.left - rect.left + scrollLeft,
-          right: imageRect.right - rect.left + scrollLeft,
-          top: imageRect.top - rect.top + scrollTop,
-          bottom: imageRect.bottom - rect.top + scrollTop,
-        };
+        itemsToRender.forEach((item, index) => {
+           const colIndex = index % columnCount;
+           const rowIndex = Math.floor(index / columnCount);
+           
+           const itemLeft = colIndex * colWidth + GAP_SIZE;
+           const itemTop = rowIndex * rowHeight + GAP_SIZE;
+           const itemRight = itemLeft + imageSize;
+           const itemBottom = itemTop + (imageSize * 1.2);
 
-        // Check if boxes intersect
-        const intersects = !(
-          imageBox.right < box.left ||
-          imageBox.left > box.right ||
-          imageBox.bottom < box.top ||
-          imageBox.top > box.bottom
-        );
+           const intersects = !(
+            itemRight < box.left ||
+            itemLeft > box.right ||
+            itemBottom < box.top ||
+            itemTop > box.bottom
+          );
 
-        if (intersects) {
-          newSelection.add(imageId);
-        }
-      });
+          if (intersects) {
+            newSelection.add(typeof item === 'object' && 'coverImage' in item ? item.coverImage.id : item.id);
+          }
+        });
+
+      } else {
+        // DOM-based selection for existing rendered items
+        imageCardsRef.current.forEach((element, imageId) => {
+          const imageRect = element.getBoundingClientRect();
+          const scrollTop = gridRef.current?.scrollTop || 0;
+          const scrollLeft = gridRef.current?.scrollLeft || 0;
+  
+          const imageBox = {
+            left: imageRect.left - rect.left + scrollLeft,
+            right: imageRect.right - rect.left + scrollLeft,
+            top: imageRect.top - rect.top + scrollTop,
+            bottom: imageRect.bottom - rect.top + scrollTop,
+          };
+  
+          // Check if boxes intersect
+          const intersects = !(
+            imageBox.right < box.left ||
+            imageBox.left > box.right ||
+            imageBox.bottom < box.top ||
+            imageBox.top > box.bottom
+          );
+  
+          if (intersects) {
+            newSelection.add(imageId);
+          }
+        });
+      }
 
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages]);
+  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1180,7 +1213,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // --- Stacking Logic ---
   // Decide what to render based on stacking
-  const itemsToRender = isStackingEnabled ? stackedItems : images;
+  // const itemsToRender = isStackingEnabled ? stackedItems : images; // Moved to top
+
 
   // Handle drill-down
 
@@ -1195,8 +1229,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }, [setStackingEnabled, setViewingStackPrompt]);
 
   // Use itemsToRender for calculations
-  const isInfinite = itemsPerPage === -1;
+  // const isInfinite = itemsPerPage === -1; // Moved to top
   const isEmpty = itemsToRender.length === 0;
+
 
   // Dummy handler for image loading since aspect ratio tracking was removed but prop is required
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
@@ -1232,6 +1267,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 const safeColumnCount = columnCount > 0 ? columnCount : 1;
                 const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
                 
+                // Update ref for selection logic
+                columnCountRef.current = safeColumnCount;
+
                 const cellData: CellData = {
                     items: itemsToRender,
                     columnCount: safeColumnCount,
@@ -1264,12 +1302,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     className="no-scrollbar-if-needed"
                     itemData={cellData}
                     style={{ overflowX: 'hidden' }}
+                    innerElementType={InnerGridElement}
                   >
                     {Cell}
                   </Grid>
                 );
               }}
             </AutoSizer>
+
 
             {/* Selection box visual */}
             {isSelecting && selectionStart && selectionEnd && (
