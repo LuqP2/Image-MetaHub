@@ -57,32 +57,58 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
       }));
   }, [existingTagsStats, selectedImages.length]);
 
-  // Filter suggestions based on input
+  // Filter suggestions based on input (last part after comma)
   const suggestions = useMemo(() => {
     if (!inputValue.trim()) return [];
     
-    const lowerInput = inputValue.toLowerCase();
+    const parts = inputValue.split(',');
+    const currentSearch = parts[parts.length - 1].trim().toLowerCase();
+    
+    if (!currentSearch) return [];
+
     return availableTags
       .filter(tag => 
-        tag.name.toLowerCase().includes(lowerInput) && 
-        !existingTagsStats.has(tag.name) // Don't suggest tags already added to some images? Or maybe allow to complete them?
+        tag.name.toLowerCase().includes(currentSearch) && 
+        !existingTagsStats.has(tag.name)
       )
       .slice(0, 5);
   }, [inputValue, availableTags, existingTagsStats]);
 
-  const handleAddTag = async (tag: string) => {
-    if (!tag.trim()) return;
+  const handleAddTag = async (input: string) => {
+    if (!input.trim()) return;
+    
+    const tagsToAdd = input.split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+
+    if (tagsToAdd.length === 0) return;
+
     setIsSubmitting(true);
     try {
-      await bulkAddTag(selectedImageIds, tag);
+      for (const tag of tagsToAdd) {
+          // Avoid adding duplicates (though store handles it, we save calls)
+          if (!existingTagsStats.has(tag)) { // loose check
+            await bulkAddTag(selectedImageIds, tag);
+          }
+      }
       setInputValue('');
       // Keep modal open for more tagging
     } catch (error) {
-      console.error('Failed to add tag:', error);
+      console.error('Failed to add tags:', error);
     } finally {
       setIsSubmitting(false);
       inputRef.current?.focus();
     }
+  };
+
+  const handleSuggestionClick = (tagName: string) => {
+    const parts = inputValue.split(',');
+    parts.pop(); // Remove the partial chunk
+    parts.push(tagName); // Add the selected tag
+    // Join with comma and space, and add a trailing comma space for convenience to type next
+    const newValue = parts.map(p => p.trim()).join(', ') + ', ';
+    setInputValue(newValue);
+    inputRef.current?.focus();
   };
 
   const handleRemoveTag = async (tag: string) => {
@@ -101,9 +127,8 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      // If there's an exact match in suggestions or just raw input
       if (inputValue.trim()) {
-        handleAddTag(inputValue.trim());
+        handleAddTag(inputValue);
       }
     } else if (e.key === 'Escape') {
       onClose();
@@ -146,7 +171,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type new tag..."
+              placeholder="Type tags separated by commas..."
               className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-10 py-2.5 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none"
               autoComplete="off"
             />
@@ -164,7 +189,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                 {suggestions.map(tag => (
                   <button
                     key={tag.name}
-                    onClick={() => handleAddTag(tag.name)}
+                    onClick={() => handleSuggestionClick(tag.name)}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex justify-between items-center group"
                   >
                     <span>{tag.name}</span>
@@ -216,7 +241,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           </div>
           
           <div className="mt-4 p-3 bg-gray-800/50 rounded-lg text-xs text-gray-400 border border-gray-700/50">
-             <p>Tip: Press Enter to add a tag. Tags are applied immediately.</p>
+             <p>Tip: Separate tags with commas. Press Enter to add.</p>
              {sortedExistingTags.some(t => !t.isAll) && (
                <p className="mt-1 text-yellow-500/80">
                  * Dashed tags are only present on some selected images.
