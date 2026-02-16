@@ -111,17 +111,30 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
     inputRef.current?.focus();
   };
 
-  const handleRemoveTag = async (tag: string) => {
-    if (!confirm(`Remove tag "${tag}" from ${selectedImages.length} images?`)) return;
+  const handleRemoveTag = async (tag: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     
-    setIsSubmitting(true);
-    try {
-      await bulkRemoveTag(selectedImageIds, tag);
-    } catch (error) {
-      console.error('Failed to remove tag:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // Use timeout to allow event loop to clear before blocking with confirm
+    // This often helps with focus/event issues around native dialogs
+    setTimeout(async () => {
+        if (!confirm(`Remove tag "${tag}" from ${selectedImages.length} images?`)) {
+            inputRef.current?.focus();
+            return;
+        }
+        
+        setIsSubmitting(true);
+        try {
+          await bulkRemoveTag(selectedImageIds, tag);
+        } catch (error) {
+          console.error('Failed to remove tag:', error);
+        } finally {
+          setIsSubmitting(false);
+          // Force focus restoration
+          setTimeout(() => {
+             inputRef.current?.focus();
+          }, 0);
+        }
+    }, 10);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -229,7 +242,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                        </span>
                     )}
                     <button
-                      onClick={() => handleRemoveTag(name)}
+                      onClick={(e) => handleRemoveTag(name, e)}
                       className="ml-1 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <X size={14} />
