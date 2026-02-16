@@ -288,6 +288,13 @@ export const useContextMenu = () => {
     copyToClipboardElectron(metadataString, 'Raw Metadata');
   };
 
+  const addTag = () => {
+    if (!contextMenu.image) return;
+    hideContextMenu();
+    // Signal to open tag modal
+    return 'open-tag-modal';
+  };
+
   return {
     contextMenu,
     showContextMenu,
@@ -301,6 +308,7 @@ export const useContextMenu = () => {
     exportImage,
     copyMetadataToA1111,
     quickGenerateInA1111,
-    copyRawMetadata
+    copyRawMetadata,
+    addTag
   };
 };
