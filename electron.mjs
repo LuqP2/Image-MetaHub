@@ -178,11 +178,17 @@ const zoomMenuItems = [
 
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+let cachedSettings = null;
+let cachedSettingsTime = 0;
 
 async function readSettings() {
+  // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
+  if (cachedSettings) return cachedSettings;
+
   try {
     const data = await fs.readFile(settingsPath, 'utf-8');
-    return JSON.parse(data);
+    cachedSettings = JSON.parse(data);
+    return cachedSettings;
   } catch (error) {
     // If file doesn't exist or is invalid, return empty object
     return {};
@@ -192,6 +198,7 @@ async function readSettings() {
 async function saveSettings(settings) {
   try {
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    cachedSettings = settings; // Update cache
   } catch (error) {
     console.error('Error saving settings:', error);
   }

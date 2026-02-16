@@ -86,10 +86,8 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
     setIsSubmitting(true);
     try {
       for (const tag of tagsToAdd) {
-          // Avoid adding duplicates (though store handles it, we save calls)
-          if (!existingTagsStats.has(tag)) { // loose check
-            await bulkAddTag(selectedImageIds, tag);
-          }
+          // Store handles duplicates per image, so we just send the request
+          await bulkAddTag(selectedImageIds, tag);
       }
       setInputValue('');
       // Keep modal open for more tagging

@@ -604,7 +604,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   } = useContextMenu();
 
   const handleAddTag = useCallback(() => {
-    if (selectedCount > 1 && !canUseBulkTagging) {
+    // Calculate effective target count
+    const isContextImageSelected = contextMenu.image && selectedImages.has(contextMenu.image.id);
+    const effectiveCount = contextMenu.image 
+        ? (isContextImageSelected ? selectedCount : 1)
+        : selectedCount;
+
+    if (effectiveCount > 1 && !canUseBulkTagging) {
         showProModal('bulk_tagging');
         hideContextMenu();
         return;
