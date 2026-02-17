@@ -1801,6 +1801,33 @@ function setupFileOperationHandlers() {
     }
   });
 
+  // Handle copying image to clipboard
+  ipcMain.handle('copy-image-to-clipboard', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to copy file outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot copy files outside of the allowed directories.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      const image = nativeImage.createFromPath(filePath);
+      if (image.isEmpty()) {
+        return { success: false, error: 'Failed to load image from path' };
+      }
+
+      electron.clipboard.writeImage(image);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying image to clipboard:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Handle getting file statistics (creation date, etc.)
   ipcMain.handle('get-file-stats', async (event, filePath) => {
     try {
