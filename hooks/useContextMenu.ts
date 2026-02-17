@@ -119,7 +119,7 @@ export const useContextMenu = () => {
   const copyImage = async () => {
     if (!contextMenu.image) return;
     hideContextMenu();
-    const result = await copyImageToClipboard(contextMenu.image);
+    const result = await copyImageToClipboard(contextMenu.image, contextMenu.directoryPath);
     if (result.success) {
       showNotification('Image copied to clipboard!');
     } else {

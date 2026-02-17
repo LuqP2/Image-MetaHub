@@ -1278,11 +1278,9 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      if (!isPathAllowed(filePath)) {
-        console.error('SECURITY VIOLATION: Attempted to show item outside of allowed directories.');
-        return { success: false, error: 'Access denied: Cannot show items outside of the allowed directories.' };
-      }
-
+      // Allow opening any folder/file that the user has access to via the OS dialogs
+      // We removed the isPathAllowed check here because export destinations can be anywhere
+      
       const normalizedFilePath = path.normalize(filePath);
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 

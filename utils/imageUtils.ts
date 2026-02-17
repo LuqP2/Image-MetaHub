@@ -12,23 +12,30 @@ export interface OperationResult {
  * @param image - The IndexedImage object containing the file handle
  * @returns Promise with operation result
  */
-export const copyImageToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
+// Helper to copy image to clipboard
+export const copyImageToClipboard = async (image: IndexedImage, directoryPath?: string): Promise<{ success: boolean; error?: string }> => {
   try {
     // Check if running in Electron and use native clipboard API if available
+    // 1. Try Native Electron API first (if available) - this avoids the "Document is not focused" error
     if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.copyImageToClipboard) {
-      // Construct the full path based on whether the image object has a direct path or needs construction
-      // In IndexedImage, 'id' is often the file path, or 'name' if combined with directory
-      const fullPath = image.id;
+      let fullPath = image.id;
       
-      // If we are in Electron, image.id should be the full path for local files
+      // If we have a directory path, try to construct a proper file system path
+      // image.id might be an internal ID like "dirId::filename" or just "filename" depending on context
+      if (directoryPath) {
+        // Safe path joining via Electron API
+        const joined = await window.electronAPI.joinPaths(directoryPath, image.name);
+        if (joined.success && joined.path) {
+          fullPath = joined.path;
+        }
+      }
+
+      // If we are in Electron, pass the resolved full path
       const result = await window.electronAPI.copyImageToClipboard(fullPath);
-      
       if (result.success) {
         return { success: true };
       }
-      
-      console.warn('Native clipboard copy failed, falling back to web API:', result.error);
-      // Fallback to web API if native fails (though native should be preferred)
+      console.warn('Native clipboard copy failed, falling back to Web API:', result.error);
     }
 
     // Web API fallback (or if native failed)
