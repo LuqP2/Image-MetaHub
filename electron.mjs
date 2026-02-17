@@ -1278,11 +1278,9 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      if (!isPathAllowed(filePath)) {
-        console.error('SECURITY VIOLATION: Attempted to show item outside of allowed directories.');
-        return { success: false, error: 'Access denied: Cannot show items outside of the allowed directories.' };
-      }
-
+      // Allow opening any folder/file that the user has access to via the OS dialogs
+      // We removed the isPathAllowed check here because export destinations can be anywhere
+      
       const normalizedFilePath = path.normalize(filePath);
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
@@ -1797,6 +1795,33 @@ function setupFileOperationHandlers() {
       return { success: true, files: data };
     } catch (error) {
       console.error('Error in read-files-tail-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle copying image to clipboard
+  ipcMain.handle('copy-image-to-clipboard', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to copy file outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot copy files outside of the allowed directories.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      const image = nativeImage.createFromPath(filePath);
+      if (image.isEmpty()) {
+        return { success: false, error: 'Failed to load image from path' };
+      }
+
+      electron.clipboard.writeImage(image);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying image to clipboard:', error);
       return { success: false, error: error.message };
     }
   });

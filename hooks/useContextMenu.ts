@@ -119,7 +119,7 @@ export const useContextMenu = () => {
   const copyImage = async () => {
     if (!contextMenu.image) return;
     hideContextMenu();
-    const result = await copyImageToClipboard(contextMenu.image);
+    const result = await copyImageToClipboard(contextMenu.image, contextMenu.directoryPath);
     if (result.success) {
       showNotification('Image copied to clipboard!');
     } else {
@@ -164,7 +164,12 @@ export const useContextMenu = () => {
       if (!sourcePathResult.success || !sourcePathResult.path) {
         throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
       }
-      const destPathResult = await window.electronAPI.joinPaths(destDir, contextMenu.image.name);
+
+      // Fix: Extract just the filename from the relative path to flatten the export structure
+      // image.name might be "subfolder/image.png", we just want "image.png" for the destination
+      const fileName = contextMenu.image.name.split(/[/\\]/).pop() || contextMenu.image.name;
+      
+      const destPathResult = await window.electronAPI.joinPaths(destDir, fileName);
       if (!destPathResult.success || !destPathResult.path) {
         throw new Error(`Failed to construct destination path: ${destPathResult.error}`);
       }

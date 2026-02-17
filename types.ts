@@ -40,6 +40,7 @@ export interface ElectronAPI {
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
+  copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
