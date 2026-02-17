@@ -451,6 +451,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         <div
           className="relative group cursor-pointer w-full h-full"
           onClick={() => onStackClick(item)}
+          data-image-id={item.coverImage.id}
         >
           {/* Back cards effect */}
           <div className="absolute top-[-4px] left-[4px] right-[-4px] bottom-[4px] bg-gray-700 rounded-lg border border-gray-600 shadow-sm z-0"></div>
@@ -497,13 +498,16 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
 
   return (
-    <div style={{
+    <div 
+      style={{
       ...style,
       left: (style.left as number) + GAP_SIZE,
       top: (style.top as number) + GAP_SIZE,
       width: (style.width as number) - GAP_SIZE,
       height: (style.height as number) - GAP_SIZE,
-    }}>
+    }}
+    data-image-id={image.id}
+    >
       <ImageCard
         image={image}
         onImageClick={onImageClick}
@@ -707,7 +711,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     const isInteractive = target.closest('button') || 
                           target.closest('a') || 
                           target.closest('input') || 
-                          target.closest('.group'); // ImageCard has 'group' class
+                          target.closest('[data-image-id]'); // Check for image container
 
     if (isInteractive) {
       return;
@@ -772,31 +776,40 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       if (isInfinite) {
         // Coordinate-based selection for virtualized grid
+        // OPTIMIZED: only check items that intersect with the selection box row/col range
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
         const rowHeight = (imageSize * 1.2) + GAP_SIZE;
 
-        itemsToRender.forEach((item, index) => {
-           const colIndex = index % columnCount;
-           const rowIndex = Math.floor(index / columnCount);
-           
-           const itemLeft = colIndex * colWidth + GAP_SIZE;
-           const itemTop = rowIndex * rowHeight + GAP_SIZE;
-           const itemRight = itemLeft + imageSize;
-           const itemBottom = itemTop + (imageSize * 1.2);
+        const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
+        const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
+        
+        const minCol = Math.max(0, Math.floor((box.left - GAP_SIZE) / colWidth));
+        const maxCol = Math.min(columnCount - 1, Math.floor((box.right - GAP_SIZE) / colWidth));
 
-           const intersects = !(
-            itemRight < box.left ||
-            itemLeft > box.right ||
-            itemBottom < box.top ||
-            itemTop > box.bottom
-          );
+        for (let r = minRow; r <= maxRow; r++) {
+            for (let c = minCol; c <= maxCol; c++) {
+                const index = r * columnCount + c;
+                if (index >= 0 && index < itemsToRender.length) {
+                    const item = itemsToRender[index];
+                    const itemLeft = c * colWidth + GAP_SIZE;
+                    const itemTop = r * rowHeight + GAP_SIZE;
+                    const itemRight = itemLeft + imageSize;
+                    const itemBottom = itemTop + (imageSize * 1.2);
 
-          if (intersects) {
-            newSelection.add(typeof item === 'object' && 'coverImage' in item ? item.coverImage.id : item.id);
-          }
-        });
+                    const intersects = !(
+                        itemRight < box.left ||
+                        itemLeft > box.right ||
+                        itemBottom < box.top ||
+                        itemTop > box.bottom
+                    );
 
+                    if (intersects) {
+                        newSelection.add(typeof item === 'object' && 'coverImage' in item ? item.coverImage.id : item.id);
+                    }
+                }
+            }
+        }
       } else {
         // DOM-based selection for existing rendered items
         imageCardsRef.current.forEach((element, imageId) => {
