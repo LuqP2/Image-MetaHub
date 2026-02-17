@@ -699,8 +699,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only start selection if clicking on the grid background (not on an image)
-    if (e.target !== e.currentTarget && !(e.target as HTMLElement).hasAttribute('data-grid-background')) {
+    // Only start selection if clicking on the grid background (not on an interactive element)
+    const target = e.target as HTMLElement;
+    
+    // Check if clicked element is interactive or part of an image card
+    // We look up the tree for buttons, inputs, or our specific image card containers
+    const isInteractive = target.closest('button') || 
+                          target.closest('a') || 
+                          target.closest('input') || 
+                          target.closest('.group'); // ImageCard has 'group' class
+
+    if (isInteractive) {
       return;
     }
 
@@ -751,7 +760,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       setSelectionEnd({ x, y });
 
-      // Calculate which images are within the selection box
+      // Calculate which images are within the selection box (LOGICAL COORDINATES - relative to content top-left)
       const box = {
         left: Math.min(selectionStart.x, x),
         right: Math.max(selectionStart.x, x),
@@ -1324,20 +1333,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             </AutoSizer>
 
 
-            {/* Selection box visual */}
-            {isSelecting && selectionStart && selectionEnd && (
-                <div
-                className="absolute pointer-events-none z-30"
-                style={{
-                    left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
-                    top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
-                    width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
-                    height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
-                    border: '2px solid rgba(59, 130, 246, 0.8)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                }}
-                />
-            )}
+        {/* Selection box visual - Needs to be adjusted for scroll in infinite mode 
+            because it's rendered outside the scrolling container but coordinates are content-relative 
+        */}
+        {isSelecting && selectionStart && selectionEnd && (
+          <div
+            className="absolute pointer-events-none z-30"
+            style={{
+              left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+              top: `${Math.min(selectionStart.y, selectionEnd.y) - (gridRef.current?.scrollTop || 0)}px`,
+              width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+              height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+              border: '2px solid rgba(59, 130, 246, 0.8)',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            }}
+          />
+        )}
 
             {contextMenuContent}
             {modalsContent}
