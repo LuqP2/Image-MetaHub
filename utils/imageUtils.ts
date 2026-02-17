@@ -14,6 +14,31 @@ export interface OperationResult {
  */
 export const copyImageToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
   try {
+    // Check if running in Electron and use native clipboard API if available
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.copyImageToClipboard) {
+      // Construct the full path based on whether the image object has a direct path or needs construction
+      // In IndexedImage, 'id' is often the file path, or 'name' if combined with directory
+      const fullPath = image.id;
+      
+      // If we are in Electron, image.id should be the full path for local files
+      const result = await window.electronAPI.copyImageToClipboard(fullPath);
+      
+      if (result.success) {
+        return { success: true };
+      }
+      
+      console.warn('Native clipboard copy failed, falling back to web API:', result.error);
+      // Fallback to web API if native fails (though native should be preferred)
+    }
+
+    // Web API fallback (or if native failed)
+    // Ensure document has focus before clipboard operation (browser requirement)
+    if (typeof document !== 'undefined' && (document.hidden || !document.hasFocus())) {
+      window.focus();
+      // Short delay to allow focus to take effect
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
     const file = await image.handle.getFile();
     const blob = new Blob([file], { type: file.type });
     await navigator.clipboard.write([new ClipboardItem({ [file.type]: blob })]);
