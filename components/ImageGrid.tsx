@@ -560,6 +560,19 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const columnCountRef = useRef<number>(1);
 
+  // Missing state restored
+  const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
+  const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
+  const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
+  const directories = useImageStore((state) => state.directories);
+  
+  // Needed for filter effect
+  const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
+
+  const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
+  const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
+  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const previewImage = useImageStore((state) => state.previewImage);
 
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
