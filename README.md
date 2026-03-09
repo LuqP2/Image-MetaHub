@@ -1,5 +1,8 @@
 # Image MetaHub
 
+> [!IMPORTANT]
+> **Project status:** Image MetaHub is still active and not abandoned. Public activity has been slower recently due to personal constraints. I’m currently getting back into project communication and backlog review. Thanks for your patience.
+
 [![Get Pro](https://img.shields.io/badge/Get%20Pro-Gumroad-4b8bbe)](https://lucasphere4660.gumroad.com/l/qmjima)
 [![Support on Ko-fi](https://img.shields.io/badge/Support-Ko%E2%80%91fi-ff5f5f)](https://ko-fi.com/lucaspierri)
 
