@@ -12,94 +12,7 @@
  */
 
 import * as extractors from './extractors';
-
-// =============================================================================
-// SECTION: Type Definitions (Schema Fortificado)
-// =============================================================================
-
-export interface ParserNode {
-  id: string;
-  class_type: string;
-  inputs: Record<string, any[] | any>;
-  widgets_values?: any[];
-  mode?: number; // Para detectar nós silenciados (0: ativo, 2/4: mudo/bypass)
-}
-
-export type ComfyNodeDataType =
-  | 'MODEL' | 'CONDITIONING' | 'LATENT' | 'IMAGE' | 'VAE' | 'CLIP' | 'INT'
-  | 'FLOAT' | 'STRING' | 'CONTROL_NET' | 'GUIDER' | 'SAMPLER' | 'SCHEDULER'
-  | 'SIGMAS' | 'NOISE' | 'UPSCALE_MODEL' | 'MASK' | 'ANY' | 'LORA_STACK' | 'SDXL_TUPLE';
-
-export type ComfyTraversableParam =
-  | 'prompt' | 'negativePrompt' | 'seed' | 'steps' | 'cfg' | 'width' | 'height'
-  | 'model' | 'sampler_name' | 'scheduler' | 'lora' | 'vae' | 'denoise';
-
-interface WidgetRule { source: 'widget'; key: string; accumulate?: boolean; }
-interface TraceRule { source: 'trace'; input: string; accumulate?: boolean; }
-interface CustomExtractorRule {
-  source: 'custom_extractor';
-  extractor: (node: ParserNode, state: any, graph: any, traverse: any) => any;
-  accumulate?: boolean;
-}
-interface InputRule { source: 'input'; key: string; accumulate?: boolean; }
-export type ParamMappingRule = WidgetRule | TraceRule | CustomExtractorRule | InputRule;
-
-export interface InputDefinition { type: ComfyNodeDataType; }
-export interface OutputDefinition { type: ComfyNodeDataType; }
-export interface PassThroughRule { from_input: string; to_output: string; }
-
-export type NodeBehavior = 'SOURCE' | 'SINK' | 'TRANSFORM' | 'PASS_THROUGH' | 'ROUTING';
-
-/**
- * Nova regra para nós de roteamento dinâmico.
- */
-export interface ConditionalRoutingRule {
-    control_input: string; // O input/widget que controla o fluxo (ex: 'select')
-    dynamic_input_prefix: string; // O prefixo da entrada de dados (ex: 'input_')
-}
-
-export interface NodeDefinition {
-  category: 'SAMPLING' | 'LOADING' | 'CONDITIONING' | 'TRANSFORM' | 'ROUTING' | 'UTILS' | 'IO';
-  roles: NodeBehavior[]; // Um nó pode ter múltiplos papéis.
-  inputs: Record<string, InputDefinition>;
-  outputs: Record<string, OutputDefinition>;
-  param_mapping?: Partial<Record<ComfyTraversableParam, ParamMappingRule>>;
-  pass_through_rules?: PassThroughRule[];
-  conditional_routing?: ConditionalRoutingRule; // Para nós como ImpactSwitch
-  widget_order?: string[]; // Ordered list of widget names for index-based extraction
-}
-
-/**
- * Structured workflow facts extracted from the graph.
- * This separates "what was extracted" from "how to present it".
- */
-export interface WorkflowFacts {
-  prompts: {
-    positive: string | null;
-    negative: string | null;
-  };
-  model: {
-    base: string | null;
-    vae: string | null;
-  };
-  loras: Array<{
-    name: string;
-    modelStrength?: number;
-    clipStrength?: number;
-  }>;
-  sampling: {
-    seed: number | null;
-    steps: number | null;
-    cfg: number | null;
-    sampler_name: string | null;
-    scheduler: string | null;
-    denoise: number | null;
-  };
-  dimensions: {
-    width: number | null;
-    height: number | null;
-  };
-}
+import { NodeDefinition, ParserNode, ComfyNodeDataType, ComfyTraversableParam, ParamMappingRule, InputDefinition, OutputDefinition, PassThroughRule, NodeBehavior, ConditionalRoutingRule, WorkflowFacts } from './types';
 
 // =============================================================================
 // SECTION: Node Registry
@@ -1373,5 +1286,97 @@ PrimitiveNode: {
     denoise: { source: 'widget', key: 'value' }
   },
   widget_order: ['value', 'control_after_generate']
-}
+},
+
+  KSamplerAdvanced: {
+    category: 'SAMPLING', roles: ['SINK'],
+    inputs: {
+      model: { type: 'MODEL' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent_image: { type: 'LATENT' }
+    },
+    outputs: { LATENT: { type: 'LATENT' } },
+    param_mapping: {
+      seed: { source: 'widget', key: 'noise_seed' },
+      steps: { source: 'widget', key: 'steps' },
+      cfg: { source: 'widget', key: 'cfg' },
+      sampler_name: { source: 'widget', key: 'sampler_name' },
+      scheduler: { source: 'widget', key: 'scheduler' },
+      model: { source: 'trace', input: 'model' },
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      denoise: { source: 'custom_extractor', extractor: extractors.calculateDenoise }
+    },
+    widget_order: ['add_noise', 'noise_seed', 'steps', 'cfg', 'sampler_name', 'scheduler', 'start_at_step', 'end_at_step', 'return_with_leftover_noise']
+  },
+  VHS_VideoCombine: {
+    category: 'IO', roles: ['SINK'],
+    inputs: { images: { type: 'IMAGE' } },
+    outputs: {},
+    param_mapping: {},
+    widget_order: ['frame_rate', 'loop_count', 'filename_prefix', 'format', 'pix_fmt', 'crf', 'save_metadata', 'trim_to_audio', 'pingpong', 'save_output']
+  },
+  WanImageToVideo: {
+    category: 'TRANSFORM',
+    roles: ['TRANSFORM', 'PASS_THROUGH'],
+    inputs: {
+      width: { type: 'INT' },
+      height: { type: 'INT' },
+      length: { type: 'INT' },
+      batch_size: { type: 'INT' },
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      vae: { type: 'VAE' },
+      start_image: { type: 'IMAGE' }
+    },
+    outputs: {
+      positive: { type: 'CONDITIONING' },
+      negative: { type: 'CONDITIONING' },
+      latent: { type: 'LATENT' }
+    },
+    param_mapping: {
+      prompt: { source: 'trace', input: 'positive' },
+      negativePrompt: { source: 'trace', input: 'negative' },
+      width: { source: 'widget', key: 'width' },
+      height: { source: 'widget', key: 'height' },
+      vae: { source: 'trace', input: 'vae' },
+    },
+    widget_order: ['width', 'height', 'length', 'batch_size']
+  },
+  Int: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { Number: { type: 'INT' } },
+    outputs: { INT: { type: 'INT' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'Number' },
+      seed: { source: 'widget', key: 'Number' },
+      width: { source: 'widget', key: 'Number' },
+      height: { source: 'widget', key: 'Number' }
+    },
+    widget_order: ['Number']
+  },
+  PrimitiveInt: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { value: { type: 'INT' } },
+    outputs: { INT: { type: 'INT' } },
+    param_mapping: {
+      steps: { source: 'widget', key: 'value' },
+      seed: { source: 'widget', key: 'value' },
+      width: { source: 'widget', key: 'value' },
+      height: { source: 'widget', key: 'value' }
+    },
+    widget_order: ['value']
+  },
+  PrimitiveFloat: {
+    category: 'UTILS', roles: ['TRANSFORM'],
+    inputs: { value: { type: 'FLOAT' } },
+    outputs: { FLOAT: { type: 'FLOAT' } },
+    param_mapping: {
+      cfg: { source: 'widget', key: 'value' },
+      denoise: { source: 'widget', key: 'value' }
+    },
+    widget_order: ['value']
+  }
 };
+
