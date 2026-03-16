@@ -125,17 +125,17 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
   <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
   <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-    <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
+    <p>Hey, I’m Lucas, the solo developer behind Image MetaHub.</p>
 
     <p>This is a smaller update, but an important one.</p>
 
-    <p>After a longer gap than I wanted, I’m finally getting back into the project properly. The last weeks were rough on my end and I had to step away from development for a while, which is also why communication slowed down more than it should have. I know that silence can be frustrating, especially for those of you actively using the app, so I just want to say plainly: Image MetaHub is still active, I’m still here, and I’m back to working on it.</p>
+    <p>After a longer gap than I wanted, I’m finally getting back into the project properly. The last few weeks were rough on my end, and development — along with communication — slowed down more than it should have. So I want to say this plainly: Image MetaHub is still active, I’m still here, and I’m back to working on it.</p>
 
-    <p>This update focuses on a few practical improvements and fixes, including bulk tagging, multi-selection, clipboard improvements, batch export workflow improvements, and ComfyUI parser updates. It’s not a huge release, but it is part of getting things moving again in a solid way.</p>
+    <p>This release focuses on practical improvements and fixes, including bulk tagging, multi-selection, clipboard improvements, batch export workflow improvements, and ComfyUI parser updates. It’s not a huge release, but it’s a solid step forward.</p>
 
-    <p>I also want to be transparent about something else: building and maintaining this alone is a lot. I still care deeply about this app and where I want to take it, but I’ve been feeling more and more that I could use help, whether that’s from people interested in testing builds, helping organize feedback, or contributing in other ways around the project.</p>
+    <p>I also want to be transparent about something else: building and maintaining this alone is a lot. I care deeply about this app and where I want to take it, and I’m starting to think more seriously about opening the door to people who may want to help — whether through testing, feedback organization, or other forms of support around the project.</p>
 
-    <p>If that sounds like something you’d like to be part of, keep an eye on the community spaces around the project — I’ll be opening that door more clearly from here on.</p>
+    <p>If that sounds like something you’d like to be part of, feel free to reach out at <a href="mailto:imagemetahub@gmail.com" className="text-blue-400 hover:text-blue-300 underline">imagemetahub@gmail.com</a>.</p>
 
     <p className="font-medium mt-4">And to everyone who has supported the project, reported bugs, bought a <strong className="text-white">Pro license</strong>, or simply kept using the app: thank you. It genuinely matters.</p>
 
