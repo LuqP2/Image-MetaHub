@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deselection / click handling issues during multi-selection
 - Tag manager event conflict around tag removal confirmation
 - Ensure images from excluded subfolders are correctly filtered out from the grid view by normalizing path separators (`/` vs `\`).
+- Resolve cache directory based on user settings to ensure the correct path is used.
 
 ## [0.13.0] - 2026-02-03
 
