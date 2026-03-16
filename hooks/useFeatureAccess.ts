@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging';
+
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
 export const CLUSTERING_PREVIEW_LIMIT = 500; // Process extra for blurred preview
@@ -118,6 +119,8 @@ export const useFeatureAccess = () => {
     canUseAnalytics,
     canUseBatchExport,
 
+    canUseBulkTagging: canUseDuringTrialOrPro,
+
     // Clustering limits
     canUseFullClustering: canUseDuringTrialOrPro,
     canUseDuringTrialOrPro,
@@ -145,3 +148,4 @@ export const useFeatureAccess = () => {
     closeProModal,
   };
 };
+

@@ -613,7 +613,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (isVideo) {
       return;
     }
-    const result = await copyImageToClipboard(image);
+    const result = await copyImageToClipboard(image, directoryPath);
     if (result.success) {
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';

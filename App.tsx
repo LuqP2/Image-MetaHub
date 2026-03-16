@@ -79,6 +79,7 @@ export default function App() {
   const scanSubfolders = useImageStore((state) => state.scanSubfolders);
   const excludedFolders = useImageStore((state) => state.excludedFolders);
   const addExcludedFolder = useImageStore((state) => state.addExcludedFolder);
+  const removeExcludedFolder = useImageStore((state) => state.removeExcludedFolder);
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
@@ -724,6 +725,7 @@ export default function App() {
           scanSubfolders={scanSubfolders}
           excludedFolders={excludedFolders}
           onExcludeFolder={addExcludedFolder}
+          onIncludeFolder={removeExcludedFolder}
           sortOrder={sortOrder}
           onSortOrderChange={imageStoreSetSortOrder}
           onReshuffle={reshuffle}

@@ -12,8 +12,40 @@ export interface OperationResult {
  * @param image - The IndexedImage object containing the file handle
  * @returns Promise with operation result
  */
-export const copyImageToClipboard = async (image: IndexedImage): Promise<OperationResult> => {
+// Helper to copy image to clipboard
+export const copyImageToClipboard = async (image: IndexedImage, directoryPath?: string): Promise<{ success: boolean; error?: string }> => {
   try {
+    // Check if running in Electron and use native clipboard API if available
+    // 1. Try Native Electron API first (if available) - this avoids the "Document is not focused" error
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.copyImageToClipboard) {
+      let fullPath = image.id;
+      
+      // If we have a directory path, try to construct a proper file system path
+      // image.id might be an internal ID like "dirId::filename" or just "filename" depending on context
+      if (directoryPath) {
+        // Safe path joining via Electron API
+        const joined = await window.electronAPI.joinPaths(directoryPath, image.name);
+        if (joined.success && joined.path) {
+          fullPath = joined.path;
+        }
+      }
+
+      // If we are in Electron, pass the resolved full path
+      const result = await window.electronAPI.copyImageToClipboard(fullPath);
+      if (result.success) {
+        return { success: true };
+      }
+      console.warn('Native clipboard copy failed, falling back to Web API:', result.error);
+    }
+
+    // Web API fallback (or if native failed)
+    // Ensure document has focus before clipboard operation (browser requirement)
+    if (typeof document !== 'undefined' && (document.hidden || !document.hasFocus())) {
+      window.focus();
+      // Short delay to allow focus to take effect
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
     const file = await image.handle.getFile();
     const blob = new Blob([file], { type: file.type });
     await navigator.clipboard.write([new ClipboardItem({ [file.type]: blob })]);

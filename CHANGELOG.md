@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-03-16
+
+### Added
+
+- Bulk tagging support in the Tag Manager (comma-separated tags)
+- Multi-image selection in the image grid
+- "Go to folder" link after batch export success
+- Support for additional ComfyUI nodes in metadata parsing:
+  - `WanImageToVideo`
+  - `KSamplarAdvanced`
+  - `VHS_VideoCombine`
+- Keep excluded folders visible in the directory tree (with a dimmed, strike-through styling) rather than hiding them entirely.
+- Allow users to re-include previously excluded folders directly from the directory tree sidebar.
+
+### Improved
+
+- Native clipboard support for copying images/files
+- Export folder handling outside indexed directories
+- Internal ComfyUI parser type organization
+
+### Fixed
+
+- Selection state and alignment issues in the virtualized image grid
+- Deselection / click handling issues during multi-selection
+- Tag manager event conflict around tag removal confirmation
+- Ensure images from excluded subfolders are correctly filtered out from the grid view by normalizing path separators (`/` vs `\`).
+
 ## [0.13.0] - 2026-02-03
 
 ### Added

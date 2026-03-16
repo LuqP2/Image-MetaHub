@@ -32,6 +32,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
+  const [exportPath, setExportPath] = useState<string | null>(null);
   const activeExportIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setOutput('folder');
       setProgress(null);
       setActiveExportId(null);
+      setExportPath(null);
     }
   }, [isOpen, hasSelected]);
 
@@ -78,6 +80,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     return unsubscribe;
   }, [isOpen]);
+
+  const handleOpenFolder = () => {
+    if (exportPath && window.electronAPI) {
+      window.electronAPI.showItemInFolder(exportPath);
+    }
+  };
 
   const handleExport = async () => {
     if (!window.electronAPI) {
@@ -112,6 +120,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     setIsExporting(true);
     setStatus(null);
+    setExportPath(null);
 
     try {
       if (output === 'folder') {
@@ -147,6 +156,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             ? `Exported ${exportResult.exportedCount} images with ${failures} failures.`
             : `Exported ${exportResult.exportedCount} images.`;
           setStatus({ type: failures > 0 ? 'error' : 'success', message: summary });
+          setExportPath(destResult.path);
         }
       } else {
         const saveResult = await window.electronAPI.showSaveDialog({
@@ -185,6 +195,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             ? `Created ZIP with ${exportResult.exportedCount} images and ${failures} failures.`
             : `Created ZIP with ${exportResult.exportedCount} images.`;
           setStatus({ type: failures > 0 ? 'error' : 'success', message: summary });
+          setExportPath(saveResult.path);
         }
       }
     } catch (error: any) {
@@ -311,13 +322,21 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
           {status && (
             <div
-              className={`rounded-lg border px-3 py-2 text-sm ${
+              className={`rounded-lg border px-3 py-2 text-sm flex items-center justify-between ${
                 status.type === 'success'
                   ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
                   : 'border-red-500/40 bg-red-500/10 text-red-200'
               }`}
             >
-              {status.message}
+              <span>{status.message}</span>
+              {status.type === 'success' && exportPath && (
+                <button
+                  onClick={handleOpenFolder}
+                  className="ml-4 text-emerald-400 hover:text-emerald-300 underline font-medium whitespace-nowrap"
+                >
+                  Go to folder
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -31,6 +31,7 @@ interface SidebarProps {
   scanSubfolders: boolean;
   excludedFolders: Set<string>;
   onExcludeFolder: (path: string) => void;
+  onIncludeFolder?: (path: string) => void;
   sortOrder: string;
   onSortOrderChange: (value: string) => void;
   onReshuffle?: () => void;
@@ -61,6 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   scanSubfolders,
   excludedFolders,
   onExcludeFolder,
+  onIncludeFolder,
   sortOrder,
   onSortOrderChange,
   onReshuffle
@@ -154,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="flex flex-col overflow-hidden">
                 <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
-                <span className="text-[10px] font-mono font-normal text-gray-500">v0.13.0</span>
+                <span className="text-[10px] font-mono font-normal text-gray-500">v0.13.1</span>
             </div>
         </div>
 
@@ -233,7 +235,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             isIndexing,
             scanSubfolders,
             excludedFolders,
-            onExcludeFolder
+            onExcludeFolder,
+            onIncludeFolder
           })
         ) : (
           children

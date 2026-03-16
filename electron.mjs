@@ -178,11 +178,17 @@ const zoomMenuItems = [
 
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+let cachedSettings = null;
+let cachedSettingsTime = 0;
 
 async function readSettings() {
+  // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
+  if (cachedSettings) return cachedSettings;
+
   try {
     const data = await fs.readFile(settingsPath, 'utf-8');
-    return JSON.parse(data);
+    cachedSettings = JSON.parse(data);
+    return cachedSettings;
   } catch (error) {
     // If file doesn't exist or is invalid, return empty object
     return {};
@@ -192,6 +198,7 @@ async function readSettings() {
 async function saveSettings(settings) {
   try {
     await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    cachedSettings = settings; // Update cache
   } catch (error) {
     console.error('Error saving settings:', error);
   }
@@ -599,7 +606,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.13.0');
+    mainWindow.setTitle('Image MetaHub v0.13.1');
   }
 
   // Load the app
@@ -1271,11 +1278,9 @@ function setupFileOperationHandlers() {
   // Handle show item in folder
   ipcMain.handle('show-item-in-folder', async (event, filePath) => {
     try {
-      if (!isPathAllowed(filePath)) {
-        console.error('SECURITY VIOLATION: Attempted to show item outside of allowed directories.');
-        return { success: false, error: 'Access denied: Cannot show items outside of the allowed directories.' };
-      }
-
+      // Allow opening any folder/file that the user has access to via the OS dialogs
+      // We removed the isPathAllowed check here because export destinations can be anywhere
+      
       const normalizedFilePath = path.normalize(filePath);
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
@@ -1377,8 +1382,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.13.0',
-      releaseNotes: `## [0.13.0] - Release
+  version: '0.13.1',
+      releaseNotes: `## [0.13.1] - Release
 
 ### Major Performance Improvements
 - **3-5x Faster Loading**: Batch IPC operations reduce 1000+ calls to a single batch
@@ -1790,6 +1795,33 @@ function setupFileOperationHandlers() {
       return { success: true, files: data };
     } catch (error) {
       console.error('Error in read-files-tail-batch handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Handle copying image to clipboard
+  ipcMain.handle('copy-image-to-clipboard', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      // --- SECURITY CHECK ---
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to copy file outside of allowed directories.');
+        return { success: false, error: 'Access denied: Cannot copy files outside of the allowed directories.' };
+      }
+      // --- END SECURITY CHECK ---
+
+      const image = nativeImage.createFromPath(filePath);
+      if (image.isEmpty()) {
+        return { success: false, error: 'Failed to load image from path' };
+      }
+
+      electron.clipboard.writeImage(image);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying image to clipboard:', error);
       return { success: false, error: error.message };
     }
   });

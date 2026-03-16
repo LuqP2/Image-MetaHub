@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download } from 'lucide-react';
+import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
@@ -80,6 +80,17 @@ const featureInfo = {
       'Automatic filename conflict resolution',
       'Flattened output for easy sharing',
       'ZIP creation for quick backups',
+    ],
+  },
+  bulk_tagging: {
+    name: 'Bulk Tagging',
+    icon: Tag,
+    description: 'Add or remove tags from multiple images at once',
+    benefits: [
+      'Tag thousands of images instantly',
+      'Consistent tagging across collections',
+      'Smart autocomplete suggestions',
+      'Remove tags from multiple files',
     ],
   },
 };

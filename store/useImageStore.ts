@@ -63,7 +63,7 @@ const updateRecentTags = (currentTags: string[], tag: string): string[] => {
 
 const normalizePath = (path: string) => {
     if (!path) return '';
-    return path.replace(/[\\/]+$/, '');
+    return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
 };
 
 const getImageFolderPath = (image: IndexedImage, directoryPath: string): string => {
@@ -84,13 +84,11 @@ const getImageFolderPath = (image: IndexedImage, directoryPath: string): string 
     return joinPath(normalizedDirectory, folderRelativePath);
 };
 
-const detectSeparator = (path: string) => (path.includes('\\') && !path.includes('/')) ? '\\' : '/';
-
 const joinPath = (base: string, relative: string) => {
     if (!relative) {
         return normalizePath(base);
     }
-    const separator = detectSeparator(base);
+    const separator = '/';
     const normalizedBase = normalizePath(base);
     const normalizedRelative = relative
         .split(/[/\\]/)
@@ -1072,12 +1070,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                     }
 
                     const newState = {
+                        ...state,
                         selectedFolders: new Set(selectedPaths),
                         excludedFolders: new Set(excludedPaths),
                         isFolderSelectionLoaded: true
                     };
                     
-                    return _updateState({ ...state, ...newState }, state.images); // Re-run filtering
+                    const resultState = { ...newState, ...filterAndSort(newState) };
+                    const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
+                    return { ...resultState, ...availableFilters };
                 });
             });
         },
@@ -1096,7 +1097,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 saveExcludedFolders(Array.from(newExcluded));
                 saveSelectedFolders(Array.from(newSelected));
 
-                return _updateState({ ...state, excludedFolders: newExcluded, selectedFolders: newSelected }, state.images);
+                const newState = { ...state, excludedFolders: newExcluded, selectedFolders: newSelected };
+                const resultState = { ...newState, ...filterAndSort(newState) };
+                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
+                return { ...resultState, ...availableFilters };
             });
         },
 
@@ -1105,7 +1109,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const newExcluded = new Set(state.excludedFolders);
                 newExcluded.delete(path);
                 saveExcludedFolders(Array.from(newExcluded));
-                return _updateState({ ...state, excludedFolders: newExcluded }, state.images);
+                
+                const newState = { ...state, excludedFolders: newExcluded };
+                const resultState = { ...newState, ...filterAndSort(newState) };
+                const availableFilters = recalculateAvailableFilters(resultState.filteredImages);
+                return { ...resultState, ...availableFilters };
             });
         },
 

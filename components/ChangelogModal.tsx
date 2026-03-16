@@ -121,56 +121,57 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
           ) : (
             <>
               {/* Message from the Dev */}
-              <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
-                <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
-                <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-                  <p>Hey, I'm Lucas, the solo dev behind Image MetaHub.</p>
+              {/* Message from the Dev */}
+<div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
+  <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
+  <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
+    <p>Hey, I’m Lucas, the solo developer behind Image MetaHub.</p>
 
-                  <p>Video support is finally starting to land! This update lays the critical foundation for video management. It is still early days, but you can now start indexing, previewing, and organizing your motion generations right alongside your images.</p>
+    <p>This is a smaller update, but an important one.</p>
 
-                  <p>Beyond video, I’ve focused heavily on workflow improvements in this release. The new Stack by Prompt feature helps tame the chaos of your grid by grouping iterations together, and the dedicated Model View gives you a completely new way to browse your library based on your checkpoints. An early implementation of metadata editing is also available in the Image Modal.</p>
+    <p>After a longer gap than I wanted, I’m finally getting back into the project properly. The last few weeks were rough on my end, and development — along with communication — slowed down more than it should have. So I want to say this plainly: Image MetaHub is still active, I’m still here, and I’m back to working on it.</p>
 
-                  <p>I want to take a quick moment to be transparent about the project itself.</p>
+    <p>This release focuses on practical improvements and fixes, including bulk tagging, multi-selection, clipboard improvements, batch export workflow improvements, and ComfyUI parser updates. It’s not a huge release, but it’s a solid step forward.</p>
 
-                  <p>Image MetaHub is not a side project or a weekend hobby for me. This is my full-time job. I am at my desk every single day, committed to building the best possible tool for local AI organization. The rapid pace of updates and bug fixes is possible because I am dedicating all my time to this.</p>
+    <p>I also want to be transparent about something else: building and maintaining this alone is a lot. I care deeply about this app and where I want to take it, and I’m starting to think more seriously about opening the door to people who may want to help — whether through testing, feedback organization, or other forms of support around the project.</p>
 
-                  <p>However, being an independent developer means I don't have investors or a corporate safety net—I only have you, the community.</p>
+    <p>If that sounds like something you’d like to be part of, feel free to reach out at <a href="mailto:imagemetahub@gmail.com" className="text-blue-400 hover:text-blue-300 underline">imagemetahub@gmail.com</a>.</p>
 
-                  <p className="font-medium mt-4">To everyone who has already supported the project with a <strong className="text-white">Pro license</strong>: thank you. You are literally keeping the lights on. If you haven't yet, and you have the means, purchasing a license is the single most effective way to ensure I can maintain this momentum. It validates the work and allows me to keep focusing 100% on making Image MetaHub better for everyone.</p>
+    <p className="font-medium mt-4">And to everyone who has supported the project, reported bugs, bought a <strong className="text-white">Pro license</strong>, or simply kept using the app: thank you. It genuinely matters.</p>
 
-                  <p className="mt-4">Enjoy the update!</p>
+    <p className="mt-4">Enjoy the update.</p>
 
-                  <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
-                    <a
-                      href="https://github.com/LuqP2/Image-MetaHub"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-full transition-colors"
-                    >
-                      <Github size={16} />
-                      GitHub Project
-                    </a>
-                    <a
-                      href="https://lucasphere4660.gumroad.com/l/qmjima"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
-                    >
-                       <Heart size={16} className="fill-current" />
-                       Get Pro License
-                    </a>
-                    <a
-                      href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-full transition-colors"
-                    >
-                       <Puzzle size={16} />
-                       ComfyUI Save Node
-                    </a>
-                  </div>
-                </div>
-              </div>
+    <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
+      <a
+        href="https://github.com/LuqP2/Image-MetaHub"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-full transition-colors"
+      >
+        <Github size={16} />
+        GitHub Project
+      </a>
+      <a
+        href="https://lucasphere4660.gumroad.com/l/qmjima"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
+      >
+        <Heart size={16} className="fill-current" />
+        Get Pro License
+      </a>
+      <a
+        href="https://registry.comfy.org/publishers/image-metahub/nodes/imagemetahub-comfyui-save"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded-full transition-colors"
+      >
+        <Puzzle size={16} />
+        ComfyUI Save Node
+      </a>
+    </div>
+  </div>
+</div>
 
               {/* Changelog Content */}
               <div className="prose prose-invert prose-sm max-w-none">

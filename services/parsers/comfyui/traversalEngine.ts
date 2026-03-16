@@ -1,4 +1,5 @@
-import { NodeRegistry, ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType, NodeDefinition, WorkflowFacts } from './nodeRegistry';
+import { NodeRegistry } from './nodeRegistry';
+import { ParamMappingRule, ParserNode, ComfyTraversableParam, ComfyNodeDataType, NodeDefinition, WorkflowFacts } from './types';
 
 type NodeLink = [string, number];
 type Graph = Record<string, ParserNode>;

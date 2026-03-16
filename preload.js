@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
 
   // --- Caching ---
+  copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
   getCacheSummary: (cacheId) => ipcRenderer.invoke('get-cache-summary', cacheId),
   cacheData: (args) => ipcRenderer.invoke('cache-data', args),
