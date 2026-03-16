@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Directory } from '../types';
-import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff } from 'lucide-react';
+import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye } from 'lucide-react';
 
 interface DirectoryListProps {
   directories: Directory[];
@@ -17,6 +17,7 @@ interface DirectoryListProps {
   scanSubfolders?: boolean;
   excludedFolders?: Set<string>;
   onExcludeFolder?: (path: string) => void;
+  onIncludeFolder?: (path: string) => void;
 }
 
 interface SubfolderNode {
@@ -58,7 +59,8 @@ export default function DirectoryList({
   isIndexing = false,
   scanSubfolders = false,
   excludedFolders,
-  onExcludeFolder
+  onExcludeFolder,
+  onIncludeFolder
 }: DirectoryListProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [subfolderCache, setSubfolderCache] = useState<Map<string, SubfolderNode[]>>(new Map());
@@ -212,10 +214,7 @@ export default function DirectoryList({
       const grandchildren = subfolderCache.get(childKey) || [];
       const isSelected = isFolderSelected ? isFolderSelected(child.path) : false;
 
-      // Skip excluded folders
-      if (excludedFolders && excludedFolders.has(normalizePath(child.path))) {
-        return null;
-      }
+      const isExcluded = excludedFolders && excludedFolders.has(normalizePath(child.path));
 
       const hasSubfolders = isLoadingNode || !subfolderCache.has(childKey) || (subfolderCache.get(childKey)?.length ?? 0) > 0;
 
@@ -247,49 +246,69 @@ export default function DirectoryList({
               <div className="w-4 mr-1 flex-shrink-0" /> // Spacer
             )}
             
-            <Folder className="w-3 h-3 mr-2 text-gray-400" />
-            <span className="text-sm text-gray-300 truncate flex-1">{child.name}</span>
+            <Folder className={`w-3 h-3 mr-2 ${isExcluded ? 'text-gray-600' : 'text-gray-400'}`} />
+            <span className={`text-sm truncate flex-1 ${isExcluded ? 'text-gray-500 line-through' : 'text-gray-300'}`}>{child.name}</span>
             
             {/* Action Buttons (Visible on Hover) */}
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                 <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        // Refresh via parent, passing specific subpath
-                        onUpdateDirectory(rootDirectory.id, child.path);
-                        
-                        // Also refresh subfolders for this specific node
-                        setSubfolderCache(prev => {
-                          const next = new Map(prev);
-                          next.delete(childKey);
-                          return next;
-                        });
-                        // If it was expanded or has subfolders, reload them
-                        // Even if it wasn't, checking again is good practice on refresh
-                        void loadSubfolders(childKey, child.path, rootDirectory);
-                    }}
-                    disabled={isIndexing}
-                    className={`p-1 rounded hover:bg-gray-600 transition-colors ${
-                        isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
-                    }`}
-                    title="Refresh folder"
-                >
-                    <RotateCcw className="w-3 h-3" />
-                </button>
-                {onExcludeFolder && (
+                {isExcluded ? (
+                  onIncludeFolder && (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            onExcludeFolder(normalizePath(child.path));
+                            onIncludeFolder(normalizePath(child.path));
                         }}
                         disabled={isIndexing}
                         className={`p-1 rounded hover:bg-gray-600 transition-colors ${
-                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-blue-400'
                         }`}
-                        title="Exclude folder"
+                        title="Include folder"
                     >
-                        <Trash2 className="w-3 h-3" />
+                        <Eye className="w-3 h-3" />
                     </button>
+                  )
+                ) : (
+                  <>
+                     <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // Refresh via parent, passing specific subpath
+                            onUpdateDirectory(rootDirectory.id, child.path);
+                            
+                            // Also refresh subfolders for this specific node
+                            setSubfolderCache(prev => {
+                              const next = new Map(prev);
+                              next.delete(childKey);
+                              return next;
+                            });
+                            // If it was expanded or has subfolders, reload them
+                            // Even if it wasn't, checking again is good practice on refresh
+                            void loadSubfolders(childKey, child.path, rootDirectory);
+                        }}
+                        disabled={isIndexing}
+                        className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'
+                        }`}
+                        title="Refresh folder"
+                    >
+                        <RotateCcw className="w-3 h-3" />
+                    </button>
+                    {onExcludeFolder && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onExcludeFolder(normalizePath(child.path));
+                            }}
+                            disabled={isIndexing}
+                            className={`p-1 rounded hover:bg-gray-600 transition-colors ${
+                                isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'
+                            }`}
+                            title="Exclude folder"
+                        >
+                            <EyeOff className="w-3 h-3" />
+                        </button>
+                    )}
+                  </>
                 )}
             </div>
           </div>
@@ -525,18 +544,33 @@ export default function DirectoryList({
             Refresh Folder
           </button>
 
-          {onExcludeFolder && (
-            <button
-              className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
-              onClick={() => {
-                // No confirmation dialog as requested
-                onExcludeFolder(normalizePath(contextMenu.path));
-                setContextMenu(null);
-              }}
-            >
-              <EyeOff className="w-4 h-4" />
-              Exclude Folder
-            </button>
+          {excludedFolders?.has(normalizePath(contextMenu.path)) ? (
+            onIncludeFolder && (
+              <button
+                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+                onClick={() => {
+                  onIncludeFolder(normalizePath(contextMenu.path));
+                  setContextMenu(null);
+                }}
+              >
+                <Eye className="w-4 h-4" />
+                Include Folder
+              </button>
+            )
+          ) : (
+            onExcludeFolder && (
+              <button
+                className="w-full px-4 py-2 text-left text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+                onClick={() => {
+                  // No confirmation dialog as requested
+                  onExcludeFolder(normalizePath(contextMenu.path));
+                  setContextMenu(null);
+                }}
+              >
+                <EyeOff className="w-4 h-4" />
+                Exclude Folder
+              </button>
+            )
           )}
         </div>
       )}
