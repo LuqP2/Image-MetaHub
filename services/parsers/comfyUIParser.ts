@@ -1,5 +1,6 @@
 import { resolveAll, resolveFacts } from './comfyui/traversalEngine';
-import { ParserNode, NodeRegistry, WorkflowFacts } from './comfyui/nodeRegistry';
+import { NodeRegistry } from './comfyui/nodeRegistry';
+import type { ParserNode, WorkflowFacts } from './comfyui/types';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;

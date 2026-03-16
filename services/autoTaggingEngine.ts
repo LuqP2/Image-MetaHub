@@ -1,6 +1,6 @@
 import type { AutoTag, ImageMetadata, LoRAInfo, TFIDFModel } from '../types';
 import { resolveWorkflowFactsFromGraph } from './parsers/comfyUIParser';
-import type { WorkflowFacts } from './parsers/comfyui/nodeRegistry';
+import type { WorkflowFacts } from './parsers/comfyui/types';
 
 export interface TaggingImage {
   id: string;
@@ -22,7 +22,7 @@ const LORA_WEIGHT = 2.0;
 const PROMPT_WEIGHT = 1.0;
 
 const LORA_TAG_REGEX = /<lora:([^:>]+)(?::[^>]+)?>/gi;
-const WEIGHT_SYNTAX_REGEX = /[(\[]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g;
+const WEIGHT_SYNTAX_REGEX = /[([]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g;
 
 const STOP_PHRASES = [
   'best quality',
