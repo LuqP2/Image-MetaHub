@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Search Filter**: Fixed a bug where pressing the ESC key to close the image modal would also inadvertently clear the active search filter text.
+- **Draw Things**: Fixed missing LoRA weights and parsing issues for recent Draw Things metadata formats.
 
 ## [0.13.1] - 2026-03-16
 
