@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Search Filter**: Fixed a bug where pressing the ESC key to close the image modal would also inadvertently clear the active search filter text.
+- **Settings**: Fixed a critical bug where `settings.json` could become corrupted on exit, causing user preferences (like disabling auto-updates) to reset to defaults on the next launch. Implemented atomic file saves to guarantee settings integrity.
+- **Auto-Updater**: Fixed an issue where background update checks would display an intrusive error dialog if the internet was disconnected or blocked by a firewall. Also prevented cached update dialogs from appearing when the auto-update setting is disabled.
 
 ## [0.13.1] - 2026-03-16
 

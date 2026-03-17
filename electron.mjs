@@ -107,6 +107,8 @@ async function readVideoMetadataWithFfprobe(filePath) {
 
 let mainWindow;
 let skippedVersions = new Set();
+let isManualUpdateCheck = false;
+
 
 // --- Zoom Management ---
 const ZOOM_STEP = 0.1;
@@ -178,31 +180,132 @@ const zoomMenuItems = [
 
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const settingsTempPath = `${settingsPath}.tmp`;
+const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+
+const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readSettingsFile(filePath) {
+  const data = await fs.readFile(filePath, 'utf-8');
+  const parsed = JSON.parse(data);
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Invalid settings payload in ${path.basename(filePath)}`);
+  }
+
+  return parsed;
+}
+
+async function writeFileAndSync(filePath, data) {
+  const handle = await fs.open(filePath, 'w');
+  try {
+    await handle.writeFile(data, 'utf-8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function replaceFileWithRetry(sourcePath, destinationPath) {
+  let lastError = null;
+
+  for (const delayMs of SETTINGS_WRITE_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await delay(delayMs);
+    }
+
+    try {
+      await fs.rename(sourcePath, destinationPath);
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (error?.code === 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 async function readSettings() {
   // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
   if (cachedSettings) return cachedSettings;
 
   try {
-    const data = await fs.readFile(settingsPath, 'utf-8');
-    cachedSettings = JSON.parse(data);
+    cachedSettings = await readSettingsFile(settingsPath);
     return cachedSettings;
   } catch (error) {
+    const primaryError = error;
+
+    for (const recoveryPath of [settingsTempPath, settingsBackupPath]) {
+      try {
+        const recoveredSettings = await readSettingsFile(recoveryPath);
+        await replaceFileWithRetry(recoveryPath, settingsPath);
+        cachedSettings = recoveredSettings;
+        console.warn(`Recovered settings from ${path.basename(recoveryPath)} after primary settings read failed.`);
+        return cachedSettings;
+      } catch (recoveryError) {
+        if (recoveryError?.code !== 'ENOENT') {
+          console.warn(`Failed to recover settings from ${path.basename(recoveryPath)}:`, recoveryError);
+        }
+      }
+    }
+
+    if (primaryError?.code !== 'ENOENT') {
+      console.warn('Failed to read settings, using defaults:', primaryError);
+    }
+
     // If file doesn't exist or is invalid, return empty object
     return {};
   }
 }
 
 async function saveSettings(settings) {
+  const serializedSettings = JSON.stringify(settings, null, 2);
+
   try {
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+
+    try {
+      await fs.copyFile(settingsPath, settingsBackupPath);
+    } catch (backupError) {
+      if (backupError?.code !== 'ENOENT') {
+        console.warn('Failed to refresh settings backup before save:', backupError);
+      }
+    }
+
+    await fs.rm(settingsTempPath, { force: true });
+    await writeFileAndSync(settingsTempPath, serializedSettings);
+    await replaceFileWithRetry(settingsTempPath, settingsPath);
+
+    const verifiedSettings = await readSettingsFile(settingsPath);
+    if (JSON.stringify(verifiedSettings) !== JSON.stringify(settings)) {
+      throw new Error('Settings verification failed after write.');
+    }
+
+    await fs.copyFile(settingsPath, settingsBackupPath);
     cachedSettings = settings; // Update cache
+    return { success: true };
   } catch (error) {
+    cachedSettings = null;
     console.error('Error saving settings:', error);
+    try {
+      await fs.rm(settingsTempPath, { force: true });
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary settings file:', cleanupError);
+    }
+    throw error;
   }
 }
+
 
 async function getCacheRootPath() {
   const settings = await readSettings();
@@ -317,6 +420,7 @@ function createApplicationMenu() {
             if (autoUpdater) {
               try {
                 console.log('Manually checking for updates...');
+                isManualUpdateCheck = true;
                 await autoUpdater.checkForUpdates();
               } catch (error) {
                 console.error('Error checking for updates:', error);
@@ -422,8 +526,18 @@ if (autoUpdater) {
     // console.log('Checking for update...');
   });
 
-  autoUpdater.on('update-available', (info) => {
+  autoUpdater.on('update-available', async (info) => {
     console.log('Update available:', info.version);
+    const wasManual = isManualUpdateCheck;
+    isManualUpdateCheck = false;
+
+    if (!wasManual) {
+      const settings = await readSettings();
+      if (settings.autoUpdate === false) {
+        console.log('Auto-update is disabled, silently ignoring cached update-available event.');
+        return;
+      }
+    }
 
     // Check if user previously skipped this version
     if (skippedVersions.has(info.version)) {
@@ -503,6 +617,7 @@ if (autoUpdater) {
 
   autoUpdater.on('update-not-available', (info) => {
     // console.log('Update not available');
+    isManualUpdateCheck = false;
   });
 
   autoUpdater.on('error', (err) => {
@@ -513,13 +628,16 @@ if (autoUpdater) {
       console.log('macOS auto-updater error - this may be due to code signing requirements');
     }
     
-    dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: 'Update Error',
-      message: 'Failed to check for updates.',
-      detail: err.message || 'Please try again later.',
-      buttons: ['OK']
-    });
+    if (isManualUpdateCheck && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Update Error',
+        message: 'Failed to check for updates.',
+        detail: err.message || 'Please try again later.',
+        buttons: ['OK']
+      });
+      isManualUpdateCheck = false;
+    }
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -534,8 +652,19 @@ if (autoUpdater) {
     }
   });
 
-  autoUpdater.on('update-downloaded', (info) => {
+  autoUpdater.on('update-downloaded', async (info) => {
     console.log('Update downloaded:', info.version);
+    
+    // Safety check just in case
+    const wasManual = isManualUpdateCheck;
+    if (!wasManual) {
+      const settings = await readSettings();
+      if (settings.autoUpdate === false) {
+        console.log('Auto-update is disabled, silently ignoring cached update-downloaded event. Will install on next start.');
+        return;
+      }
+    }
+
     if (mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: 'question',
@@ -828,9 +957,14 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
-    const currentSettings = await readSettings();
-    const mergedSettings = { ...currentSettings, ...newSettings };
-    await saveSettings(mergedSettings);
+    try {
+      const currentSettings = await readSettings();
+      const mergedSettings = { ...currentSettings, ...newSettings };
+      await saveSettings(mergedSettings);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
   });
 
   ipcMain.handle('get-default-cache-path', () => {
@@ -1366,10 +1500,14 @@ function setupFileOperationHandlers() {
     }
     try {
       console.log('Manual update check requested');
+      isManualUpdateCheck = true;
       const result = await autoUpdater.checkForUpdates();
+      // Reset the flag if successful, as 'update-available' or 'update-not-available' will handle UI
+      // If it throws, the error handler will catch and reset the flag
       return { success: true, updateInfo: result.updateInfo };
     } catch (error) {
       console.error('Error checking for updates:', error);
+      isManualUpdateCheck = false; // Reset on immediate error
       return { success: false, error: error.message };
     }
   });
