@@ -643,10 +643,29 @@ function createWindow(startupDirectory = null) {
     mainWindow.webContents.openDevTools();
   }
 
-  // Open external links in browser
+  // Open external links in browser (only allow safe protocols)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(url);
+      } else {
+        console.warn('[Security] Blocked openExternal with disallowed protocol:', parsed.protocol);
+      }
+    } catch {
+      console.warn('[Security] Blocked openExternal with invalid URL:', url);
+    }
     return { action: 'deny' };
+  });
+
+  // Block navigation to external URLs
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Allow local dev server and file:// URLs (production build)
+    if (url.startsWith('http://localhost:') || url.startsWith('file://')) {
+      return;
+    }
+    console.warn('[Security] Blocked navigation to:', url);
+    event.preventDefault();
   });
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1303,9 +1322,15 @@ function setupFileOperationHandlers() {
     }
   });
 
-  // Handle open cache location (without security restrictions since it's app's internal cache)
+  // Handle open cache location (restricted to app's internal userData directory)
   ipcMain.handle('open-cache-location', async (event, cachePath) => {
     try {
+      if (!isInternalPath(cachePath)) {
+        console.error('SECURITY VIOLATION: Attempted to open cache location outside userData.');
+        console.error('  [open-cache-location] Requested path:', cachePath);
+        return { success: false, error: 'Access denied: Path is not within the application data directory.' };
+      }
+
       const normalizedCachePath = path.normalize(cachePath);
       const parentPath = path.dirname(normalizedCachePath);
       console.log('📂 Opening cache parent directory:', parentPath);
@@ -1904,16 +1929,14 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No data provided' };
       }
 
-      // --- SECURITY CHECK ---
-      // For write operations, we need to be more careful about where files can be written
-      // We'll allow writing to any directory the user has selected via the directory dialog
-      // This is more permissive than read operations but still controlled
+      if (!isAllowedOrInternal(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to write file outside of allowed directories.');
+        console.error('  [write-file] Requested path:', filePath);
+        console.error('  [write-file] Normalized path:', path.normalize(filePath));
+        return { success: false, error: 'Access denied: Cannot write files outside of allowed directories.' };
+      }
+
       const normalizedFilePath = path.normalize(filePath);
-
-      // Check if the target directory is within the current directory or a user-selected export directory
-      // For now, we'll allow writing to any directory (since users explicitly choose export locations)
-      // But we should add additional validation in the future if needed
-
       console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
 
       await fs.writeFile(normalizedFilePath, data);
