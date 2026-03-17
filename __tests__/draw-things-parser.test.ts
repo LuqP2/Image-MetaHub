@@ -34,8 +34,8 @@ describe('Draw Things Parser - Flux Model Support', () => {
     expect(result.cfg_scale).toBe(5);
     expect(result.sampler).toBe('DPM++ 2M AYS');
     expect(result.loras).toHaveLength(2);
-    expect(result.loras).toContain('flux_faetastic_details_v1.0_lora_f16.ckpt');
-    expect(result.loras).toContain('aidmamj6.1_flux_v0.5_lora_f16.ckpt');
+    expect(result.loras).toContainEqual({ name: 'flux_faetastic_details_v1.0_lora_f16.ckpt', weight: 0.800000011920929 });
+    expect(result.loras).toContainEqual({ name: 'aidmamj6.1_flux_v0.5_lora_f16.ckpt', weight: 1 });
     expect(result.generator).toBe('Draw Things');
   });
 
@@ -52,5 +52,7 @@ describe('Draw Things Parser - Flux Model Support', () => {
     expect(result.cfg_scale).toBe(5);
     expect(result.sampler).toBe('DPM++ 2M AYS');
     expect(result.loras).toHaveLength(2);
+    expect(result.loras).toContainEqual({ name: 'flux_faetastic_details_v1.0_lora_f16.ckpt', weight: 0.8 });
+    expect(result.loras).toContainEqual({ name: 'aidmamj6.1_flux_v0.5_lora_f16.ckpt', weight: 1.0 });
   });
 });
