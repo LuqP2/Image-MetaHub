@@ -1329,6 +1329,9 @@ if (rawMetadata) {
     } catch (e) {
       // console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
     }
+    if (!workflow && !prompt) {
+      prompt = rawMetadata as any;
+    }
     const resolvedParams = resolvePromptFromGraph(workflow, prompt);
     normalizedMetadata = {
       prompt: resolvedParams.prompt || '',
