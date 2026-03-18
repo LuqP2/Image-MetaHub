@@ -156,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="flex flex-col overflow-hidden">
                 <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
-                <span className="text-[10px] font-mono font-normal text-gray-500">v0.13.1</span>
+                <span className="text-[10px] font-mono font-normal text-gray-500">v0.13.2</span>
             </div>
         </div>
 
