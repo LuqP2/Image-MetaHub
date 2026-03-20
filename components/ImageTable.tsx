@@ -34,6 +34,7 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
 
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
+  const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
@@ -443,6 +444,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
         mode={transferMode || 'copy'}
         isSubmitting={isTransferring}
         statusText={transferStatusText}
+        progress={transferProgress}
         onConfirm={handleTransferConfirm}
       />
     </div>

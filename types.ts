@@ -10,6 +10,17 @@ export interface ExportBatchProgress {
 
 export type IndexedImageTransferMode = 'copy' | 'move';
 
+export interface IndexedImageTransferProgress {
+  transferId: string | null;
+  mode: IndexedImageTransferMode;
+  total: number;
+  processed: number;
+  transferredCount: number;
+  failedCount: number;
+  stage: 'copying' | 'finalizing' | 'done';
+  statusText?: string;
+}
+
 export interface IndexedImageTransferResultItem {
   sourceDirectoryPath: string;
   sourceRelativePath: string;
@@ -48,6 +59,7 @@ export interface ElectronAPI {
     files: { directoryPath: string; relativePath: string }[];
     destDir: string;
     mode: IndexedImageTransferMode;
+    transferId?: string;
   }) => Promise<{
     success: boolean;
     transferred: IndexedImageTransferResultItem[];
@@ -94,6 +106,7 @@ export interface ElectronAPI {
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;
+  onTransferIndexedImagesProgress: (callback: (progress: IndexedImageTransferProgress) => void) => () => void;
 
   // File watching
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;

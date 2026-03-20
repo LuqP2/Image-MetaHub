@@ -60,6 +60,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('export-batch-progress', handler);
     };
   },
+  onTransferIndexedImagesProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('transfer-indexed-images-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('transfer-indexed-images-progress', handler);
+    };
+  },
 
   // Menu event listeners
   onMenuAddFolder: (callback) => {

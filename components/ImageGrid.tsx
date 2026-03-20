@@ -579,6 +579,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
+  const transferProgress = useImageStore((state) => state.transferProgress);
 
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -1273,6 +1274,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         mode={transferMode || 'copy'}
         isSubmitting={isTransferring}
         statusText={transferStatusText}
+        progress={transferProgress}
         onConfirm={handleTransferConfirm}
       />
 

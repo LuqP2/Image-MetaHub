@@ -73,6 +73,7 @@ export default function App() {
   // Status selectors
   const error = useImageStore((state) => state.error);
   const success = useImageStore((state) => state.success);
+  const transferProgress = useImageStore((state) => state.transferProgress);
 
   // Filter state selectors
   const searchQuery = useImageStore((state) => state.searchQuery);
@@ -114,6 +115,7 @@ export default function App() {
   const resetState = useImageStore((state) => state.resetState);
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
+  const setTransferProgress = useImageStore((state) => state.setTransferProgress);
   const handleNavigateNext = useImageStore((state) => state.handleNavigateNext);
   const handleNavigatePrevious = useImageStore((state) => state.handleNavigatePrevious);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
@@ -425,6 +427,24 @@ export default function App() {
 
     return () => unsubscribe();
   }, [directories, processNewWatchedFiles, sortOrder]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onTransferIndexedImagesProgress) return;
+
+    const unsubscribe = window.electronAPI.onTransferIndexedImagesProgress((payload) => {
+      setTransferProgress(payload);
+      if (payload.stage === 'done') {
+        setTimeout(() => {
+          const latest = useImageStore.getState().transferProgress;
+          if (latest?.transferId === payload.transferId) {
+            useImageStore.getState().setTransferProgress(null);
+          }
+        }, 2500);
+      }
+    });
+
+    return unsubscribe;
+  }, [setTransferProgress]);
 
   // Watcher debug logs
   useEffect(() => {
@@ -884,6 +904,7 @@ export default function App() {
                   directoryCount={selectionDirectoryCount}
                   enrichmentProgress={enrichmentProgress}
                   a1111Progress={a1111Progress}
+                  transferProgress={transferProgress}
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}

@@ -2121,7 +2121,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('transfer-indexed-images', async (event, { files, destDir, mode } = {}) => {
+  ipcMain.handle('transfer-indexed-images', async (event, { files, destDir, mode, transferId } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, transferred: [], failedCount: 0, error: 'No files provided for transfer.' };
@@ -2141,6 +2141,27 @@ function setupFileOperationHandlers() {
       const transferred = [];
       let failedCount = 0;
       const usedNames = new Set();
+      let processed = 0;
+      const total = files.length;
+      const progressTransferId = transferId ? String(transferId) : null;
+      const sendProgress = (stage = 'copying', statusText) => {
+        try {
+          event.sender.send('transfer-indexed-images-progress', {
+            transferId: progressTransferId,
+            mode,
+            total,
+            processed,
+            transferredCount: transferred.length,
+            failedCount,
+            stage,
+            statusText,
+          });
+        } catch {
+          // ignore sender errors
+        }
+      };
+
+      sendProgress('copying', mode === 'move' ? 'Moving files...' : 'Copying files...');
 
       for (const file of files) {
         try {
@@ -2178,8 +2199,18 @@ function setupFileOperationHandlers() {
           });
         } catch (error) {
           failedCount += 1;
+        } finally {
+          processed += 1;
+          sendProgress(
+            processed >= total ? 'finalizing' : 'copying',
+            processed >= total
+              ? 'Finalizing transfer...'
+              : `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`,
+          );
         }
       }
+
+      sendProgress('done', 'Transfer complete.');
 
       return {
         success: transferred.length > 0,

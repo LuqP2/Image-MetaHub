@@ -77,6 +77,8 @@ export async function transferIndexedImages({
   onStatus,
 }: TransferIndexedImagesParams): Promise<TransferIndexedImagesResult> {
   const setError = useImageStore.getState().setError;
+  const setTransferProgress = useImageStore.getState().setTransferProgress;
+  const transferId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   if (!window.electronAPI) {
     const error = 'File transfer is only available in the desktop app version.';
@@ -122,10 +124,12 @@ export async function transferIndexedImages({
     files: sourceFiles,
     destDir: destinationDirectory.path,
     mode,
+    transferId,
   });
 
   if (!transferResult.success || transferResult.transferred.length === 0) {
     setError(transferResult.error || `Failed to ${mode} images.`);
+    setTransferProgress(null);
     return {
       success: false,
       transferredCount: 0,
@@ -213,6 +217,16 @@ export async function transferIndexedImages({
       : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationDirectory.name}. Destination will refresh shortly.`;
 
     setSuccess(statusMessage);
+    setTransferProgress({
+      transferId,
+      mode,
+      total: transferredCount,
+      processed: transferredCount,
+      transferredCount,
+      failedCount,
+      stage: 'done',
+      statusText: statusMessage,
+    });
 
     return {
       success: transferredCount > 0,
@@ -259,8 +273,19 @@ export async function transferIndexedImages({
 
   if (transferredCount > 0) {
     setSuccess(statusMessage);
+    setTransferProgress({
+      transferId,
+      mode,
+      total: transferredCount,
+      processed: transferredCount,
+      transferredCount,
+      failedCount,
+      stage: 'done',
+      statusText: statusMessage,
+    });
   } else {
     setError(transferResult.error || `Failed to ${mode} images.`);
+    setTransferProgress(null);
   }
 
   return {

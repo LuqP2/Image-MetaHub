@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRightLeft, Copy, Folder, MoveRight, X } from 'lucide-react';
-import type { Directory, IndexedImage, IndexedImageTransferMode } from '../types';
+import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
 
 interface TransferImagesModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface TransferImagesModalProps {
   mode: IndexedImageTransferMode;
   isSubmitting: boolean;
   statusText?: string;
+  progress?: IndexedImageTransferProgress | null;
   onClose: () => void;
   onConfirm: (directory: Directory) => Promise<void> | void;
 }
@@ -20,6 +21,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   mode,
   isSubmitting,
   statusText,
+  progress,
   onClose,
   onConfirm,
 }) => {
@@ -45,6 +47,10 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
   const selectedDirectory = sortedDirectories.find((directory) => directory.id === selectedDirectoryId);
   const actionIcon = mode === 'move' ? <MoveRight className="w-5 h-5 text-amber-300" /> : <Copy className="w-5 h-5 text-blue-300" />;
+
+  const progressPercent = progress && progress.total > 0
+    ? Math.max(0, Math.min(100, Math.round((progress.processed / progress.total) * 100)))
+    : 0;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -87,10 +93,13 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             {isSubmitting && (
               <div className="mt-3 space-y-2">
                 <div className="h-2 overflow-hidden rounded-full bg-gray-700">
-                  <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-300 ease-out"
+                    style={{ width: `${progressPercent}%` }}
+                  />
                 </div>
                 <p className="text-xs text-blue-200">
-                  {statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...')}
+                  {statusText || progress?.statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...')}
                 </p>
               </div>
             )}
