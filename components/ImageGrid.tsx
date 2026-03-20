@@ -382,6 +382,11 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 
 const GAP_SIZE = 16;
 const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
+const CARD_HEIGHT_RATIO = 1.2;
+const FILENAME_HEIGHT = 24;
+
+const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
+  (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
 
 // --- Virtualized Cell Component ---
 interface CellData {
@@ -548,6 +553,7 @@ const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<H
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
+  const showFilenames = useSettingsStore((state) => state.showFilenames);
 
   // --- Stacking Logic (Must be top-level) ---
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
@@ -779,7 +785,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         // OPTIMIZED: only check items that intersect with the selection box row/col range
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
-        const rowHeight = (imageSize * 1.2) + GAP_SIZE;
+        const itemHeight = getItemHeight(imageSize, showFilenames);
+        const rowHeight = itemHeight + GAP_SIZE;
 
         const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
         const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
@@ -795,7 +802,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     const itemLeft = c * colWidth + GAP_SIZE;
                     const itemTop = r * rowHeight + GAP_SIZE;
                     const itemRight = itemLeft + imageSize;
-                    const itemBottom = itemTop + (imageSize * 1.2);
+                    const itemBottom = itemTop + itemHeight;
 
                     const intersects = !(
                         itemRight < box.left ||
@@ -841,7 +848,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize]);
+  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1331,7 +1338,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     columnWidth={imageSize + GAP_SIZE}
                     height={height}
                     rowCount={rowCount}
-                    rowHeight={(imageSize * 1.2) + GAP_SIZE}
+                    rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
                     width={width}
                     outerRef={gridRef}
                     className="no-scrollbar-if-needed"
@@ -1400,7 +1407,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     <div 
                         key={item.id}
                         className="relative group cursor-pointer"
-                        style={{ width: imageSize, height: imageSize * 1.2 }}
+                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenames) }}
                         onClick={() => handleStackClick(item)}
                     >
                         {/* Back cards effect */}
