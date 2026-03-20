@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { type IndexedImage } from '../types';
+import { type IndexedImage, type Directory } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import ProBadge from './ProBadge';
+import TransferImagesModal from './TransferImagesModal';
+import { transferIndexedImages } from '../services/fileTransferService';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -33,6 +37,10 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
+  const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
 
   const {
     contextMenu,
@@ -59,6 +67,60 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     hideContextMenu();
     onBatchExport();
   };
+
+  const getContextTargetImages = useCallback(() => {
+    if (!contextMenu.image) {
+      return [];
+    }
+
+    if (selectedImages.has(contextMenu.image.id)) {
+      return images.filter((image) => selectedImages.has(image.id));
+    }
+
+    return [contextMenu.image];
+  }, [contextMenu.image, images, selectedImages]);
+
+  const openTransferModal = useCallback((mode: 'copy' | 'move') => {
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setTransferMode(mode);
+    setIsTransferModalOpen(true);
+    hideContextMenu();
+  }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
+
+  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+    if (!transferMode) {
+      return;
+    }
+
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      setIsTransferModalOpen(false);
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      await transferIndexedImages({
+        images: targetImages,
+        destinationDirectory: directory,
+        mode: transferMode,
+      });
+      setIsTransferModalOpen(false);
+      setTransferMode(null);
+    } finally {
+      setIsTransferring(false);
+    }
+  }, [getContextTargetImages, transferMode]);
 
   // Function to apply sorting based on current field and direction
   // Memoized for performance - avoids recreating sort function on every render
@@ -327,6 +389,26 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             Show in Folder
           </button>
 
+          <button
+            onClick={() => openTransferModal('copy')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Copy To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
+            onClick={() => openTransferModal('move')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Move To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
             <button
               onClick={exportImage}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -345,6 +427,20 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             )}
           </div>
         )}
+
+      <TransferImagesModal
+        isOpen={isTransferModalOpen && !!transferMode}
+        onClose={() => {
+          if (isTransferring) return;
+          setIsTransferModalOpen(false);
+          setTransferMode(null);
+        }}
+        images={getContextTargetImages()}
+        directories={directories}
+        mode={transferMode || 'copy'}
+        isSubmitting={isTransferring}
+        onConfirm={handleTransferConfirm}
+      />
     </div>
   );
 };

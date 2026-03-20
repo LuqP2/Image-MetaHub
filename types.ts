@@ -8,6 +8,20 @@ export interface ExportBatchProgress {
   stage: 'copying' | 'finalizing' | 'done';
 }
 
+export type IndexedImageTransferMode = 'copy' | 'move';
+
+export interface IndexedImageTransferResultItem {
+  sourceDirectoryPath: string;
+  sourceRelativePath: string;
+  destinationDirectoryPath: string;
+  destinationRelativePath: string;
+  destinationAbsolutePath: string;
+  fileName: string;
+  size?: number;
+  lastModified?: number;
+  type?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -30,6 +44,16 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  transferIndexedImages: (args: {
+    files: { directoryPath: string; relativePath: string }[];
+    destDir: string;
+    mode: IndexedImageTransferMode;
+  }) => Promise<{
+    success: boolean;
+    transferred: IndexedImageTransferResultItem[];
+    failedCount: number;
+    error?: string;
+  }>;
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
