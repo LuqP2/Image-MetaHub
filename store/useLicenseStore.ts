@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { LicenseSnapshot } from '../types';
+import { useSettingsStore } from './useSettingsStore';
 import { validateLicenseKey } from '../utils/licenseKey';
 
 export const TRIAL_DURATION_DAYS = 7;
@@ -163,22 +164,40 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedKey = key.trim().toUpperCase();
-    const isValid = await validateLicenseKey(normalizedEmail, normalizedKey);
-
-    if (!isValid) {
-      return false;
-    }
+    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
 
     if (window.electronAPI?.activateLicense) {
+      if (licenseServerUrl) {
+        const result = await window.electronAPI.activateLicense({
+          email: normalizedEmail,
+          key: normalizedKey,
+          activationMode: 'backend',
+        });
+        if (result.snapshot) {
+          applySnapshot(set, result.snapshot);
+        }
+        return !!result.success;
+      }
+
+      const isValid = await validateLicenseKey(normalizedEmail, normalizedKey);
+      if (!isValid) {
+        return false;
+      }
+
       const result = await window.electronAPI.activateLicense({
         email: normalizedEmail,
         key: normalizedKey,
-        activationMode: 'legacy-offline',
+        activationMode: 'legacy-offline-validated',
       });
       if (result.snapshot) {
         applySnapshot(set, result.snapshot);
       }
       return !!result.success;
+    }
+
+    const isValid = await validateLicenseKey(normalizedEmail, normalizedKey);
+    if (!isValid) {
+      return false;
     }
 
     const snapshot: LicenseSnapshot = {

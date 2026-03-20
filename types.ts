@@ -68,7 +68,7 @@ export interface ElectronAPI {
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   getLicenseState: () => Promise<LicenseSnapshot>;
-  activateLicense: (args: { email: string; key: string; activationMode?: 'legacy-offline' | 'manual' }) => Promise<LicenseActivationResult>;
+  activateLicense: (args: { email: string; key: string; activationMode?: 'backend' | 'legacy-offline-validated' | 'manual' }) => Promise<LicenseActivationResult>;
   startLicenseTrial: () => Promise<LicenseActivationResult>;
   deactivateLicense: () => Promise<LicenseActivationResult>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;

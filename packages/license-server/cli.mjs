@@ -26,6 +26,29 @@ if (!command) {
 
 const args = parseArgs(rest);
 
+const getArg = (name) => {
+  if (args[name] !== undefined) {
+    return args[name];
+  }
+
+  const envKey = `npm_config_${name.toLowerCase()}`;
+  if (process.env[envKey] !== undefined) {
+    return process.env[envKey];
+  }
+
+  if (name === 'maxDevices' && process.env.npm_config_maxdevices !== undefined) {
+    return process.env.npm_config_maxdevices;
+  }
+
+  return undefined;
+};
+
+const isLikelyEmail = (value) =>
+  typeof value === 'string' &&
+  value !== 'true' &&
+  value !== 'false' &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 if (command === 'generate-keypair') {
   const { publicKeyPem } = await ensureKeypair();
   console.log(`Private key: ${paths.privateKeyPath}`);
@@ -36,13 +59,13 @@ if (command === 'generate-keypair') {
 }
 
 if (command === 'create-license') {
-  const email = String(args.email || '').trim();
-  const plan = String(args.plan || 'annual').trim();
-  const days = Number(args.days || 365);
-  const maxDevices = Number(args.maxDevices || 2);
+  const email = String(getArg('email') || '').trim();
+  const plan = String(getArg('plan') || 'annual').trim();
+  const days = Number(getArg('days') || 365);
+  const maxDevices = Number(getArg('maxDevices') || 2);
 
-  if (!email) {
-    console.error('Missing --email');
+  if (!isLikelyEmail(email)) {
+    console.error('Missing or invalid --email');
     process.exit(1);
   }
 

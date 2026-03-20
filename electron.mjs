@@ -1296,7 +1296,10 @@ function setupFileOperationHandlers() {
   ipcMain.handle('activate-license', async (event, payload) => {
     const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
     const key = typeof payload?.key === 'string' ? payload.key.trim().toUpperCase() : '';
-    const activationMode = payload?.activationMode === 'manual' ? 'manual' : 'legacy-offline';
+    const activationMode =
+      payload?.activationMode === 'backend' || payload?.activationMode === 'manual'
+        ? payload.activationMode
+        : 'legacy-offline-validated';
 
     if (!email || !key) {
       return { success: false, error: 'Email and license key are required.' };
@@ -1309,6 +1312,10 @@ function setupFileOperationHandlers() {
       }
     } catch (error) {
       return { success: false, error: error.message };
+    }
+
+    if (activationMode !== 'legacy-offline-validated') {
+      return { success: false, error: 'License backend is not configured for this activation flow.' };
     }
 
     const now = new Date();
