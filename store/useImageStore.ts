@@ -1509,7 +1509,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             // Get clustering limits from license store directly (can't use hooks in Zustand actions)
             const licenseStore = useLicenseStore.getState();
-            const isPro = licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime';
+            const isPro =
+                licenseStore.licenseStatus === 'pro' ||
+                licenseStore.licenseStatus === 'lifetime' ||
+                licenseStore.licenseStatus === 'grace';
             const isTrialActive = licenseStore.licenseStatus === 'trial';
 
             // Filter images with prompts

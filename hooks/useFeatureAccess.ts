@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
-import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
+import { useLicenseStore } from '../store/useLicenseStore';
 
 export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging';
 
@@ -22,28 +22,6 @@ export const useProModalStore = create<ProModalState>((set) => ({
   closeProModal: () => set({ proModalOpen: false }),
 }));
 
-// Helper: Check if trial has expired
-const isTrialExpired = (trialStartDate: number | null): boolean => {
-  if (!trialStartDate) return false;
-
-  const now = Date.now();
-  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
-
-  // Clock rollback or expired
-  return now < trialStartDate || now > trialEnd;
-};
-
-// Helper: Calculate days remaining in trial
-const calculateDaysRemaining = (trialStartDate: number | null): number => {
-  if (!trialStartDate) return 0;
-
-  const now = Date.now();
-  const trialEnd = trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000;
-  const msRemaining = trialEnd - now;
-
-  return Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
-};
-
 export const useFeatureAccess = () => {
   const licenseStore = useLicenseStore();
   const proModalOpen = useProModalStore((state) => state.proModalOpen);
@@ -52,20 +30,26 @@ export const useFeatureAccess = () => {
   const closeProModal = useProModalStore((state) => state.closeProModal);
 
   // Dev override: localStorage flag to bypass all checks
-  const devOverride = typeof window !== 'undefined' &&
-                     localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
+  const devOverride =
+    Boolean((import.meta as any)?.env?.DEV) &&
+    typeof window !== 'undefined' &&
+    localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
 
   const isInitialized = licenseStore.initialized;
-  const hasProLicense = isInitialized && (licenseStore.licenseStatus === 'pro' || licenseStore.licenseStatus === 'lifetime');
+  const hasProLicense = isInitialized && (
+    licenseStore.licenseStatus === 'pro' ||
+    licenseStore.licenseStatus === 'lifetime' ||
+    licenseStore.licenseStatus === 'grace'
+  );
 
   // Compute status (CENTRALIZED LOGIC HERE!)
   const isPro = devOverride || hasProLicense;
 
-  const isTrialActive = isInitialized &&
-                        licenseStore.licenseStatus === 'trial' &&
-                        !isTrialExpired(licenseStore.trialStartDate);
+  const isTrialActive = isInitialized && licenseStore.licenseStatus === 'trial';
 
-  const isExpired = isInitialized && licenseStore.licenseStatus === 'expired';
+  const isExpired = isInitialized && (
+    licenseStore.licenseStatus === 'expired' || licenseStore.licenseStatus === 'revoked'
+  );
   const isFree = isInitialized && licenseStore.licenseStatus === 'free';
   const trialUsed = isInitialized && licenseStore.trialActivated;
   const canStartTrial = isInitialized && !hasProLicense && !isTrialActive && !trialUsed;
@@ -82,9 +66,7 @@ export const useFeatureAccess = () => {
   const canUseBatchExport = allowDuringInit || canUseDuringTrialOrPro;
 
   // Trial countdown
-  const trialDaysRemaining = isInitialized
-    ? calculateDaysRemaining(licenseStore.trialStartDate)
-    : 0;
+  const trialDaysRemaining = isInitialized ? licenseStore.trialDaysRemaining : 0;
 
   // Modal control
   const showProModal = (feature: ProFeature) => {
@@ -93,14 +75,16 @@ export const useFeatureAccess = () => {
 
   // Optional derived label for status indicators
   const statusLabel = useMemo(() => {
-    if (isPro) return 'Pro License';
+    if (licenseStore.licenseStatus === 'lifetime') return 'Lifetime License';
+    if (licenseStore.licenseStatus === 'grace') return 'Pro License (Offline Grace)';
+    if (isPro) return licenseStore.licensePlan === 'annual' ? 'Pro Annual' : 'Pro License';
     if (isTrialActive) return `Pro Trial (${trialDaysRemaining} ${trialDaysRemaining === 1 ? 'day' : 'days'} left)`;
     if (isExpired) return 'Trial expired';
     return 'Free Version';
-  }, [isPro, isTrialActive, isExpired, trialDaysRemaining]);
+  }, [isPro, isTrialActive, isExpired, trialDaysRemaining, licenseStore.licensePlan, licenseStore.licenseStatus]);
 
-  const startTrial = () => {
-    licenseStore.activateTrial();
+  const startTrial = async () => {
+    await licenseStore.activateTrial();
     closeProModal();
   };
 

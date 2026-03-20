@@ -71,13 +71,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
   // License state
   const licenseStatus = useLicenseStore((state) => state.licenseStatus);
+  const licensePlan = useLicenseStore((state) => state.licensePlan);
   const licenseEmail = useLicenseStore((state) => state.licenseEmail);
   const licenseKey = useLicenseStore((state) => state.licenseKey);
+  const deviceId = useLicenseStore((state) => state.deviceId);
+  const maxDevices = useLicenseStore((state) => state.maxDevices);
+  const expiresAt = useLicenseStore((state) => state.expiresAt);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
+  const deactivateLicense = useLicenseStore((state) => state.deactivateLicense);
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
   const [isActivatingLicense, setIsActivatingLicense] = useState(false);
+  const [isDeactivatingLicense, setIsDeactivatingLicense] = useState(false);
   const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
   const licenseSectionRef = useRef<HTMLDivElement | null>(null);
   const [sensitiveTagsInput, setSensitiveTagsInput] = useState('');
@@ -99,6 +105,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   useEffect(() => {
     setSensitiveTagsInput((sensitiveTags ?? []).join(', '));
   }, [sensitiveTags]);
+
+  useEffect(() => {
+    setLicenseEmailInput(licenseEmail ?? '');
+  }, [licenseEmail]);
+
+  useEffect(() => {
+    setLicenseKeyInput(licenseKey ?? '');
+  }, [licenseKey]);
 
   useEffect(() => {
     if (isOpen && focusSection === 'license') {
@@ -238,6 +252,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       }
     } finally {
       setIsActivatingLicense(false);
+    }
+  };
+
+  const handleDeactivateLicense = async () => {
+    setLicenseMessage(null);
+
+    try {
+      setIsDeactivatingLicense(true);
+      const success = await deactivateLicense();
+      setLicenseMessage(
+        success
+          ? 'This device was deactivated. You can now activate the license on another computer.'
+          : 'Unable to deactivate this device right now.'
+      );
+    } finally {
+      setIsDeactivatingLicense(false);
     }
   };
 
@@ -619,10 +649,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
             </h3>
             <div className="bg-gray-900 p-3 rounded-md space-y-3 border border-gray-800">
               <p className="text-sm text-gray-300">
-                Support the project and unlock Pro features with a simple offline license key. No online checks, no account system.
+                License state is now managed per device. The app is being prepared for annual licenses and a two-device limit, while keeping image processing local.
               </p>
               <p className="text-xs text-gray-500">
-                Buy a license on Gumroad, then paste the email you used at checkout and the license key you received.
+                Legacy offline keys still activate here. The current device already has a stable device ID, which is the foundation for the future 2-device activation flow.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
@@ -649,35 +679,61 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
               </div>
 
               <div className="flex items-center justify-between mt-2">
-                <button
-                  onClick={handleActivateLicense}
-                  disabled={isActivatingLicense}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2"
-                >
-                  {isActivatingLicense ? 'Activating...' : 'Activate'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleActivateLicense}
+                    disabled={isActivatingLicense}
+                    className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2"
+                  >
+                    {isActivatingLicense ? 'Activating...' : 'Activate'}
+                  </button>
+                  {(licenseStatus === 'pro' || licenseStatus === 'lifetime' || licenseStatus === 'grace') && (
+                    <button
+                      onClick={handleDeactivateLicense}
+                      disabled={isDeactivatingLicense}
+                      className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium"
+                    >
+                      {isDeactivatingLicense ? 'Deactivating...' : 'Deactivate this device'}
+                    </button>
+                  )}
+                </div>
                 <div className="text-xs text-gray-400 text-right">
                   <div>
                     Status:{' '}
                     <span
                       className={
-                        licenseStatus === 'pro' || licenseStatus === 'lifetime'
+                        licenseStatus === 'pro' || licenseStatus === 'lifetime' || licenseStatus === 'grace'
                           ? 'text-green-400'
-                          : licenseStatus === 'expired'
+                        : licenseStatus === 'expired'
                           ? 'text-red-400'
                           : 'text-yellow-300'
                       }
                     >
                       {licenseStatus === 'pro' && 'Pro'}
                       {licenseStatus === 'lifetime' && 'Lifetime'}
+                      {licenseStatus === 'grace' && 'Offline grace'}
                       {licenseStatus === 'trial' && 'Trial'}
                       {licenseStatus === 'expired' && 'Trial expired'}
+                      {licenseStatus === 'free' && 'Free'}
                     </span>
                   </div>
+                  {licensePlan && (
+                    <div className="mt-1">
+                      Plan: <span className="text-gray-200 capitalize">{licensePlan}</span>
+                    </div>
+                  )}
                   {licenseEmail && (
                     <div className="mt-1">
                       Activated for:{' '}
                       <span className="text-gray-200">{licenseEmail}</span>
+                    </div>
+                  )}
+                  <div className="mt-1">
+                    Device limit: <span className="text-gray-200">{maxDevices}</span>
+                  </div>
+                  {expiresAt && (
+                    <div className="mt-1">
+                      Expires: <span className="text-gray-200">{new Date(expiresAt).toLocaleDateString()}</span>
                     </div>
                   )}
                 </div>
@@ -688,6 +744,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   {licenseMessage}
                 </p>
               )}
+
+              <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-2 text-xs text-gray-400">
+                <div>
+                  Current device ID:
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-gray-300 break-all">
+                  {deviceId}
+                </div>
+              </div>
 
               <div className="mt-2 flex justify-end">
                 <a

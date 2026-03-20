@@ -249,12 +249,9 @@ export default function App() {
   // Initialize license and keep trial opt-in
   useEffect(() => {
     const initializeLicense = async () => {
-      // 1. Rehydrate Zustand store from persistent storage
-      await useLicenseStore.persist.rehydrate();
       const licenseState = useLicenseStore.getState();
-
-      // 2. Check current status (defaults to free until user opts into trial)
-      licenseState.checkLicenseStatus();
+      await licenseState.initialize();
+      await licenseState.checkLicenseStatus();
     };
 
     initializeLicense();

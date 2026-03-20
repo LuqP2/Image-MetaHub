@@ -8,6 +8,38 @@ export interface ExportBatchProgress {
   stage: 'copying' | 'finalizing' | 'done';
 }
 
+export type LicenseStatus = 'free' | 'trial' | 'grace' | 'expired' | 'pro' | 'lifetime' | 'revoked';
+export type LicensePlan = 'trial' | 'annual' | 'lifetime' | null;
+
+export interface LicenseSnapshot {
+  initialized: boolean;
+  licenseStatus: LicenseStatus;
+  licensePlan: LicensePlan;
+  featureSet: 'free' | 'pro';
+  trialActivated: boolean;
+  trialStartDate: number | null;
+  trialEndDate: number | null;
+  trialDaysRemaining: number;
+  licenseKey: string | null;
+  licenseEmail: string | null;
+  licenseId: string | null;
+  activationId: string | null;
+  deviceId: string;
+  deviceLabel: string;
+  maxDevices: number;
+  expiresAt: string | null;
+  offlineValidUntil: string | null;
+  lastValidatedAt: string | null;
+  nextRefreshAt: string | null;
+  entitlementSource: 'local-trial' | 'legacy-offline-key' | 'manual' | null;
+}
+
+export interface LicenseActivationResult {
+  success: boolean;
+  snapshot?: LicenseSnapshot;
+  error?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -35,6 +67,10 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  getLicenseState: () => Promise<LicenseSnapshot>;
+  activateLicense: (args: { email: string; key: string; activationMode?: 'legacy-offline' | 'manual' }) => Promise<LicenseActivationResult>;
+  startLicenseTrial: () => Promise<LicenseActivationResult>;
+  deactivateLicense: () => Promise<LicenseActivationResult>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;

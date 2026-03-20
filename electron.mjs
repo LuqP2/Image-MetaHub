@@ -7,6 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
@@ -180,6 +181,13 @@ const zoomMenuItems = [
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+const LICENSE_STATE_VERSION = 2;
+const LICENSE_STATE_KEY = 'licenseStateV2';
+const LEGACY_LICENSE_KEY = 'license';
+const LICENSE_DEVICE_ID_KEY = 'licenseDeviceId';
+const TRIAL_DURATION_DAYS = 7;
+const ANNUAL_OFFLINE_GRACE_DAYS = 14;
+const MAX_LICENSE_DEVICES = 2;
 
 async function readSettings() {
   // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
@@ -210,6 +218,217 @@ async function getCacheRootPath() {
     return settings.cachePath;
   }
   return app.getPath('userData');
+}
+
+function buildDeviceLabel() {
+  const host = os.hostname?.() || 'Unknown Host';
+  return `${host} (${process.platform})`;
+}
+
+function calculateDaysRemaining(endTimestamp) {
+  if (!Number.isFinite(endTimestamp)) {
+    return 0;
+  }
+  const msRemaining = endTimestamp - Date.now();
+  return Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
+}
+
+function toIsoIfValid(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function ensureLicenseDeviceId(settings) {
+  if (typeof settings?.[LICENSE_DEVICE_ID_KEY] === 'string' && settings[LICENSE_DEVICE_ID_KEY].trim().length > 0) {
+    return { settings, deviceId: settings[LICENSE_DEVICE_ID_KEY] };
+  }
+
+  const nextSettings = {
+    ...(settings ?? {}),
+    [LICENSE_DEVICE_ID_KEY]: crypto.randomUUID(),
+  };
+  await saveSettings(nextSettings);
+  return { settings: nextSettings, deviceId: nextSettings[LICENSE_DEVICE_ID_KEY] };
+}
+
+function createDefaultLicenseState(deviceId) {
+  return {
+    version: LICENSE_STATE_VERSION,
+    initialized: true,
+    licenseStatus: 'free',
+    licensePlan: null,
+    featureSet: 'free',
+    trialActivated: false,
+    trialStartDate: null,
+    trialEndDate: null,
+    trialDaysRemaining: 0,
+    licenseKey: null,
+    licenseEmail: null,
+    licenseId: null,
+    activationId: null,
+    deviceId,
+    deviceLabel: buildDeviceLabel(),
+    maxDevices: MAX_LICENSE_DEVICES,
+    expiresAt: null,
+    offlineValidUntil: null,
+    lastValidatedAt: null,
+    nextRefreshAt: null,
+    entitlementSource: null,
+  };
+}
+
+function deriveLicenseSnapshot(rawState, deviceId) {
+  const baseState = {
+    ...createDefaultLicenseState(deviceId),
+    ...(rawState ?? {}),
+    version: LICENSE_STATE_VERSION,
+    initialized: true,
+    deviceId,
+    deviceLabel: buildDeviceLabel(),
+    maxDevices: MAX_LICENSE_DEVICES,
+  };
+
+  const now = Date.now();
+
+  if (baseState.licenseStatus === 'trial') {
+    const trialStart = Number(baseState.trialStartDate);
+    const trialEnd = Number(baseState.trialEndDate || (trialStart + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
+    const trialExpired = !Number.isFinite(trialStart) || !Number.isFinite(trialEnd) || now < trialStart || now > trialEnd;
+
+    if (trialExpired) {
+      return {
+        ...baseState,
+        licenseStatus: 'expired',
+        licensePlan: 'trial',
+        featureSet: 'free',
+        trialActivated: true,
+        trialDaysRemaining: 0,
+        trialEndDate: Number.isFinite(trialEnd) ? trialEnd : null,
+      };
+    }
+
+    return {
+      ...baseState,
+      licensePlan: 'trial',
+      featureSet: 'pro',
+      trialActivated: true,
+      trialEndDate: trialEnd,
+      trialDaysRemaining: calculateDaysRemaining(trialEnd),
+      entitlementSource: baseState.entitlementSource || 'local-trial',
+    };
+  }
+
+  if (baseState.licenseStatus === 'pro' && baseState.licensePlan === 'annual') {
+    const expiresAt = baseState.expiresAt ? new Date(baseState.expiresAt).getTime() : NaN;
+    const offlineValidUntil = baseState.offlineValidUntil ? new Date(baseState.offlineValidUntil).getTime() : NaN;
+
+    if (!Number.isFinite(expiresAt)) {
+      return {
+        ...baseState,
+        licenseStatus: 'expired',
+        featureSet: 'free',
+      };
+    }
+
+    if (now > expiresAt) {
+      if (Number.isFinite(offlineValidUntil) && now <= offlineValidUntil) {
+        return {
+          ...baseState,
+          licenseStatus: 'grace',
+          featureSet: 'pro',
+        };
+      }
+
+      return {
+        ...baseState,
+        licenseStatus: 'expired',
+        featureSet: 'free',
+      };
+    }
+  }
+
+  if (baseState.licenseStatus === 'pro' || baseState.licenseStatus === 'lifetime') {
+    return {
+      ...baseState,
+      featureSet: 'pro',
+      trialDaysRemaining: 0,
+    };
+  }
+
+  if (baseState.licenseStatus === 'grace') {
+    return {
+      ...baseState,
+      featureSet: 'pro',
+    };
+  }
+
+  return {
+    ...baseState,
+    featureSet: 'free',
+    trialDaysRemaining: 0,
+  };
+}
+
+async function migrateLegacyLicenseState(settings, deviceId) {
+  if (settings?.[LICENSE_STATE_KEY]) {
+    return deriveLicenseSnapshot(settings[LICENSE_STATE_KEY], deviceId);
+  }
+
+  const legacy = settings?.[LEGACY_LICENSE_KEY];
+  if (!legacy || typeof legacy !== 'object') {
+    return createDefaultLicenseState(deviceId);
+  }
+
+  const migrated = createDefaultLicenseState(deviceId);
+  migrated.licenseEmail = legacy.licenseEmail ?? null;
+  migrated.licenseKey = legacy.licenseKey ?? null;
+
+  if (legacy.licenseStatus === 'pro' || legacy.licenseStatus === 'lifetime') {
+    migrated.licenseStatus = 'lifetime';
+    migrated.licensePlan = 'lifetime';
+    migrated.featureSet = 'pro';
+    migrated.activationId = crypto.randomUUID();
+    migrated.licenseId = `legacy-${crypto.createHash('sha256').update(`${legacy.licenseEmail ?? 'anonymous'}:${legacy.licenseKey ?? ''}`).digest('hex').slice(0, 16)}`;
+    migrated.lastValidatedAt = new Date().toISOString();
+    migrated.entitlementSource = 'legacy-offline-key';
+    return migrated;
+  }
+
+  if (legacy.trialActivated) {
+    const trialStartDate = Number(legacy.trialStartDate);
+    migrated.licenseStatus = 'trial';
+    migrated.licensePlan = 'trial';
+    migrated.trialActivated = true;
+    migrated.trialStartDate = Number.isFinite(trialStartDate) ? trialStartDate : null;
+    migrated.trialEndDate = Number.isFinite(trialStartDate)
+      ? trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000
+      : null;
+    migrated.entitlementSource = 'local-trial';
+    return deriveLicenseSnapshot(migrated, deviceId);
+  }
+
+  return migrated;
+}
+
+async function loadLicenseState() {
+  const initialSettings = await readSettings();
+  const { settings, deviceId } = await ensureLicenseDeviceId(initialSettings);
+  const snapshot = await migrateLegacyLicenseState(settings, deviceId);
+
+  if (JSON.stringify(settings?.[LICENSE_STATE_KEY] ?? null) !== JSON.stringify(snapshot)) {
+    await saveSettings({ ...settings, [LICENSE_STATE_KEY]: snapshot });
+  }
+
+  return snapshot;
+}
+
+async function persistLicenseState(nextState) {
+  const settings = await readSettings();
+  const { settings: nextSettings, deviceId } = await ensureLicenseDeviceId(settings);
+  const snapshot = deriveLicenseSnapshot(nextState, deviceId);
+  await saveSettings({ ...nextSettings, [LICENSE_STATE_KEY]: snapshot });
+  return snapshot;
 }
 // --- End Settings Management ---
 
@@ -831,6 +1050,89 @@ function setupFileOperationHandlers() {
     const currentSettings = await readSettings();
     const mergedSettings = { ...currentSettings, ...newSettings };
     await saveSettings(mergedSettings);
+  });
+
+  ipcMain.handle('get-license-state', async () => {
+    return loadLicenseState();
+  });
+
+  ipcMain.handle('start-license-trial', async () => {
+    const current = await loadLicenseState();
+
+    if (current.trialActivated || current.featureSet === 'pro') {
+      return {
+        success: false,
+        snapshot: current,
+        error: current.featureSet === 'pro'
+          ? 'A paid license is already active on this device.'
+          : 'The trial has already been used on this device.',
+      };
+    }
+
+    const now = Date.now();
+    const snapshot = await persistLicenseState({
+      ...current,
+      licenseStatus: 'trial',
+      licensePlan: 'trial',
+      featureSet: 'pro',
+      trialActivated: true,
+      trialStartDate: now,
+      trialEndDate: now + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000,
+      activationId: current.activationId || crypto.randomUUID(),
+      entitlementSource: 'local-trial',
+      lastValidatedAt: new Date(now).toISOString(),
+      nextRefreshAt: null,
+    });
+
+    return { success: true, snapshot };
+  });
+
+  ipcMain.handle('activate-license', async (event, payload) => {
+    const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const key = typeof payload?.key === 'string' ? payload.key.trim().toUpperCase() : '';
+    const activationMode = payload?.activationMode === 'manual' ? 'manual' : 'legacy-offline';
+
+    if (!email || !key) {
+      return { success: false, error: 'Email and license key are required.' };
+    }
+
+    const now = new Date();
+    const snapshot = await persistLicenseState({
+      ...(await loadLicenseState()),
+      licenseStatus: 'lifetime',
+      licensePlan: 'lifetime',
+      featureSet: 'pro',
+      trialActivated: true,
+      licenseEmail: email,
+      licenseKey: key,
+      licenseId: `local-${crypto.createHash('sha256').update(`${email}:${key}`).digest('hex').slice(0, 16)}`,
+      activationId: crypto.randomUUID(),
+      expiresAt: null,
+      offlineValidUntil: null,
+      trialDaysRemaining: 0,
+      lastValidatedAt: now.toISOString(),
+      nextRefreshAt: null,
+      entitlementSource: activationMode === 'manual' ? 'manual' : 'legacy-offline-key',
+    });
+
+    return { success: true, snapshot };
+  });
+
+  ipcMain.handle('deactivate-license', async () => {
+    const current = await loadLicenseState();
+    const snapshot = await persistLicenseState({
+      ...createDefaultLicenseState(current.deviceId),
+      deviceId: current.deviceId,
+      deviceLabel: current.deviceLabel,
+      trialActivated: current.trialActivated,
+      licenseStatus: current.trialActivated ? 'expired' : 'free',
+      licensePlan: current.trialActivated ? 'trial' : null,
+      trialStartDate: current.trialStartDate,
+      trialEndDate: current.trialEndDate,
+      entitlementSource: current.trialActivated ? 'local-trial' : null,
+    });
+
+    return { success: true, snapshot };
   });
 
   ipcMain.handle('get-default-cache-path', () => {
