@@ -40,6 +40,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [transferStatusText, setTransferStatusText] = useState<string>('');
   const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
 
   const {
@@ -93,6 +94,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     }
 
     setTransferMode(mode);
+    setTransferStatusText('');
     setIsTransferModalOpen(true);
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
@@ -109,14 +111,17 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     }
 
     setIsTransferring(true);
+    setTransferStatusText(transferMode === 'move' ? 'Moving files...' : 'Copying files...');
     try {
       await transferIndexedImages({
         images: targetImages,
         destinationDirectory: directory,
         mode: transferMode,
+        onStatus: setTransferStatusText,
       });
       setIsTransferModalOpen(false);
       setTransferMode(null);
+      setTransferStatusText('');
     } finally {
       setIsTransferring(false);
     }
@@ -431,14 +436,13 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
       <TransferImagesModal
         isOpen={isTransferModalOpen && !!transferMode}
         onClose={() => {
-          if (isTransferring) return;
           setIsTransferModalOpen(false);
-          setTransferMode(null);
         }}
         images={getContextTargetImages()}
         directories={directories}
         mode={transferMode || 'copy'}
         isSubmitting={isTransferring}
+        statusText={transferStatusText}
         onConfirm={handleTransferConfirm}
       />
     </div>

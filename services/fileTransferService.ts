@@ -12,6 +12,7 @@ interface TransferIndexedImagesParams {
   images: IndexedImage[];
   destinationDirectory: Directory;
   mode: IndexedImageTransferMode;
+  onStatus?: (status: string) => void;
 }
 
 interface TransferIndexedImagesResult {
@@ -73,6 +74,7 @@ export async function transferIndexedImages({
   images,
   destinationDirectory,
   mode,
+  onStatus,
 }: TransferIndexedImagesParams): Promise<TransferIndexedImagesResult> {
   const setError = useImageStore.getState().setError;
 
@@ -135,9 +137,11 @@ export async function transferIndexedImages({
   const sourceByPath = new Map(
     images.map((image) => [`${image.directoryId}::${image.name}`, image]),
   );
+  const annotationsMap = new Map(useImageStore.getState().annotations);
 
   const persistenceTransfers: Array<{ sourceImage: IndexedImage; targetImageId: string }> = [];
 
+  onStatus?.('Preserving tags and metadata...');
   for (const item of transferResult.transferred) {
     const sourceImage = sourceByPath.get(`${item.sourceDirectoryPath}::${item.sourceRelativePath}`);
     if (!sourceImage) {
@@ -147,6 +151,15 @@ export async function transferIndexedImages({
     const targetImageId = `${destinationDirectory.id}::${item.destinationRelativePath}`;
     persistenceTransfers.push({ sourceImage, targetImageId });
     await transferImagePersistence(sourceImage.id, targetImageId, 'copy');
+
+    const sourceAnnotation = annotationsMap.get(sourceImage.id);
+    if (sourceAnnotation) {
+      annotationsMap.set(targetImageId, {
+        ...sourceAnnotation,
+        imageId: targetImageId,
+        updatedAt: Date.now(),
+      });
+    }
   }
 
   const transferredEntries = transferResult.transferred.map(buildTransferredEntry);
@@ -166,6 +179,50 @@ export async function transferIndexedImages({
   const removeImages = useImageStore.getState().removeImages;
   const clearImageSelection = useImageStore.getState().clearImageSelection;
   const setSuccess = useImageStore.getState().setSuccess;
+  const refreshAvailableTags = useImageStore.getState().refreshAvailableTags;
+
+  if (mode === 'move') {
+    for (const transfer of persistenceTransfers) {
+      annotationsMap.delete(transfer.sourceImage.id);
+    }
+  }
+
+  useImageStore.setState({ annotations: annotationsMap });
+
+  const transferredCount = transferResult.transferred.length;
+  const failedCount = transferResult.failedCount ?? 0;
+  const actionLabel = mode === 'move' ? 'Moved' : 'Copied';
+  const shouldRelyOnWatcher = destinationDirectory.autoWatch === true;
+
+  if (shouldRelyOnWatcher) {
+    if (mode === 'move') {
+      for (const transfer of persistenceTransfers) {
+        await transferImagePersistence(transfer.sourceImage.id, transfer.targetImageId, 'move');
+      }
+    }
+
+    if (mode === 'move') {
+      removeImages(images.map((image) => image.id));
+    }
+
+    clearImageSelection();
+    void refreshAvailableTags();
+
+    const statusMessage = failedCount > 0
+      ? `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} with ${failedCount} failure${failedCount === 1 ? '' : 's'}. Destination will refresh shortly.`
+      : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationDirectory.name}. Destination will refresh shortly.`;
+
+    setSuccess(statusMessage);
+
+    return {
+      success: transferredCount > 0,
+      transferredCount,
+      failedCount,
+      error: transferResult.error,
+    };
+  }
+
+  onStatus?.('Indexing transferred files...');
   const { phaseB } = await processFiles(
     transferredEntries,
     () => {},
@@ -195,10 +252,7 @@ export async function transferIndexedImages({
   }
 
   clearImageSelection();
-
-  const transferredCount = transferResult.transferred.length;
-  const failedCount = transferResult.failedCount ?? 0;
-  const actionLabel = mode === 'move' ? 'Moved' : 'Copied';
+  void refreshAvailableTags();
   const statusMessage = failedCount > 0
     ? `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
     : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationDirectory.name}.`;

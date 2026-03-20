@@ -8,6 +8,7 @@ interface TransferImagesModalProps {
   directories: Directory[];
   mode: IndexedImageTransferMode;
   isSubmitting: boolean;
+  statusText?: string;
   onClose: () => void;
   onConfirm: (directory: Directory) => Promise<void> | void;
 }
@@ -18,6 +19,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   directories,
   mode,
   isSubmitting,
+  statusText,
   onClose,
   onConfirm,
 }) => {
@@ -82,6 +84,16 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                 Example: {firstImage.name}
               </p>
             )}
+            {isSubmitting && (
+              <div className="mt-3 space-y-2">
+                <div className="h-2 overflow-hidden rounded-full bg-gray-700">
+                  <div className="h-full w-1/3 rounded-full bg-blue-500 animate-pulse" />
+                </div>
+                <p className="text-xs text-blue-200">
+                  {statusText || (mode === 'move' ? 'Moving files...' : 'Copying files...')}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -112,9 +124,8 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             <button
               onClick={onClose}
               className="flex-1 px-4 py-2.5 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors"
-              disabled={isSubmitting}
             >
-              Cancel
+              {isSubmitting ? 'Hide' : 'Cancel'}
             </button>
             <button
               onClick={() => selectedDirectory && onConfirm(selectedDirectory)}

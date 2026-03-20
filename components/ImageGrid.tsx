@@ -597,6 +597,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [transferStatusText, setTransferStatusText] = useState<string>('');
   const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
@@ -731,6 +732,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
 
     setTransferMode(mode);
+    setTransferStatusText('');
     setIsTransferModalOpen(true);
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
@@ -747,14 +749,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
 
     setIsTransferring(true);
+    setTransferStatusText(transferMode === 'move' ? 'Moving files...' : 'Copying files...');
     try {
       await transferIndexedImages({
         images: targetImages,
         destinationDirectory: directory,
         mode: transferMode,
+        onStatus: setTransferStatusText,
       });
       setIsTransferModalOpen(false);
       setTransferMode(null);
+      setTransferStatusText('');
     } finally {
       setIsTransferring(false);
     }
@@ -1261,14 +1266,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       <TransferImagesModal
         isOpen={isTransferModalOpen && !!transferMode}
         onClose={() => {
-          if (isTransferring) return;
           setIsTransferModalOpen(false);
-          setTransferMode(null);
         }}
         images={getContextTargetImages()}
         directories={directories}
         mode={transferMode || 'copy'}
         isSubmitting={isTransferring}
+        statusText={transferStatusText}
         onConfirm={handleTransferConfirm}
       />
 
