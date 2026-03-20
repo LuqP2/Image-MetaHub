@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   getLicenseState: () => ipcRenderer.invoke('get-license-state'),
+  getLicenseRuntimeInfo: () => ipcRenderer.invoke('get-license-runtime-info'),
   activateLicense: (args) => ipcRenderer.invoke('activate-license', args),
   startLicenseTrial: () => ipcRenderer.invoke('start-license-trial'),
   deactivateLicense: () => ipcRenderer.invoke('deactivate-license'),

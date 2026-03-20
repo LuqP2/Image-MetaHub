@@ -45,6 +45,13 @@ export interface LicenseDevice {
   deactivatedAt: string | null;
 }
 
+export interface LicenseRuntimeInfo {
+  appStage: 'development' | 'staging' | 'production';
+  backendConfigured: boolean;
+  overrideAllowed: boolean;
+  configSource: 'embedded' | 'settings-override' | 'missing';
+}
+
 export interface LicenseActivationResult {
   success: boolean;
   snapshot?: LicenseSnapshot;
@@ -95,6 +102,7 @@ export interface ElectronAPI {
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
   getLicenseState: () => Promise<LicenseSnapshot>;
+  getLicenseRuntimeInfo: () => Promise<LicenseRuntimeInfo>;
   activateLicense: (args: { email: string; key: string; activationMode?: 'backend' | 'legacy-offline-validated' | 'manual' }) => Promise<LicenseActivationResult>;
   startLicenseTrial: () => Promise<LicenseActivationResult>;
   deactivateLicense: () => Promise<LicenseActivationResult>;

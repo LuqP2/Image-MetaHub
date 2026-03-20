@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "dev:app": "node scripts/start-dev.js",
-    "prebuild": "node scripts/checkLicenseSecret.mjs && node -e \"require('fs').copyFileSync('CHANGELOG.md', 'public/CHANGELOG.md')\"",
+    "prebuild": "node scripts/generateLicenseRuntimeConfig.mjs && node scripts/checkLicenseSecret.mjs && node -e \"require('fs').copyFileSync('CHANGELOG.md', 'public/CHANGELOG.md')\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -24,6 +24,7 @@
     "auto-release": "node scripts/auto-release.js",
     "reset-cache": "node scripts/reset-cache.js",
     "sync-changelog": "node scripts/sync-changelog.js",
+    "sync-license-config": "node scripts/generateLicenseRuntimeConfig.mjs",
     "license-server:dev": "node packages/license-server/server.mjs",
     "license-server:create-license": "node packages/license-server/cli.mjs create-license",
     "license-server:generate-keypair": "node packages/license-server/cli.mjs generate-keypair",

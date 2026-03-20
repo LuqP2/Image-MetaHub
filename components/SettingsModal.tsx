@@ -81,6 +81,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const deviceId = useLicenseStore((state) => state.deviceId);
   const maxDevices = useLicenseStore((state) => state.maxDevices);
   const expiresAt = useLicenseStore((state) => state.expiresAt);
+  const licenseRuntimeInfo = useLicenseStore((state) => state.licenseRuntimeInfo);
   const devices = useLicenseStore((state) => state.devices);
   const devicesLoading = useLicenseStore((state) => state.devicesLoading);
   const devicesError = useLicenseStore((state) => state.devicesError);
@@ -134,13 +135,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   useEffect(() => {
     if (!isOpen) return;
     if (activeTab !== 'general') return;
-    if (!licenseServerUrl?.trim()) return;
+    if (!licenseRuntimeInfo.backendConfigured) return;
     if (!licenseEmail || !licenseKey) return;
 
     fetchDevices().catch((error) => {
       console.error('Failed to fetch license devices:', error);
     });
-  }, [activeTab, fetchDevices, isOpen, licenseEmail, licenseKey, licenseServerUrl]);
+  }, [activeTab, fetchDevices, isOpen, licenseEmail, licenseKey, licenseRuntimeInfo.backendConfigured]);
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -293,7 +294,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     }
   };
 
-  const hasBackendConfigured = Boolean(licenseServerUrl?.trim());
+  const hasBackendConfigured = licenseRuntimeInfo.backendConfigured;
   const canManageDevices = hasBackendConfigured && Boolean(licenseEmail && licenseKey);
   const activeDevices = devices.filter((device) => device.status === 'active');
   const formatSeenAt = (value: string | null) => {
@@ -868,34 +869,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 </div>
               )}
 
-              <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 space-y-3">
-                <div>
-                  <div className="text-sm text-gray-300">License Backend URL</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Optional during development. When configured, activation/trial requests will use the hosted license server instead of the legacy offline flow.
+              {licenseRuntimeInfo.overrideAllowed && (
+                <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 space-y-3">
+                  <div>
+                    <div className="text-sm text-gray-300">License Backend URL</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Development/staging override. When filled, the main process uses this backend instead of the embedded production config.
+                    </div>
                   </div>
-                </div>
-                <input
-                  type="url"
-                  value={licenseServerUrl}
-                  onChange={(event) => setLicenseServerUrl(event.target.value)}
-                  placeholder="https://licenses.example.com"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
-                />
-                <div>
-                  <div className="text-sm text-gray-300">License Public Key</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Public Ed25519 key used to verify entitlements returned by the backend. This key is safe to embed in the app.
+                  <input
+                    type="url"
+                    value={licenseServerUrl}
+                    onChange={(event) => setLicenseServerUrl(event.target.value)}
+                    placeholder="https://licenses.example.com"
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                  />
+                  <div>
+                    <div className="text-sm text-gray-300">License Public Key</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      Development/staging override for the Ed25519 public key used by the main process.
+                    </div>
                   </div>
+                  <textarea
+                    value={licensePublicKey}
+                    onChange={(event) => setLicensePublicKey(event.target.value)}
+                    placeholder="-----BEGIN PUBLIC KEY-----"
+                    rows={4}
+                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs font-mono"
+                  />
                 </div>
-                <textarea
-                  value={licensePublicKey}
-                  onChange={(event) => setLicensePublicKey(event.target.value)}
-                  placeholder="-----BEGIN PUBLIC KEY-----"
-                  rows={4}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs font-mono"
-                />
-              </div>
+              )}
 
               <div className="mt-2 flex justify-end">
                 <a

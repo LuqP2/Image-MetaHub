@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type { LicenseDevice, LicenseSnapshot } from '../types';
+import type { LicenseDevice, LicenseRuntimeInfo, LicenseSnapshot } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { validateLicenseKey } from '../utils/licenseKey';
 
 export const TRIAL_DURATION_DAYS = 7;
 
 interface LicenseState extends LicenseSnapshot {
+  licenseRuntimeInfo: LicenseRuntimeInfo;
   devices: LicenseDevice[];
   devicesLoading: boolean;
   devicesError: string | null;
@@ -49,6 +50,13 @@ const createDefaultSnapshot = (): LicenseSnapshot => ({
   lastValidatedAt: null,
   nextRefreshAt: null,
   entitlementSource: null,
+});
+
+const createDefaultRuntimeInfo = (): LicenseRuntimeInfo => ({
+  appStage: 'development',
+  backendConfigured: false,
+  overrideAllowed: true,
+  configSource: 'missing',
 });
 
 const applySnapshot = (set: (partial: Partial<LicenseState>) => void, snapshot: LicenseSnapshot) => {
@@ -103,15 +111,20 @@ const saveBrowserFallbackSnapshot = (snapshot: LicenseSnapshot) => {
 
 export const useLicenseStore = create<LicenseState>((set, get) => ({
   ...createDefaultSnapshot(),
+  licenseRuntimeInfo: createDefaultRuntimeInfo(),
   devices: [],
   devicesLoading: false,
   devicesError: null,
 
   initialize: async () => {
     if (window.electronAPI?.getLicenseState) {
-      const snapshot = await window.electronAPI.getLicenseState();
+      const [snapshot, runtimeInfo] = await Promise.all([
+        window.electronAPI.getLicenseState(),
+        window.electronAPI.getLicenseRuntimeInfo?.() ?? Promise.resolve(createDefaultRuntimeInfo()),
+      ]);
       applySnapshot(set, snapshot);
-      if (useSettingsStore.getState().licenseServerUrl?.trim()) {
+      set({ licenseRuntimeInfo: runtimeInfo });
+      if (runtimeInfo.backendConfigured) {
         await get().fetchDevices();
       }
       return;
@@ -122,9 +135,13 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
 
   refresh: async () => {
     if (window.electronAPI?.getLicenseState) {
-      const snapshot = await window.electronAPI.getLicenseState();
+      const [snapshot, runtimeInfo] = await Promise.all([
+        window.electronAPI.getLicenseState(),
+        window.electronAPI.getLicenseRuntimeInfo?.() ?? Promise.resolve(createDefaultRuntimeInfo()),
+      ]);
       applySnapshot(set, snapshot);
-      if (useSettingsStore.getState().licenseServerUrl?.trim()) {
+      set({ licenseRuntimeInfo: runtimeInfo });
+      if (runtimeInfo.backendConfigured) {
         await get().fetchDevices();
       }
       return;
@@ -178,10 +195,10 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedKey = key.trim().toUpperCase();
-    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
+    const runtimeInfo = get().licenseRuntimeInfo;
 
     if (window.electronAPI?.activateLicense) {
-      if (licenseServerUrl) {
+      if (runtimeInfo.backendConfigured) {
         const result = await window.electronAPI.activateLicense({
           email: normalizedEmail,
           key: normalizedKey,
@@ -264,10 +281,10 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
   },
 
   fetchDevices: async () => {
-    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
     const { licenseEmail, licenseKey } = get();
+    const runtimeInfo = get().licenseRuntimeInfo;
 
-    if (!licenseServerUrl || !licenseEmail || !licenseKey || !window.electronAPI?.listLicenseDevices) {
+    if (!runtimeInfo.backendConfigured || !licenseEmail || !licenseKey || !window.electronAPI?.listLicenseDevices) {
       set({ devices: [], devicesLoading: false, devicesError: null });
       return;
     }
@@ -303,10 +320,10 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
   },
 
   deactivateDevice: async (activationId: string) => {
-    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
     const { licenseEmail, licenseKey } = get();
+    const runtimeInfo = get().licenseRuntimeInfo;
 
-    if (!licenseServerUrl || !licenseEmail || !licenseKey || !activationId || !window.electronAPI?.deactivateLicenseDevice) {
+    if (!runtimeInfo.backendConfigured || !licenseEmail || !licenseKey || !activationId || !window.electronAPI?.deactivateLicenseDevice) {
       set({ devicesError: 'License backend unavailable.' });
       return false;
     }

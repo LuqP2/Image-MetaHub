@@ -16,6 +16,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
+import { LICENSE_RUNTIME_CONFIG } from './build/license-runtime-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -188,6 +189,11 @@ const LICENSE_DEVICE_ID_KEY = 'licenseDeviceId';
 const TRIAL_DURATION_DAYS = 7;
 const ANNUAL_OFFLINE_GRACE_DAYS = 14;
 const MAX_LICENSE_DEVICES = 2;
+const LICENSE_APP_STAGE = (() => {
+  const stage = (process.env.IMH_APP_STAGE || LICENSE_RUNTIME_CONFIG.appStage || (isDev ? 'development' : 'production')).toLowerCase();
+  return stage === 'staging' ? 'staging' : stage === 'production' ? 'production' : 'development';
+})();
+const LICENSE_OVERRIDE_ALLOWED = LICENSE_APP_STAGE === 'development' || LICENSE_APP_STAGE === 'staging';
 
 async function readSettings() {
   // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
@@ -432,11 +438,31 @@ async function persistLicenseState(nextState) {
 }
 
 function getLicenseServerConfig(settings) {
-  const serverUrl = settings?.licenseServerUrl?.trim() || process.env.IMH_LICENSE_SERVER_URL || '';
-  const publicKey = settings?.licensePublicKey?.trim() || process.env.IMH_LICENSE_PUBLIC_KEY || '';
+  const embeddedServerUrl = (LICENSE_RUNTIME_CONFIG.serverUrl || '').trim();
+  const embeddedPublicKey = (LICENSE_RUNTIME_CONFIG.publicKey || '').trim();
+  const overrideServerUrl = LICENSE_OVERRIDE_ALLOWED ? (settings?.licenseServerUrl?.trim() || '') : '';
+  const overridePublicKey = LICENSE_OVERRIDE_ALLOWED ? (settings?.licensePublicKey?.trim() || '') : '';
+  const useOverride = Boolean(overrideServerUrl && overridePublicKey);
+
   return {
-    serverUrl: serverUrl.replace(/\/+$/, ''),
-    publicKey,
+    appStage: LICENSE_APP_STAGE,
+    overrideAllowed: LICENSE_OVERRIDE_ALLOWED,
+    serverUrl: (useOverride ? overrideServerUrl : embeddedServerUrl).replace(/\/+$/, ''),
+    publicKey: useOverride ? overridePublicKey : embeddedPublicKey,
+    configSource: useOverride
+      ? 'settings-override'
+      : (embeddedServerUrl && embeddedPublicKey ? 'embedded' : 'missing'),
+    backendConfigured: Boolean((useOverride ? overrideServerUrl : embeddedServerUrl) && (useOverride ? overridePublicKey : embeddedPublicKey)),
+  };
+}
+
+function getLicenseRuntimeInfo(settings) {
+  const resolved = getLicenseServerConfig(settings);
+  return {
+    appStage: resolved.appStage,
+    backendConfigured: resolved.backendConfigured,
+    overrideAllowed: resolved.overrideAllowed,
+    configSource: resolved.configSource,
   };
 }
 
@@ -1274,6 +1300,11 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('get-license-state', async () => {
     return loadLicenseState();
+  });
+
+  ipcMain.handle('get-license-runtime-info', async () => {
+    const settings = await readSettings();
+    return getLicenseRuntimeInfo(settings);
   });
 
   ipcMain.handle('start-license-trial', async () => {
