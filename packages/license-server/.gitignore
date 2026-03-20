@@ -1,2 +1,6 @@
 data/*.json
 data/*.pem
+data/*.sqlite
+data/*.sqlite-*
+data/*.db
+data/*.db-*

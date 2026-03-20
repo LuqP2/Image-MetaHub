@@ -1,14 +1,19 @@
 import http from 'http';
-import crypto from 'crypto';
 import { URL } from 'url';
 import {
+  activateLicenseForDevice,
   buildEntitlement,
-  createActivation,
+  deactivateActivation,
+  deactivateLicenseDevice,
   ensureKeypair,
-  loadDb,
+  findActivationByIdentity,
+  findLicenseByEmailAndKey,
+  getLicenseById,
+  listLicenseDevices,
   normalizeEmail,
-  saveDb,
+  refreshActivation,
   signEntitlement,
+  startTrial,
 } from './lib.mjs';
 
 const PORT = Number(process.env.IMH_LICENSE_SERVER_PORT || 8787);
@@ -21,18 +26,6 @@ function sendJson(res, statusCode, payload) {
     'access-control-allow-headers': 'content-type',
   });
   res.end(JSON.stringify(payload));
-}
-
-function findActiveActivation(db, licenseId, deviceId) {
-  return db.activations.find((activation) =>
-    activation.licenseId === licenseId &&
-    activation.deviceId === deviceId &&
-    activation.status === 'active'
-  );
-}
-
-function countActiveActivations(db, licenseId) {
-  return db.activations.filter((activation) => activation.licenseId === licenseId && activation.status === 'active').length;
 }
 
 async function readBody(req) {
@@ -72,56 +65,42 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'email, licenseKey, and deviceId are required' });
       }
 
-      const db = await loadDb();
-      const license = db.licenses.find((item) =>
-        item.email === email &&
-        item.licenseKey === licenseKey &&
-        item.status !== 'revoked'
-      );
+      const license = await findLicenseByEmailAndKey(email, licenseKey);
 
       if (!license) {
         return sendJson(res, 401, { error: 'invalid_license' });
       }
 
-      let activation = findActiveActivation(db, license.licenseId, deviceId);
-      if (!activation) {
-        const activeCount = countActiveActivations(db, license.licenseId);
-        if (activeCount >= license.maxDevices) {
+      let activation;
+      try {
+        activation = await activateLicenseForDevice({ license, deviceId, deviceLabel });
+      } catch (error) {
+        if (error.message === 'device_limit_reached') {
           return sendJson(res, 409, { error: 'device_limit_reached' });
         }
-        activation = createActivation({ licenseId: license.licenseId, deviceId, deviceLabel });
-        db.activations.push(activation);
-      } else {
-        activation.lastValidatedAt = new Date().toISOString();
-        activation.deviceLabel = deviceLabel || activation.deviceLabel;
+        throw error;
       }
 
-      await saveDb(db);
       const entitlement = signEntitlement(buildEntitlement({ license, activation }), privateKeyPem);
       return sendJson(res, 200, { success: true, entitlement });
     }
 
     if (req.method === 'POST' && url.pathname === '/v1/licenses/refresh') {
       const body = await readBody(req);
-      const db = await loadDb();
-      const activation = db.activations.find((item) =>
-        item.activationId === body.activationId &&
-        item.licenseId === body.licenseId &&
-        item.deviceId === body.deviceId &&
-        item.status === 'active'
-      );
+      const activation = await refreshActivation({
+        activationId: body.activationId,
+        licenseId: body.licenseId,
+        deviceId: body.deviceId,
+      });
 
       if (!activation) {
         return sendJson(res, 404, { error: 'activation_not_found' });
       }
 
-      const license = db.licenses.find((item) => item.licenseId === activation.licenseId);
+      const license = await getLicenseById(activation.licenseId);
       if (!license) {
         return sendJson(res, 404, { error: 'license_not_found' });
       }
-
-      activation.lastValidatedAt = new Date().toISOString();
-      await saveDb(db);
 
       const entitlement = signEntitlement(buildEntitlement({ license, activation }), privateKeyPem);
       return sendJson(res, 200, { success: true, entitlement });
@@ -129,21 +108,16 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/v1/licenses/deactivate') {
       const body = await readBody(req);
-      const db = await loadDb();
-      const activation = db.activations.find((item) =>
-        item.activationId === body.activationId &&
-        item.licenseId === body.licenseId &&
-        item.deviceId === body.deviceId &&
-        item.status === 'active'
-      );
+      const activation = await deactivateActivation({
+        activationId: body.activationId,
+        licenseId: body.licenseId,
+        deviceId: body.deviceId,
+      });
 
-      if (!activation) {
+      if (!activation || activation.status !== 'deactivated') {
         return sendJson(res, 404, { error: 'activation_not_found' });
       }
 
-      activation.status = 'deactivated';
-      activation.deactivatedAt = new Date().toISOString();
-      await saveDb(db);
       return sendJson(res, 200, { success: true });
     }
 
@@ -157,30 +131,57 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'deviceId is required' });
       }
 
-      const db = await loadDb();
-      const hasExistingTrial = db.trials.some((trial) =>
-        trial.deviceId === deviceId || (email && trial.email && trial.email === email)
-      );
-
-      if (hasExistingTrial) {
-        return sendJson(res, 409, { error: 'trial_already_used' });
+      let trial;
+      try {
+        trial = await startTrial({ email, deviceId });
+      } catch (error) {
+        if (error.message === 'trial_already_used') {
+          return sendJson(res, 409, { error: 'trial_already_used' });
+        }
+        throw error;
       }
 
-      const trial = {
-        trialId: `trial-${crypto.randomUUID()}`,
-        email,
+      const activation = {
+        activationId: `trial-act-${trial.trialId}`,
+        licenseId: trial.trialId,
         deviceId,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        deviceLabel: deviceLabel || 'Unknown Device',
       };
-      const activation = createActivation({ licenseId: trial.trialId, deviceId, deviceLabel });
-      db.trials.push(trial);
-      db.activations.push(activation);
-      await saveDb(db);
-
       const entitlement = signEntitlement(buildEntitlement({ activation, trial }), privateKeyPem);
       return sendJson(res, 200, { success: true, entitlement });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/licenses/devices/list') {
+      const body = await readBody(req);
+      const email = normalizeEmail(body.email);
+      const licenseKey = String(body.licenseKey || '').trim().toUpperCase();
+      const license = await findLicenseByEmailAndKey(email, licenseKey);
+
+      if (!license) {
+        return sendJson(res, 401, { error: 'invalid_license' });
+      }
+
+      const devices = await listLicenseDevices({ licenseId: license.licenseId });
+      return sendJson(res, 200, { success: true, devices, licenseId: license.licenseId, maxDevices: license.maxDevices });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/licenses/devices/deactivate') {
+      const body = await readBody(req);
+      const email = normalizeEmail(body.email);
+      const licenseKey = String(body.licenseKey || '').trim().toUpperCase();
+      const activationId = String(body.activationId || '').trim();
+      const license = await findLicenseByEmailAndKey(email, licenseKey);
+
+      if (!license) {
+        return sendJson(res, 401, { error: 'invalid_license' });
+      }
+
+      const activation = await deactivateLicenseDevice({ licenseId: license.licenseId, activationId });
+      if (!activation || activation.status !== 'deactivated') {
+        return sendJson(res, 404, { error: 'activation_not_found' });
+      }
+
+      return sendJson(res, 200, { success: true, activation });
     }
 
     return sendJson(res, 404, { error: 'not_found' });

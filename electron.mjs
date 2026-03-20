@@ -586,7 +586,7 @@ async function startTrialAgainstLicenseServer() {
 async function refreshLicenseAgainstServer(snapshot) {
   const settings = await readSettings();
   const config = getLicenseServerConfig(settings);
-  if (!config.serverUrl || !snapshot.licenseId || !snapshot.activationId) {
+  if (!config.serverUrl || !snapshot.licenseId || !snapshot.activationId || !snapshot.nextRefreshAt) {
     return snapshot;
   }
 

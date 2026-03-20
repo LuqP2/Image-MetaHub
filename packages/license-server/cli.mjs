@@ -1,7 +1,8 @@
 import {
+  closeDb,
   createLicenseRecord,
   ensureKeypair,
-  loadDb,
+  listLicenses,
   parseArgs,
   paths,
 } from './lib.mjs';
@@ -55,6 +56,7 @@ if (command === 'generate-keypair') {
   console.log(`Public key: ${paths.publicKeyPath}`);
   console.log('');
   console.log(publicKeyPem);
+  closeDb();
   process.exit(0);
 }
 
@@ -71,12 +73,14 @@ if (command === 'create-license') {
 
   const license = await createLicenseRecord({ email, plan, days, maxDevices });
   console.log(JSON.stringify(license, null, 2));
+  closeDb();
   process.exit(0);
 }
 
 if (command === 'list-licenses') {
-  const db = await loadDb();
-  console.log(JSON.stringify(db.licenses, null, 2));
+  const licenses = await listLicenses();
+  console.log(JSON.stringify(licenses, null, 2));
+  closeDb();
   process.exit(0);
 }
 
