@@ -2143,6 +2143,7 @@ function setupFileOperationHandlers() {
       const usedNames = new Set();
       let processed = 0;
       const total = files.length;
+      const TRANSFER_CONCURRENCY = mode === 'move' ? 6 : 4;
       const progressTransferId = transferId ? String(transferId) : null;
       const sendProgress = (stage = 'copying', statusText) => {
         try {
@@ -2163,11 +2164,15 @@ function setupFileOperationHandlers() {
 
       sendProgress('copying', mode === 'move' ? 'Moving files...' : 'Copying files...');
 
+      const plannedTransfers = [];
+
       for (const file of files) {
         try {
           const sourcePath = path.resolve(file.directoryPath, file.relativePath);
           if (!isPathAllowed(sourcePath)) {
             failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
             continue;
           }
 
@@ -2176,39 +2181,89 @@ function setupFileOperationHandlers() {
 
           if (path.normalize(sourcePath) === path.normalize(candidatePath)) {
             failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
             continue;
           }
 
-          if (mode === 'move') {
-            await fs.rename(sourcePath, candidatePath);
-          } else {
-            await fs.copyFile(sourcePath, candidatePath);
-          }
-
-          const stats = await fs.stat(candidatePath);
-          transferred.push({
+          plannedTransfers.push({
             sourceDirectoryPath: file.directoryPath,
             sourceRelativePath: file.relativePath,
+            sourceAbsolutePath: sourcePath,
             destinationDirectoryPath: destDir,
             destinationRelativePath: candidate,
             destinationAbsolutePath: candidatePath,
-            fileName: candidate,
-            size: stats.size,
-            lastModified: stats.mtimeMs,
-            type: getMimeTypeFromName(candidate),
+            fileName: candidate
           });
         } catch (error) {
           failedCount += 1;
-        } finally {
           processed += 1;
           sendProgress(
-            processed >= total ? 'finalizing' : 'copying',
-            processed >= total
-              ? 'Finalizing transfer...'
-              : `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`,
+            'copying',
+            `${mode === 'move' ? 'Preparing move' : 'Preparing copy'} ${processed} of ${total}...`,
           );
         }
       }
+
+      let nextTaskIndex = 0;
+      const workerCount = Math.max(1, Math.min(TRANSFER_CONCURRENCY, plannedTransfers.length));
+
+      const executeTransfer = async (task) => {
+        if (mode === 'move') {
+          try {
+            await fs.rename(task.sourceAbsolutePath, task.destinationAbsolutePath);
+          } catch (error) {
+            if (error?.code === 'EXDEV') {
+              await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+              await fs.unlink(task.sourceAbsolutePath);
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+        }
+
+        const stats = await fs.stat(task.destinationAbsolutePath);
+        transferred.push({
+          sourceDirectoryPath: task.sourceDirectoryPath,
+          sourceRelativePath: task.sourceRelativePath,
+          destinationDirectoryPath: task.destinationDirectoryPath,
+          destinationRelativePath: task.destinationRelativePath,
+          destinationAbsolutePath: task.destinationAbsolutePath,
+          fileName: task.fileName,
+          size: stats.size,
+          lastModified: stats.mtimeMs,
+          type: getMimeTypeFromName(task.fileName),
+        });
+      };
+
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            const currentIndex = nextTaskIndex;
+            nextTaskIndex += 1;
+            if (currentIndex >= plannedTransfers.length) {
+              return;
+            }
+
+            const task = plannedTransfers[currentIndex];
+            try {
+              await executeTransfer(task);
+            } catch (error) {
+              failedCount += 1;
+            } finally {
+              processed += 1;
+              sendProgress(
+                processed >= total ? 'finalizing' : 'copying',
+                processed >= total
+                  ? 'Finalizing transfer...'
+                  : `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`,
+              );
+            }
+          }
+        })
+      );
 
       sendProgress('done', 'Transfer complete.');
 
