@@ -53,11 +53,45 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+};
+
+const joinDisplayPath = (basePath: string, relativePath: string): string => {
+  const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
+  const normalizedRelative = (relativePath || '').replace(/\\/g, '/').replace(/^[/\\]+/, '');
+
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  if (!normalizedRelative) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}/${normalizedRelative}`;
+};
+
+const abbreviatePathForDisplay = (relativePath: string): string => {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.length <= 2) {
+    return normalizedPath;
+  }
+
+  const fileName = segments[segments.length - 1];
+  const firstFolder = segments[0];
+  return `${firstFolder}/.../${fileName}`;
+};
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
@@ -68,9 +102,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const isVideo = isVideoFileName(image.name, image.fileType);
 
   // Extract filename to display based on showFullFilePath setting
+  const relativeImagePath = getRelativeImagePath(image);
+  const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
+  const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
+  const fullDisplayName = showFullFilePath ? fullImagePath : image.name;
   const displayName = showFullFilePath
-    ? image.name
-    : image.name.split('/').pop() || image.name;
+    ? abbreviatePathForDisplay(fullImagePath)
+    : relativeImagePath.split(/[/\\]/).pop() || image.name;
 
   // Lazy load thumbnails only when visible in viewport
   const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
@@ -361,13 +399,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           <div className={`absolute left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
             image.tags && image.tags.length > 0 ? 'bottom-8' : 'bottom-0'
           }`}>
-            <p className="text-white text-xs truncate">{displayName}</p>
+            <p className="text-white text-xs truncate" title={fullDisplayName}>{displayName}</p>
           </div>
         )}
       </div>
       {showFilenames && (
         <div className="mt-2 w-full px-1">
-          <p className="text-[11px] text-gray-400 text-center truncate">{displayName}</p>
+          <p className="text-[11px] text-gray-400 text-center truncate" title={fullDisplayName}>{displayName}</p>
         </div>
       )}
     </div>
