@@ -53,11 +53,45 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+};
+
+const joinDisplayPath = (basePath: string, relativePath: string): string => {
+  const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
+  const normalizedRelative = (relativePath || '').replace(/\\/g, '/').replace(/^[/\\]+/, '');
+
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  if (!normalizedRelative) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}/${normalizedRelative}`;
+};
+
+const abbreviatePathForDisplay = (relativePath: string): string => {
+  const normalizedPath = relativePath.replace(/\\/g, '/');
+  const segments = normalizedPath.split('/').filter(Boolean);
+
+  if (segments.length <= 2) {
+    return normalizedPath;
+  }
+
+  const fileName = segments[segments.length - 1];
+  const firstFolder = segments[0];
+  return `${firstFolder}/.../${fileName}`;
+};
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
@@ -68,9 +102,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   const isVideo = isVideoFileName(image.name, image.fileType);
 
   // Extract filename to display based on showFullFilePath setting
+  const relativeImagePath = getRelativeImagePath(image);
+  const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
+  const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
+  const fullDisplayName = showFullFilePath ? fullImagePath : image.name;
   const displayName = showFullFilePath
-    ? image.name
-    : image.name.split('/').pop() || image.name;
+    ? abbreviatePathForDisplay(fullImagePath)
+    : relativeImagePath.split(/[/\\]/).pop() || image.name;
 
   // Lazy load thumbnails only when visible in viewport
   const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
@@ -361,13 +399,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           <div className={`absolute left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
             image.tags && image.tags.length > 0 ? 'bottom-8' : 'bottom-0'
           }`}>
-            <p className="text-white text-xs truncate">{displayName}</p>
+            <p className="text-white text-xs truncate" title={fullDisplayName}>{displayName}</p>
           </div>
         )}
       </div>
       {showFilenames && (
         <div className="mt-2 w-full px-1">
-          <p className="text-[11px] text-gray-400 text-center truncate">{displayName}</p>
+          <p className="text-[11px] text-gray-400 text-center truncate" title={fullDisplayName}>{displayName}</p>
         </div>
       )}
     </div>
@@ -382,6 +420,11 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 
 const GAP_SIZE = 16;
 const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
+const CARD_HEIGHT_RATIO = 1.2;
+const FILENAME_HEIGHT = 24;
+
+const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
+  (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
 
 // --- Virtualized Cell Component ---
 interface CellData {
@@ -548,6 +591,7 @@ const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<H
 const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
+  const showFilenames = useSettingsStore((state) => state.showFilenames);
 
   // --- Stacking Logic (Must be top-level) ---
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
@@ -779,7 +823,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         // OPTIMIZED: only check items that intersect with the selection box row/col range
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
-        const rowHeight = (imageSize * 1.2) + GAP_SIZE;
+        const itemHeight = getItemHeight(imageSize, showFilenames);
+        const rowHeight = itemHeight + GAP_SIZE;
 
         const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
         const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
@@ -795,7 +840,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     const itemLeft = c * colWidth + GAP_SIZE;
                     const itemTop = r * rowHeight + GAP_SIZE;
                     const itemRight = itemLeft + imageSize;
-                    const itemBottom = itemTop + (imageSize * 1.2);
+                    const itemBottom = itemTop + itemHeight;
 
                     const intersects = !(
                         itemRight < box.left ||
@@ -841,7 +886,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize]);
+  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1331,7 +1376,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     columnWidth={imageSize + GAP_SIZE}
                     height={height}
                     rowCount={rowCount}
-                    rowHeight={(imageSize * 1.2) + GAP_SIZE}
+                    rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
                     width={width}
                     outerRef={gridRef}
                     className="no-scrollbar-if-needed"
@@ -1400,7 +1445,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     <div 
                         key={item.id}
                         className="relative group cursor-pointer"
-                        style={{ width: imageSize, height: imageSize * 1.2 }}
+                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenames) }}
                         onClick={() => handleStackClick(item)}
                     >
                         {/* Back cards effect */}
