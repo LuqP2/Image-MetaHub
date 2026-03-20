@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import type { LicenseDevice, LicenseRuntimeInfo, LicenseSnapshot } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { validateLicenseKey } from '../utils/licenseKey';
+import { DEFAULT_LICENSE_POLICY, daysToMs } from '../shared/licensePolicy.mjs';
 
-export const TRIAL_DURATION_DAYS = 7;
+export const TRIAL_DURATION_DAYS = DEFAULT_LICENSE_POLICY.trialDays;
 
 interface LicenseState extends LicenseSnapshot {
   licenseRuntimeInfo: LicenseRuntimeInfo;
@@ -173,7 +174,7 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
       featureSet: 'pro',
       trialActivated: true,
       trialStartDate: now,
-      trialEndDate: now + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000,
+      trialEndDate: now + daysToMs(TRIAL_DURATION_DAYS),
       trialDaysRemaining: TRIAL_DURATION_DAYS,
       entitlementSource: 'local-trial',
       deviceId: 'browser',

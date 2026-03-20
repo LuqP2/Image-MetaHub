@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
 import { LICENSE_RUNTIME_CONFIG } from './build/license-runtime-config.mjs';
+import { DEFAULT_LICENSE_POLICY, daysToMs } from './shared/licensePolicy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -186,9 +187,8 @@ const LICENSE_STATE_VERSION = 2;
 const LICENSE_STATE_KEY = 'licenseStateV2';
 const LEGACY_LICENSE_KEY = 'license';
 const LICENSE_DEVICE_ID_KEY = 'licenseDeviceId';
-const TRIAL_DURATION_DAYS = 7;
-const ANNUAL_OFFLINE_GRACE_DAYS = 14;
-const MAX_LICENSE_DEVICES = 2;
+const TRIAL_DURATION_DAYS = DEFAULT_LICENSE_POLICY.trialDays;
+const MAX_LICENSE_DEVICES = DEFAULT_LICENSE_POLICY.defaultMaxDevices;
 const LICENSE_APP_STAGE = (() => {
   const stage = (process.env.IMH_APP_STAGE || LICENSE_RUNTIME_CONFIG.appStage || (isDev ? 'development' : 'production')).toLowerCase();
   return stage === 'staging' ? 'staging' : stage === 'production' ? 'production' : 'development';
@@ -299,7 +299,7 @@ function deriveLicenseSnapshot(rawState, deviceId) {
 
   if (baseState.licenseStatus === 'trial') {
     const trialStart = Number(baseState.trialStartDate);
-    const trialEnd = Number(baseState.trialEndDate || (trialStart + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
+    const trialEnd = Number(baseState.trialEndDate || (trialStart + daysToMs(TRIAL_DURATION_DAYS)));
     const trialExpired = !Number.isFinite(trialStart) || !Number.isFinite(trialEnd) || now < trialStart || now > trialEnd;
 
     if (trialExpired) {
@@ -408,7 +408,7 @@ async function migrateLegacyLicenseState(settings, deviceId) {
     migrated.trialActivated = true;
     migrated.trialStartDate = Number.isFinite(trialStartDate) ? trialStartDate : null;
     migrated.trialEndDate = Number.isFinite(trialStartDate)
-      ? trialStartDate + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000
+      ? trialStartDate + daysToMs(TRIAL_DURATION_DAYS)
       : null;
     migrated.entitlementSource = 'local-trial';
     return deriveLicenseSnapshot(migrated, deviceId);
@@ -1341,7 +1341,7 @@ function setupFileOperationHandlers() {
       featureSet: 'pro',
       trialActivated: true,
       trialStartDate: now,
-      trialEndDate: now + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000,
+      trialEndDate: now + daysToMs(TRIAL_DURATION_DAYS),
       activationId: current.activationId || crypto.randomUUID(),
       entitlementSource: 'local-trial',
       lastValidatedAt: new Date(now).toISOString(),

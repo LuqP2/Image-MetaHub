@@ -4,6 +4,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'url';
+import { daysToMs, resolveLicensePolicy } from '../../shared/licensePolicy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,14 +13,14 @@ const DEFAULT_DB_PATH = process.env.IMH_LICENSE_DB_PATH || path.join(__dirname, 
 const DEFAULT_PRIVATE_KEY_PATH = process.env.IMH_LICENSE_PRIVATE_KEY_PATH || path.join(__dirname, 'data', 'license-private.pem');
 const DEFAULT_PUBLIC_KEY_PATH = process.env.IMH_LICENSE_PUBLIC_KEY_PATH || path.join(__dirname, 'data', 'license-public.pem');
 
-export const LICENSE_POLICY = {
-  annualRefreshDays: Number(process.env.IMH_LICENSE_ANNUAL_REFRESH_DAYS || 7),
-  annualGraceDays: Number(process.env.IMH_LICENSE_ANNUAL_GRACE_DAYS || 14),
-  lifetimeRefreshDays: Number(process.env.IMH_LICENSE_LIFETIME_REFRESH_DAYS || 30),
-  lifetimeGraceDays: Number(process.env.IMH_LICENSE_LIFETIME_GRACE_DAYS || 90),
-  trialDays: Number(process.env.IMH_LICENSE_TRIAL_DAYS || 7),
-  defaultMaxDevices: Number(process.env.IMH_LICENSE_DEFAULT_MAX_DEVICES || 2),
-};
+export const LICENSE_POLICY = resolveLicensePolicy({
+  annualRefreshDays: process.env.IMH_LICENSE_ANNUAL_REFRESH_DAYS,
+  annualGraceDays: process.env.IMH_LICENSE_ANNUAL_GRACE_DAYS,
+  lifetimeRefreshDays: process.env.IMH_LICENSE_LIFETIME_REFRESH_DAYS,
+  lifetimeGraceDays: process.env.IMH_LICENSE_LIFETIME_GRACE_DAYS,
+  trialDays: process.env.IMH_LICENSE_TRIAL_DAYS,
+  defaultMaxDevices: process.env.IMH_LICENSE_DEFAULT_MAX_DEVICES,
+});
 
 export const paths = {
   dbPath: DEFAULT_DB_PATH,
@@ -221,7 +222,7 @@ export function getLicenseStatus(license) {
 
   const now = Date.now();
   const expiresAtMs = new Date(license.expiresAt).getTime();
-  const graceEndsAt = expiresAtMs + LICENSE_POLICY.annualGraceDays * 24 * 60 * 60 * 1000;
+  const graceEndsAt = expiresAtMs + daysToMs(LICENSE_POLICY.annualGraceDays);
 
   if (now <= expiresAtMs) return 'active';
   if (now <= graceEndsAt) return 'grace';
@@ -253,8 +254,8 @@ export function buildEntitlement({ license, activation, trial = null }) {
   const graceDays = license.plan === 'lifetime' ? LICENSE_POLICY.lifetimeGraceDays : LICENSE_POLICY.annualGraceDays;
   const offlineValidUntil = license.expiresAt
     ? new Date(Math.min(
-        new Date(license.expiresAt).getTime() + graceDays * 24 * 60 * 60 * 1000,
-        Date.now() + graceDays * 24 * 60 * 60 * 1000,
+        new Date(license.expiresAt).getTime() + daysToMs(graceDays),
+        Date.now() + daysToMs(graceDays),
       )).toISOString()
     : addDaysIso(graceDays);
 
