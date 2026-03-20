@@ -280,9 +280,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     try {
       setDeactivatingActivationId(activationId);
       const success = await deactivateDevice(activationId);
+      const isCurrentDevice = activationId === useLicenseStore.getState().activationId;
       setLicenseMessage(
         success
-          ? 'Device deactivated. You can now activate another computer.'
+          ? isCurrentDevice
+            ? 'This computer was deactivated and the local license state was cleared immediately.'
+            : 'Device deactivated. You can now activate another computer.'
           : 'Unable to deactivate this device right now.'
       );
     } finally {

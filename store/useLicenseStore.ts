@@ -327,6 +327,19 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
         return false;
       }
 
+      if (result.snapshot) {
+        applySnapshot(set, result.snapshot);
+      }
+
+      if (result.invalidatedCurrentDevice) {
+        set({
+          devices: [],
+          devicesLoading: false,
+          devicesError: null,
+        });
+        return true;
+      }
+
       await get().fetchDevices();
       return true;
     } catch (error: any) {

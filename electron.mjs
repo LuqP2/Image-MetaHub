@@ -1428,10 +1428,31 @@ function setupFileOperationHandlers() {
     }
 
     try {
+      const current = await loadLicenseState();
       const response = await deactivateDeviceAgainstLicenseServer({ email, key, activationId });
+      let snapshot = undefined;
+      let invalidatedCurrentDevice = false;
+
+      if (current.activationId === activationId) {
+        invalidatedCurrentDevice = true;
+        snapshot = await persistLicenseState({
+          ...createDefaultLicenseState(current.deviceId),
+          deviceId: current.deviceId,
+          deviceLabel: current.deviceLabel,
+          trialActivated: current.trialActivated,
+          trialStartDate: current.trialStartDate,
+          trialEndDate: current.trialEndDate,
+          licenseStatus: current.trialActivated ? 'expired' : 'free',
+          licensePlan: current.trialActivated ? 'trial' : null,
+          entitlementSource: current.trialActivated ? 'local-trial' : null,
+        });
+      }
+
       return {
         success: true,
         activation: response.activation ?? null,
+        snapshot,
+        invalidatedCurrentDevice,
       };
     } catch (error) {
       return {

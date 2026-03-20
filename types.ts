@@ -62,6 +62,8 @@ export interface LicenseDevicesResult {
 export interface LicenseDeviceDeactivationResult {
   success: boolean;
   activation?: LicenseDevice;
+  snapshot?: LicenseSnapshot;
+  invalidatedCurrentDevice?: boolean;
   error?: string;
 }
 
