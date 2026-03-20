@@ -78,6 +78,10 @@ interface SettingsState {
   comfyUIServerUrl: string;
   comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
 
+  // License backend settings
+  licenseServerUrl: string;
+  licensePublicKey: string;
+
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
   setItemsPerPage: (count: number) => void;
@@ -104,6 +108,8 @@ interface SettingsState {
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   setComfyUIServerUrl: (url: string) => void;
   setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setLicenseServerUrl: (url: string) => void;
+  setLicensePublicKey: (value: string) => void;
   resetState: () => void;
 }
 
@@ -144,6 +150,8 @@ export const useSettingsStore = create<SettingsState>()(
       // ComfyUI Integration initial state
       comfyUIServerUrl: 'http://127.0.0.1:8188',
       comfyUILastConnectionStatus: 'unknown',
+      licenseServerUrl: '',
+      licensePublicKey: '',
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -198,6 +206,8 @@ export const useSettingsStore = create<SettingsState>()(
       // ComfyUI Integration actions
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
       setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
+      setLicenseServerUrl: (url) => set({ licenseServerUrl: url }),
+      setLicensePublicKey: (value) => set({ licensePublicKey: value }),
 
       resetState: () => set({
         sortOrder: 'desc',
@@ -224,6 +234,8 @@ export const useSettingsStore = create<SettingsState>()(
         a1111LastConnectionStatus: 'unknown',
         comfyUIServerUrl: 'http://127.0.0.1:8188',
         comfyUILastConnectionStatus: 'unknown',
+        licenseServerUrl: '',
+        licensePublicKey: '',
       }),
     }),
     {

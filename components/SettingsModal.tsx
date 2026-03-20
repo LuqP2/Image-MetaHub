@@ -59,6 +59,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIServerUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
+  const licenseServerUrl = useSettingsStore((state) => state.licenseServerUrl);
+  const licensePublicKey = useSettingsStore((state) => state.licensePublicKey);
+  const setLicenseServerUrl = useSettingsStore((state) => state.setLicenseServerUrl);
+  const setLicensePublicKey = useSettingsStore((state) => state.setLicensePublicKey);
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
@@ -752,6 +756,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 <div className="mt-1 font-mono text-[11px] text-gray-300 break-all">
                   {deviceId}
                 </div>
+              </div>
+
+              <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 space-y-3">
+                <div>
+                  <div className="text-sm text-gray-300">License Backend URL</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Optional during development. When configured, activation/trial requests will use the hosted license server instead of the legacy offline flow.
+                  </div>
+                </div>
+                <input
+                  type="url"
+                  value={licenseServerUrl}
+                  onChange={(event) => setLicenseServerUrl(event.target.value)}
+                  placeholder="https://licenses.example.com"
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm"
+                />
+                <div>
+                  <div className="text-sm text-gray-300">License Public Key</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Public Ed25519 key used to verify entitlements returned by the backend. This key is safe to embed in the app.
+                  </div>
+                </div>
+                <textarea
+                  value={licensePublicKey}
+                  onChange={(event) => setLicensePublicKey(event.target.value)}
+                  placeholder="-----BEGIN PUBLIC KEY-----"
+                  rows={4}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs font-mono"
+                />
               </div>
 
               <div className="mt-2 flex justify-end">

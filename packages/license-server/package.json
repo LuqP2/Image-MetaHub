@@ -1,0 +1,14 @@
+{
+  "name": "image-metahub-license-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Standalone license server for Image MetaHub",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "create-license": "node cli.mjs create-license",
+    "list-licenses": "node cli.mjs list-licenses",
+    "generate-keypair": "node cli.mjs generate-keypair"
+  }
+}

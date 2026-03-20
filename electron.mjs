@@ -420,7 +420,7 @@ async function loadLicenseState() {
     await saveSettings({ ...settings, [LICENSE_STATE_KEY]: snapshot });
   }
 
-  return snapshot;
+  return refreshLicenseAgainstServer(snapshot);
 }
 
 async function persistLicenseState(nextState) {
@@ -429,6 +429,199 @@ async function persistLicenseState(nextState) {
   const snapshot = deriveLicenseSnapshot(nextState, deviceId);
   await saveSettings({ ...nextSettings, [LICENSE_STATE_KEY]: snapshot });
   return snapshot;
+}
+
+function getLicenseServerConfig(settings) {
+  const serverUrl = settings?.licenseServerUrl?.trim() || process.env.IMH_LICENSE_SERVER_URL || '';
+  const publicKey = settings?.licensePublicKey?.trim() || process.env.IMH_LICENSE_PUBLIC_KEY || '';
+  return {
+    serverUrl: serverUrl.replace(/\/+$/, ''),
+    publicKey,
+  };
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+    return `{${entries.join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function verifyEntitlementSignature(entitlement, publicKeyPem) {
+  if (!publicKeyPem) {
+    throw new Error('License backend public key is not configured.');
+  }
+
+  if (!entitlement || typeof entitlement !== 'object' || typeof entitlement.signature !== 'string') {
+    throw new Error('Backend entitlement payload is missing a signature.');
+  }
+
+  const { signature, ...unsignedPayload } = entitlement;
+  const data = Buffer.from(stableStringify(unsignedPayload), 'utf8');
+  const signatureBuffer = Buffer.from(signature, 'base64');
+  const publicKey = crypto.createPublicKey(publicKeyPem);
+  const isValid = crypto.verify(null, data, publicKey, signatureBuffer);
+
+  if (!isValid) {
+    throw new Error('Entitlement signature verification failed.');
+  }
+
+  return unsignedPayload;
+}
+
+function buildSnapshotFromEntitlement(entitlement, currentSnapshot) {
+  const plan = entitlement.plan === 'annual' ? 'annual' : entitlement.plan === 'trial' ? 'trial' : 'lifetime';
+  const status = entitlement.status === 'revoked'
+    ? 'revoked'
+    : entitlement.status === 'expired'
+      ? 'expired'
+      : entitlement.status === 'grace'
+        ? 'grace'
+        : plan === 'lifetime'
+          ? 'lifetime'
+          : plan === 'trial'
+            ? 'trial'
+            : 'pro';
+
+  const trialEndDate = plan === 'trial' && entitlement.expiresAt
+    ? new Date(entitlement.expiresAt).getTime()
+    : currentSnapshot?.trialEndDate ?? null;
+
+  return {
+    ...currentSnapshot,
+    initialized: true,
+    licenseStatus: status,
+    licensePlan: plan,
+    featureSet: entitlement.featureSet === 'pro' ? 'pro' : 'free',
+    trialActivated: plan === 'trial' ? true : (currentSnapshot?.trialActivated ?? true),
+    trialStartDate: plan === 'trial'
+      ? (currentSnapshot?.trialStartDate ?? Date.now())
+      : currentSnapshot?.trialStartDate ?? null,
+    trialEndDate,
+    trialDaysRemaining: plan === 'trial' && Number.isFinite(trialEndDate)
+      ? calculateDaysRemaining(trialEndDate)
+      : 0,
+    licenseKey: currentSnapshot?.licenseKey ?? null,
+    licenseEmail: entitlement.customerEmail ?? currentSnapshot?.licenseEmail ?? null,
+    licenseId: entitlement.licenseId ?? null,
+    activationId: entitlement.activationId ?? null,
+    deviceId: entitlement.deviceId ?? currentSnapshot?.deviceId,
+    deviceLabel: currentSnapshot?.deviceLabel ?? buildDeviceLabel(),
+    maxDevices: Number.isFinite(entitlement.maxDevices) ? entitlement.maxDevices : MAX_LICENSE_DEVICES,
+    expiresAt: toIsoIfValid(entitlement.expiresAt),
+    offlineValidUntil: toIsoIfValid(entitlement.offlineValidUntil),
+    lastValidatedAt: toIsoIfValid(entitlement.issuedAt) ?? new Date().toISOString(),
+    nextRefreshAt: toIsoIfValid(entitlement.nextRefreshAt),
+    entitlementSource: 'manual',
+  };
+}
+
+async function postJson(baseUrl, route, payload) {
+  const response = await fetch(`${baseUrl}${route}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = typeof body?.error === 'string'
+      ? body.error
+      : `License backend request failed with status ${response.status}`;
+    throw new Error(errorMessage);
+  }
+
+  return body;
+}
+
+async function activateAgainstLicenseServer(payload) {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl) {
+    return null;
+  }
+
+  const current = await loadLicenseState();
+  const response = await postJson(config.serverUrl, '/v1/licenses/activate', {
+    email: payload.email,
+    licenseKey: payload.key,
+    deviceId: current.deviceId,
+    deviceLabel: current.deviceLabel,
+  });
+  const entitlement = verifyEntitlementSignature(response.entitlement, config.publicKey);
+  return persistLicenseState(buildSnapshotFromEntitlement(entitlement, {
+    ...current,
+    licenseEmail: payload.email,
+    licenseKey: payload.key,
+  }));
+}
+
+async function startTrialAgainstLicenseServer() {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl) {
+    return null;
+  }
+
+  const current = await loadLicenseState();
+  const response = await postJson(config.serverUrl, '/v1/trials/start', {
+    deviceId: current.deviceId,
+    deviceLabel: current.deviceLabel,
+    email: current.licenseEmail,
+  });
+  const entitlement = verifyEntitlementSignature(response.entitlement, config.publicKey);
+  return persistLicenseState(buildSnapshotFromEntitlement(entitlement, current));
+}
+
+async function refreshLicenseAgainstServer(snapshot) {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl || !snapshot.licenseId || !snapshot.activationId) {
+    return snapshot;
+  }
+
+  const nextRefresh = snapshot.nextRefreshAt ? new Date(snapshot.nextRefreshAt).getTime() : NaN;
+  if (Number.isFinite(nextRefresh) && Date.now() < nextRefresh) {
+    return snapshot;
+  }
+
+  try {
+    const response = await postJson(config.serverUrl, '/v1/licenses/refresh', {
+      licenseId: snapshot.licenseId,
+      activationId: snapshot.activationId,
+      deviceId: snapshot.deviceId,
+    });
+    const entitlement = verifyEntitlementSignature(response.entitlement, config.publicKey);
+    return persistLicenseState(buildSnapshotFromEntitlement(entitlement, snapshot));
+  } catch (error) {
+    console.warn('[IMH] License refresh failed, keeping cached entitlement:', error.message);
+    return snapshot;
+  }
+}
+
+async function deactivateAgainstLicenseServer(snapshot) {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl || !snapshot.licenseId || !snapshot.activationId) {
+    return false;
+  }
+
+  await postJson(config.serverUrl, '/v1/licenses/deactivate', {
+    licenseId: snapshot.licenseId,
+    activationId: snapshot.activationId,
+    deviceId: snapshot.deviceId,
+  });
+  return true;
 }
 // --- End Settings Management ---
 
@@ -1069,6 +1262,19 @@ function setupFileOperationHandlers() {
       };
     }
 
+    try {
+      const backendSnapshot = await startTrialAgainstLicenseServer();
+      if (backendSnapshot) {
+        return { success: true, snapshot: backendSnapshot };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        snapshot: current,
+        error: error.message,
+      };
+    }
+
     const now = Date.now();
     const snapshot = await persistLicenseState({
       ...current,
@@ -1096,6 +1302,15 @@ function setupFileOperationHandlers() {
       return { success: false, error: 'Email and license key are required.' };
     }
 
+    try {
+      const backendSnapshot = await activateAgainstLicenseServer({ email, key });
+      if (backendSnapshot) {
+        return { success: true, snapshot: backendSnapshot };
+      }
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+
     const now = new Date();
     const snapshot = await persistLicenseState({
       ...(await loadLicenseState()),
@@ -1120,6 +1335,16 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('deactivate-license', async () => {
     const current = await loadLicenseState();
+    try {
+      await deactivateAgainstLicenseServer(current);
+    } catch (error) {
+      return {
+        success: false,
+        snapshot: current,
+        error: error.message,
+      };
+    }
+
     const snapshot = await persistLicenseState({
       ...createDefaultLicenseState(current.deviceId),
       deviceId: current.deviceId,

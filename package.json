@@ -24,6 +24,9 @@
     "auto-release": "node scripts/auto-release.js",
     "reset-cache": "node scripts/reset-cache.js",
     "sync-changelog": "node scripts/sync-changelog.js",
+    "license-server:dev": "node packages/license-server/server.mjs",
+    "license-server:create-license": "node packages/license-server/cli.mjs create-license",
+    "license-server:generate-keypair": "node packages/license-server/cli.mjs generate-keypair",
     "test": "vitest",
     "cli:parse": "tsx cli.ts parse",
     "cli:index": "tsx cli.ts index"
