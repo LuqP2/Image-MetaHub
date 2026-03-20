@@ -34,9 +34,34 @@ export interface LicenseSnapshot {
   entitlementSource: 'local-trial' | 'legacy-offline-key' | 'manual' | null;
 }
 
+export interface LicenseDevice {
+  activationId: string;
+  licenseId: string;
+  deviceId: string;
+  deviceLabel: string;
+  status: 'active' | 'deactivated';
+  lastSeenAt: string | null;
+  createdAt: string | null;
+  deactivatedAt: string | null;
+}
+
 export interface LicenseActivationResult {
   success: boolean;
   snapshot?: LicenseSnapshot;
+  error?: string;
+}
+
+export interface LicenseDevicesResult {
+  success: boolean;
+  devices?: LicenseDevice[];
+  licenseId?: string;
+  maxDevices?: number;
+  error?: string;
+}
+
+export interface LicenseDeviceDeactivationResult {
+  success: boolean;
+  activation?: LicenseDevice;
   error?: string;
 }
 
@@ -71,6 +96,8 @@ export interface ElectronAPI {
   activateLicense: (args: { email: string; key: string; activationMode?: 'backend' | 'legacy-offline-validated' | 'manual' }) => Promise<LicenseActivationResult>;
   startLicenseTrial: () => Promise<LicenseActivationResult>;
   deactivateLicense: () => Promise<LicenseActivationResult>;
+  listLicenseDevices: (args: { email: string; key: string }) => Promise<LicenseDevicesResult>;
+  deactivateLicenseDevice: (args: { email: string; key: string; activationId: string }) => Promise<LicenseDeviceDeactivationResult>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;

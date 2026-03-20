@@ -81,13 +81,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const deviceId = useLicenseStore((state) => state.deviceId);
   const maxDevices = useLicenseStore((state) => state.maxDevices);
   const expiresAt = useLicenseStore((state) => state.expiresAt);
+  const devices = useLicenseStore((state) => state.devices);
+  const devicesLoading = useLicenseStore((state) => state.devicesLoading);
+  const devicesError = useLicenseStore((state) => state.devicesError);
   const activateLicense = useLicenseStore((state) => state.activateLicense);
-  const deactivateLicense = useLicenseStore((state) => state.deactivateLicense);
+  const fetchDevices = useLicenseStore((state) => state.fetchDevices);
+  const deactivateDevice = useLicenseStore((state) => state.deactivateDevice);
 
   const [licenseEmailInput, setLicenseEmailInput] = useState(licenseEmail ?? '');
   const [licenseKeyInput, setLicenseKeyInput] = useState(licenseKey ?? '');
   const [isActivatingLicense, setIsActivatingLicense] = useState(false);
-  const [isDeactivatingLicense, setIsDeactivatingLicense] = useState(false);
+  const [deactivatingActivationId, setDeactivatingActivationId] = useState<string | null>(null);
   const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
   const licenseSectionRef = useRef<HTMLDivElement | null>(null);
   const [sensitiveTagsInput, setSensitiveTagsInput] = useState('');
@@ -126,6 +130,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
       });
     }
   }, [focusSection, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (activeTab !== 'general') return;
+    if (!licenseServerUrl?.trim()) return;
+    if (!licenseEmail || !licenseKey) return;
+
+    fetchDevices().catch((error) => {
+      console.error('Failed to fetch license devices:', error);
+    });
+  }, [activeTab, fetchDevices, isOpen, licenseEmail, licenseKey, licenseServerUrl]);
 
   const handleSelectCacheDirectory = async () => {
     const result = await window.electronAPI?.showDirectoryDialog();
@@ -259,20 +274,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
     }
   };
 
-  const handleDeactivateLicense = async () => {
+  const handleDeactivateDevice = async (activationId: string) => {
     setLicenseMessage(null);
 
     try {
-      setIsDeactivatingLicense(true);
-      const success = await deactivateLicense();
+      setDeactivatingActivationId(activationId);
+      const success = await deactivateDevice(activationId);
       setLicenseMessage(
         success
-          ? 'This device was deactivated. You can now activate the license on another computer.'
+          ? 'Device deactivated. You can now activate another computer.'
           : 'Unable to deactivate this device right now.'
       );
     } finally {
-      setIsDeactivatingLicense(false);
+      setDeactivatingActivationId(null);
     }
+  };
+
+  const hasBackendConfigured = Boolean(licenseServerUrl?.trim());
+  const canManageDevices = hasBackendConfigured && Boolean(licenseEmail && licenseKey);
+  const activeDevices = devices.filter((device) => device.status === 'active');
+  const formatSeenAt = (value: string | null) => {
+    if (!value) return 'Never';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 'Unknown' : parsed.toLocaleString();
   };
 
   if (!isOpen) {
@@ -691,15 +715,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   >
                     {isActivatingLicense ? 'Activating...' : 'Activate'}
                   </button>
-                  {(licenseStatus === 'pro' || licenseStatus === 'lifetime' || licenseStatus === 'grace') && (
-                    <button
-                      onClick={handleDeactivateLicense}
-                      disabled={isDeactivatingLicense}
-                      className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium"
-                    >
-                      {isDeactivatingLicense ? 'Deactivating...' : 'Deactivate this device'}
-                    </button>
-                  )}
                 </div>
                 <div className="text-xs text-gray-400 text-right">
                   <div>
@@ -757,6 +772,98 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                   {deviceId}
                 </div>
               </div>
+
+              {hasBackendConfigured ? (
+                <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm text-gray-300">Active Devices</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Manage the computers currently using this license.
+                      </div>
+                    </div>
+                    {canManageDevices && (
+                      <button
+                        onClick={() => fetchDevices()}
+                        disabled={devicesLoading}
+                        className="bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-1.5 rounded text-xs font-medium"
+                      >
+                        {devicesLoading ? 'Loading...' : 'Refresh'}
+                      </button>
+                    )}
+                  </div>
+
+                  {!canManageDevices && (
+                    <div className="text-xs text-gray-500">
+                      Activate a license first to load the device list.
+                    </div>
+                  )}
+
+                  {devicesError && (
+                    <div className="text-xs text-red-300 bg-red-950/40 border border-red-900/50 rounded px-3 py-2">
+                      {devicesError}
+                    </div>
+                  )}
+
+                  {canManageDevices && activeDevices.length === 0 && !devicesLoading && !devicesError && (
+                    <div className="text-xs text-gray-500">
+                      No active devices were returned by the backend.
+                    </div>
+                  )}
+
+                  {canManageDevices && activeDevices.length > 0 && (
+                    <div className="space-y-2">
+                      {activeDevices.map((device) => {
+                        const isCurrentDevice = device.deviceId === deviceId;
+
+                        return (
+                          <div
+                            key={device.activationId}
+                            className="rounded border border-gray-800 bg-gray-900/80 px-3 py-3 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm text-gray-200 flex items-center gap-2 flex-wrap">
+                                  <span>{device.deviceLabel || 'Unnamed Device'}</span>
+                                  {isCurrentDevice && (
+                                    <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-900/40 border border-blue-700/40 text-blue-200">
+                                      This computer
+                                    </span>
+                                  )}
+                                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                                    device.status === 'active'
+                                      ? 'bg-green-900/30 border-green-700/40 text-green-300'
+                                      : 'bg-gray-800 border-gray-700 text-gray-400'
+                                  }`}>
+                                    {device.status}
+                                  </span>
+                                </div>
+                                <div className="mt-2 text-[11px] text-gray-500 break-all">
+                                  Device ID: <span className="font-mono text-gray-400">{device.deviceId}</span>
+                                </div>
+                                <div className="mt-1 text-[11px] text-gray-500">
+                                  Last seen: <span className="text-gray-400">{formatSeenAt(device.lastSeenAt)}</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDeactivateDevice(device.activationId)}
+                                disabled={devicesLoading || deactivatingActivationId === device.activationId}
+                                className="bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap"
+                              >
+                                {deactivatingActivationId === device.activationId ? 'Deactivating...' : 'Deactivate'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 text-xs text-gray-500">
+                  Device management becomes available when a license backend URL is configured.
+                </div>
+              )}
 
               <div className="rounded-md border border-gray-800 bg-gray-950/60 px-3 py-3 space-y-3">
                 <div>

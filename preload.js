@@ -140,6 +140,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   activateLicense: (args) => ipcRenderer.invoke('activate-license', args),
   startLicenseTrial: () => ipcRenderer.invoke('start-license-trial'),
   deactivateLicense: () => ipcRenderer.invoke('deactivate-license'),
+  listLicenseDevices: (args) => ipcRenderer.invoke('list-license-devices', args),
+  deactivateLicenseDevice: (args) => ipcRenderer.invoke('deactivate-license-device', args),
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),

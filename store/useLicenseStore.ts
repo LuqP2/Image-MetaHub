@@ -1,17 +1,22 @@
 import { create } from 'zustand';
-import type { LicenseSnapshot } from '../types';
+import type { LicenseDevice, LicenseSnapshot } from '../types';
 import { useSettingsStore } from './useSettingsStore';
 import { validateLicenseKey } from '../utils/licenseKey';
 
 export const TRIAL_DURATION_DAYS = 7;
 
 interface LicenseState extends LicenseSnapshot {
+  devices: LicenseDevice[];
+  devicesLoading: boolean;
+  devicesError: string | null;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   activateTrial: () => Promise<boolean>;
   checkLicenseStatus: () => Promise<void>;
   activateLicense: (key: string, email: string) => Promise<boolean>;
   deactivateLicense: () => Promise<boolean>;
+  fetchDevices: () => Promise<void>;
+  deactivateDevice: (activationId: string) => Promise<boolean>;
   _resetLicense: () => Promise<void>;
 }
 
@@ -98,11 +103,17 @@ const saveBrowserFallbackSnapshot = (snapshot: LicenseSnapshot) => {
 
 export const useLicenseStore = create<LicenseState>((set, get) => ({
   ...createDefaultSnapshot(),
+  devices: [],
+  devicesLoading: false,
+  devicesError: null,
 
   initialize: async () => {
     if (window.electronAPI?.getLicenseState) {
       const snapshot = await window.electronAPI.getLicenseState();
       applySnapshot(set, snapshot);
+      if (useSettingsStore.getState().licenseServerUrl?.trim()) {
+        await get().fetchDevices();
+      }
       return;
     }
 
@@ -113,6 +124,9 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
     if (window.electronAPI?.getLicenseState) {
       const snapshot = await window.electronAPI.getLicenseState();
       applySnapshot(set, snapshot);
+      if (useSettingsStore.getState().licenseServerUrl?.trim()) {
+        await get().fetchDevices();
+      }
       return;
     }
 
@@ -176,6 +190,7 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
         if (result.snapshot) {
           applySnapshot(set, result.snapshot);
         }
+        await get().fetchDevices();
         return !!result.success;
       }
 
@@ -192,6 +207,7 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
       if (result.snapshot) {
         applySnapshot(set, result.snapshot);
       }
+      set({ devices: [], devicesError: null });
       return !!result.success;
     }
 
@@ -243,7 +259,83 @@ export const useLicenseStore = create<LicenseState>((set, get) => ({
     };
     saveBrowserFallbackSnapshot(snapshot);
     applySnapshot(set, snapshot);
+    set({ devices: [], devicesError: null });
     return true;
+  },
+
+  fetchDevices: async () => {
+    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
+    const { licenseEmail, licenseKey } = get();
+
+    if (!licenseServerUrl || !licenseEmail || !licenseKey || !window.electronAPI?.listLicenseDevices) {
+      set({ devices: [], devicesLoading: false, devicesError: null });
+      return;
+    }
+
+    set({ devicesLoading: true, devicesError: null });
+    try {
+      const result = await window.electronAPI.listLicenseDevices({
+        email: licenseEmail,
+        key: licenseKey,
+      });
+
+      if (!result.success) {
+        set({
+          devices: [],
+          devicesLoading: false,
+          devicesError: result.error || 'Unable to load license devices.',
+        });
+        return;
+      }
+
+      set({
+        devices: Array.isArray(result.devices) ? result.devices : [],
+        devicesLoading: false,
+        devicesError: null,
+      });
+    } catch (error: any) {
+      set({
+        devices: [],
+        devicesLoading: false,
+        devicesError: error?.message || 'License backend unavailable.',
+      });
+    }
+  },
+
+  deactivateDevice: async (activationId: string) => {
+    const licenseServerUrl = useSettingsStore.getState().licenseServerUrl?.trim();
+    const { licenseEmail, licenseKey } = get();
+
+    if (!licenseServerUrl || !licenseEmail || !licenseKey || !activationId || !window.electronAPI?.deactivateLicenseDevice) {
+      set({ devicesError: 'License backend unavailable.' });
+      return false;
+    }
+
+    set({ devicesLoading: true, devicesError: null });
+    try {
+      const result = await window.electronAPI.deactivateLicenseDevice({
+        email: licenseEmail,
+        key: licenseKey,
+        activationId,
+      });
+
+      if (!result.success) {
+        set({
+          devicesLoading: false,
+          devicesError: result.error || 'Unable to deactivate device.',
+        });
+        return false;
+      }
+
+      await get().fetchDevices();
+      return true;
+    } catch (error: any) {
+      set({
+        devicesLoading: false,
+        devicesError: error?.message || 'License backend unavailable.',
+      });
+      return false;
+    }
   },
 
   _resetLicense: async () => {

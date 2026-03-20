@@ -623,6 +623,33 @@ async function deactivateAgainstLicenseServer(snapshot) {
   });
   return true;
 }
+
+async function listDevicesAgainstLicenseServer({ email, key }) {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl) {
+    throw new Error('License backend is not configured.');
+  }
+
+  return postJson(config.serverUrl, '/v1/licenses/devices/list', {
+    email,
+    licenseKey: key,
+  });
+}
+
+async function deactivateDeviceAgainstLicenseServer({ email, key, activationId }) {
+  const settings = await readSettings();
+  const config = getLicenseServerConfig(settings);
+  if (!config.serverUrl) {
+    throw new Error('License backend is not configured.');
+  }
+
+  return postJson(config.serverUrl, '/v1/licenses/devices/deactivate', {
+    email,
+    licenseKey: key,
+    activationId,
+  });
+}
 // --- End Settings Management ---
 
 // --- Application Menu ---
@@ -1365,6 +1392,53 @@ function setupFileOperationHandlers() {
     });
 
     return { success: true, snapshot };
+  });
+
+  ipcMain.handle('list-license-devices', async (event, payload) => {
+    const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const key = typeof payload?.key === 'string' ? payload.key.trim().toUpperCase() : '';
+
+    if (!email || !key) {
+      return { success: false, error: 'Email and license key are required.' };
+    }
+
+    try {
+      const response = await listDevicesAgainstLicenseServer({ email, key });
+      return {
+        success: true,
+        devices: Array.isArray(response.devices) ? response.devices : [],
+        licenseId: response.licenseId ?? null,
+        maxDevices: response.maxDevices ?? null,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  });
+
+  ipcMain.handle('deactivate-license-device', async (event, payload) => {
+    const email = typeof payload?.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    const key = typeof payload?.key === 'string' ? payload.key.trim().toUpperCase() : '';
+    const activationId = typeof payload?.activationId === 'string' ? payload.activationId.trim() : '';
+
+    if (!email || !key || !activationId) {
+      return { success: false, error: 'Email, license key, and activationId are required.' };
+    }
+
+    try {
+      const response = await deactivateDeviceAgainstLicenseServer({ email, key, activationId });
+      return {
+        success: true,
+        activation: response.activation ?? null,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   });
 
   ipcMain.handle('get-default-cache-path', () => {
