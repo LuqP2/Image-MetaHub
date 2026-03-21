@@ -496,6 +496,17 @@ export function useImageLoader() {
         }, 3000);
     }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
 
+    const scheduleDirectoryThumbnailWarmup = useCallback((directoryId: string, images: IndexedImage[]) => {
+        if (!images || images.length === 0) {
+            return;
+        }
+
+        thumbnailManager.scheduleWarmup(`directory:${directoryId}`, images, {
+            batchSize: 96,
+            delayMs: 16,
+        });
+    }, []);
+
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
@@ -587,8 +598,7 @@ export function useImageLoader() {
                 if (hydratedImages.length > 0) {
                     replaceDirectoryImages(directory.id, hydratedImages);
                     void useImageStore.getState().importMetadataTags(hydratedImages);
-                    thumbnailManager.prefetchImages(hydratedImages.slice(0, 36), 'high', { markLoading: false });
-                    thumbnailManager.prefetchImages(hydratedImages.slice(36, 140), 'low', { markLoading: false });
+                    scheduleDirectoryThumbnailWarmup(directory.id, hydratedImages);
                 }
 
                 if (totalFilteredOut > 0) {
@@ -603,7 +613,7 @@ export function useImageLoader() {
             error(`Failed to load directory from cache ${directory.name}:`, err);
             // Don't set global error for this, as it's a background process
         }
-    }, [replaceDirectoryImages, setProgress]);
+    }, [replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setProgress]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
         const suppressIndexingState = isUpdate;
@@ -754,6 +764,7 @@ export function useImageLoader() {
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 addImages(batch);
+                thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
             };
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
@@ -827,6 +838,7 @@ export function useImageLoader() {
             } else {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
+                    scheduleDirectoryThumbnailWarmup(directory.id, preloadedImages);
                 }
                 finalizeDirectoryLoad(directory, { suppressIndexingState });
             }
@@ -845,7 +857,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad]);
+    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup]);
 
 
     // Helper function to detect if a path is a root disk

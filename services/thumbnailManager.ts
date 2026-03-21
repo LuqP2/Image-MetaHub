@@ -4,6 +4,8 @@ import { useImageStore } from '../store/useImageStore';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 12;
+const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
+const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
@@ -171,10 +173,73 @@ type ThumbnailJob = {
 class ThumbnailManager {
   private inflight = new Map<string, Promise<void>>();
   private activeUrls = new Map<string, string>();
-  private queue: ThumbnailJob[] = [];
-  private activeWorkers = 0;
+  private highPriorityQueue: ThumbnailJob[] = [];
+  private backgroundQueue: ThumbnailJob[] = [];
+  private activeHighPriorityWorkers = 0;
+  private activeBackgroundWorkers = 0;
   private requestTokens = new Map<string, number>();
   private requestCounter = 0;
+  private warmupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private warmupTokens = new Map<string, number>();
+
+  scheduleWarmup(
+    scopeKey: string,
+    images: IndexedImage[],
+    options: { batchSize?: number; delayMs?: number } = {}
+  ): void {
+    if (!scopeKey || !images || images.length === 0) {
+      return;
+    }
+
+    const batchSize = Math.max(8, options.batchSize ?? 80);
+    const delayMs = Math.max(0, options.delayMs ?? 16);
+    const deduped = Array.from(
+      new Map(
+        images
+          .filter((image) => Boolean(image?.id))
+          .map((image) => [image.id, image])
+      ).values()
+    );
+
+    if (deduped.length === 0) {
+      return;
+    }
+
+    const nextToken = (this.warmupTokens.get(scopeKey) ?? 0) + 1;
+    this.warmupTokens.set(scopeKey, nextToken);
+
+    const existingTimer = this.warmupTimers.get(scopeKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.warmupTimers.delete(scopeKey);
+    }
+
+    let cursor = 0;
+
+    const runChunk = () => {
+      if (this.warmupTokens.get(scopeKey) !== nextToken) {
+        return;
+      }
+
+      const chunk = deduped.slice(cursor, cursor + batchSize);
+      if (chunk.length === 0) {
+        this.warmupTimers.delete(scopeKey);
+        return;
+      }
+
+      this.prefetchImages(chunk, 'low', { markLoading: false });
+      cursor += chunk.length;
+
+      if (cursor < deduped.length) {
+        const timer = setTimeout(runChunk, delayMs);
+        this.warmupTimers.set(scopeKey, timer);
+      } else {
+        this.warmupTimers.delete(scopeKey);
+      }
+    };
+
+    runChunk();
+  }
 
   prefetchImages(
     images: IndexedImage[],
@@ -222,15 +287,21 @@ class ThumbnailManager {
 
     const existing = this.inflight.get(image.id);
     if (existing) {
-      const queuedIndex = this.queue.findIndex(job => job.image.id === image.id);
-      if (queuedIndex !== -1 && priority === 'high') {
-        const [queuedJob] = this.queue.splice(queuedIndex, 1);
+      const queuedJobRef = this.findQueuedJob(image.id);
+      if (queuedJobRef && priority === 'high' && queuedJobRef.queueName === 'low') {
+        const [queuedJob] = this.backgroundQueue.splice(queuedJobRef.index, 1);
         if (queuedJob) {
           queuedJob.priority = 'high';
           queuedJob.markLoading = queuedJob.markLoading || (options.markLoading ?? true);
-          this.queue.unshift(queuedJob);
+          this.highPriorityQueue.unshift(queuedJob);
+        }
+      } else if (queuedJobRef && priority === 'high' && queuedJobRef.queueName === 'high') {
+        const queuedJob = this.highPriorityQueue[queuedJobRef.index];
+        if (queuedJob) {
+          queuedJob.markLoading = queuedJob.markLoading || (options.markLoading ?? true);
         }
       }
+      this.processQueues();
       return existing;
     }
 
@@ -248,11 +319,11 @@ class ThumbnailManager {
         reject,
       };
       if (priority === 'high') {
-        this.queue.unshift(job);
+        this.highPriorityQueue.unshift(job);
       } else {
-        this.queue.push(job);
+        this.backgroundQueue.push(job);
       }
-      this.processQueue();
+      this.processQueues();
     });
 
     this.inflight.set(image.id, promise);
@@ -266,39 +337,95 @@ class ThumbnailManager {
   }
 
   private dropQueuedJobs(imageId: string) {
-    if (this.queue.length === 0) return;
-    this.queue = this.queue.filter(job => job.image.id !== imageId);
+    if (this.highPriorityQueue.length > 0) {
+      this.highPriorityQueue = this.highPriorityQueue.filter(job => job.image.id !== imageId);
+    }
+    if (this.backgroundQueue.length > 0) {
+      this.backgroundQueue = this.backgroundQueue.filter(job => job.image.id !== imageId);
+    }
   }
 
   private isStale(imageId: string, token: number): boolean {
     return this.requestTokens.get(imageId) !== token;
   }
 
-  private processQueue() {
-    while (this.activeWorkers < MAX_CONCURRENT_THUMBNAILS && this.queue.length > 0) {
-      const job = this.queue.shift();
-      if (!job) break;
-
-      // If a newer request exists, skip this job
-      if (this.isStale(job.image.id, job.token)) {
-        job.resolve();
-        continue;
-      }
-
-      this.activeWorkers++;
-
-      this.loadThumbnail(job.image, job.token, job.markLoading)
-        .then(() => job.resolve())
-        .catch((err) => job.reject(err))
-        .finally(() => {
-          // Clean inflight only if this job is still the latest for the image
-          if (!this.isStale(job.image.id, job.token)) {
-            this.inflight.delete(job.image.id);
-          }
-          this.activeWorkers--;
-          this.processQueue();
-        });
+  private findQueuedJob(imageId: string): { queueName: 'high' | 'low'; index: number } | null {
+    const highIndex = this.highPriorityQueue.findIndex(job => job.image.id === imageId);
+    if (highIndex !== -1) {
+      return { queueName: 'high', index: highIndex };
     }
+
+    const lowIndex = this.backgroundQueue.findIndex(job => job.image.id === imageId);
+    if (lowIndex !== -1) {
+      return { queueName: 'low', index: lowIndex };
+    }
+
+    return null;
+  }
+
+  private get activeWorkers(): number {
+    return this.activeHighPriorityWorkers + this.activeBackgroundWorkers;
+  }
+
+  private processQueues() {
+    while (
+      this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
+      this.activeHighPriorityWorkers < MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS &&
+      this.highPriorityQueue.length > 0
+    ) {
+      const job = this.highPriorityQueue.shift();
+      if (!job) break;
+      this.startJob(job, 'high');
+    }
+
+    while (
+      this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
+      this.activeBackgroundWorkers < MAX_CONCURRENT_BACKGROUND_THUMBNAILS &&
+      this.backgroundQueue.length > 0
+    ) {
+      const job = this.backgroundQueue.shift();
+      if (!job) break;
+      this.startJob(job, 'low');
+    }
+
+    while (
+      this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
+      this.highPriorityQueue.length > 0
+    ) {
+      const job = this.highPriorityQueue.shift();
+      if (!job) break;
+      this.startJob(job, 'high');
+    }
+  }
+
+  private startJob(job: ThumbnailJob, queueName: 'high' | 'low') {
+    if (this.isStale(job.image.id, job.token)) {
+      job.resolve();
+      return;
+    }
+
+    if (queueName === 'high') {
+      this.activeHighPriorityWorkers++;
+    } else {
+      this.activeBackgroundWorkers++;
+    }
+
+    this.loadThumbnail(job.image, job.token, job.markLoading)
+      .then(() => job.resolve())
+      .catch((err) => job.reject(err))
+      .finally(() => {
+        if (!this.isStale(job.image.id, job.token)) {
+          this.inflight.delete(job.image.id);
+        }
+
+        if (queueName === 'high') {
+          this.activeHighPriorityWorkers--;
+        } else {
+          this.activeBackgroundWorkers--;
+        }
+
+        this.processQueues();
+      });
   }
 
   private async loadThumbnail(image: IndexedImage, token: number, markLoading: boolean): Promise<void> {
