@@ -3,9 +3,10 @@ import cacheManager from './cacheManager';
 import { useImageStore } from '../store/useImageStore';
 
 const MAX_THUMBNAIL_EDGE = 320;
-const MAX_CONCURRENT_THUMBNAILS = 8; // Increased from 3: with Intersection Observer, only visible images load
+const MAX_CONCURRENT_THUMBNAILS = 12;
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
 const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
   if (image.fileType && image.fileType.startsWith('video/')) {
@@ -130,9 +131,38 @@ async function generateThumbnailBlob(file: File): Promise<Blob | null> {
   }
 }
 
+async function generateElectronThumbnailBlob(image: IndexedImage): Promise<Blob | null> {
+  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  if (!electronAPI?.generateThumbnailFromPath) {
+    return null;
+  }
+
+  const fileHandle = (image.thumbnailHandle ?? image.handle) as ElectronFileHandle | undefined;
+  const filePath = fileHandle?._filePath;
+  if (!filePath) {
+    return null;
+  }
+
+  const result = await electronAPI.generateThumbnailFromPath({
+    filePath,
+    maxEdge: MAX_THUMBNAIL_EDGE,
+    quality: 82,
+  });
+
+  if (!result.success || !result.data) {
+    if (!result.success && result.error) {
+      console.error('Failed to generate Electron thumbnail:', result.error);
+    }
+    return null;
+  }
+
+  return new Blob([new Uint8Array(result.data)], { type: 'image/jpeg' });
+}
+
 type ThumbnailJob = {
   image: IndexedImage;
   token: number;
+  priority: 'high' | 'low';
   resolve: () => void;
   reject: (error: unknown) => void;
 };
@@ -145,21 +175,22 @@ class ThumbnailManager {
   private requestTokens = new Map<string, number>();
   private requestCounter = 0;
 
-  async ensureThumbnail(image: IndexedImage): Promise<void> {
+  async ensureThumbnail(image: IndexedImage, priority: 'high' | 'low' = 'high'): Promise<void> {
     if (!image || !image.id) {
       return;
     }
 
     // Check current status from store (not from prop, which may be stale)
     const storeState = useImageStore.getState();
-    const currentImage = storeState.images.find(img => img.id === image.id);
+    const currentEntry = storeState.thumbnailEntries[image.id];
+    const activeEntry = currentEntry && currentEntry.lastModified === image.lastModified ? currentEntry : undefined;
 
-    if (currentImage?.thumbnailStatus === 'ready' && currentImage.thumbnailUrl) {
+    if (activeEntry?.thumbnailStatus === 'ready' && activeEntry.thumbnailUrl) {
       return;
     }
 
     const existing = this.inflight.get(image.id);
-    if (currentImage?.thumbnailStatus === 'loading' && existing) {
+    if (activeEntry?.thumbnailStatus === 'loading' && existing) {
       return existing;
     }
 
@@ -168,7 +199,12 @@ class ThumbnailManager {
     this.dropQueuedJobs(image.id);
 
     const promise = new Promise<void>((resolve, reject) => {
-      this.queue.push({ image, token, resolve, reject });
+      const job: ThumbnailJob = { image, token, priority, resolve, reject };
+      if (priority === 'high') {
+        this.queue.unshift(job);
+      } else {
+        this.queue.push(job);
+      }
       this.processQueue();
     });
 
@@ -244,10 +280,19 @@ class ThumbnailManager {
         return;
       }
 
-      const file = await (image.thumbnailHandle ?? image.handle).getFile();
-      const blob = isVideoAsset(image, file)
-        ? await generateVideoThumbnailBlob(file)
-        : await generateThumbnailBlob(file);
+      let blob: Blob | null = null;
+
+      if (typeof window !== 'undefined' && window.electronAPI && !isVideoAsset(image)) {
+        blob = await generateElectronThumbnailBlob(image);
+      }
+
+      if (!blob) {
+        const file = await (image.thumbnailHandle ?? image.handle).getFile();
+        blob = isVideoAsset(image, file)
+          ? await generateVideoThumbnailBlob(file)
+          : await generateThumbnailBlob(file);
+      }
+
       if (!blob) {
         throw new Error('Thumbnail generation failed');
       }

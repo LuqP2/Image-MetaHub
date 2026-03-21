@@ -17,6 +17,7 @@ import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Sq
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -88,6 +89,7 @@ const abbreviatePathForDisplay = (relativePath: string): string => {
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const thumbnail = useResolvedThumbnail(image);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -112,7 +114,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
 
   // Lazy load thumbnails only when visible in viewport
   const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
-    rootMargin: '400px', // Start loading 400px before entering viewport
+    rootMargin: '1200px', // Start loading well ahead of fast scrolling
     freezeOnceVisible: true, // Once loaded, stay loaded
   });
 
@@ -136,8 +138,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (thumbnail?.thumbnailStatus === 'ready' && thumbnail.thumbnailUrl) {
+      setImageUrl(thumbnail.thumbnailUrl);
       return;
     }
 
@@ -149,7 +151,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     let isMounted = true;
     let fallbackUrl: string | null = null;
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = image.thumbnailHandle || image.handle;
+    const fileHandle = thumbnail?.thumbnailHandle || image.handle;
     const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
     const loadFallback = async () => {
@@ -164,17 +166,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         setImageUrl(fallbackUrl);
       } catch (error) {
         if (!isMounted) return;
-        // Only log non-file-not-found errors to reduce console noise
         const errorMessage = error instanceof Error ? error.message : String(error);
         if (isElectron && !errorMessage.includes('Failed to read file')) {
           console.error('Failed to load image:', error);
         }
-        // Set a special marker to indicate load failure
         setImageUrl('ERROR');
       }
     };
 
-    // Debounce heavy fallback fetch; if thumbnail becomes ready meanwhile, this effect will rerun and cancel
     fallbackTimer = setTimeout(() => {
       void loadFallback();
     }, 180);
@@ -188,7 +187,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [image.handle, image.thumbnailHandle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
+  }, [image.handle, thumbnail?.thumbnailHandle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -603,7 +602,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   // Decide what to render based on stacking
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
-
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const columnCountRef = useRef<number>(1);
@@ -1375,6 +1373,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     columnCount={safeColumnCount}
                     columnWidth={imageSize + GAP_SIZE}
                     height={height}
+                    overscanColumnCount={1}
+                    overscanRowCount={4}
                     rowCount={rowCount}
                     rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
                     width={width}

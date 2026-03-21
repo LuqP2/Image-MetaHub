@@ -3,6 +3,7 @@ import { Layers, Lock } from 'lucide-react';
 import { ImageCluster, IndexedImage } from '../types';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 interface StackCardProps {
   cluster: ImageCluster;
@@ -19,6 +20,7 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen, isLocked
   const pendingIndexRef = useRef(0);
 
   const previewImage = images[previewIndex] ?? images[0] ?? null;
+  const thumbnail = useResolvedThumbnail(previewImage);
   useThumbnail(previewImage);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ const StackCard: React.FC<StackCardProps> = ({ cluster, images, onOpen, isLocked
   };
 
   const promptLabel = cluster.basePrompt || previewImage?.prompt || 'Untitled stack';
-  const coverUrl = previewImage?.thumbnailUrl || '';
+  const coverUrl = thumbnail?.thumbnailUrl || '';
   const displayCount = images.length;
   const totalCount = cluster.size;
   const countLabel = displayCount === totalCount ? `${displayCount}` : `${displayCount}/${totalCount}`;

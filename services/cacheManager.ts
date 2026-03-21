@@ -483,7 +483,7 @@ class CacheManager {
     if (!this.isElectron) return null;
     const result = await window.electronAPI.getThumbnail(imageId);
     if (result.success && result.data) {
-      return new Blob([new Uint8Array(result.data)], { type: 'image/webp' });
+      return new Blob([new Uint8Array(result.data)]);
     }
     // Don't log errors for thumbnails that don't exist yet (expected during first load)
     // Only log unexpected errors

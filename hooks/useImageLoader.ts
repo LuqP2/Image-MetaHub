@@ -227,7 +227,7 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -506,6 +506,7 @@ export function useImageLoader() {
                 const isElectron = getIsElectron();
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
+                const hydratedImages: IndexedImage[] = [];
 
                 await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
                     if (!metadataChunk || metadataChunk.length === 0) {
@@ -576,11 +577,14 @@ export function useImageLoader() {
                     totalFilteredOut += chunkImages.length - validImages.length;
 
                     if (validImages.length > 0) {
-                        addImages(validImages);
-                        // Yield to keep UI responsive when loading large caches
-                        await new Promise(resolve => setTimeout(resolve, 0));
+                        hydratedImages.push(...validImages);
                     }
                 });
+
+                if (hydratedImages.length > 0) {
+                    replaceDirectoryImages(directory.id, hydratedImages);
+                    void useImageStore.getState().importMetadataTags(hydratedImages);
+                }
 
                 if (totalFilteredOut > 0) {
                     console.warn(`Filtered out ${totalFilteredOut} cached images that can't be loaded in current environment`);
@@ -594,10 +598,9 @@ export function useImageLoader() {
             error(`Failed to load directory from cache ${directory.name}:`, err);
             // Don't set global error for this, as it's a background process
         }
-    }, [addImages]);
+    }, [replaceDirectoryImages]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
-        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}, refreshPath: ${refreshPath || 'full'}`);
         const suppressIndexingState = isUpdate;
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
@@ -608,7 +611,6 @@ export function useImageLoader() {
             setError(null);
             setSuccess(null);
             setIndexingState('indexing');
-            console.log(`[loadDirectory] State set to 'indexing'`);
         }
 
         // Start performance timer
@@ -730,8 +732,6 @@ export function useImageLoader() {
 
             const totalNewFiles = diff.newAndModifiedFiles.length;
             setProgress({ current: 0, total: totalNewFiles });
-            console.log(`[loadDirectory] Progress set to 0/${totalNewFiles}`);
-
             const sortedFiles = totalNewFiles > 0
                 ? [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified)
                 : [];

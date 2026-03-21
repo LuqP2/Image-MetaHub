@@ -1215,6 +1215,51 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('generate-thumbnail-from-path', async (event, { filePath, maxEdge = 320, quality = 82 }) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
+      }
+
+      let image;
+      if (typeof nativeImage.createThumbnailFromPath === 'function') {
+        image = await nativeImage.createThumbnailFromPath(filePath, {
+          width: maxEdge,
+          height: maxEdge,
+        });
+      } else {
+        image = nativeImage.createFromPath(filePath);
+      }
+
+      if (!image || image.isEmpty()) {
+        return { success: false, error: 'Failed to decode image for thumbnail generation.' };
+      }
+
+      const { width, height } = image.getSize();
+      const safeWidth = Math.max(1, width || maxEdge);
+      const safeHeight = Math.max(1, height || maxEdge);
+      const scale = Math.min(1, maxEdge / Math.max(safeWidth, safeHeight));
+
+      const resizedImage = scale < 1
+        ? image.resize({
+            width: Math.max(1, Math.round(safeWidth * scale)),
+            height: Math.max(1, Math.round(safeHeight * scale)),
+            quality: 'better',
+          })
+        : image;
+
+      const jpegQuality = Math.max(1, Math.min(100, Math.round(quality)));
+      const data = resizedImage.toJPEG(jpegQuality);
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('clear-metadata-cache', async () => {
     try {
       const rootPath = await getCacheRootPath();
