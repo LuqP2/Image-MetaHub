@@ -21,7 +21,10 @@ const electronStorage: StateStorage = {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
       const currentSettings = await window.electronAPI.getSettings();
-      await window.electronAPI.saveSettings({ ...currentSettings, license: state });
+      const result = await window.electronAPI.saveSettings({ ...currentSettings, license: state });
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to persist license settings.');
+      }
     }
   },
   removeItem: async (name: string): Promise<void> => {
