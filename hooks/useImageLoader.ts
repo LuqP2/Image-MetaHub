@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
 import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
+import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -507,6 +508,7 @@ export function useImageLoader() {
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
                 const hydratedImages: IndexedImage[] = [];
+                setProgress({ current: 0, total: cachedData.imageCount });
 
                 await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
                     if (!metadataChunk || metadataChunk.length === 0) {
@@ -575,6 +577,7 @@ export function useImageLoader() {
 
                     totalLoaded += validImages.length;
                     totalFilteredOut += chunkImages.length - validImages.length;
+                    setProgress({ current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
 
                     if (validImages.length > 0) {
                         hydratedImages.push(...validImages);
@@ -584,6 +587,8 @@ export function useImageLoader() {
                 if (hydratedImages.length > 0) {
                     replaceDirectoryImages(directory.id, hydratedImages);
                     void useImageStore.getState().importMetadataTags(hydratedImages);
+                    thumbnailManager.prefetchImages(hydratedImages.slice(0, 36), 'high', { markLoading: false });
+                    thumbnailManager.prefetchImages(hydratedImages.slice(36, 140), 'low', { markLoading: false });
                 }
 
                 if (totalFilteredOut > 0) {
@@ -598,7 +603,7 @@ export function useImageLoader() {
             error(`Failed to load directory from cache ${directory.name}:`, err);
             // Don't set global error for this, as it's a background process
         }
-    }, [replaceDirectoryImages]);
+    }, [replaceDirectoryImages, setProgress]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
         const suppressIndexingState = isUpdate;
@@ -981,7 +986,6 @@ export function useImageLoader() {
                     // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
 
-                    setLoading(false);
                     const hydrateInBackground = async () => {
                         // Update allowed paths BEFORE loading from cache to avoid security violations
                         const allPaths = useImageStore.getState().directories.map(d => d.path);
@@ -995,13 +999,14 @@ export function useImageLoader() {
                         setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
                     };
 
-                    void hydrateInBackground();
+                    await hydrateInBackground();
 
                     return;
                 } catch (e) {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");
                 } finally {
+                    setProgress(null);
                     setLoading(false);
                 }
             } else {

@@ -163,6 +163,7 @@ type ThumbnailJob = {
   image: IndexedImage;
   token: number;
   priority: 'high' | 'low';
+  markLoading: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
 };
@@ -175,7 +176,37 @@ class ThumbnailManager {
   private requestTokens = new Map<string, number>();
   private requestCounter = 0;
 
-  async ensureThumbnail(image: IndexedImage, priority: 'high' | 'low' = 'high'): Promise<void> {
+  prefetchImages(
+    images: IndexedImage[],
+    priority: 'high' | 'low' = 'low',
+    options: { markLoading?: boolean } = {}
+  ): void {
+    if (!images || images.length === 0) {
+      return;
+    }
+
+    const deduped = new Map<string, IndexedImage>();
+    for (const image of images) {
+      if (!image?.id || deduped.has(image.id)) {
+        continue;
+      }
+      deduped.set(image.id, image);
+    }
+
+    for (const image of deduped.values()) {
+      void this.ensureThumbnail(image, priority, {
+        markLoading: options.markLoading ?? false,
+      }).catch(() => {
+        // Background warmup should stay silent; visible requests will retry with UI feedback.
+      });
+    }
+  }
+
+  async ensureThumbnail(
+    image: IndexedImage,
+    priority: 'high' | 'low' = 'high',
+    options: { markLoading?: boolean } = {}
+  ): Promise<void> {
     if (!image || !image.id) {
       return;
     }
@@ -190,7 +221,16 @@ class ThumbnailManager {
     }
 
     const existing = this.inflight.get(image.id);
-    if (activeEntry?.thumbnailStatus === 'loading' && existing) {
+    if (existing) {
+      const queuedIndex = this.queue.findIndex(job => job.image.id === image.id);
+      if (queuedIndex !== -1 && priority === 'high') {
+        const [queuedJob] = this.queue.splice(queuedIndex, 1);
+        if (queuedJob) {
+          queuedJob.priority = 'high';
+          queuedJob.markLoading = queuedJob.markLoading || (options.markLoading ?? true);
+          this.queue.unshift(queuedJob);
+        }
+      }
       return existing;
     }
 
@@ -199,7 +239,14 @@ class ThumbnailManager {
     this.dropQueuedJobs(image.id);
 
     const promise = new Promise<void>((resolve, reject) => {
-      const job: ThumbnailJob = { image, token, priority, resolve, reject };
+      const job: ThumbnailJob = {
+        image,
+        token,
+        priority,
+        markLoading: options.markLoading ?? true,
+        resolve,
+        reject,
+      };
       if (priority === 'high') {
         this.queue.unshift(job);
       } else {
@@ -240,7 +287,7 @@ class ThumbnailManager {
 
       this.activeWorkers++;
 
-      this.loadThumbnail(job.image, job.token)
+      this.loadThumbnail(job.image, job.token, job.markLoading)
         .then(() => job.resolve())
         .catch((err) => job.reject(err))
         .finally(() => {
@@ -254,14 +301,16 @@ class ThumbnailManager {
     }
   }
 
-  private async loadThumbnail(image: IndexedImage, token: number): Promise<void> {
+  private async loadThumbnail(image: IndexedImage, token: number, markLoading: boolean): Promise<void> {
     const setImageThumbnail = useImageStore.getState().setImageThumbnail;
     const setSafe = (payload: { status: 'loading' | 'ready' | 'error'; thumbnailUrl?: string | null; error?: string | null }) => {
       if (this.isStale(image.id, token)) return;
       setImageThumbnail(image.id, payload);
     };
 
-    setSafe({ status: 'loading' });
+    if (markLoading) {
+      setSafe({ status: 'loading' });
+    }
 
     try {
       if (image.thumbnailUrl) {

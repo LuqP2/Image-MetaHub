@@ -27,6 +27,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
+import { thumbnailManager } from '../services/thumbnailManager';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -85,6 +86,29 @@ const abbreviatePathForDisplay = (relativePath: string): string => {
   const fileName = segments[segments.length - 1];
   const firstFolder = segments[0];
   return `${firstFolder}/.../${fileName}`;
+};
+
+const getWarmupImage = (item: IndexedImage | ImageStack): IndexedImage =>
+  isImageStack(item) ? item.coverImage : item;
+
+const collectWarmupImages = (
+  items: (IndexedImage | ImageStack)[],
+  startIndex: number,
+  endIndex: number
+): IndexedImage[] => {
+  if (items.length === 0 || endIndex < startIndex) {
+    return [];
+  }
+
+  const safeStart = Math.max(0, startIndex);
+  const safeEnd = Math.min(items.length - 1, endIndex);
+  const images: IndexedImage[] = [];
+
+  for (let index = safeStart; index <= safeEnd; index++) {
+    images.push(getWarmupImage(items[index]));
+  }
+
+  return images;
 };
 
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
@@ -148,46 +172,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
       return;
     }
 
-    let isMounted = true;
-    let fallbackUrl: string | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = thumbnail?.thumbnailHandle || image.handle;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
+    if (thumbnail?.thumbnailStatus === 'error') {
+      setImageUrl('ERROR');
+      return;
+    }
 
-    const loadFallback = async () => {
-      if (!fileHandle || typeof fileHandle.getFile !== 'function') {
-        return;
-      }
-
-      try {
-        const file = await fileHandle.getFile();
-        if (!isMounted) return;
-        fallbackUrl = URL.createObjectURL(file);
-        setImageUrl(fallbackUrl);
-      } catch (error) {
-        if (!isMounted) return;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (isElectron && !errorMessage.includes('Failed to read file')) {
-          console.error('Failed to load image:', error);
-        }
-        setImageUrl('ERROR');
-      }
-    };
-
-    fallbackTimer = setTimeout(() => {
-      void loadFallback();
-    }, 180);
-
-    return () => {
-      isMounted = false;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-      }
-      if (fallbackUrl && fallbackUrl !== 'ERROR') {
-        URL.revokeObjectURL(fallbackUrl);
-      }
-    };
-  }, [image.handle, thumbnail?.thumbnailHandle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
+    setImageUrl(null);
+  }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -343,7 +334,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
               <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <p className="text-xs">File not found</p>
+              <p className="text-xs">Preview unavailable</p>
             </div>
           </div>
         ) : imageUrl ? (
@@ -605,6 +596,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const columnCountRef = useRef<number>(1);
+  const lastWarmupWindowRef = useRef<string>('');
 
   // Missing state restored
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
@@ -1306,6 +1298,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     }
   }, [setStackingEnabled, setViewingStackPrompt]);
 
+  useEffect(() => {
+    lastWarmupWindowRef.current = '';
+  }, [itemsToRender]);
+
+  useEffect(() => {
+    if (isInfinite || itemsToRender.length === 0) {
+      return;
+    }
+
+    const primaryImages = collectWarmupImages(itemsToRender, 0, Math.min(itemsToRender.length - 1, 35));
+    const secondaryImages = collectWarmupImages(itemsToRender, 36, Math.min(itemsToRender.length - 1, 119));
+
+    thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
+    thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
+  }, [isInfinite, itemsToRender]);
+
   // Use itemsToRender for calculations
   // const isInfinite = itemsPerPage === -1; // Moved to top
   const isEmpty = itemsToRender.length === 0;
@@ -1383,6 +1391,29 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     itemData={cellData}
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
+                    onItemsRendered={({ visibleColumnStartIndex, visibleColumnStopIndex, visibleRowStartIndex, visibleRowStopIndex, overscanRowStopIndex }) => {
+                      const visibleStartIndex = (visibleRowStartIndex * safeColumnCount) + visibleColumnStartIndex;
+                      const visibleStopIndex = Math.min(
+                        itemsToRender.length - 1,
+                        (visibleRowStopIndex * safeColumnCount) + visibleColumnStopIndex
+                      );
+                      const aheadStopIndex = Math.min(
+                        itemsToRender.length - 1,
+                        (((overscanRowStopIndex + 4) * safeColumnCount) - 1)
+                      );
+                      const windowKey = `${visibleStartIndex}:${visibleStopIndex}:${aheadStopIndex}:${itemsToRender.length}:${safeColumnCount}`;
+
+                      if (lastWarmupWindowRef.current === windowKey) {
+                        return;
+                      }
+                      lastWarmupWindowRef.current = windowKey;
+
+                      const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
+                      const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
+
+                      thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
+                      thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
+                    }}
                   >
                     {Cell}
                   </Grid>

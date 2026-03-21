@@ -42,6 +42,7 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
+import Loader from './components/Loader';
 
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
@@ -657,6 +658,12 @@ export default function App() {
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const hasActiveDirectoryRefresh = refreshingDirectories.size > 0;
+  const shouldShowLibraryLoader =
+    libraryView === 'library' &&
+    selectionTotalImages === 0 &&
+    safeFilteredImages.length === 0 &&
+    (isLoading || indexingState === 'indexing' || hasActiveDirectoryRefresh);
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
@@ -834,7 +841,9 @@ export default function App() {
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
-                  viewMode === 'grid' ? (
+                  shouldShowLibraryLoader ? (
+                    <Loader progress={progress} />
+                  ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
                           onImageClick={handleImageSelection}

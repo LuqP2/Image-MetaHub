@@ -413,48 +413,14 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    let isMounted = true;
-    let fallbackUrl: string | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = thumbnail?.thumbnailHandle || image.handle;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-
-    if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+    if (thumbnail?.thumbnailStatus === 'error') {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }
 
-    const loadFallback = async () => {
-      setIsLoading(true);
-      try {
-        const file = await fileHandle.getFile();
-        if (!isMounted) return;
-        fallbackUrl = URL.createObjectURL(file);
-        setImageUrl(fallbackUrl);
-      } catch (error) {
-        if (isElectron) {
-          console.error('Failed to load image:', error);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fallbackTimer = setTimeout(() => {
-      void loadFallback();
-    }, 180);
-
-    return () => {
-      isMounted = false;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-      }
-      if (fallbackUrl) {
-        URL.revokeObjectURL(fallbackUrl);
-      }
-    };
+    setImageUrl(null);
+    setIsLoading(true);
   }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {

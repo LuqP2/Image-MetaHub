@@ -6,17 +6,11 @@ import { useImageStore } from '../store/useImageStore';
 
 export function useThumbnail(image: IndexedImage | null): void {
   const disableThumbnails = useSettingsStore((state) => state.disableThumbnails);
-  const indexingState = useImageStore((state) => state.indexingState);
-  const isIndexingRef = useRef(indexingState === 'indexing');
   const loadingRef = useRef<Set<string>>(new Set());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update ref without triggering effects
-  isIndexingRef.current = indexingState === 'indexing';
-
   useEffect(() => {
-    // Don't load thumbnails during indexing to avoid infinite loops
-    if (disableThumbnails || !image || isIndexingRef.current) {
+    if (disableThumbnails || !image) {
       return;
     }
 
@@ -72,4 +66,3 @@ export function useThumbnail(image: IndexedImage | null): void {
     };
   }, [image?.id, image?.lastModified, image?.thumbnailStatus, disableThumbnails]);
 }
-
