@@ -499,7 +499,15 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
     );
   }
 
-  return false;
+  return Object.entries(metadata as Record<string, any>).some(([key, value]) =>
+    key !== 'extra' &&
+    key !== 'extraMetadata' &&
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'class_type' in value &&
+    'inputs' in value
+  );
 }
 
 export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';

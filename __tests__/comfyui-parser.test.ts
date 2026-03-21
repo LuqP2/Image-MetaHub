@@ -44,13 +44,13 @@ describe('ComfyUI Parser - Prompt Sources', () => {
     const fixture = loadFixture('primitive-string-multiline.json');
     const result = resolvePromptFromGraph(fixture.workflow, fixture.prompt);
 
-    expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes');
+    expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes.');
     expect(result._telemetry.unknown_nodes_count).toBe(0);
   });
 });
 
 describe('ComfyUI Parser - Detection from capitalized string keys', () => {
-  it('should detect ComfyUI when Prompt/Workflow are capitalized and stringified', () => {
+  it('should detect ComfyUI when Prompt/Workflow are capitalized and stringified', async () => {
     const fixture = loadFixture('primitive-string-multiline.json');
     const metadata: any = {
       Prompt: JSON.stringify(fixture.prompt),
@@ -58,11 +58,82 @@ describe('ComfyUI Parser - Detection from capitalized string keys', () => {
       parameters: '' // present but should not force A1111 path
     };
 
-    const result = parseImageMetadata(metadata)!;
+    const result = await parseImageMetadata(metadata);
 
-    expect(result.generator).toBe('ComfyUI');
-    expect(result.prompt).toContain('Visualize a long, eel-like mutant lizard');
-    expect(result.prompt).toContain('fossilized ocean desert');
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toContain('Visualize a long, eel-like mutant lizard');
+    expect(result?.prompt).toContain('fossilized ocean desert');
+  });
+});
+
+describe('ComfyUI Parser - Prompt-only graph payloads', () => {
+  it('should detect and parse Civitai-style prompt-only graph metadata with smZ CLIPTextEncode', async () => {
+    const metadata: any = {
+      'resource-stack': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'urn:air:sdxl:checkpoint:civitai:140272@2010753'
+        }
+      },
+      'resource-stack-1': {
+        class_type: 'LoraLoader',
+        inputs: {
+          lora_name: 'urn:air:sdxl:lora:civitai:1280702@1444863',
+          strength_model: -0.65,
+          strength_clip: 1,
+          model: ['resource-stack', 0],
+          clip: ['resource-stack', 1]
+        }
+      },
+      '6': {
+        class_type: 'smZ CLIPTextEncode',
+        inputs: {
+          text: 'mechanical girl in ruins',
+          clip: ['resource-stack-1', 1]
+        }
+      },
+      '7': {
+        class_type: 'smZ CLIPTextEncode',
+        inputs: {
+          text: 'photo, realistic',
+          clip: ['resource-stack-1', 1]
+        }
+      },
+      '11': {
+        class_type: 'KSampler',
+        inputs: {
+          sampler_name: 'euler_ancestral',
+          scheduler: 'normal',
+          seed: 1043951494,
+          steps: 19,
+          cfg: 7,
+          denoise: 0.2,
+          model: ['resource-stack-1', 0],
+          positive: ['6', 0],
+          negative: ['7', 0]
+        }
+      },
+      extra: {
+        airs: [
+          'urn:air:sdxl:checkpoint:civitai:140272@2010753',
+          'urn:air:sdxl:lora:civitai:1280702@1444863'
+        ]
+      },
+      extraMetadata: '{"workflowId":"img2img-hires"}'
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result).not.toBeNull();
+    expect(result?.generator).toBe('ComfyUI');
+    expect(result?.prompt).toBe('mechanical girl in ruins');
+    expect(result?.negativePrompt).toBe('photo, realistic');
+    expect(result?.model).toBe('urn:air:sdxl:checkpoint:civitai:140272@2010753');
+    expect(result?.seed).toBe(1043951494);
+    expect(result?.steps).toBe(19);
+    expect(result?.cfg_scale).toBe(7);
+    expect(result?.sampler).toBe('euler_ancestral');
+    expect(result?.loras).toContain('urn:air:sdxl:lora:civitai:1280702@1444863');
   });
 });
 

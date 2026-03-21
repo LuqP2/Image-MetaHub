@@ -560,7 +560,7 @@ const ImagePreviewSidebar: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Steps" value={nMeta.steps} />
-                  <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                  <MetadataItem label="CFG Scale" value={nMeta.cfgScale ?? nMeta.cfg_scale} />
                   <MetadataItem label="Seed" value={nMeta.seed} />
                   <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}x${nMeta.height}` : undefined} />
                   <MetadataItem label="Sampler" value={nMeta.sampler} />

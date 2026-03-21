@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Search Filter**: Fixed a bug where pressing the ESC key to close the image modal would also inadvertently clear the active search filter text.
 - **Settings**: Fixed a critical bug where `settings.json` could become corrupted on exit, causing user preferences (like disabling auto-updates) to reset to defaults on the next launch. Implemented atomic file saves to guarantee settings integrity.
 - **Auto-Updater**: Fixed an issue where background update checks would display an intrusive error dialog if the internet was disconnected or blocked by a firewall. Also prevented cached update dialogs from appearing when the auto-update setting is disabled.
+- **Draw Things**: Fixed missing LoRA weights and parsing issues for recent Draw Things metadata formats.
+- **Metadata Display**: Fixed inconsistent CFG scale display for some parsed images by normalizing both `cfgScale` and `cfg_scale` metadata field variants.
+- **Library Grid**: Fixed filename labels being overlapped by thumbnails below them when "Show filenames under thumbnails" was enabled.
+- **Display Settings**: Fixed "Show full file path" so it now displays the actual full image path in both grid and list views, with safer truncation for long paths in the grid.
 
 ## [0.13.1] - 2026-03-16
 

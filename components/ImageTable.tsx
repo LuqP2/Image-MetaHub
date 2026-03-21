@@ -28,6 +28,26 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+};
+
+const joinDisplayPath = (basePath: string, relativePath: string): string => {
+  const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
+  const normalizedRelative = (relativePath || '').replace(/\\/g, '/').replace(/^[/\\]+/, '');
+
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  if (!normalizedRelative) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}/${normalizedRelative}`;
+};
+
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -362,8 +382,14 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
+  const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const relativeImagePath = getRelativeImagePath(image);
+  const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
+  const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
+  const displayName = showFullFilePath ? fullImagePath : image.handle.name;
 
   useThumbnail(image);
 
@@ -476,8 +502,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
           )}
         </div>
       </div>
-      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={image.handle.name}>
-        {image.handle.name}
+      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={displayName}>
+        {displayName}
       </div>
       <div className="px-3 py-2 text-gray-400 truncate" title={image.models?.[0] || 'Unknown'}>
         {image.models?.[0] || <span className="text-gray-600">Unknown</span>}

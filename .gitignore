@@ -63,3 +63,11 @@ services/parsers/comfyui/workflows/pikachu.json
 IMPLEMENTATION_NOTES.md
 nul
 image-metahub.code-workspace
+packages/license-server/data/license-db.json
+packages/license-server/data/license-db.sqlite
+packages/license-server/data/license-private.pem
+packages/license-server/data/license-public.pem
+packages/license-server/data/test-sqlite-relative.db
+packages/license-server/data/test-sqlite-relative.db-journal
+packages/license-server/data/test-sqlite.db
+packages/license-server/data/test-sqlite.db-journal
