@@ -423,6 +423,7 @@ function createApplicationMenu() {
                 isManualUpdateCheck = true;
                 await autoUpdater.checkForUpdates();
               } catch (error) {
+                isManualUpdateCheck = false;
                 console.error('Error checking for updates:', error);
                 if (mainWindow) {
                   dialog.showMessageBox(mainWindow, {
@@ -593,6 +594,7 @@ if (autoUpdater) {
         if (result.response === 0) {
           // User chose to download - START DOWNLOAD NOW
           console.log('User accepted update download - starting download...');
+          isManualUpdateCheck = true;
           autoUpdater.downloadUpdate();
         } else if (result.response === 1) {
           // User chose "Download Later"
