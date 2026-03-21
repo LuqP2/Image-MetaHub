@@ -661,9 +661,8 @@ export default function App() {
   const hasActiveDirectoryRefresh = refreshingDirectories.size > 0;
   const shouldShowLibraryLoader =
     libraryView === 'library' &&
-    selectionTotalImages === 0 &&
     safeFilteredImages.length === 0 &&
-    (isLoading || indexingState === 'indexing' || hasActiveDirectoryRefresh);
+    (isLoading || indexingState === 'indexing' || hasActiveDirectoryRefresh || progress !== null);
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">

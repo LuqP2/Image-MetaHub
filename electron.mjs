@@ -38,6 +38,7 @@ function getIconPath() {
 
 const execFileAsync = promisify(execFile);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+const FILE_STAT_CONCURRENCY = 64;
 
 const getMimeTypeFromName = (name) => {
   const lower = name.toLowerCase();
@@ -892,37 +893,76 @@ app.whenReady().then(async () => {
 const allowedDirectoryPaths = new Set();
 
 // Helper function for recursive file search
-async function getFilesRecursively(directory, baseDirectory) {
-    const files = [];
-    try {
-        const entries = await fs.readdir(directory, { withFileTypes: true });
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = [];
+  let index = 0;
 
-        for (const entry of entries) {
-            const fullPath = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                files.push(...await getFilesRecursively(fullPath, baseDirectory));
-            } else if (entry.isFile()) {
-                const lowerName = entry.name.toLowerCase();
-                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
-                const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
-                if (isImage || isVideo) {
-                    const stats = await fs.stat(fullPath);
-                    const fileType = getMimeTypeFromName(lowerName);
-                    files.push({
-                        name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-                        lastModified: stats.birthtimeMs,
-                        size: stats.size,
-                        type: fileType,
-                        birthtimeMs: stats.birthtimeMs,
-                    });
-                }
-            }
-        }
-    } catch (error) {
-        // Ignore errors from directories we can't read, e.g. permissions
-        console.warn(`Could not read directory ${directory}: ${error.message}`);
+  const worker = async () => {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
     }
-    return files;
+  };
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+async function statMediaEntries(directory, entries, baseDirectory) {
+  const mediaEntries = entries.filter((entry) => {
+    if (!entry.isFile()) {
+      return false;
+    }
+    const lowerName = entry.name.toLowerCase();
+    const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
+    const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
+    return isImage || isVideo;
+  });
+
+  const fileRecords = await mapWithConcurrency(mediaEntries, FILE_STAT_CONCURRENCY, async (entry) => {
+    const lowerName = entry.name.toLowerCase();
+    const fullPath = path.join(directory, entry.name);
+    const stats = await fs.stat(fullPath);
+    return {
+      name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
+      lastModified: stats.birthtimeMs,
+      size: stats.size,
+      type: getMimeTypeFromName(lowerName),
+      birthtimeMs: stats.birthtimeMs,
+    };
+  });
+
+  return fileRecords.filter(Boolean);
+}
+
+async function getFilesRecursively(directory, baseDirectory) {
+  const files = [];
+  const directoriesToVisit = [directory];
+
+  while (directoriesToVisit.length > 0) {
+    const currentDirectory = directoriesToVisit.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    try {
+      const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          directoriesToVisit.push(path.join(currentDirectory, entry.name));
+        }
+      }
+
+      const fileRecords = await statMediaEntries(currentDirectory, entries, baseDirectory);
+      files.push(...fileRecords);
+    } catch (error) {
+      // Ignore errors from directories we can't read, e.g. permissions
+      console.warn(`Could not read directory ${currentDirectory}: ${error.message}`);
+    }
+  }
+
+  return files;
 }
 
 function setupFileOperationHandlers() {
@@ -1620,33 +1660,18 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory path provided' };
       }
 
+      const scanStart = Date.now();
+
       let imageFiles = [];
 
       if (recursive) {
         imageFiles = await getFilesRecursively(dirPath, dirPath);
       } else {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const file of files) {
-            if (file.isFile()) {
-              const name = file.name.toLowerCase();
-              const isImage = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
-              const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => name.endsWith(ext));
-              if (isImage || isVideo) {
-                const filePath = path.join(dirPath, file.name);
-                const stats = await fs.stat(filePath);
-                const fileType = getMimeTypeFromName(name);
-                imageFiles.push({
-                  name: file.name, // name is already relative for top-level
-                  lastModified: stats.birthtimeMs,
-                  size: stats.size,
-                  type: fileType,
-                  birthtimeMs: stats.birthtimeMs,
-                });
-              }
-            }
-        }
+        imageFiles = await statMediaEntries(dirPath, files, dirPath);
       }
+
+      console.log(`[list-directory-files] ${dirPath} (${recursive ? 'recursive' : 'flat'}) -> ${imageFiles.length} files in ${((Date.now() - scanStart) / 1000).toFixed(2)}s`);
 
       return { success: true, files: imageFiles };
     } catch (error) {
