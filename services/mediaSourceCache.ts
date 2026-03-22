@@ -1,10 +1,15 @@
 import { IndexedImage } from '../types';
+import { thumbnailManager } from './thumbnailManager';
 
 type CacheEntry = {
   url: string;
   loading?: Promise<string>;
   lastAccess: number;
   revokeOnEvict: boolean;
+};
+
+type MediaSourceLoadOptions = {
+  prioritize?: boolean;
 };
 
 const MAX_CACHE_ENTRIES = 12;
@@ -58,7 +63,11 @@ export const getRelativeImagePath = (image: IndexedImage): string => {
 class MediaSourceCache {
   private entries = new Map<string, CacheEntry>();
 
-  async getOrLoad(image: IndexedImage, directoryPath?: string): Promise<string> {
+  async getOrLoad(
+    image: IndexedImage,
+    directoryPath?: string,
+    options: MediaSourceLoadOptions = {}
+  ): Promise<string> {
     const cacheKey = this.getCacheKey(image, directoryPath);
     const existing = this.entries.get(cacheKey);
 
@@ -70,6 +79,10 @@ class MediaSourceCache {
     if (existing?.loading) {
       return existing.loading;
     }
+
+    const releaseBackgroundPause = options.prioritize
+      ? thumbnailManager.pauseBackgroundWork()
+      : null;
 
     const loading = this.loadSource(image, directoryPath)
       .then(({ url, revoke }) => {
@@ -84,6 +97,9 @@ class MediaSourceCache {
       .catch((error) => {
         this.entries.delete(cacheKey);
         throw error;
+      })
+      .finally(() => {
+        releaseBackgroundPause?.();
       });
 
     this.entries.set(cacheKey, {

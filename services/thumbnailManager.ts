@@ -181,6 +181,21 @@ class ThumbnailManager {
   private requestCounter = 0;
   private warmupTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private warmupTokens = new Map<string, number>();
+  private backgroundPauseCount = 0;
+
+  pauseBackgroundWork(): () => void {
+    this.backgroundPauseCount++;
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.backgroundPauseCount = Math.max(0, this.backgroundPauseCount - 1);
+      this.processQueues();
+    };
+  }
 
   scheduleWarmup(
     scopeKey: string,
@@ -218,6 +233,12 @@ class ThumbnailManager {
 
     const runChunk = () => {
       if (this.warmupTokens.get(scopeKey) !== nextToken) {
+        return;
+      }
+
+      if (this.backgroundPauseCount > 0) {
+        const timer = setTimeout(runChunk, Math.max(delayMs, 50));
+        this.warmupTimers.set(scopeKey, timer);
         return;
       }
 
@@ -379,6 +400,7 @@ class ThumbnailManager {
     }
 
     while (
+      this.backgroundPauseCount === 0 &&
       this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
       this.activeBackgroundWorkers < MAX_CONCURRENT_BACKGROUND_THUMBNAILS &&
       this.backgroundQueue.length > 0

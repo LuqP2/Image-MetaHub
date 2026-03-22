@@ -763,7 +763,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
 
       try {
-        const url = await mediaSourceCache.getOrLoad(image, directoryPath);
+        const url = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
         if (isMounted) {
           setImageUrl(url);
         }
