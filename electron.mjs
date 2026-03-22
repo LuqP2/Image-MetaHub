@@ -2176,6 +2176,13 @@ function setupFileOperationHandlers() {
             continue;
           }
 
+          if (path.normalize(file.directoryPath) === path.normalize(destDir)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
           const baseName = path.basename(file.relativePath);
           const { candidate, candidatePath } = await getUniqueDestinationPath(destDir, baseName, usedNames);
 

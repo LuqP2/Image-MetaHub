@@ -26,6 +26,15 @@ interface ElectronFileHandle extends FileSystemFileHandle {
   _filePath?: string;
 }
 
+function getRelativeImagePath(image: IndexedImage): string {
+  if (!image?.id) {
+    return image?.name ?? '';
+  }
+
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+}
+
 function createMockFileHandle(fileName: string, absolutePath: string): FileSystemFileHandle {
   return {
     name: fileName,
@@ -102,12 +111,25 @@ export async function transferIndexedImages({
     };
   }
 
-  const sourceFiles = images
+  const sourceDescriptors = images
     .filter((image) => image.directoryId)
-    .map((image) => ({
-      directoryPath: image.directoryId!,
-      relativePath: image.name,
-    }));
+    .map((image) => {
+      const directoryPath = image.directoryId!;
+      const relativePath = getRelativeImagePath(image);
+
+      return {
+        image,
+        directoryPath,
+        relativePath,
+        sourceKey: `${directoryPath}::${relativePath}`,
+      };
+    })
+    .filter((entry) => entry.relativePath);
+
+  const sourceFiles = sourceDescriptors.map(({ directoryPath, relativePath }) => ({
+    directoryPath,
+    relativePath,
+  }));
 
   if (!sourceFiles.length) {
     const error = 'Selected images are missing source folder data.';
@@ -139,7 +161,7 @@ export async function transferIndexedImages({
   }
 
   const sourceByPath = new Map(
-    images.map((image) => [`${image.directoryId}::${image.name}`, image]),
+    sourceDescriptors.map(({ sourceKey, image }) => [sourceKey, image]),
   );
   const annotationsMap = new Map(useImageStore.getState().annotations);
 
