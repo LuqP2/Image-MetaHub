@@ -2026,8 +2026,8 @@ export async function processFiles(
     return { phaseB: Promise.resolve() };
   }
 
-  const nextPhaseBLogInitial = 500;
-  const nextPhaseBLogStep = 1000;
+  const nextPhaseBLogInitial = 2000;
+  const nextPhaseBLogStep = 5000;
   const phaseBLogIntervalMs = 60_000;
   let nextPhaseBLog = nextPhaseBLogInitial;
   let lastPhaseBLogTime = 0;
@@ -2043,14 +2043,12 @@ export async function processFiles(
   );
 
   const runEnrichmentPhase = async () => {
-    console.log(`[indexing] Starting Phase B with ${totalEnrichment} images to enrich`);
     phaseBStats.startTime = performance.now();
     lastPhaseBLogTime = phaseBStats.startTime;
     performance.mark('indexing:phaseB:start');
 
     const queue = [...needsEnrichment];
     throttledEnrichmentProgress({ processed: 0, total: totalEnrichment });
-    console.log(`[indexing] Phase B progress initialized: 0/${totalEnrichment}`);
     const resultsBatch: IndexedImage[] = [];
     const touchedChunks = new Set<number>();
     const DIRTY_CHUNK_FLUSH_THRESHOLD = 12;
@@ -2080,23 +2078,26 @@ export async function processFiles(
         console.log('[indexing]', {
           phase: 'B',
           files: phaseBStats.processed,
-          ipc_calls: phaseBStats.ipcCalls,
-          writes: phaseBStats.diskWrites,
-          bytes_written: phaseBStats.bytesWritten,
           avg_ms_per_file: Number(avg.toFixed(2)),
-          flush_avg_ms: Number(flushAvgMs.toFixed(2)),
-          head_read_files: phaseBStats.headReadFiles,
+          ipc_calls: phaseBStats.ipcCalls,
           head_read_avg_ms: Number(headReadAvgMs.toFixed(2)),
-          tail_read_files: phaseBStats.tailReadFiles,
-          tail_read_hits: phaseBStats.tailReadHits,
-          tail_read_avg_ms: Number(tailReadAvgMs.toFixed(2)),
-          full_read_files: phaseBStats.fullReadFiles,
           full_read_avg_ms: Number(fullReadAvgMs.toFixed(2)),
-          profile_samples: profileSamples,
           profile_avg_total_ms: Number(profileAvgTotal.toFixed(2)),
           profile_avg_parse_ms: Number(profileAvgParse.toFixed(2)),
           profile_avg_normalize_ms: Number(profileAvgNormalize.toFixed(2)),
           profile_avg_dimensions_ms: Number(profileAvgDimensions.toFixed(2)),
+          flush_avg_ms: Number(flushAvgMs.toFixed(2)),
+          ...(phaseBStats.tailReadHits > 0
+            ? {
+                tail_read_hits: phaseBStats.tailReadHits,
+                tail_read_avg_ms: Number(tailReadAvgMs.toFixed(2)),
+              }
+            : {}),
+          ...(phaseBStats.fullReadFiles > 0
+            ? {
+                full_read_files: phaseBStats.fullReadFiles,
+              }
+            : {}),
         });
 
         if (shouldLogCount) {
@@ -2404,9 +2405,6 @@ export async function processFiles(
           : await (window as any).electronAPI.readFilesBatch(filePaths);
         const readDuration = performance.now() - readStart;
 
-        if (readResult.debug) {
-            console.log('[Phase B Debug] Batch Stats:', readResult.debug);
-        }
         if (useHeadRead) {
           phaseBStats.headReadFiles += filePaths.length;
           phaseBStats.headReadMs += readDuration;
