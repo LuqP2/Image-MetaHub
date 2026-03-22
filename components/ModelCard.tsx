@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Box } from 'lucide-react';
 import { IndexedImage } from '../types';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 interface ModelCardProps {
   modelName: string;
@@ -17,6 +18,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
   const pendingIndexRef = useRef(0);
 
   const previewImage = images[previewIndex] ?? images[0] ?? null;
+  const thumbnail = useResolvedThumbnail(previewImage);
   
   // Use the hook to load the thumbnail handling changes in previewImage
   useThumbnail(previewImage);
@@ -53,7 +55,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
     updatePreviewIndex(0);
   };
 
-  const coverUrl = previewImage?.thumbnailUrl || '';
+  const coverUrl = thumbnail?.thumbnailUrl || '';
 
   return (
     <button
