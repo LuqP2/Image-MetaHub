@@ -69,6 +69,7 @@ export default function App() {
   const progress = useImageStore((state) => state.progress);
   const indexingState = useImageStore((state) => state.indexingState);
   const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
+  const directoryProgress = useImageStore((state) => state.directoryProgress);
 
   // Status selectors
   const error = useImageStore((state) => state.error);
@@ -657,6 +658,11 @@ export default function App() {
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const hasAnyDirectoryProgress = Object.keys(directoryProgress).length > 0;
+  const shouldShowLibraryPlaceholder =
+    libraryView === 'library' &&
+    safeFilteredImages.length === 0 &&
+    hasAnyDirectoryProgress;
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
@@ -735,6 +741,7 @@ export default function App() {
             onRemoveDirectory={handleRemoveDirectory}
             onUpdateDirectory={handleUpdateFolder}
             refreshingDirectories={refreshingDirectories}
+            directoryProgress={directoryProgress}
             onToggleFolderSelection={toggleFolderSelection}
             onClearFolderSelection={clearFolderSelection}
             isFolderSelected={isFolderSelected}
@@ -834,7 +841,11 @@ export default function App() {
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
-                  viewMode === 'grid' ? (
+                  shouldShowLibraryPlaceholder ? (
+                    <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                      Loading folder...
+                    </div>
+                  ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
                           onImageClick={handleImageSelection}

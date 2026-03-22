@@ -7,6 +7,7 @@ import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -53,7 +54,6 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
-
   const {
     contextMenu,
     showContextMenu,
@@ -381,6 +381,7 @@ interface ImageTableRowProps {
 const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const thumbnail = useResolvedThumbnail(image);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
@@ -400,8 +401,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (thumbnail?.thumbnailStatus === 'ready' && thumbnail.thumbnailUrl) {
+      setImageUrl(thumbnail.thumbnailUrl);
       setIsLoading(false);
       return;
     }
@@ -412,49 +413,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    let isMounted = true;
-    let fallbackUrl: string | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = image.thumbnailHandle || image.handle;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-
-    if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+    if (thumbnail?.thumbnailStatus === 'error') {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }
 
-    const loadFallback = async () => {
-      setIsLoading(true);
-      try {
-        const file = await fileHandle.getFile();
-        if (!isMounted) return;
-        fallbackUrl = URL.createObjectURL(file);
-        setImageUrl(fallbackUrl);
-      } catch (error) {
-        if (isElectron) {
-          console.error('Failed to load image:', error);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fallbackTimer = setTimeout(() => {
-      void loadFallback();
-    }, 180);
-
-    return () => {
-      isMounted = false;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-      }
-      if (fallbackUrl) {
-        URL.revokeObjectURL(fallbackUrl);
-      }
-    };
-  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
+    setImageUrl(null);
+    setIsLoading(true);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();

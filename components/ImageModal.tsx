@@ -14,6 +14,8 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+import { mediaSourceCache } from '../services/mediaSourceCache';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
@@ -133,47 +135,6 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   }
   const lower = fileName.toLowerCase();
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
-
-const resolveImageMimeType = (fileName: string): string => {
-  const lowerName = fileName.toLowerCase();
-  if (lowerName.endsWith('.mp4')) return 'video/mp4';
-  if (lowerName.endsWith('.webm')) return 'video/webm';
-  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
-  if (lowerName.endsWith('.mov')) return 'video/quicktime';
-  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
-  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
-  if (lowerName.endsWith('.webp')) return 'image/webp';
-  if (lowerName.endsWith('.gif')) return 'image/gif';
-  return 'image/png';
-};
-
-const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
-  const mimeType = resolveImageMimeType(fileName);
-
-  if (typeof data === 'string') {
-    return { url: `data:${mimeType};base64,${data}`, revoke: false };
-  }
-
-  if (data instanceof ArrayBuffer) {
-    const blob = new Blob([data], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const safeView = new Uint8Array(view);
-    const blob = new Blob([safeView], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
-    const view = new Uint8Array((data as { data: number[] }).data);
-    const blob = new Blob([view], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  throw new Error('Unknown file data format.');
 };
 
 // Helper component for consistently rendering metadata items
@@ -457,11 +418,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     state.images.find(img => img.id === image.id) ||
     state.filteredImages.find(img => img.id === image.id)
   );
+  const thumbnail = useResolvedThumbnail(imageFromStore ?? image);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const currentTags = imageFromStore?.tags || image.tags || [];
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
-  const preferredThumbnailUrl = imageFromStore?.thumbnailUrl ?? image.thumbnailUrl;
+  const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
   // State for tag input
@@ -783,7 +745,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    let createdUrl: string | null = null;
     const hasPreview = Boolean(preferredThumbnailUrl);
 
     setImageUrl(isVideo ? null : (preferredThumbnailUrl ?? null));
@@ -801,76 +762,45 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      const setResolvedUrl = (url: string, revoke: boolean) => {
-        if (!isMounted) return;
-        if (createdUrl) {
-          URL.revokeObjectURL(createdUrl);
-          createdUrl = null;
-        }
-        if (revoke) {
-          createdUrl = url;
-        }
-        setImageUrl(url);
-      };
-
       try {
-        const primaryHandle = image.handle;
-        const fallbackHandle = image.thumbnailHandle;
-        const fileHandle =
-          primaryHandle && typeof primaryHandle.getFile === 'function'
-            ? primaryHandle
-            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
-              ? fallbackHandle
-              : null;
-
-        if (fileHandle) {
-          const file = await fileHandle.getFile();
-          if (isMounted) {
-            const url = URL.createObjectURL(file);
-            setResolvedUrl(url, true);
-          }
-          return; // Success, no need for fallback
+        const url = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
+        if (isMounted) {
+          setImageUrl(url);
         }
-        throw new Error('Image handle is not a valid FileSystemFileHandle.');
-      } catch (handleError) {
-        const message = handleError instanceof Error ? handleError.message : String(handleError);
-        console.warn(`Could not load image with FileSystemFileHandle: ${message}. Attempting Electron fallback.`);
-        if (isMounted && window.electronAPI && directoryPath) {
-          try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
-            if (!pathResult.success || !pathResult.path) {
-              throw new Error(pathResult.error || 'Failed to construct image path.');
-            }
-            const fileResult = await window.electronAPI.readFile(pathResult.path);
-            if (fileResult.success && fileResult.data && isMounted) {
-              const { url, revoke } = createImageUrlFromFileData(fileResult.data, image.name);
-              setResolvedUrl(url, revoke);
-            } else {
-              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
-            }
-          } catch (electronError) {
-            console.error('Electron fallback failed:', electronError);
-            if (isMounted && !hasPreview) {
-              setImageUrl(null); // Explicitly set to null on failure
-              const errorMessage = electronError instanceof Error ? electronError.message : String(electronError);
-              alert(`Failed to load image: ${errorMessage}`);
-            }
-          }
-        } else if (isMounted && !hasPreview) {
-          // If no fallback is available
+      } catch (loadError) {
+        console.error('Failed to load full image source:', loadError);
+        if (isMounted && !hasPreview) {
           setImageUrl(null);
-          alert('Failed to load image: No valid file handle and not in a compatible Electron environment.');
         }
       }
     };
 
     loadImage();
 
+    const prefetchNeighbors = () => {
+      const state = useImageStore.getState();
+      const navigationImages = state.clusterNavigationContext || state.filteredImages;
+      const currentIndex = navigationImages.findIndex((candidate) => candidate.id === image.id);
+      if (currentIndex === -1) {
+        return;
+      }
+
+      const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
+      const neighborCandidates = [navigationImages[currentIndex - 1], navigationImages[currentIndex + 1]].filter(Boolean) as IndexedImage[];
+      for (const neighbor of neighborCandidates) {
+        const neighborDirectoryPath = directoryMap.get(neighbor.directoryId || '');
+        if (neighborDirectoryPath) {
+          mediaSourceCache.prefetch(neighbor, neighborDirectoryPath);
+        }
+      }
+    };
+
+    if (!isVideo) {
+      prefetchNeighbors();
+    }
+
     return () => {
       isMounted = false;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
     };
   }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isVideo]);
 
