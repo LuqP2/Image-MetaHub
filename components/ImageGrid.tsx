@@ -2,7 +2,7 @@ import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { type IndexedImage, type BaseMetadata, ImageStack } from '../types';
+import { type IndexedImage, type BaseMetadata, type Directory, ImageStack } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -27,6 +27,8 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
+import TransferImagesModal from './TransferImagesModal';
+import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 
 // --- ImageCard Component ---
@@ -611,6 +613,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const previewImage = useImageStore((state) => state.previewImage);
+  const transferProgress = useImageStore((state) => state.transferProgress);
 
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -626,7 +629,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [initialSelectedImages, setInitialSelectedImages] = useState<Set<string>>(new Set());
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
-  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferStatusText, setTransferStatusText] = useState<string>('');
+  const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
     return new Set(
@@ -734,6 +741,64 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     hideContextMenu();
     onBatchExport();
   }, [hideContextMenu, onBatchExport]);
+
+  const getContextTargetImages = useCallback(() => {
+    if (!contextMenu.image) {
+      return [];
+    }
+
+    if (selectedImages.has(contextMenu.image.id)) {
+      return images.filter((image) => selectedImages.has(image.id));
+    }
+
+    return [contextMenu.image];
+  }, [contextMenu.image, images, selectedImages]);
+
+  const openTransferModal = useCallback((mode: 'copy' | 'move') => {
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setTransferMode(mode);
+    setTransferStatusText('');
+    setIsTransferModalOpen(true);
+    hideContextMenu();
+  }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
+
+  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+    if (!transferMode) {
+      return;
+    }
+
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      setIsTransferModalOpen(false);
+      return;
+    }
+
+    setIsTransferring(true);
+    setTransferStatusText(transferMode === 'move' ? 'Moving files...' : 'Copying files...');
+    try {
+      await transferIndexedImages({
+        images: targetImages,
+        destinationDirectory: directory,
+        mode: transferMode,
+        onStatus: setTransferStatusText,
+      });
+      setIsTransferModalOpen(false);
+      setTransferMode(null);
+      setTransferStatusText('');
+    } finally {
+      setIsTransferring(false);
+    }
+  }, [getContextTargetImages, transferMode]);
 
   // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -1149,6 +1214,26 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             Show in Folder
           </button>
 
+          <button
+            onClick={() => openTransferModal('copy')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Copy To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
+            onClick={() => openTransferModal('move')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Move To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
             <button
               onClick={exportImage}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -1212,6 +1297,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         isOpen={isTagManagerOpen}
         onClose={() => setIsTagManagerOpen(false)}
         selectedImageIds={contextMenu.image ? (selectedImages.has(contextMenu.image.id) ? Array.from(selectedImages) : [contextMenu.image.id]) : []}
+      />
+
+      <TransferImagesModal
+        isOpen={isTransferModalOpen && !!transferMode}
+        onClose={() => {
+          setIsTransferModalOpen(false);
+        }}
+        images={getContextTargetImages()}
+        directories={directories}
+        mode={transferMode || 'copy'}
+        isSubmitting={isTransferring}
+        statusText={transferStatusText}
+        progress={transferProgress}
+        onConfirm={handleTransferConfirm}
       />
 
       {/* Generate Variation Modal */}

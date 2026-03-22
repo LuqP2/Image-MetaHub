@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -188,6 +188,7 @@ interface ImageState {
   indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
   success: string | null;
+  transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
@@ -265,6 +266,7 @@ interface ImageState {
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
+  setTransferProgress: (progress: IndexedImageTransferProgress | null) => void;
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
@@ -981,6 +983,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         indexingState: 'idle',
         error: null,
         success: null,
+        transferProgress: null,
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
@@ -1263,6 +1266,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
         setError: (error) => set({ error, success: null }),
         setSuccess: (success) => set({ success, error: null }),
+        setTransferProgress: (transferProgress) => set({ transferProgress }),
 
         filterAndSortImages: () => set(state => filterAndSort(state)),
 

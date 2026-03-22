@@ -93,6 +93,17 @@ const featureInfo = {
       'Remove tags from multiple files',
     ],
   },
+  file_management: {
+    name: 'File Management',
+    icon: Download,
+    description: 'Copy or move images between indexed folders while preserving library data',
+    benefits: [
+      'Copy or move files without leaving the app',
+      'Preserve tags, favorites, and shadow metadata',
+      'Organize multiple images in a single action',
+      'Resolve filename conflicts automatically',
+    ],
+  },
 };
 
 const ProOnlyModal: React.FC<ProOnlyModalProps> = ({

@@ -3,6 +3,7 @@ import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { IndexedImageTransferProgress } from '../types';
 
 interface FooterProps {
   currentPage: number;
@@ -18,6 +19,7 @@ interface FooterProps {
   directoryCount?: number;
   enrichmentProgress?: { processed: number; total: number } | null;
   a1111Progress?: A1111ProgressState | null;
+  transferProgress?: IndexedImageTransferProgress | null;
   queueCount?: number;
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
@@ -46,6 +48,7 @@ const Footer: React.FC<FooterProps> = ({
   directoryCount,
   enrichmentProgress,
   a1111Progress,
+  transferProgress,
   queueCount = 0,
   isQueueOpen = false,
   onToggleQueue
@@ -67,7 +70,8 @@ const Footer: React.FC<FooterProps> = ({
   const showPageControls = totalPages > 1;
   const hasEnrichmentJob = enrichmentProgress && enrichmentProgress.total > 0;
   const hasA1111Job = canUseA1111 && a1111Progress && a1111Progress.isGenerating; // Only show if feature is available
-  const hasAnyJob = hasEnrichmentJob || hasA1111Job;
+  const hasTransferJob = transferProgress && transferProgress.total > 0 && transferProgress.stage !== 'done';
+  const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
     <footer className={`sticky bottom-0 px-6 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
@@ -123,6 +127,28 @@ const Footer: React.FC<FooterProps> = ({
             <div className="w-20 h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
               <div className="h-full bg-green-500 transition-all duration-300 ease-out" style={{ width: `${a1111Progress!.progress * 100}%` }} />
             </div>
+          </div>
+        )}
+        {hasTransferJob && (
+          <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+              </span>
+              <span className="font-medium">
+                {transferProgress!.processed}/{transferProgress!.total}
+              </span>
+            </div>
+            <div className="w-24 h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-400 transition-all duration-300 ease-out"
+                style={{ width: `${Math.max(0, Math.min(100, (transferProgress!.processed / transferProgress!.total) * 100))}%` }}
+              />
+            </div>
+            <span className="max-w-[220px] truncate text-amber-100/90">
+              {transferProgress!.statusText || (transferProgress!.mode === 'move' ? 'Moving files...' : 'Copying files...')}
+            </span>
           </div>
         )}
       </div>

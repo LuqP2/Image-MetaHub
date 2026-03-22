@@ -991,6 +991,28 @@ function setupFileOperationHandlers() {
     usedNames.add(normalizeNameKey(candidate));
     return candidate;
   };
+  const getUniqueDestinationPath = async (destDir, baseName, usedNames) => {
+    const parsed = path.parse(baseName);
+    let candidate = baseName;
+    let counter = 2;
+
+    while (true) {
+      const candidateKey = normalizeNameKey(candidate);
+      const candidatePath = path.resolve(destDir, candidate);
+
+      if (!usedNames.has(candidateKey)) {
+        try {
+          await fs.access(candidatePath);
+        } catch {
+          usedNames.add(candidateKey);
+          return { candidate, candidatePath };
+        }
+      }
+
+      candidate = `${parsed.name} (${counter})${parsed.ext}`;
+      counter += 1;
+    }
+  };
 
   // --- Settings IPC ---
   ipcMain.handle('get-settings', async () => {
@@ -2306,6 +2328,171 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error exporting images to ZIP:', error);
       return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
+    }
+  });
+
+  ipcMain.handle('transfer-indexed-images', async (event, { files, destDir, mode, transferId } = {}) => {
+    try {
+      if (!Array.isArray(files) || files.length === 0) {
+        return { success: false, transferred: [], failedCount: 0, error: 'No files provided for transfer.' };
+      }
+      if (!destDir) {
+        return { success: false, transferred: [], failedCount: 0, error: 'No destination directory provided.' };
+      }
+      if (mode !== 'copy' && mode !== 'move') {
+        return { success: false, transferred: [], failedCount: 0, error: 'Invalid transfer mode.' };
+      }
+      if (!isPathAllowed(destDir)) {
+        return { success: false, transferred: [], failedCount: 0, error: 'Access denied: Destination must be an indexed folder.' };
+      }
+
+      await fs.mkdir(destDir, { recursive: true });
+
+      const transferred = [];
+      let failedCount = 0;
+      const usedNames = new Set();
+      let processed = 0;
+      const total = files.length;
+      const TRANSFER_CONCURRENCY = mode === 'move' ? 6 : 4;
+      const progressTransferId = transferId ? String(transferId) : null;
+      const sendProgress = (stage = 'copying', statusText) => {
+        try {
+          event.sender.send('transfer-indexed-images-progress', {
+            transferId: progressTransferId,
+            mode,
+            total,
+            processed,
+            transferredCount: transferred.length,
+            failedCount,
+            stage,
+            statusText,
+          });
+        } catch {
+          // ignore sender errors
+        }
+      };
+
+      sendProgress('copying', mode === 'move' ? 'Moving files...' : 'Copying files...');
+
+      const plannedTransfers = [];
+
+      for (const file of files) {
+        try {
+          const sourcePath = path.resolve(file.directoryPath, file.relativePath);
+          if (!isPathAllowed(sourcePath)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          if (path.normalize(file.directoryPath) === path.normalize(destDir)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          const baseName = path.basename(file.relativePath);
+          const { candidate, candidatePath } = await getUniqueDestinationPath(destDir, baseName, usedNames);
+
+          if (path.normalize(sourcePath) === path.normalize(candidatePath)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          plannedTransfers.push({
+            sourceDirectoryPath: file.directoryPath,
+            sourceRelativePath: file.relativePath,
+            sourceAbsolutePath: sourcePath,
+            destinationDirectoryPath: destDir,
+            destinationRelativePath: candidate,
+            destinationAbsolutePath: candidatePath,
+            fileName: candidate
+          });
+        } catch (error) {
+          failedCount += 1;
+          processed += 1;
+          sendProgress(
+            'copying',
+            `${mode === 'move' ? 'Preparing move' : 'Preparing copy'} ${processed} of ${total}...`,
+          );
+        }
+      }
+
+      let nextTaskIndex = 0;
+      const workerCount = Math.max(1, Math.min(TRANSFER_CONCURRENCY, plannedTransfers.length));
+
+      const executeTransfer = async (task) => {
+        if (mode === 'move') {
+          try {
+            await fs.rename(task.sourceAbsolutePath, task.destinationAbsolutePath);
+          } catch (error) {
+            if (error?.code === 'EXDEV') {
+              await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+              await fs.unlink(task.sourceAbsolutePath);
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+        }
+
+        const stats = await fs.stat(task.destinationAbsolutePath);
+        transferred.push({
+          sourceDirectoryPath: task.sourceDirectoryPath,
+          sourceRelativePath: task.sourceRelativePath,
+          destinationDirectoryPath: task.destinationDirectoryPath,
+          destinationRelativePath: task.destinationRelativePath,
+          destinationAbsolutePath: task.destinationAbsolutePath,
+          fileName: task.fileName,
+          size: stats.size,
+          lastModified: stats.mtimeMs,
+          type: getMimeTypeFromName(task.fileName),
+        });
+      };
+
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            const currentIndex = nextTaskIndex;
+            nextTaskIndex += 1;
+            if (currentIndex >= plannedTransfers.length) {
+              return;
+            }
+
+            const task = plannedTransfers[currentIndex];
+            try {
+              await executeTransfer(task);
+            } catch (error) {
+              failedCount += 1;
+            } finally {
+              processed += 1;
+              sendProgress(
+                processed >= total ? 'finalizing' : 'copying',
+                processed >= total
+                  ? 'Finalizing transfer...'
+                  : `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`,
+              );
+            }
+          }
+        })
+      );
+
+      sendProgress('done', 'Transfer complete.');
+
+      return {
+        success: transferred.length > 0,
+        transferred,
+        failedCount,
+        error: transferred.length > 0 ? undefined : `No files were ${mode === 'move' ? 'moved' : 'copied'}.`,
+      };
+    } catch (error) {
+      console.error('Error transferring indexed images:', error);
+      return { success: false, transferred: [], failedCount: 0, error: error.message };
     }
   });
 

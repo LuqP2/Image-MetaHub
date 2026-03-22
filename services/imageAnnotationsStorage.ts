@@ -322,6 +322,51 @@ export async function deleteAnnotation(imageId: string): Promise<void> {
   });
 }
 
+async function cloneShadowMetadata(sourceImageId: string, targetImageId: string): Promise<boolean> {
+  const currentShadow = await getShadowMetadata(sourceImageId);
+  if (!currentShadow) {
+    return false;
+  }
+
+  await saveShadowMetadata({
+    ...currentShadow,
+    imageId: targetImageId,
+    updatedAt: Date.now(),
+  });
+
+  return true;
+}
+
+export async function transferImagePersistence(
+  sourceImageId: string,
+  targetImageId: string,
+  mode: 'copy' | 'move',
+): Promise<void> {
+  if (!sourceImageId || !targetImageId || sourceImageId === targetImageId) {
+    return;
+  }
+
+  const currentAnnotation = await getAnnotation(sourceImageId);
+  if (currentAnnotation) {
+    await saveAnnotation({
+      ...currentAnnotation,
+      imageId: targetImageId,
+      updatedAt: Date.now(),
+    });
+  }
+
+  const clonedShadow = await cloneShadowMetadata(sourceImageId, targetImageId);
+
+  if (mode === 'move') {
+    if (currentAnnotation) {
+      await deleteAnnotation(sourceImageId);
+    }
+    if (clonedShadow) {
+      await deleteShadowMetadata(sourceImageId);
+    }
+  }
+}
+
 /**
  * Bulk save multiple annotations in a single transaction (for performance)
  */
