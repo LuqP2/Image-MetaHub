@@ -23,6 +23,11 @@ type ThumbnailEntryState = {
     thumbnailError?: string | null;
 };
 
+type DirectoryProgressState = {
+    current: number;
+    total: number;
+};
+
 const loadRecentTags = (): string[] => {
     if (typeof window === 'undefined') {
         return [];
@@ -178,6 +183,7 @@ interface ImageState {
   // UI State
   isLoading: boolean;
   progress: { current: number; total: number } | null;
+  directoryProgress: Record<string, DirectoryProgressState>;
   enrichmentProgress: { processed: number; total: number } | null;
   indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
@@ -254,6 +260,7 @@ interface ImageState {
   toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
+  setDirectoryProgress: (directoryId: string, progress: DirectoryProgressState | null) => void;
   setEnrichmentProgress: (progress: { processed: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
   setError: (error: string | null) => void;
@@ -969,6 +976,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
         progress: null,
+        directoryProgress: {},
         enrichmentProgress: null,
         indexingState: 'idle',
         error: null,
@@ -1219,7 +1227,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             set(state => {
-                const baseState = { ...state, directories: newDirectories, selectedFolders: updatedSelection };
+                const nextDirectoryProgress = { ...state.directoryProgress };
+                delete nextDirectoryProgress[directoryId];
+                const baseState = {
+                    ...state,
+                    directories: newDirectories,
+                    selectedFolders: updatedSelection,
+                    directoryProgress: nextDirectoryProgress,
+                };
                 return _updateState(baseState, newImages);
             });
 
@@ -1230,6 +1245,15 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setLoading: (loading) => set({ isLoading: loading }),
         setProgress: (progress) => set({ progress }),
+        setDirectoryProgress: (directoryId, progress) => set(state => {
+            const nextDirectoryProgress = { ...state.directoryProgress };
+            if (progress) {
+                nextDirectoryProgress[directoryId] = progress;
+            } else {
+                delete nextDirectoryProgress[directoryId];
+            }
+            return { directoryProgress: nextDirectoryProgress };
+        }),
         setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
@@ -2283,6 +2307,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             isFolderSelectionLoaded: false,
             isLoading: false,
             progress: { current: 0, total: 0 },
+            directoryProgress: {},
             enrichmentProgress: null,
             error: null,
             success: null,

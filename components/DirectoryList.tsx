@@ -7,6 +7,7 @@ interface DirectoryListProps {
   onRemoveDirectory: (directoryId: string) => void;
   onUpdateDirectory: (directoryId: string, subPath?: string) => void;
   refreshingDirectories?: Set<string>;
+  directoryProgress?: Record<string, { current: number; total: number }>;
   onToggleFolderSelection?: (path: string, ctrlKey: boolean) => void;
   onClearFolderSelection?: () => void;
   isFolderSelected?: (path: string) => boolean;
@@ -50,6 +51,7 @@ export default function DirectoryList({
   onRemoveDirectory,
   onUpdateDirectory,
   refreshingDirectories,
+  directoryProgress,
   onToggleFolderSelection,
   onClearFolderSelection,
   isFolderSelected,
@@ -389,6 +391,11 @@ export default function DirectoryList({
               const rootChildren = subfolderCache.get(rootKey) || [];
               const isRefreshing = refreshingDirectories?.has(dir.id) ?? false;
               const isRootSelected = isFolderSelected ? isFolderSelected(dir.path) : false;
+              const progressEntry = directoryProgress?.[dir.id];
+              const isScanning = !!progressEntry && progressEntry.total === 0;
+              const progressPercent = progressEntry && progressEntry.total > 0
+                ? Math.max(0, Math.min(100, (progressEntry.current / progressEntry.total) * 100))
+                : 0;
               
               // Determine if we should show the expander
               // Show if loading, or if not yet loaded (not in cache), or if loaded and has children
@@ -397,13 +404,26 @@ export default function DirectoryList({
               return (
                 <li key={dir.id}>
                   <div
-                    className={`flex items-center justify-between p-2 rounded-md transition-colors ${
+                    className={`relative overflow-hidden flex items-center justify-between p-2 rounded-md transition-colors ${
                       isRootSelected
                         ? 'bg-blue-600/30 hover:bg-blue-600/40'
                         : 'bg-gray-800 hover:bg-gray-700/50'
                     }`}
                   >
-                    <div className="flex items-center overflow-hidden flex-1">
+                    {progressEntry && (
+                      <div className="absolute inset-0 pointer-events-none">
+                        {isScanning ? (
+                          <div className="absolute inset-0 bg-blue-500/10 animate-pulse" />
+                        ) : (
+                          <div
+                            className="absolute inset-y-0 left-0 bg-blue-500/20 transition-[width] duration-300 ease-out"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="relative z-10 flex items-center overflow-hidden flex-1 min-w-0">
                       {hasSubfolders ? (
                         <button
                           onClick={() => handleToggleNode(rootKey, dir.path, dir)}
@@ -430,7 +450,15 @@ export default function DirectoryList({
                         {dir.name}
                       </button>
                     </div>
-                    <div className="flex items-center space-x-2 flex-shrink-0">
+                    <div className="relative z-10 flex items-center space-x-2 flex-shrink-0">
+                      {progressEntry && (
+                        <span
+                          className="text-[10px] font-medium text-blue-300 tabular-nums"
+                          title={isScanning ? 'Scanning folder...' : `${progressEntry.current} / ${progressEntry.total} items loaded`}
+                        >
+                          {isScanning ? 'Scanning...' : `${Math.round(progressPercent)}%`}
+                        </span>
+                      )}
                       <button
                         onClick={() => {
                             onUpdateDirectory(dir.id);

@@ -228,7 +228,7 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -452,6 +452,7 @@ export function useImageLoader() {
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
             setSuccess(`Loaded 0 images from ${directory.name}.`);
+            setDirectoryProgress(directory.id, null);
             if (!suppressIndexingState) {
                 setLoading(false);
             } else {
@@ -471,6 +472,7 @@ export function useImageLoader() {
 
         scheduleGlobalFilterRefresh(true);
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        setDirectoryProgress(directory.id, null);
         if (!suppressIndexingState) {
             setLoading(false);
             setIndexingState('completed');
@@ -520,6 +522,7 @@ export function useImageLoader() {
                 let totalFilteredOut = 0;
                 const hydratedImages: IndexedImage[] = [];
                 setProgress({ current: 0, total: cachedData.imageCount });
+                setDirectoryProgress(directory.id, { current: 0, total: cachedData.imageCount });
 
                 await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
                     if (!metadataChunk || metadataChunk.length === 0) {
@@ -589,6 +592,7 @@ export function useImageLoader() {
                     totalLoaded += validImages.length;
                     totalFilteredOut += chunkImages.length - validImages.length;
                     setProgress({ current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
+                    setDirectoryProgress(directory.id, { current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
 
                     if (validImages.length > 0) {
                         hydratedImages.push(...validImages);
@@ -608,15 +612,20 @@ export function useImageLoader() {
                 if (totalLoaded > 0) {
                     log(`Loaded ${totalLoaded} images from cache for ${directory.name}`);
                 }
+                setDirectoryProgress(directory.id, null);
+            } else {
+                setDirectoryProgress(directory.id, null);
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
+            setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setProgress]);
+    }, [replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
         const suppressIndexingState = isUpdate;
+        setDirectoryProgress(directory.id, { current: 0, total: 0 });
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
             setError(null);
@@ -762,9 +771,22 @@ export function useImageLoader() {
                 ? await getFileHandles(directory.handle, directory.path, sortedFilesWithStats)
                 : [];
 
+            const totalCatalogItems = preloadedImages.length + totalNewFiles;
+            let loadedCatalogItems = 0;
+            if (totalCatalogItems > 0) {
+                setDirectoryProgress(directory.id, { current: 0, total: totalCatalogItems });
+            }
+
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 addImages(batch);
                 thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
+                if (totalCatalogItems > 0) {
+                    loadedCatalogItems += batch.length;
+                    setDirectoryProgress(directory.id, {
+                        current: Math.min(loadedCatalogItems, totalCatalogItems),
+                        total: totalCatalogItems,
+                    });
+                }
             };
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
@@ -785,6 +807,7 @@ export function useImageLoader() {
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
+                    setDirectoryProgress(directory.id, null);
                     if (suppressIndexingState) {
                         setDirectoryRefreshing(directory.id, false);
                         setProgress(null);
@@ -839,6 +862,10 @@ export function useImageLoader() {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
                     scheduleDirectoryThumbnailWarmup(directory.id, preloadedImages);
+                    setDirectoryProgress(directory.id, {
+                        current: preloadedImages.length,
+                        total: preloadedImages.length,
+                    });
                 }
                 finalizeDirectoryLoad(directory, { suppressIndexingState });
             }
@@ -848,6 +875,7 @@ export function useImageLoader() {
                 console.error(err);
                 setError(`Failed to load directory ${directory.name}. Check console for details.`);
             }
+            setDirectoryProgress(directory.id, null);
             if (suppressIndexingState) {
                 setDirectoryRefreshing(directory.id, false);
                 setProgress(null);
@@ -857,7 +885,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup]);
+    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
 
 
     // Helper function to detect if a path is a root disk
