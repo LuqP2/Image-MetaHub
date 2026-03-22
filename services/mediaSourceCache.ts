@@ -77,7 +77,17 @@ class MediaSourceCache {
     }
 
     if (existing?.loading) {
-      return existing.loading;
+      existing.lastAccess = Date.now();
+      if (!options.prioritize) {
+        return existing.loading;
+      }
+
+      const releaseBackgroundPause = thumbnailManager.pauseBackgroundWork();
+      try {
+        return await existing.loading;
+      } finally {
+        releaseBackgroundPause();
+      }
     }
 
     const releaseBackgroundPause = options.prioritize

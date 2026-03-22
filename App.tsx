@@ -658,11 +658,39 @@ export default function App() {
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
-  const hasAnyDirectoryProgress = Object.keys(directoryProgress).length > 0;
+  const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+  const activeFolderHasProgress = (() => {
+    const progressDirectoryIds = Object.keys(directoryProgress);
+    if (progressDirectoryIds.length === 0) {
+      return false;
+    }
+
+    if (selectedFolders.size === 0) {
+      return progressDirectoryIds.some((directoryId) =>
+        safeDirectories.some((directory) => directory.id === directoryId && (directory.visible ?? true))
+      );
+    }
+
+    const normalizedSelectedFolders = Array.from(selectedFolders).map(normalizeFolderPath);
+
+    return progressDirectoryIds.some((directoryId) => {
+      const directory = safeDirectories.find((entry) => entry.id === directoryId);
+      if (!directory || directory.visible === false) {
+        return false;
+      }
+
+      const normalizedDirectoryPath = normalizeFolderPath(directory.path);
+      return normalizedSelectedFolders.some((selectedFolder) =>
+        selectedFolder === normalizedDirectoryPath ||
+        selectedFolder.startsWith(`${normalizedDirectoryPath}/`) ||
+        normalizedDirectoryPath.startsWith(`${selectedFolder}/`)
+      );
+    });
+  })();
   const shouldShowLibraryPlaceholder =
     libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
-    hasAnyDirectoryProgress;
+    activeFolderHasProgress;
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
