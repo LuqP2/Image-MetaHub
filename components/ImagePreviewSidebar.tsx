@@ -1,7 +1,7 @@
 import React, { useEffect, useState, FC } from 'react';
 import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
+import { type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -11,6 +11,8 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { mediaSourceCache } from '../services/mediaSourceCache';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -114,46 +116,6 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
-const resolveImageMimeType = (fileName: string): string => {
-  const lowerName = fileName.toLowerCase();
-  if (lowerName.endsWith('.mp4')) return 'video/mp4';
-  if (lowerName.endsWith('.webm')) return 'video/webm';
-  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
-  if (lowerName.endsWith('.mov')) return 'video/quicktime';
-  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
-  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
-  if (lowerName.endsWith('.webp')) return 'image/webp';
-  return 'image/png';
-};
-
-const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
-  const mimeType = resolveImageMimeType(fileName);
-
-  if (typeof data === 'string') {
-    return { url: `data:${mimeType};base64,${data}`, revoke: false };
-  }
-
-  if (data instanceof ArrayBuffer) {
-    const blob = new Blob([data], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const safeView = new Uint8Array(view);
-    const blob = new Blob([safeView], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
-    const view = new Uint8Array((data as { data: number[] }).data);
-    const blob = new Blob([view], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  throw new Error('Unknown file data format.');
-};
-
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -216,21 +178,18 @@ const ImagePreviewSidebar: React.FC = () => {
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
 
   const activeImage = previewImageFromStore || previewImage;
+  const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
-  const preferredThumbnailUrl = activeImage?.thumbnailUrl ?? null;
+  const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, activeImage?.tags ?? []);
 
   useEffect(() => {
     let isMounted = true;
-    let createdUrl: string | null = null;
 
     if (!activeImage) {
       setImageUrl(null);
       return () => {
         isMounted = false;
-        if (createdUrl) {
-          URL.revokeObjectURL(createdUrl);
-        }
       };
     }
 
@@ -242,57 +201,14 @@ const ImagePreviewSidebar: React.FC = () => {
 
       const directoryPath = directories.find(d => d.id === activeImage.directoryId)?.path;
 
-      const setResolvedUrl = (url: string, revoke: boolean) => {
-        if (!isMounted) return;
-        if (createdUrl) {
-          URL.revokeObjectURL(createdUrl);
-          createdUrl = null;
-        }
-        if (revoke) {
-          createdUrl = url;
-        }
-        setImageUrl(url);
-      };
-
       try {
-        const primaryHandle = activeImage.thumbnailHandle;
-        const fallbackHandle = activeImage.handle;
-        const fileHandle =
-          primaryHandle && typeof primaryHandle.getFile === 'function'
-            ? primaryHandle
-            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
-              ? fallbackHandle
-              : null;
-        if (fileHandle) {
-          const file = await fileHandle.getFile();
-          if (isMounted) {
-            const url = URL.createObjectURL(file);
-            setResolvedUrl(url, true);
-          }
-          return;
+        const url = await mediaSourceCache.getOrLoad(activeImage, directoryPath);
+        if (isMounted) {
+          setImageUrl(url);
         }
-        throw new Error('Image handle is not a valid FileSystemFileHandle.');
-      } catch (handleError) {
-        const message = handleError instanceof Error ? handleError.message : String(handleError);
-        console.warn(`Could not load image with FileSystemFileHandle: ${message}. Attempting Electron fallback.`);
-        if (isMounted && window.electronAPI && directoryPath) {
-          try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, activeImage.name);
-            if (!pathResult.success || !pathResult.path) {
-              throw new Error(pathResult.error || 'Failed to construct image path.');
-            }
-            const fileResult = await window.electronAPI.readFile(pathResult.path);
-            if (fileResult.success && fileResult.data && isMounted) {
-              const { url, revoke } = createImageUrlFromFileData(fileResult.data, activeImage.name);
-              setResolvedUrl(url, revoke);
-            } else {
-              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
-            }
-          } catch (electronError) {
-            console.error('Electron fallback failed:', electronError);
-            if (isMounted && !hasPreview) setImageUrl(null);
-          }
-        } else if (isMounted && !hasPreview) {
+      } catch (loadError) {
+        console.error('Failed to load preview sidebar source:', loadError);
+        if (isMounted && !hasPreview) {
           setImageUrl(null);
         }
       }
@@ -302,12 +218,6 @@ const ImagePreviewSidebar: React.FC = () => {
 
     return () => {
       isMounted = false;
-      if (createdUrl) {
-        // Small delay to ensure image is no longer being used before revoking
-        setTimeout(() => {
-          URL.revokeObjectURL(createdUrl);
-        }, 100);
-      }
     };
   }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
   if (!activeImage) {

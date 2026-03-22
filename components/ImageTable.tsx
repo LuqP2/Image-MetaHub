@@ -32,6 +32,26 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+};
+
+const joinDisplayPath = (basePath: string, relativePath: string): string => {
+  const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
+  const normalizedRelative = (relativePath || '').replace(/\\/g, '/').replace(/^[/\\]+/, '');
+
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  if (!normalizedRelative) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}/${normalizedRelative}`;
+};
+
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -463,9 +483,16 @@ interface ImageTableRowProps {
 const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const thumbnail = useResolvedThumbnail(image);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
+  const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const relativeImagePath = getRelativeImagePath(image);
+  const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
+  const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
+  const displayName = showFullFilePath ? fullImagePath : image.handle.name;
 
   useThumbnail(image);
 
@@ -476,8 +503,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (thumbnail?.thumbnailStatus === 'ready' && thumbnail.thumbnailUrl) {
+      setImageUrl(thumbnail.thumbnailUrl);
       setIsLoading(false);
       return;
     }
@@ -488,49 +515,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    let isMounted = true;
-    let fallbackUrl: string | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = image.thumbnailHandle || image.handle;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-
-    if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+    if (thumbnail?.thumbnailStatus === 'error') {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }
 
-    const loadFallback = async () => {
-      setIsLoading(true);
-      try {
-        const file = await fileHandle.getFile();
-        if (!isMounted) return;
-        fallbackUrl = URL.createObjectURL(file);
-        setImageUrl(fallbackUrl);
-      } catch (error) {
-        if (isElectron) {
-          console.error('Failed to load image:', error);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fallbackTimer = setTimeout(() => {
-      void loadFallback();
-    }, 180);
-
-    return () => {
-      isMounted = false;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-      }
-      if (fallbackUrl) {
-        URL.revokeObjectURL(fallbackUrl);
-      }
-    };
-  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
+    setImageUrl(null);
+    setIsLoading(true);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -578,8 +571,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
           )}
         </div>
       </div>
-      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={image.handle.name}>
-        {image.handle.name}
+      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={displayName}>
+        {displayName}
       </div>
       <div className="px-3 py-2 text-gray-400 truncate" title={image.models?.[0] || 'Unknown'}>
         {image.models?.[0] || <span className="text-gray-600">Unknown</span>}

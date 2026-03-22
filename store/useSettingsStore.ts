@@ -22,7 +22,10 @@ const electronStorage: StateStorage = {
   setItem: async (name: string, value: string): Promise<void> => {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
-      await window.electronAPI.saveSettings(state);
+      const result = await window.electronAPI.saveSettings(state);
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to persist application settings.');
+      }
     }
   },
   removeItem: async (name: string): Promise<void> => {

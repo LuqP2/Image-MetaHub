@@ -6,25 +6,21 @@ import { useImageStore } from '../store/useImageStore';
 
 export function useThumbnail(image: IndexedImage | null): void {
   const disableThumbnails = useSettingsStore((state) => state.disableThumbnails);
-  const indexingState = useImageStore((state) => state.indexingState);
-  const isIndexingRef = useRef(indexingState === 'indexing');
   const loadingRef = useRef<Set<string>>(new Set());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update ref without triggering effects
-  isIndexingRef.current = indexingState === 'indexing';
-
   useEffect(() => {
-    // Don't load thumbnails during indexing to avoid infinite loops
-    if (disableThumbnails || !image || isIndexingRef.current) {
+    if (disableThumbnails || !image) {
       return;
     }
 
     // Check CURRENT store state (not stale prop) before starting load
     const storeState = useImageStore.getState();
-    const currentImage = storeState.images.find(img => img.id === image.id);
+    const currentEntry = storeState.thumbnailEntries[image.id];
+    const activeEntry = currentEntry && currentEntry.lastModified === image.lastModified ? currentEntry : undefined;
+    const currentStatus = activeEntry?.thumbnailStatus ?? image.thumbnailStatus;
 
-    if (currentImage?.thumbnailStatus === 'ready' || currentImage?.thumbnailStatus === 'loading') {
+    if (currentStatus === 'ready' || currentStatus === 'loading') {
       return;
     }
 
@@ -41,7 +37,7 @@ export function useThumbnail(image: IndexedImage | null): void {
 
       const run = async () => {
         try {
-          await thumbnailManager.ensureThumbnail(image);
+          await thumbnailManager.ensureThumbnail(image, 'high');
         } catch (error) {
           if (!cancelled) {
             console.error('Failed to ensure thumbnail:', error);
@@ -68,6 +64,5 @@ export function useThumbnail(image: IndexedImage | null): void {
       }
       loadingRef.current.delete(image.id);
     };
-  }, [image?.id, disableThumbnails]);
+  }, [image?.id, image?.lastModified, image?.thumbnailStatus, disableThumbnails]);
 }
-
