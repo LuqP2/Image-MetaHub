@@ -4,6 +4,7 @@ import { useLicenseStore } from '../store/useLicenseStore';
 import { X, Wrench, Keyboard, Palette, Check, Crown, Eye } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
 import { HotkeySettings } from './HotkeySettings';
+import { PRO_STORE_URL } from '../constants/urls';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -902,7 +903,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
               <div className="mt-2 flex justify-end">
                 <a
-                  href="https://lucasphere4660.gumroad.com/l/qmjima"
+                  href={PRO_STORE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-400 hover:text-blue-300 underline inline-flex items-center gap-1"

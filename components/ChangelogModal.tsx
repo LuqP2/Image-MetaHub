@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink, Github, Heart, Puzzle } from 'lucide-react';
+import { PRO_STORE_URL } from '../constants/urls';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -152,7 +153,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         GitHub Project
       </a>
       <a
-        href="https://lucasphere4660.gumroad.com/l/qmjima"
+        href={PRO_STORE_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"

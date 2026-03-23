@@ -3,6 +3,7 @@ import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown, Layers, Layers2
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
+import { PRO_STORE_URL } from '../constants/urls';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -313,7 +314,7 @@ const Header: React.FC<HeaderProps> = ({
           {/* Discreet Get Pro link - Unified Amber Theme */}
           {!isPro && (
             <a
-              href="https://lucasphere4660.gumroad.com/l/qmjima"
+              href={PRO_STORE_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden lg:inline-flex text-[10px] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-300 transition-colors px-3 py-1.5 rounded-full bg-amber-900/20 border border-amber-600/30 hover:bg-amber-900/40 hover:border-amber-500/50"
