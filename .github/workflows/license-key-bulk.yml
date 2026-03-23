@@ -1,0 +1,43 @@
+name: Generate legacy license map
+
+on:
+  workflow_dispatch:
+    inputs:
+      emails:
+        description: "One customer email per line"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generate-map:
+    runs-on: ubuntu-latest
+    env:
+      IMH_LICENSE_SECRET: ${{ secrets.IMH_LICENSE_SECRET }}
+      IMH_LEGACY_EMAILS: ${{ inputs.emails }}
+      IMH_LEGACY_OUTPUT_PATH: legacy-license-map.csv
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate legacy license map
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${IMH_LICENSE_SECRET:-}" ]; then
+            echo "IMH_LICENSE_SECRET is missing in repository secrets." >&2
+            exit 1
+          fi
+
+          node scripts/generateLegacyLicenseMap.mjs
+
+      - name: Upload legacy license map artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-license-map
+          path: legacy-license-map.csv
+          if-no-files-found: error
+          retention-days: 1
