@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_DB_PATH = process.env.IMH_LICENSE_DB_PATH || path.join(__dirname, 'data', 'license-db.sqlite');
 const DEFAULT_PRIVATE_KEY_PATH = process.env.IMH_LICENSE_PRIVATE_KEY_PATH || path.join(__dirname, 'data', 'license-private.pem');
 const DEFAULT_PUBLIC_KEY_PATH = process.env.IMH_LICENSE_PUBLIC_KEY_PATH || path.join(__dirname, 'data', 'license-public.pem');
+const LEGACY_LICENSE_SECRET = process.env.IMH_LICENSE_SECRET || 'CHANGE-ME-BEFORE-RELEASE';
 
 export const LICENSE_POLICY = resolveLicensePolicy({
   annualRefreshDays: process.env.IMH_LICENSE_ANNUAL_REFRESH_DAYS,
@@ -68,6 +69,30 @@ export async function ensureKeypair() {
 
 export function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+export function normalizeLicenseKey(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function formatLicenseKey(value) {
+  const normalized = normalizeLicenseKey(value);
+  return normalized.match(/.{1,4}/g)?.join('-') ?? normalized;
+}
+
+export function generateLegacyLicenseKeyFromEmail(email) {
+  if (!LEGACY_LICENSE_SECRET || LEGACY_LICENSE_SECRET === 'CHANGE-ME-BEFORE-RELEASE') {
+    throw new Error('IMH_LICENSE_SECRET is required to preserve legacy customer keys');
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  const hmac = crypto
+    .createHmac('sha256', LEGACY_LICENSE_SECRET)
+    .update(normalizedEmail)
+    .digest('hex')
+    .toUpperCase();
+
+  return normalizeLicenseKey(hmac.slice(0, 20));
 }
 
 export function parseArgs(argv) {
@@ -334,6 +359,16 @@ export async function listLicenses() {
   return db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all().map(mapLicenseRow);
 }
 
+export async function findLicensesByEmail(email) {
+  const db = await getDb();
+  return db.prepare(`
+    SELECT *
+    FROM licenses
+    WHERE email = ?
+    ORDER BY created_at DESC
+  `).all(normalizeEmail(email)).map(mapLicenseRow);
+}
+
 export async function getLicenseById(licenseId) {
   const db = await getDb();
   return mapLicenseRow(db.prepare('SELECT * FROM licenses WHERE id = ?').get(licenseId));
@@ -341,11 +376,106 @@ export async function getLicenseById(licenseId) {
 
 export async function findLicenseByEmailAndKey(email, licenseKey) {
   const db = await getDb();
-  return mapLicenseRow(db.prepare(`
+  const rows = db.prepare(`
     SELECT *
     FROM licenses
     WHERE email = ? AND license_key = ? AND status != 'revoked'
-  `).get(normalizeEmail(email), String(licenseKey || '').trim().toUpperCase()));
+  `).all(normalizeEmail(email), String(licenseKey || '').trim().toUpperCase());
+
+  if (rows.length > 0) {
+    return mapLicenseRow(rows[0]);
+  }
+
+  const normalizedRequestedKey = normalizeLicenseKey(licenseKey);
+  const fallbackRows = db.prepare(`
+    SELECT *
+    FROM licenses
+    WHERE email = ? AND status != 'revoked'
+    ORDER BY created_at DESC
+  `).all(normalizeEmail(email));
+
+  const matchingRow = fallbackRows.find((row) => normalizeLicenseKey(row.license_key) === normalizedRequestedKey);
+  return mapLicenseRow(matchingRow);
+}
+
+export async function upsertImportedLifetimeLicense({
+  email,
+  maxDevices = LICENSE_POLICY.defaultMaxDevices,
+  licenseKey = null,
+}) {
+  const db = await getDb();
+  const normalizedEmail = normalizeEmail(email);
+  const timestamp = nowIso();
+  const customerId = crypto.randomUUID();
+  const licenseId = crypto.randomUUID();
+  const effectiveMaxDevices = Number.isFinite(Number(maxDevices)) ? Number(maxDevices) : LICENSE_POLICY.defaultMaxDevices;
+  const effectiveLicenseKey = normalizeLicenseKey(licenseKey || generateLegacyLicenseKeyFromEmail(normalizedEmail));
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const existingCustomer = db.prepare('SELECT id FROM customers WHERE email = ?').get(normalizedEmail);
+    const finalCustomerId = existingCustomer?.id || customerId;
+
+    if (!existingCustomer) {
+      db.prepare(`
+        INSERT INTO customers (id, email, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(finalCustomerId, normalizedEmail, timestamp, timestamp);
+    } else {
+      db.prepare('UPDATE customers SET updated_at = ? WHERE id = ?').run(timestamp, finalCustomerId);
+    }
+
+    const existingLicenseRow = db.prepare(`
+      SELECT *
+      FROM licenses
+      WHERE email = ? AND status != 'revoked'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(normalizedEmail);
+
+    if (existingLicenseRow) {
+      db.prepare(`
+        UPDATE licenses
+        SET license_key = ?,
+            plan = 'lifetime',
+            max_devices = ?,
+            expires_at = NULL,
+            updated_at = ?
+        WHERE id = ?
+      `).run(effectiveLicenseKey, effectiveMaxDevices, timestamp, existingLicenseRow.id);
+      db.exec('COMMIT');
+      return {
+        created: false,
+        license: mapLicenseRow({
+          ...existingLicenseRow,
+          license_key: effectiveLicenseKey,
+          plan: 'lifetime',
+          max_devices: effectiveMaxDevices,
+          expires_at: null,
+          updated_at: timestamp,
+        }),
+      };
+    }
+
+    db.prepare(`
+      INSERT INTO licenses (id, customer_id, email, license_key, plan, status, max_devices, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'lifetime', 'active', ?, NULL, ?, ?)
+    `).run(
+      licenseId,
+      finalCustomerId,
+      normalizedEmail,
+      effectiveLicenseKey,
+      effectiveMaxDevices,
+      timestamp,
+      timestamp,
+    );
+
+    db.exec('COMMIT');
+    return { created: true, license: await getLicenseById(licenseId) };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function activateLicenseForDevice({ license, deviceId, deviceLabel }) {

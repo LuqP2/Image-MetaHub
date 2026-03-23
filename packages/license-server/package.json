@@ -9,6 +9,10 @@
     "start": "node server.mjs",
     "create-license": "node cli.mjs create-license",
     "list-licenses": "node cli.mjs list-licenses",
+    "find-license": "node cli.mjs find-license",
+    "import-gumroad-lifetime": "node cli.mjs import-gumroad-lifetime",
+    "extract-gumroad-emails": "node cli.mjs extract-gumroad-emails",
+    "apply-license-map": "node cli.mjs apply-license-map",
     "generate-keypair": "node cli.mjs generate-keypair"
   }
 }

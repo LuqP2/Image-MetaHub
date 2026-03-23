@@ -1,4 +1,5 @@
 data/*.json
+data/*.csv
 data/*.pem
 data/*.sqlite
 data/*.sqlite-*
