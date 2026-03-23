@@ -398,6 +398,44 @@ export async function findLicenseByEmailAndKey(email, licenseKey) {
   return mapLicenseRow(matchingRow);
 }
 
+export async function updateLicenseMaxDevicesByEmail({ email, maxDevices }) {
+  const db = await getDb();
+  const normalizedEmail = normalizeEmail(email);
+  const timestamp = nowIso();
+  const effectiveMaxDevices = Number.isFinite(Number(maxDevices)) ? Number(maxDevices) : LICENSE_POLICY.defaultMaxDevices;
+
+  const existingRows = db.prepare(`
+    SELECT *
+    FROM licenses
+    WHERE email = ? AND status != 'revoked'
+    ORDER BY created_at DESC
+  `).all(normalizedEmail);
+
+  if (existingRows.length === 0) {
+    return null;
+  }
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`
+      UPDATE licenses
+      SET max_devices = ?, updated_at = ?
+      WHERE email = ? AND status != 'revoked'
+    `).run(effectiveMaxDevices, timestamp, normalizedEmail);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return db.prepare(`
+    SELECT *
+    FROM licenses
+    WHERE email = ? AND status != 'revoked'
+    ORDER BY created_at DESC
+  `).all(normalizedEmail).map(mapLicenseRow);
+}
+
 export async function upsertImportedLifetimeLicense({
   email,
   maxDevices = LICENSE_POLICY.defaultMaxDevices,

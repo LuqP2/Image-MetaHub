@@ -13,6 +13,7 @@
     "import-gumroad-lifetime": "node cli.mjs import-gumroad-lifetime",
     "extract-gumroad-emails": "node cli.mjs extract-gumroad-emails",
     "apply-license-map": "node cli.mjs apply-license-map",
+    "set-max-devices-from-csv": "node cli.mjs set-max-devices-from-csv",
     "generate-keypair": "node cli.mjs generate-keypair"
   }
 }

@@ -31,6 +31,7 @@
     "license-server:import-gumroad-lifetime": "node packages/license-server/cli.mjs import-gumroad-lifetime",
     "license-server:extract-gumroad-emails": "node packages/license-server/cli.mjs extract-gumroad-emails",
     "license-server:apply-license-map": "node packages/license-server/cli.mjs apply-license-map",
+    "license-server:set-max-devices-from-csv": "node packages/license-server/cli.mjs set-max-devices-from-csv",
     "license-server:generate-keypair": "node packages/license-server/cli.mjs generate-keypair",
     "test": "vitest",
     "cli:parse": "tsx cli.ts parse",

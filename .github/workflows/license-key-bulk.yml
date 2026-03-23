@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       emails:
-        description: "One customer email per line"
+        description: "Customer emails separated by commas, semicolons, or new lines"
         required: true
         type: string
 

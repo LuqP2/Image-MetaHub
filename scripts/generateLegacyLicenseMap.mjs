@@ -28,7 +28,7 @@ const generateLicenseKeyFromEmail = (email) => {
 const emails = Array.from(
   new Set(
     emailsInput
-      .split(/\r?\n/)
+      .split(/[\r\n,;]+/)
       .map((value) => normalizeEmail(value))
       .filter((value) => isLikelyEmail(value))
   )

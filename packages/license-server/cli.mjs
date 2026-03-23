@@ -7,6 +7,7 @@ import {
   listLicenses,
   parseArgs,
   paths,
+  updateLicenseMaxDevicesByEmail,
   upsertImportedLifetimeLicense,
 } from './lib.mjs';
 import fs from 'fs/promises';
@@ -20,6 +21,7 @@ const knownCommands = new Set([
   'import-gumroad-lifetime',
   'apply-license-map',
   'extract-gumroad-emails',
+  'set-max-devices-from-csv',
 ]);
 
 let command = rawArgs.find((value) => knownCommands.has(value)) || null;
@@ -317,6 +319,83 @@ if (command === 'apply-license-map') {
   process.exit(0);
 }
 
+if (command === 'set-max-devices-from-csv') {
+  const filePath = String(getArg('file') || '').trim();
+  const productIdsRaw = String(getArg('productIds') || '').trim();
+  const productIds = new Set(
+    productIdsRaw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+  const maxDevices = Number(getArg('maxDevices') || 5);
+
+  if (!filePath) {
+    console.error('Missing --file');
+    process.exit(1);
+  }
+
+  const rawCsv = await fs.readFile(filePath, 'utf8');
+  const rows = parseCsv(rawCsv);
+  const seen = new Set();
+  let updated = 0;
+  let skippedMissing = 0;
+  let skippedFlagged = 0;
+  let skippedProduct = 0;
+  let skippedInvalid = 0;
+
+  for (const row of rows) {
+    const email = String(row['Purchase Email'] || '').trim().toLowerCase();
+    const currentProductId = String(row['Product ID'] || '').trim();
+    const isFlagged =
+      isTruthyCsvValue(row['Refunded?']) ||
+      isTruthyCsvValue(row['Fully Refunded?']) ||
+      isTruthyCsvValue(row['Disputed?']) ||
+      isTruthyCsvValue(row['Access Revoked?']);
+
+    if (!isLikelyEmail(email)) {
+      skippedInvalid += 1;
+      continue;
+    }
+
+    if (productIds.size > 0 && !productIds.has(currentProductId)) {
+      skippedProduct += 1;
+      continue;
+    }
+
+    if (isFlagged) {
+      skippedFlagged += 1;
+      continue;
+    }
+
+    if (seen.has(email)) {
+      continue;
+    }
+    seen.add(email);
+
+    const result = await updateLicenseMaxDevicesByEmail({ email, maxDevices });
+    if (result) {
+      updated += 1;
+    } else {
+      skippedMissing += 1;
+    }
+  }
+
+  console.log(JSON.stringify({
+    success: true,
+    filePath,
+    maxDevices,
+    updated,
+    skippedMissing,
+    skippedFlagged,
+    skippedProduct,
+    skippedInvalid,
+    uniqueEmails: seen.size,
+  }, null, 2));
+  closeDb();
+  process.exit(0);
+}
+
 console.log('Usage:');
 console.log('  node cli.mjs generate-keypair');
 console.log('  node cli.mjs create-license --email you@example.com --plan annual --days 365 --maxDevices 2');
@@ -325,4 +404,5 @@ console.log('  node cli.mjs find-license --email you@example.com');
 console.log('  node cli.mjs import-gumroad-lifetime --file C:\\path\\to\\Sales.csv --productId qmjima --maxDevices 2');
 console.log('  node cli.mjs extract-gumroad-emails --file C:\\path\\to\\Sales.csv --productIds qmjima,hczgm');
 console.log('  node cli.mjs apply-license-map --file C:\\path\\to\\legacy-license-map.csv --maxDevices 2');
+console.log('  node cli.mjs set-max-devices-from-csv --file C:\\path\\to\\Sales.csv --productIds qmjima,hczgm --maxDevices 5');
 process.exit(1);
