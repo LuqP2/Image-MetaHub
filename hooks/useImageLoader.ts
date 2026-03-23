@@ -520,7 +520,6 @@ export function useImageLoader() {
                 const isElectron = getIsElectron();
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
-                const hydratedImages: IndexedImage[] = [];
                 setProgress({ current: 0, total: cachedData.imageCount });
                 setDirectoryProgress(directory.id, { current: 0, total: cachedData.imageCount });
 
@@ -595,21 +594,21 @@ export function useImageLoader() {
                     setDirectoryProgress(directory.id, { current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
 
                     if (validImages.length > 0) {
-                        hydratedImages.push(...validImages);
+                        addImages(validImages);
+                        // Yield between chunks so the renderer can paint instead of showing an empty pane.
+                        await new Promise(resolve => setTimeout(resolve, 0));
                     }
                 });
-
-                if (hydratedImages.length > 0) {
-                    replaceDirectoryImages(directory.id, hydratedImages);
-                    void useImageStore.getState().importMetadataTags(hydratedImages);
-                    scheduleDirectoryThumbnailWarmup(directory.id, hydratedImages);
-                }
 
                 if (totalFilteredOut > 0) {
                     console.warn(`Filtered out ${totalFilteredOut} cached images that can't be loaded in current environment`);
                 }
 
                 if (totalLoaded > 0) {
+                    const directoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+                    if (directoryImages.length > 0) {
+                        scheduleDirectoryThumbnailWarmup(directory.id, directoryImages);
+                    }
                     log(`Loaded ${totalLoaded} images from cache for ${directory.name}`);
                 }
                 setDirectoryProgress(directory.id, null);
@@ -621,7 +620,7 @@ export function useImageLoader() {
             setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
+    }, [addImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
         const suppressIndexingState = isUpdate;
