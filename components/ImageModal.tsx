@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -64,6 +64,22 @@ interface ImageModalProps {
   directoryPath?: string;
   isIndexing?: boolean;
 }
+
+type ContextMenuState =
+  | {
+      visible: false;
+      x: number;
+      y: number;
+      kind: 'media' | 'selection';
+      selectionText: string;
+    }
+  | {
+      visible: true;
+      x: number;
+      y: number;
+      kind: 'media' | 'selection';
+      selectionText: string;
+    };
 
 // Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
@@ -372,7 +388,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    x: 0,
+    y: 0,
+    visible: false,
+    kind: 'media',
+    selectionText: '',
+  });
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -405,7 +427,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
-
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const recentTags = useImageStore((state) => state.recentTags);
 
   // Shadow Metadata Hook
@@ -547,12 +569,36 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
-      visible: true
+      visible: true,
+      kind: 'media',
+      selectionText: '',
+    });
+  };
+
+  const handleSelectionContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable="true"]')) {
+      return;
+    }
+
+    const selection = window.getSelection()?.toString() ?? '';
+    if (!selection.trim()) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      kind: 'selection',
+      selectionText: selection,
     });
   };
 
   const hideContextMenu = () => {
-    setContextMenu({ x: 0, y: 0, visible: false });
+    setContextMenu({ x: 0, y: 0, visible: false, kind: 'media', selectionText: '' });
   };
 
   const copyPrompt = () => {
@@ -590,6 +636,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const copyModel = () => {
     copyToClipboardElectron(nMeta?.model || '', 'Model');
     hideContextMenu();
+  };
+
+  const copySelection = () => {
+    copyToClipboardElectron(contextMenu.selectionText, 'Selection');
+    hideContextMenu();
+  };
+
+  const searchSelection = () => {
+    const query = contextMenu.selectionText.replace(/\s+/g, ' ').trim();
+    if (!query) {
+      return;
+    }
+    setSearchQuery(query);
+    hideContextMenu();
+    onClose();
   };
 
   const showInFolder = () => {
@@ -1058,7 +1119,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         </div>
 
         {/* Metadata Panel */}
-        <div className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/4 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}>
+        <div
+          className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/4 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}
+          onContextMenu={handleSelectionContextMenu}
+        >
           <div>
             {isRenaming ? (
               <div className="flex gap-2">
@@ -1719,67 +1783,88 @@ const ImageModal: React.FC<ImageModalProps> = ({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={copyImage}
-            className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isVideo ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
-            disabled={isVideo}
-          >
-            <Copy className="w-4 h-4" />
-            Copy to Clipboard
-          </button>
-          
-          <div className="border-t border-gray-600 my-1"></div>
-          
-          <button
-            onClick={copyPrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!nMeta?.prompt}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Prompt
-          </button>
-          <button
-            onClick={copyNegativePrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!nMeta?.negativePrompt}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Negative Prompt
-          </button>
-          <button
-            onClick={copySeed}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!nMeta?.seed}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Seed
-          </button>
-          <button
-            onClick={copyModel}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!nMeta?.model}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Model
-          </button>
-          
-          <div className="border-t border-gray-600 my-1"></div>
-          
-          <button
-            onClick={showInFolder}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Folder className="w-4 h-4" />
-            Show in Folder
-          </button>
-          
-          <button
-            onClick={exportImage}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-          >
-            <Download className="w-4 h-4" />
-            Export Image
-          </button>
+          {contextMenu.kind === 'selection' ? (
+            <>
+              <button
+                onClick={copySelection}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Copy
+              </button>
+              <button
+                onClick={searchSelection}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Search className="w-4 h-4" />
+                Search Selection
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={copyImage}
+                className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isVideo ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
+                disabled={isVideo}
+              >
+                <Copy className="w-4 h-4" />
+                Copy to Clipboard
+              </button>
+
+              <div className="border-t border-gray-600 my-1"></div>
+
+              <button
+                onClick={copyPrompt}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                disabled={!nMeta?.prompt}
+              >
+                <Copy className="w-4 h-4" />
+                Copy Prompt
+              </button>
+              <button
+                onClick={copyNegativePrompt}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                disabled={!nMeta?.negativePrompt}
+              >
+                <Copy className="w-4 h-4" />
+                Copy Negative Prompt
+              </button>
+              <button
+                onClick={copySeed}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                disabled={!nMeta?.seed}
+              >
+                <Copy className="w-4 h-4" />
+                Copy Seed
+              </button>
+              <button
+                onClick={copyModel}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                disabled={!nMeta?.model}
+              >
+                <Copy className="w-4 h-4" />
+                Copy Model
+              </button>
+
+              <div className="border-t border-gray-600 my-1"></div>
+
+              <button
+                onClick={showInFolder}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Folder className="w-4 h-4" />
+                Show in Folder
+              </button>
+
+              <button
+                onClick={exportImage}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export Image
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

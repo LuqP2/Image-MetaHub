@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -143,6 +143,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   );
 };
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  visible: boolean;
+  selectionText: string;
+};
+
 const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,
@@ -152,7 +159,8 @@ const ImagePreviewSidebar: React.FC = () => {
     addTagToImage,
     removeTagFromImage,
     removeAutoTagFromImage,
-    availableTags
+    availableTags,
+    setSearchQuery,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
@@ -168,6 +176,12 @@ const ImagePreviewSidebar: React.FC = () => {
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [showPerformance, setShowPerformance] = useState(true);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    x: 0,
+    y: 0,
+    visible: false,
+    selectionText: '',
+  });
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -220,6 +234,31 @@ const ImagePreviewSidebar: React.FC = () => {
       isMounted = false;
     };
   }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
+
+  useEffect(() => {
+    if (!contextMenu.visible) {
+      return;
+    }
+
+    const handleClickOutside = () => {
+      setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+      }
+    };
+
+    window.addEventListener('click', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu.visible]);
+
   if (!activeImage) {
     return null;
   }
@@ -235,6 +274,46 @@ const ImagePreviewSidebar: React.FC = () => {
     }).catch(err => {
       console.error(`Failed to copy ${type}:`, err);
     });
+  };
+
+  const hideContextMenu = () => {
+    setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+  };
+
+  const handleSelectionContextMenu = (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable="true"]')) {
+      return;
+    }
+
+    const selection = window.getSelection()?.toString() ?? '';
+    if (!selection.trim()) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      selectionText: selection,
+    });
+  };
+
+  const copySelection = () => {
+    copyToClipboard(contextMenu.selectionText, 'Selection');
+    hideContextMenu();
+  };
+
+  const searchSelection = () => {
+    const query = contextMenu.selectionText.replace(/\s+/g, ' ').trim();
+    if (!query) {
+      return;
+    }
+
+    setSearchQuery(query);
+    hideContextMenu();
   };
 
   // Tag management handlers
@@ -278,7 +357,12 @@ const ImagePreviewSidebar: React.FC = () => {
     : [];
 
   return (
-    <div data-area="preview" tabIndex={-1} className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl">
+    <div
+      data-area="preview"
+      tabIndex={-1}
+      className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl"
+      onClick={hideContextMenu}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Image Preview</h2>
@@ -292,7 +376,10 @@ const ImagePreviewSidebar: React.FC = () => {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+        onContextMenu={handleSelectionContextMenu}
+      >
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
           {imageUrl ? (
@@ -789,6 +876,29 @@ const ImagePreviewSidebar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {contextMenu.visible && (
+        <div
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={copySelection}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Copy
+          </button>
+          <button
+            onClick={searchSelection}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Search className="w-4 h-4" />
+            Search Selection
+          </button>
+        </div>
+      )}
     </div>
   );
 };

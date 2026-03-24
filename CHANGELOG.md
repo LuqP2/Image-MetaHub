@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Indexed Folder Transfers**: Added desktop support for copying or moving images between indexed folders, including a destination picker modal, concurrent transfer handling, and preservation of tags, favorites, and shadow metadata.
 - **Editable Field Context Menu**: Added a native right-click context menu with `Cut`, `Copy`, and `Paste` for editable text fields such as the search bar.
+- **Metadata Selection Context Menu**: Added right-click actions for selected text in `ImageModal` and `ImagePreviewSidebar`, including `Copy` and `Search Selection` for faster filtering from prompts and metadata.
 
 ### Improved
 
