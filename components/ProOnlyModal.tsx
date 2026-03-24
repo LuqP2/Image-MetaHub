@@ -214,7 +214,7 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
               </button>
             )}
             <a
-              href="https://lucasphere4660.gumroad.com/l/qmjima"
+              href="https://imagemetahub.com/getpro"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full inline-flex items-center justify-center gap-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-semibold py-3 px-6 rounded-lg transition-colors border border-purple-500/40"

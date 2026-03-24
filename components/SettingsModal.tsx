@@ -731,7 +731,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
               <div className="mt-2 flex justify-end">
                 <a
-                  href="https://lucasphere4660.gumroad.com/l/qmjima"
+                  href="https://imagemetahub.com/getpro"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-400 hover:text-blue-300 underline inline-flex items-center gap-1"

@@ -125,21 +125,21 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
   <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
   <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-    <p>Hey, I’m Lucas, the solo developer behind Image MetaHub.</p>
+    <p>Hey there, Lucas here - the solo dev behind Image MetaHub</p>
 
-    <p>This is a smaller update, but an important one.</p>
+    <p>This update brings the first step toward proper file management inside the app -- copy/move images between indexed folders. It is still an early implementation, but it lays the groundwork for broader file operations later on.</p>
 
-    <p>After a longer gap than I wanted, I’m finally getting back into the project properly. The last few weeks were rough on my end, and development — along with communication — slowed down more than it should have. So I want to say this plainly: Image MetaHub is still active, I’m still here, and I’m back to working on it.</p>
+    <p>A lot of the work went into performance and responsiveness. The app should feel noticeably faster and smoother now (if it does not, or if you have any issues, please let me know). I also fixed a number of smaller issues that were getting in the way of day-to-day workflow.</p>
 
-    <p>This release focuses on practical improvements and fixes, including bulk tagging, multi-selection, clipboard improvements, batch export workflow improvements, and ComfyUI parser updates. It’s not a huge release, but it’s a solid step forward.</p>
+    <p>The next major release, v0.14, may take a little longer than usual. I'm using this cycle to work on features that stay true to the identity of IMH while expanding curation, comparison, and library management. These include things like faster bulk actions, structured comparison workflows, hybrid search, chained filters... in other words, not just more features, but a stronger system for organizing and understanding your work.</p>
 
-    <p>I also want to be transparent about something else: building and maintaining this alone is a lot. I care deeply about this app and where I want to take it, and I’m starting to think more seriously about opening the door to people who may want to help — whether through testing, feedback organization, or other forms of support around the project.</p>
+    <p>I'd also really like to hear your thoughts on the direction you think the app should take -- as in, in what ways could it improve your daily workflow? Don't hesitate in opening an Issue on GitHub with your ideas. You can also contact me on <a href="mailto:imagemetahub@gmail.com" className="text-blue-400 hover:text-blue-300 underline">imagemetahub@gmail.com</a>.</p>
 
-    <p>If that sounds like something you’d like to be part of, feel free to reach out at <a href="mailto:imagemetahub@gmail.com" className="text-blue-400 hover:text-blue-300 underline">imagemetahub@gmail.com</a>.</p>
+    <p>I also created a Discord server for IMH -- it's still small and quiet but if you want a more direct place to ask questions, share suggestions, or follow development a bit more closely, you are welcome to join! <a href="https://discord.gg/BwYQWKcafh" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/BwYQWKcafh</a></p>
 
-    <p className="font-medium mt-4">And to everyone who has supported the project, reported bugs, bought a <strong className="text-white">Pro license</strong>, or simply kept using the app: thank you. It genuinely matters.</p>
+    <p>As always, thank you to everyone using the app, reporting bugs, sharing feedback, and supporting the project. It genuinely helps me keep building.</p>
 
-    <p className="mt-4">Enjoy the update.</p>
+    <p className="mt-4">Enjoy the update!</p>
 
     <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
       <a
@@ -152,7 +152,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         GitHub Project
       </a>
       <a
-        href="https://lucasphere4660.gumroad.com/l/qmjima"
+        href="https://imagemetahub.com/getpro"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
