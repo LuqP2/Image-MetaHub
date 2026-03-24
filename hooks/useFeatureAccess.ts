@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import { useLicenseStore, TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
 
-export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging';
+export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clustering' | 'batch_export' | 'bulk_tagging' | 'file_management';
 
 
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
@@ -80,6 +80,7 @@ export const useFeatureAccess = () => {
   const canUseComparison = allowDuringInit || canUseDuringTrialOrPro;
   const canUseAnalytics = allowDuringInit || canUseDuringTrialOrPro;
   const canUseBatchExport = allowDuringInit || canUseDuringTrialOrPro;
+  const canUseFileManagement = allowDuringInit || canUseDuringTrialOrPro;
 
   // Trial countdown
   const trialDaysRemaining = isInitialized
@@ -118,6 +119,7 @@ export const useFeatureAccess = () => {
     canUseComparison,
     canUseAnalytics,
     canUseBatchExport,
+    canUseFileManagement,
 
     canUseBulkTagging: canUseDuringTrialOrPro,
 

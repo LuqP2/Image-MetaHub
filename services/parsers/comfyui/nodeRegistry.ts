@@ -135,6 +135,45 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
     },
     widget_order: ['text']
   },
+  'smZ CLIPTextEncode': {
+    category: 'LOADING', roles: ['SOURCE'],
+    inputs: { clip: { type: 'CLIP' }, text: { type: 'STRING' } }, outputs: { CONDITIONING: { type: 'CONDITIONING' } },
+    param_mapping: {
+      prompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          const textInput = node.inputs?.text;
+          if (textInput && Array.isArray(textInput)) {
+            return traverse(textInput as any, { ...state, targetParam: 'prompt' }, graph, []);
+          }
+          if (textInput && typeof textInput === 'string') {
+            return textInput;
+          }
+          if (node.widgets_values?.[0]) {
+            return node.widgets_values[0];
+          }
+          return null;
+        }
+      },
+      negativePrompt: {
+        source: 'custom_extractor',
+        extractor: (node, state, graph, traverse) => {
+          const textInput = node.inputs?.text;
+          if (textInput && Array.isArray(textInput)) {
+            return traverse(textInput as any, { ...state, targetParam: 'negativePrompt' }, graph, []);
+          }
+          if (textInput && typeof textInput === 'string') {
+            return textInput;
+          }
+          if (node.widgets_values?.[0]) {
+            return node.widgets_values[0];
+          }
+          return null;
+        }
+      }
+    },
+    widget_order: ['text']
+  },
   'ControlNetApply': {
     category: 'TRANSFORM', roles: ['TRANSFORM'],
     inputs: { conditioning: { type: 'CONDITIONING' }, control_net: { type: 'CONTROL_NET' }, image: { type: 'IMAGE' }, },

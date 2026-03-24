@@ -38,6 +38,7 @@ function getIconPath() {
 
 const execFileAsync = promisify(execFile);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+const FILE_STAT_CONCURRENCY = 64;
 
 const getMimeTypeFromName = (name) => {
   const lower = name.toLowerCase();
@@ -107,6 +108,8 @@ async function readVideoMetadataWithFfprobe(filePath) {
 
 let mainWindow;
 let skippedVersions = new Set();
+let isManualUpdateCheck = false;
+
 
 // --- Zoom Management ---
 const ZOOM_STEP = 0.1;
@@ -178,31 +181,132 @@ const zoomMenuItems = [
 
 // --- Settings Management ---
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+const settingsTempPath = `${settingsPath}.tmp`;
+const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+
+const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readSettingsFile(filePath) {
+  const data = await fs.readFile(filePath, 'utf-8');
+  const parsed = JSON.parse(data);
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`Invalid settings payload in ${path.basename(filePath)}`);
+  }
+
+  return parsed;
+}
+
+async function writeFileAndSync(filePath, data) {
+  const handle = await fs.open(filePath, 'w');
+  try {
+    await handle.writeFile(data, 'utf-8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function replaceFileWithRetry(sourcePath, destinationPath) {
+  let lastError = null;
+
+  for (const delayMs of SETTINGS_WRITE_RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await delay(delayMs);
+    }
+
+    try {
+      await fs.rename(sourcePath, destinationPath);
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (error?.code === 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 async function readSettings() {
   // Use cache if available and fresh (optional TTL could be added, but invalidated on save is enough for this app)
   if (cachedSettings) return cachedSettings;
 
   try {
-    const data = await fs.readFile(settingsPath, 'utf-8');
-    cachedSettings = JSON.parse(data);
+    cachedSettings = await readSettingsFile(settingsPath);
     return cachedSettings;
   } catch (error) {
+    const primaryError = error;
+
+    for (const recoveryPath of [settingsTempPath, settingsBackupPath]) {
+      try {
+        const recoveredSettings = await readSettingsFile(recoveryPath);
+        await replaceFileWithRetry(recoveryPath, settingsPath);
+        cachedSettings = recoveredSettings;
+        console.warn(`Recovered settings from ${path.basename(recoveryPath)} after primary settings read failed.`);
+        return cachedSettings;
+      } catch (recoveryError) {
+        if (recoveryError?.code !== 'ENOENT') {
+          console.warn(`Failed to recover settings from ${path.basename(recoveryPath)}:`, recoveryError);
+        }
+      }
+    }
+
+    if (primaryError?.code !== 'ENOENT') {
+      console.warn('Failed to read settings, using defaults:', primaryError);
+    }
+
     // If file doesn't exist or is invalid, return empty object
     return {};
   }
 }
 
 async function saveSettings(settings) {
+  const serializedSettings = JSON.stringify(settings, null, 2);
+
   try {
-    await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+
+    try {
+      await fs.copyFile(settingsPath, settingsBackupPath);
+    } catch (backupError) {
+      if (backupError?.code !== 'ENOENT') {
+        console.warn('Failed to refresh settings backup before save:', backupError);
+      }
+    }
+
+    await fs.rm(settingsTempPath, { force: true });
+    await writeFileAndSync(settingsTempPath, serializedSettings);
+    await replaceFileWithRetry(settingsTempPath, settingsPath);
+
+    const verifiedSettings = await readSettingsFile(settingsPath);
+    if (JSON.stringify(verifiedSettings) !== JSON.stringify(settings)) {
+      throw new Error('Settings verification failed after write.');
+    }
+
+    await fs.copyFile(settingsPath, settingsBackupPath);
     cachedSettings = settings; // Update cache
+    return { success: true };
   } catch (error) {
+    cachedSettings = null;
     console.error('Error saving settings:', error);
+    try {
+      await fs.rm(settingsTempPath, { force: true });
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary settings file:', cleanupError);
+    }
+    throw error;
   }
 }
+
 
 async function getCacheRootPath() {
   const settings = await readSettings();
@@ -317,8 +421,10 @@ function createApplicationMenu() {
             if (autoUpdater) {
               try {
                 console.log('Manually checking for updates...');
+                isManualUpdateCheck = true;
                 await autoUpdater.checkForUpdates();
               } catch (error) {
+                isManualUpdateCheck = false;
                 console.error('Error checking for updates:', error);
                 if (mainWindow) {
                   dialog.showMessageBox(mainWindow, {
@@ -422,8 +528,18 @@ if (autoUpdater) {
     // console.log('Checking for update...');
   });
 
-  autoUpdater.on('update-available', (info) => {
+  autoUpdater.on('update-available', async (info) => {
     console.log('Update available:', info.version);
+    const wasManual = isManualUpdateCheck;
+    isManualUpdateCheck = false;
+
+    if (!wasManual) {
+      const settings = await readSettings();
+      if (settings.autoUpdate === false) {
+        console.log('Auto-update is disabled, silently ignoring cached update-available event.');
+        return;
+      }
+    }
 
     // Check if user previously skipped this version
     if (skippedVersions.has(info.version)) {
@@ -479,6 +595,7 @@ if (autoUpdater) {
         if (result.response === 0) {
           // User chose to download - START DOWNLOAD NOW
           console.log('User accepted update download - starting download...');
+          isManualUpdateCheck = true;
           autoUpdater.downloadUpdate();
         } else if (result.response === 1) {
           // User chose "Download Later"
@@ -503,6 +620,7 @@ if (autoUpdater) {
 
   autoUpdater.on('update-not-available', (info) => {
     // console.log('Update not available');
+    isManualUpdateCheck = false;
   });
 
   autoUpdater.on('error', (err) => {
@@ -513,13 +631,16 @@ if (autoUpdater) {
       console.log('macOS auto-updater error - this may be due to code signing requirements');
     }
     
-    dialog.showMessageBox(mainWindow, {
-      type: 'error',
-      title: 'Update Error',
-      message: 'Failed to check for updates.',
-      detail: err.message || 'Please try again later.',
-      buttons: ['OK']
-    });
+    if (isManualUpdateCheck && mainWindow) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Update Error',
+        message: 'Failed to check for updates.',
+        detail: err.message || 'Please try again later.',
+        buttons: ['OK']
+      });
+      isManualUpdateCheck = false;
+    }
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -534,8 +655,19 @@ if (autoUpdater) {
     }
   });
 
-  autoUpdater.on('update-downloaded', (info) => {
+  autoUpdater.on('update-downloaded', async (info) => {
     console.log('Update downloaded:', info.version);
+    
+    // Safety check just in case
+    const wasManual = isManualUpdateCheck;
+    if (!wasManual) {
+      const settings = await readSettings();
+      if (settings.autoUpdate === false) {
+        console.log('Auto-update is disabled, silently ignoring cached update-downloaded event. Will install on next start.');
+        return;
+      }
+    }
+
     if (mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: 'question',
@@ -606,7 +738,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.13.1');
+    mainWindow.setTitle('Image MetaHub v0.13.2');
   }
 
   // Load the app
@@ -647,6 +779,20 @@ function createWindow(startupDirectory = null) {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable) {
+      return;
+    }
+
+    const menu = Menu.buildFromTemplate([
+      { role: 'cut', enabled: params.editFlags?.canCut ?? false },
+      { role: 'copy', enabled: params.editFlags?.canCopy ?? false },
+      { role: 'paste', enabled: params.editFlags?.canPaste ?? false },
+    ]);
+
+    menu.popup({ window: mainWindow });
   });
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -761,45 +907,109 @@ app.whenReady().then(async () => {
 const allowedDirectoryPaths = new Set();
 
 // Helper function for recursive file search
-async function getFilesRecursively(directory, baseDirectory) {
-    const files = [];
-    try {
-        const entries = await fs.readdir(directory, { withFileTypes: true });
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = [];
+  let index = 0;
 
-        for (const entry of entries) {
-            const fullPath = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                files.push(...await getFilesRecursively(fullPath, baseDirectory));
-            } else if (entry.isFile()) {
-                const lowerName = entry.name.toLowerCase();
-                const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
-                const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
-                if (isImage || isVideo) {
-                    const stats = await fs.stat(fullPath);
-                    const fileType = getMimeTypeFromName(lowerName);
-                    files.push({
-                        name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-                        lastModified: stats.birthtimeMs,
-                        size: stats.size,
-                        type: fileType,
-                        birthtimeMs: stats.birthtimeMs,
-                    });
-                }
-            }
-        }
-    } catch (error) {
-        // Ignore errors from directories we can't read, e.g. permissions
-        console.warn(`Could not read directory ${directory}: ${error.message}`);
+  const worker = async () => {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
     }
-    return files;
+  };
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+async function statMediaEntries(directory, entries, baseDirectory) {
+  const mediaEntries = entries.filter((entry) => {
+    if (!entry.isFile()) {
+      return false;
+    }
+    const lowerName = entry.name.toLowerCase();
+    const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
+    const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
+    return isImage || isVideo;
+  });
+
+  const fileRecords = await mapWithConcurrency(mediaEntries, FILE_STAT_CONCURRENCY, async (entry) => {
+    const lowerName = entry.name.toLowerCase();
+    const fullPath = path.join(directory, entry.name);
+    const stats = await fs.stat(fullPath);
+    return {
+      name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
+      lastModified: stats.birthtimeMs,
+      size: stats.size,
+      type: getMimeTypeFromName(lowerName),
+      birthtimeMs: stats.birthtimeMs,
+    };
+  });
+
+  return fileRecords.filter(Boolean);
+}
+
+async function getFilesRecursively(directory, baseDirectory) {
+  const files = [];
+  const directoriesToVisit = [directory];
+
+  while (directoriesToVisit.length > 0) {
+    const currentDirectory = directoriesToVisit.pop();
+    if (!currentDirectory) {
+      continue;
+    }
+
+    try {
+      const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          directoriesToVisit.push(path.join(currentDirectory, entry.name));
+        }
+      }
+
+      const fileRecords = await statMediaEntries(currentDirectory, entries, baseDirectory);
+      files.push(...fileRecords);
+    } catch (error) {
+      // Ignore errors from directories we can't read, e.g. permissions
+      console.warn(`Could not read directory ${currentDirectory}: ${error.message}`);
+    }
+  }
+
+  return files;
 }
 
 function setupFileOperationHandlers() {
+  const normalizeAllowedPath = (inputPath) => {
+    if (!inputPath) return '';
+
+    const resolvedPath = path.resolve(inputPath);
+    const parsedPath = path.parse(resolvedPath);
+    const normalizedPath = resolvedPath === parsedPath.root
+      ? resolvedPath
+      : resolvedPath.replace(/[\\/]+$/, '');
+
+    return process.platform === 'win32'
+      ? normalizedPath.toLowerCase()
+      : normalizedPath;
+  };
+
+  const isSameOrChildPath = (candidatePath, allowedPath) => {
+    if (!candidatePath || !allowedPath) return false;
+    if (candidatePath === allowedPath) return true;
+
+    const allowedPrefix = allowedPath.endsWith(path.sep)
+      ? allowedPath
+      : `${allowedPath}${path.sep}`;
+
+    return candidatePath.startsWith(allowedPrefix);
+  };
+
   // Security helper to check if a file path is within one of the allowed directories
   const isPathAllowed = (filePath) => {
-    if (allowedDirectoryPaths.size === 0) return false;
-    const normalizedFilePath = path.normalize(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => normalizedFilePath.startsWith(allowedPath));
+    if (allowedDirectoryPaths.size === 0 || !filePath) return false;
+    const normalizedFilePath = normalizeAllowedPath(filePath);
+    return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
   };
   const userDataPath = path.normalize(app.getPath('userData'));
   const isInternalPath = (filePath) => {
@@ -820,6 +1030,28 @@ function setupFileOperationHandlers() {
     usedNames.add(normalizeNameKey(candidate));
     return candidate;
   };
+  const getUniqueDestinationPath = async (destDir, baseName, usedNames) => {
+    const parsed = path.parse(baseName);
+    let candidate = baseName;
+    let counter = 2;
+
+    while (true) {
+      const candidateKey = normalizeNameKey(candidate);
+      const candidatePath = path.resolve(destDir, candidate);
+
+      if (!usedNames.has(candidateKey)) {
+        try {
+          await fs.access(candidatePath);
+        } catch {
+          usedNames.add(candidateKey);
+          return { candidate, candidatePath };
+        }
+      }
+
+      candidate = `${parsed.name} (${counter})${parsed.ext}`;
+      counter += 1;
+    }
+  };
 
   // --- Settings IPC ---
   ipcMain.handle('get-settings', async () => {
@@ -828,9 +1060,14 @@ function setupFileOperationHandlers() {
   });
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
-    const currentSettings = await readSettings();
-    const mergedSettings = { ...currentSettings, ...newSettings };
-    await saveSettings(mergedSettings);
+    try {
+      const currentSettings = await readSettings();
+      const mergedSettings = { ...currentSettings, ...newSettings };
+      await saveSettings(mergedSettings);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
   });
 
   ipcMain.handle('get-default-cache-path', () => {
@@ -1079,6 +1316,51 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('generate-thumbnail-from-path', async (event, { filePath, maxEdge = 320, quality = 82 }) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        return { success: false, error: 'Access denied: Cannot generate thumbnails outside of allowed directories.' };
+      }
+
+      let image;
+      if (typeof nativeImage.createThumbnailFromPath === 'function') {
+        image = await nativeImage.createThumbnailFromPath(filePath, {
+          width: maxEdge,
+          height: maxEdge,
+        });
+      } else {
+        image = nativeImage.createFromPath(filePath);
+      }
+
+      if (!image || image.isEmpty()) {
+        return { success: false, error: 'Failed to decode image for thumbnail generation.' };
+      }
+
+      const { width, height } = image.getSize();
+      const safeWidth = Math.max(1, width || maxEdge);
+      const safeHeight = Math.max(1, height || maxEdge);
+      const scale = Math.min(1, maxEdge / Math.max(safeWidth, safeHeight));
+
+      const resizedImage = scale < 1
+        ? image.resize({
+            width: Math.max(1, Math.round(safeWidth * scale)),
+            height: Math.max(1, Math.round(safeHeight * scale)),
+            quality: 'better',
+          })
+        : image;
+
+      const jpegQuality = Math.max(1, Math.min(100, Math.round(quality)));
+      const data = resizedImage.toJPEG(jpegQuality);
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('clear-metadata-cache', async () => {
     try {
       const rootPath = await getCacheRootPath();
@@ -1165,7 +1447,7 @@ function setupFileOperationHandlers() {
       }
       allowedDirectoryPaths.clear();
       for (const p of paths) {
-        const normalized = path.normalize(p);
+        const normalized = normalizeAllowedPath(p);
         allowedDirectoryPaths.add(normalized);
         console.log('[Main] Added allowed directory:', normalized);
       }
@@ -1366,10 +1648,14 @@ function setupFileOperationHandlers() {
     }
     try {
       console.log('Manual update check requested');
+      isManualUpdateCheck = true;
       const result = await autoUpdater.checkForUpdates();
+      // Reset the flag if successful, as 'update-available' or 'update-not-available' will handle UI
+      // If it throws, the error handler will catch and reset the flag
       return { success: true, updateInfo: result.updateInfo };
     } catch (error) {
       console.error('Error checking for updates:', error);
+      isManualUpdateCheck = false; // Reset on immediate error
       return { success: false, error: error.message };
     }
   });
@@ -1382,8 +1668,8 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.13.1',
-      releaseNotes: `## [0.13.1] - Release
+  version: '0.13.2',
+      releaseNotes: `## [0.13.2] - Release
 
 ### Major Performance Improvements
 - **3-5x Faster Loading**: Batch IPC operations reduce 1000+ calls to a single batch
@@ -1435,33 +1721,18 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'No directory path provided' };
       }
 
+      const scanStart = Date.now();
+
       let imageFiles = [];
 
       if (recursive) {
         imageFiles = await getFilesRecursively(dirPath, dirPath);
       } else {
         const files = await fs.readdir(dirPath, { withFileTypes: true });
-
-        for (const file of files) {
-            if (file.isFile()) {
-              const name = file.name.toLowerCase();
-              const isImage = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp');
-              const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => name.endsWith(ext));
-              if (isImage || isVideo) {
-                const filePath = path.join(dirPath, file.name);
-                const stats = await fs.stat(filePath);
-                const fileType = getMimeTypeFromName(name);
-                imageFiles.push({
-                  name: file.name, // name is already relative for top-level
-                  lastModified: stats.birthtimeMs,
-                  size: stats.size,
-                  type: fileType,
-                  birthtimeMs: stats.birthtimeMs,
-                });
-              }
-            }
-        }
+        imageFiles = await statMediaEntries(dirPath, files, dirPath);
       }
+
+      console.log(`[list-directory-files] ${dirPath} (${recursive ? 'recursive' : 'flat'}) -> ${imageFiles.length} files in ${((Date.now() - scanStart) / 1000).toFixed(2)}s`);
 
       return { success: true, files: imageFiles };
     } catch (error) {
@@ -2096,6 +2367,171 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error exporting images to ZIP:', error);
       return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
+    }
+  });
+
+  ipcMain.handle('transfer-indexed-images', async (event, { files, destDir, mode, transferId } = {}) => {
+    try {
+      if (!Array.isArray(files) || files.length === 0) {
+        return { success: false, transferred: [], failedCount: 0, error: 'No files provided for transfer.' };
+      }
+      if (!destDir) {
+        return { success: false, transferred: [], failedCount: 0, error: 'No destination directory provided.' };
+      }
+      if (mode !== 'copy' && mode !== 'move') {
+        return { success: false, transferred: [], failedCount: 0, error: 'Invalid transfer mode.' };
+      }
+      if (!isPathAllowed(destDir)) {
+        return { success: false, transferred: [], failedCount: 0, error: 'Access denied: Destination must be an indexed folder.' };
+      }
+
+      await fs.mkdir(destDir, { recursive: true });
+
+      const transferred = [];
+      let failedCount = 0;
+      const usedNames = new Set();
+      let processed = 0;
+      const total = files.length;
+      const TRANSFER_CONCURRENCY = mode === 'move' ? 6 : 4;
+      const progressTransferId = transferId ? String(transferId) : null;
+      const sendProgress = (stage = 'copying', statusText) => {
+        try {
+          event.sender.send('transfer-indexed-images-progress', {
+            transferId: progressTransferId,
+            mode,
+            total,
+            processed,
+            transferredCount: transferred.length,
+            failedCount,
+            stage,
+            statusText,
+          });
+        } catch {
+          // ignore sender errors
+        }
+      };
+
+      sendProgress('copying', mode === 'move' ? 'Moving files...' : 'Copying files...');
+
+      const plannedTransfers = [];
+
+      for (const file of files) {
+        try {
+          const sourcePath = path.resolve(file.directoryPath, file.relativePath);
+          if (!isPathAllowed(sourcePath)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          if (path.normalize(file.directoryPath) === path.normalize(destDir)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          const baseName = path.basename(file.relativePath);
+          const { candidate, candidatePath } = await getUniqueDestinationPath(destDir, baseName, usedNames);
+
+          if (path.normalize(sourcePath) === path.normalize(candidatePath)) {
+            failedCount += 1;
+            processed += 1;
+            sendProgress('copying', `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`);
+            continue;
+          }
+
+          plannedTransfers.push({
+            sourceDirectoryPath: file.directoryPath,
+            sourceRelativePath: file.relativePath,
+            sourceAbsolutePath: sourcePath,
+            destinationDirectoryPath: destDir,
+            destinationRelativePath: candidate,
+            destinationAbsolutePath: candidatePath,
+            fileName: candidate
+          });
+        } catch (error) {
+          failedCount += 1;
+          processed += 1;
+          sendProgress(
+            'copying',
+            `${mode === 'move' ? 'Preparing move' : 'Preparing copy'} ${processed} of ${total}...`,
+          );
+        }
+      }
+
+      let nextTaskIndex = 0;
+      const workerCount = Math.max(1, Math.min(TRANSFER_CONCURRENCY, plannedTransfers.length));
+
+      const executeTransfer = async (task) => {
+        if (mode === 'move') {
+          try {
+            await fs.rename(task.sourceAbsolutePath, task.destinationAbsolutePath);
+          } catch (error) {
+            if (error?.code === 'EXDEV') {
+              await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+              await fs.unlink(task.sourceAbsolutePath);
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          await fs.copyFile(task.sourceAbsolutePath, task.destinationAbsolutePath);
+        }
+
+        const stats = await fs.stat(task.destinationAbsolutePath);
+        transferred.push({
+          sourceDirectoryPath: task.sourceDirectoryPath,
+          sourceRelativePath: task.sourceRelativePath,
+          destinationDirectoryPath: task.destinationDirectoryPath,
+          destinationRelativePath: task.destinationRelativePath,
+          destinationAbsolutePath: task.destinationAbsolutePath,
+          fileName: task.fileName,
+          size: stats.size,
+          lastModified: stats.mtimeMs,
+          type: getMimeTypeFromName(task.fileName),
+        });
+      };
+
+      await Promise.all(
+        Array.from({ length: workerCount }, async () => {
+          while (true) {
+            const currentIndex = nextTaskIndex;
+            nextTaskIndex += 1;
+            if (currentIndex >= plannedTransfers.length) {
+              return;
+            }
+
+            const task = plannedTransfers[currentIndex];
+            try {
+              await executeTransfer(task);
+            } catch (error) {
+              failedCount += 1;
+            } finally {
+              processed += 1;
+              sendProgress(
+                processed >= total ? 'finalizing' : 'copying',
+                processed >= total
+                  ? 'Finalizing transfer...'
+                  : `${mode === 'move' ? 'Moving' : 'Copying'} ${processed} of ${total}...`,
+              );
+            }
+          }
+        })
+      );
+
+      sendProgress('done', 'Transfer complete.');
+
+      return {
+        success: transferred.length > 0,
+        transferred,
+        failedCount,
+        error: transferred.length > 0 ? undefined : `No files were ${mode === 'move' ? 'moved' : 'copied'}.`,
+      };
+    } catch (error) {
+      console.error('Error transferring indexed images:', error);
+      return { success: false, transferred: [], failedCount: 0, error: error.message };
     }
   });
 

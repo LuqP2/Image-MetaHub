@@ -47,16 +47,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setBlurSensitiveImages = useSettingsStore((state) => state.setBlurSensitiveImages);
 
   // A1111 Integration settings
+  const a1111Enabled = useSettingsStore((state) => state.a1111Enabled);
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const a1111AutoStart = useSettingsStore((state) => state.a1111AutoStart);
   const a1111LastConnectionStatus = useSettingsStore((state) => state.a1111LastConnectionStatus);
+  const setA1111Enabled = useSettingsStore((state) => state.setA1111Enabled);
   const setA1111ServerUrl = useSettingsStore((state) => state.setA1111ServerUrl);
   const toggleA1111AutoStart = useSettingsStore((state) => state.toggleA1111AutoStart);
   const setA1111ConnectionStatus = useSettingsStore((state) => state.setA1111ConnectionStatus);
 
   // ComfyUI Integration settings
+  const comfyUIEnabled = useSettingsStore((state) => state.comfyUIEnabled);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
+  const setComfyUIEnabled = useSettingsStore((state) => state.setComfyUIEnabled);
   const setComfyUIServerUrl = useSettingsStore((state) => state.setComfyUIServerUrl);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
 
@@ -462,6 +466,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
               Configure connection to your local Automatic1111 instance. Make sure A1111 is running with the --api flag.
             </p>
 
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md mb-3">
+              <div>
+                <p className="text-sm">Show in viewer</p>
+                <p className="text-xs text-gray-400">
+                  Show A1111 actions in Image Modal and Image Preview Sidebar.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={a1111Enabled}
+                  onChange={(event) => setA1111Enabled(event.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
             {/* Server URL Input */}
             <div className="space-y-2 mb-3">
               <label className="text-sm text-gray-300">Server URL</label>
@@ -521,6 +543,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 Requires MetaHub Save Node installed in ComfyUI.
               </span>
             </p>
+
+            <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md mb-3">
+              <div>
+                <p className="text-sm">Show in viewer</p>
+                <p className="text-xs text-gray-400">
+                  Show ComfyUI actions in Image Modal and Image Preview Sidebar.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={comfyUIEnabled}
+                  onChange={(event) => setComfyUIEnabled(event.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
 
             {/* Server URL Input */}
             <div className="space-y-2 mb-3">

@@ -134,26 +134,39 @@ function extractModel(parameters: string): string | null {
   return match ? match[1].trim() : null;
 }
 // Extract LoRAs from both parameters and JSON data
-function extractLoRAs(parameters: string, jsonData?: Record<string, unknown> | null): string[] {
-  const loras: string[] = [];
+function extractLoRAs(parameters: string, jsonData?: Record<string, unknown> | null): { name: string; weight?: number }[] {
+  const loras: { name: string; weight?: number }[] = [];
   // Extract from JSON data (preferred)
-  if (jsonData?.lora && Array.isArray(jsonData.lora)) {
-    jsonData.lora.forEach((lora: unknown) => {
-      if (typeof lora === 'object' && lora !== null && 'model' in lora) {
+  const jsonLoras = jsonData?.loras || jsonData?.lora;
+  if (jsonLoras && Array.isArray(jsonLoras)) {
+    jsonLoras.forEach((lora: unknown) => {
+      if (typeof lora === 'object' && lora !== null) {
         const loraObj = lora as Record<string, unknown>;
-        if (typeof loraObj.model === 'string') {
-          loras.push(loraObj.model);
+        const name = (loraObj.file as string) || (loraObj.model as string);
+        if (typeof name === 'string') {
+          const weight = typeof loraObj.weight === 'number' ? loraObj.weight : undefined;
+          loras.push({ name, weight });
         }
       } else if (typeof lora === 'string') {
-        loras.push(lora);
+        loras.push({ name: lora });
       }
     });
   }
   // Fallback to parameter extraction
   if (loras.length === 0) {
-    const loraMatches = parameters.matchAll(/LoRA\s+\d+\s+Model:\s*([^,\n]+)/gi);
+    const loraMatches = parameters.matchAll(/LoRA\s+(\d+)\s+Model:\s*([^,\n]+)/gi);
     for (const match of Array.from(loraMatches)) {
-      loras.push(match[1].trim());
+      const index = match[1];
+      const name = match[2].trim();
+      
+      let weight: number | undefined = undefined;
+      const weightRegex = new RegExp(`LoRA\\s+${index}\\s+Weight:\\s*([\\d.]+)`, 'i');
+      const weightMatch = parameters.match(weightRegex);
+      if (weightMatch) {
+        weight = parseFloat(weightMatch[1]);
+      }
+      
+      loras.push({ name, weight });
     }
   }
   return loras;

@@ -8,6 +8,31 @@ export interface ExportBatchProgress {
   stage: 'copying' | 'finalizing' | 'done';
 }
 
+export type IndexedImageTransferMode = 'copy' | 'move';
+
+export interface IndexedImageTransferProgress {
+  transferId: string | null;
+  mode: IndexedImageTransferMode;
+  total: number;
+  processed: number;
+  transferredCount: number;
+  failedCount: number;
+  stage: 'copying' | 'finalizing' | 'done';
+  statusText?: string;
+}
+
+export interface IndexedImageTransferResultItem {
+  sourceDirectoryPath: string;
+  sourceRelativePath: string;
+  destinationDirectoryPath: string;
+  destinationRelativePath: string;
+  destinationAbsolutePath: string;
+  fileName: string;
+  size?: number;
+  lastModified?: number;
+  type?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -30,6 +55,17 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  transferIndexedImages: (args: {
+    files: { directoryPath: string; relativePath: string }[];
+    destDir: string;
+    mode: IndexedImageTransferMode;
+    transferId?: string;
+  }) => Promise<{
+    success: boolean;
+    transferred: IndexedImageTransferResultItem[];
+    failedCount: number;
+    error?: string;
+  }>;
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   ensureDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>;
   getUserDataPath: () => Promise<string>;
@@ -53,6 +89,7 @@ export interface ElectronAPI {
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
+  generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
@@ -70,6 +107,7 @@ export interface ElectronAPI {
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;
+  onTransferIndexedImagesProgress: (callback: (progress: IndexedImageTransferProgress) => void) => () => void;
 
   // File watching
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;
@@ -595,7 +633,16 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
     );
   }
 
-  return false;
+  // Some exports store the ComfyUI graph directly at the top level.
+  return Object.entries(metadata as Record<string, any>).some(([key, value]) =>
+    key !== 'extra' &&
+    key !== 'extraMetadata' &&
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'class_type' in value &&
+    'inputs' in value
+  );
 }
 
 export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
@@ -657,6 +704,8 @@ export interface TagInfo {
   name: string;                  // Tag name (lowercase)
   count: number;                 // Number of images with this tag
 }
+
+export type InclusionFilterMode = 'neutral' | 'include' | 'exclude';
 
 export interface Directory {
   id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)

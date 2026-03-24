@@ -17,11 +17,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        handleClear();
+        const isModalOpen = document.querySelector('.fixed.inset-0');
+        if (!isModalOpen) {
+          handleClear();
+        }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Use capture phase so we evaluate the DOM *before* React 18 synchronously unmounts any modals
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [onChange]);
 
   return (

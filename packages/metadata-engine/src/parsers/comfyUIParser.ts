@@ -142,6 +142,10 @@ function extractParamsWithRegex(text: string): Partial<Record<string, any>> {
   return params;
 }
 
+function normalizePromptWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Advanced Seed Extraction with multiple formats:
  * - Numeric: "seed": 12345
@@ -530,32 +534,13 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
       }
     }
   }
-  
-  // Fix duplicated prompts - check if prompt contains repeated segments
+
   if (results.prompt && typeof results.prompt === 'string') {
-    const trimmedPrompt = results.prompt.trim();
-    
-    // Split by common delimiters (comma, comma+space, double space)
-    const segments = trimmedPrompt.split(/,\s*|,|  +/).filter(s => s.trim());
-    
-    // Remove duplicate segments while preserving order
-    const uniqueSegments = Array.from(new Set(segments));
-    
-    // If we removed duplicates, reconstruct the prompt
-    if (uniqueSegments.length < segments.length) {
-      results.prompt = uniqueSegments.join(', ');
-    }
-    
-    // Additional check: if the entire prompt is literally repeated (e.g., "abc abc")
-    const words = trimmedPrompt.split(/\s+/);
-    const half = Math.floor(words.length / 2);
-    if (words.length >= 4 && words.length % 2 === 0) {
-      const firstHalf = words.slice(0, half).join(' ');
-      const secondHalf = words.slice(half).join(' ');
-      if (firstHalf === secondHalf && firstHalf.length > 0) {
-        results.prompt = firstHalf;
-      }
-    }
+    results.prompt = normalizePromptWhitespace(results.prompt);
+  }
+
+  if (results.negativePrompt && typeof results.negativePrompt === 'string') {
+    results.negativePrompt = normalizePromptWhitespace(results.negativePrompt);
   }
 
   // Phase 2: Advanced extraction using terminal node

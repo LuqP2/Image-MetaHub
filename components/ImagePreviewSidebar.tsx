@@ -1,16 +1,19 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
+import { type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { mediaSourceCache } from '../services/mediaSourceCache';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -114,46 +117,6 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
-const resolveImageMimeType = (fileName: string): string => {
-  const lowerName = fileName.toLowerCase();
-  if (lowerName.endsWith('.mp4')) return 'video/mp4';
-  if (lowerName.endsWith('.webm')) return 'video/webm';
-  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
-  if (lowerName.endsWith('.mov')) return 'video/quicktime';
-  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
-  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
-  if (lowerName.endsWith('.webp')) return 'image/webp';
-  return 'image/png';
-};
-
-const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
-  const mimeType = resolveImageMimeType(fileName);
-
-  if (typeof data === 'string') {
-    return { url: `data:${mimeType};base64,${data}`, revoke: false };
-  }
-
-  if (data instanceof ArrayBuffer) {
-    const blob = new Blob([data], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    const view = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const safeView = new Uint8Array(view);
-    const blob = new Blob([safeView], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  if (data && typeof data === 'object' && 'data' in data && Array.isArray((data as { data: unknown }).data)) {
-    const view = new Uint8Array((data as { data: number[] }).data);
-    const blob = new Blob([view], { type: mimeType });
-    return { url: URL.createObjectURL(blob), revoke: true };
-  }
-
-  throw new Error('Unknown file data format.');
-};
-
 // Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -181,6 +144,13 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   );
 };
 
+type ContextMenuState = {
+  x: number;
+  y: number;
+  visible: boolean;
+  selectionText: string;
+};
+
 const ImagePreviewSidebar: React.FC = () => {
   const {
     previewImage,
@@ -190,7 +160,8 @@ const ImagePreviewSidebar: React.FC = () => {
     addTagToImage,
     removeTagFromImage,
     removeAutoTagFromImage,
-    availableTags
+    availableTags,
+    setSearchQuery,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
@@ -206,6 +177,12 @@ const ImagePreviewSidebar: React.FC = () => {
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [showPerformance, setShowPerformance] = useState(true);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    x: 0,
+    y: 0,
+    visible: false,
+    selectionText: '',
+  });
 
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
@@ -214,23 +191,26 @@ const ImagePreviewSidebar: React.FC = () => {
 
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
+  const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
+  const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
-  const preferredThumbnailUrl = activeImage?.thumbnailUrl ?? null;
+  const showA1111Actions = !isVideo && a1111Enabled;
+  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
+  const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
+  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
+  const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, activeImage?.tags ?? []);
 
   useEffect(() => {
     let isMounted = true;
-    let createdUrl: string | null = null;
 
     if (!activeImage) {
       setImageUrl(null);
       return () => {
         isMounted = false;
-        if (createdUrl) {
-          URL.revokeObjectURL(createdUrl);
-        }
       };
     }
 
@@ -242,57 +222,14 @@ const ImagePreviewSidebar: React.FC = () => {
 
       const directoryPath = directories.find(d => d.id === activeImage.directoryId)?.path;
 
-      const setResolvedUrl = (url: string, revoke: boolean) => {
-        if (!isMounted) return;
-        if (createdUrl) {
-          URL.revokeObjectURL(createdUrl);
-          createdUrl = null;
-        }
-        if (revoke) {
-          createdUrl = url;
-        }
-        setImageUrl(url);
-      };
-
       try {
-        const primaryHandle = activeImage.thumbnailHandle;
-        const fallbackHandle = activeImage.handle;
-        const fileHandle =
-          primaryHandle && typeof primaryHandle.getFile === 'function'
-            ? primaryHandle
-            : fallbackHandle && typeof fallbackHandle.getFile === 'function'
-              ? fallbackHandle
-              : null;
-        if (fileHandle) {
-          const file = await fileHandle.getFile();
-          if (isMounted) {
-            const url = URL.createObjectURL(file);
-            setResolvedUrl(url, true);
-          }
-          return;
+        const url = await mediaSourceCache.getOrLoad(activeImage, directoryPath);
+        if (isMounted) {
+          setImageUrl(url);
         }
-        throw new Error('Image handle is not a valid FileSystemFileHandle.');
-      } catch (handleError) {
-        const message = handleError instanceof Error ? handleError.message : String(handleError);
-        console.warn(`Could not load image with FileSystemFileHandle: ${message}. Attempting Electron fallback.`);
-        if (isMounted && window.electronAPI && directoryPath) {
-          try {
-            const pathResult = await window.electronAPI.joinPaths(directoryPath, activeImage.name);
-            if (!pathResult.success || !pathResult.path) {
-              throw new Error(pathResult.error || 'Failed to construct image path.');
-            }
-            const fileResult = await window.electronAPI.readFile(pathResult.path);
-            if (fileResult.success && fileResult.data && isMounted) {
-              const { url, revoke } = createImageUrlFromFileData(fileResult.data, activeImage.name);
-              setResolvedUrl(url, revoke);
-            } else {
-              throw new Error(fileResult.error || 'Failed to read file via Electron API.');
-            }
-          } catch (electronError) {
-            console.error('Electron fallback failed:', electronError);
-            if (isMounted && !hasPreview) setImageUrl(null);
-          }
-        } else if (isMounted && !hasPreview) {
+      } catch (loadError) {
+        console.error('Failed to load preview sidebar source:', loadError);
+        if (isMounted && !hasPreview) {
           setImageUrl(null);
         }
       }
@@ -302,14 +239,33 @@ const ImagePreviewSidebar: React.FC = () => {
 
     return () => {
       isMounted = false;
-      if (createdUrl) {
-        // Small delay to ensure image is no longer being used before revoking
-        setTimeout(() => {
-          URL.revokeObjectURL(createdUrl);
-        }, 100);
-      }
     };
   }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
+
+  useEffect(() => {
+    if (!contextMenu.visible) {
+      return;
+    }
+
+    const handleClickOutside = () => {
+      setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+      }
+    };
+
+    window.addEventListener('click', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu.visible]);
+
   if (!activeImage) {
     return null;
   }
@@ -325,6 +281,46 @@ const ImagePreviewSidebar: React.FC = () => {
     }).catch(err => {
       console.error(`Failed to copy ${type}:`, err);
     });
+  };
+
+  const hideContextMenu = () => {
+    setContextMenu({ x: 0, y: 0, visible: false, selectionText: '' });
+  };
+
+  const handleSelectionContextMenu = (e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable="true"]')) {
+      return;
+    }
+
+    const selection = window.getSelection()?.toString() ?? '';
+    if (!selection.trim()) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      visible: true,
+      selectionText: selection,
+    });
+  };
+
+  const copySelection = () => {
+    copyToClipboard(contextMenu.selectionText, 'Selection');
+    hideContextMenu();
+  };
+
+  const searchSelection = () => {
+    const query = contextMenu.selectionText.replace(/\s+/g, ' ').trim();
+    if (!query) {
+      return;
+    }
+
+    setSearchQuery(query);
+    hideContextMenu();
   };
 
   // Tag management handlers
@@ -368,7 +364,12 @@ const ImagePreviewSidebar: React.FC = () => {
     : [];
 
   return (
-    <div data-area="preview" tabIndex={-1} className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl">
+    <div
+      data-area="preview"
+      tabIndex={-1}
+      className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl"
+      onClick={hideContextMenu}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Image Preview</h2>
@@ -382,7 +383,10 @@ const ImagePreviewSidebar: React.FC = () => {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+        onContextMenu={handleSelectionContextMenu}
+      >
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
           {imageUrl ? (
@@ -560,7 +564,7 @@ const ImagePreviewSidebar: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2 text-sm">
                   <MetadataItem label="Steps" value={nMeta.steps} />
-                  <MetadataItem label="CFG Scale" value={nMeta.cfgScale} />
+                  <MetadataItem label="CFG Scale" value={nMeta.cfgScale ?? nMeta.cfg_scale} />
                   <MetadataItem label="Seed" value={nMeta.seed} />
                   <MetadataItem label="Dimensions" value={nMeta.width && nMeta.height ? `${nMeta.width}x${nMeta.height}` : undefined} />
                   <MetadataItem label="Sampler" value={nMeta.sampler} />
@@ -668,7 +672,7 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
-            {!isVideo && (
+            {showA1111Actions && (
               <div className="mt-4 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
@@ -693,7 +697,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with A1111</span>
+                    <span>{a1111GenerateLabel}</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -740,7 +744,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               {/* Generate Variation Modal */}
-              {isGenerateModalOpen && nMeta && (
+              {showA1111Actions && isGenerateModalOpen && nMeta && (
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
@@ -767,8 +771,11 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* ComfyUI Actions */}
-            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-              <h4 className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+            {showComfyUIActions && (
+            <div className={`mt-3 ${showComfyUIHeading ? 'pt-3 border-t border-gray-200 dark:border-gray-700' : ''}`}>
+              {showComfyUIHeading && (
+                <h4 className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+              )}
 
               {/* Generate Button */}
               <button
@@ -793,7 +800,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with ComfyUI</span>
+                    <span>{comfyGenerateLabel}</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -840,7 +847,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               {/* ComfyUI Generate Modal */}
-              {isComfyUIGenerateModalOpen && nMeta && (
+              {showComfyUIActions && isComfyUIGenerateModalOpen && nMeta && (
                 <ComfyUIGenerateModal
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
@@ -871,6 +878,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 />
               )}
             </div>
+            )}
 
           </>
         ) : (
@@ -879,6 +887,29 @@ const ImagePreviewSidebar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {contextMenu.visible && (
+        <div
+          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={copySelection}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            Copy
+          </button>
+          <button
+            onClick={searchSelection}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Search className="w-4 h-4" />
+            Search Selection
+          </button>
+        </div>
+      )}
     </div>
   );
 };

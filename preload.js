@@ -60,6 +60,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('export-batch-progress', handler);
     };
   },
+  onTransferIndexedImagesProgress: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('transfer-indexed-images-progress', handler);
+    return () => {
+      ipcRenderer.removeListener('transfer-indexed-images-progress', handler);
+    };
+  },
 
   // Menu event listeners
   onMenuAddFolder: (callback) => {
@@ -131,6 +138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
   exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
+  transferIndexedImages: (args) => ipcRenderer.invoke('transfer-indexed-images', args),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
@@ -155,6 +163,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCacheChunk: (args) => ipcRenderer.invoke('get-cache-chunk', args),
   getThumbnail: (thumbnailId) => ipcRenderer.invoke('get-thumbnail', thumbnailId),
   cacheThumbnail: (args) => ipcRenderer.invoke('cache-thumbnail', args),
+  generateThumbnailFromPath: (args) => ipcRenderer.invoke('generate-thumbnail-from-path', args),
   clearMetadataCache: () => ipcRenderer.invoke('clear-metadata-cache'),
   clearThumbnailCache: () => ipcRenderer.invoke('clear-thumbnail-cache'),
   deleteCacheFolder: () => ipcRenderer.invoke('delete-cache-folder'),

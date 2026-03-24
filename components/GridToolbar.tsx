@@ -184,8 +184,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const selectedLoras = useImageStore((state) => state.selectedLoras);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
-  const showFavoritesOnly = useImageStore((state) => state.showFavoritesOnly);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
@@ -194,17 +195,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedLoras.length > 0 ||
       selectedSchedulers.length > 0 ||
       selectedTags.length > 0 ||
+      excludedTags.length > 0 ||
       !!searchQuery ||
-      showFavoritesOnly ||
-      (advancedFilters && (
-        !!advancedFilters.dateRange?.from || 
-        !!advancedFilters.dateRange?.to || 
-        (advancedFilters.steps && (advancedFilters.steps.min !== 0 || advancedFilters.steps.max !== 150)) || 
-        (advancedFilters.cfgScale && (advancedFilters.cfgScale.min !== 0 || advancedFilters.cfgScale.max !== 30)) || 
-        (advancedFilters.width && (advancedFilters.width.min !== 64 || advancedFilters.width.max !== 2048)) || 
-        (advancedFilters.height && (advancedFilters.height.min !== 64 || advancedFilters.height.max !== 2048)) ||
-        advancedFilters.isVerifiedOnly
-      ));
+      favoriteFilterMode !== 'neutral' ||
+      (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (selectedCount === 0 && !hasActiveFilters) {
     return null;

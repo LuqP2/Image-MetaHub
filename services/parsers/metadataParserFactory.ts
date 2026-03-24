@@ -25,6 +25,20 @@ function getCaseInsensitive<T = any>(obj: Record<string, any>, key: string): T |
     return foundKey ? obj[foundKey] : undefined;
 }
 
+function isComfyPromptOnlyGraph(metadata: Record<string, any>): boolean {
+    return Object.entries(metadata).some(([key, value]) => {
+        if (key === 'extra' || key === 'extraMetadata') {
+            return false;
+        }
+
+        return !!value &&
+            typeof value === 'object' &&
+            !Array.isArray(value) &&
+            'class_type' in value &&
+            'inputs' in value;
+    });
+}
+
 interface ParserModule {
     parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
     generator: string;
@@ -121,9 +135,12 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     const workflowCI = getCaseInsensitive<any>(metadata as any, 'workflow');
     const promptCI = getCaseInsensitive<any>(metadata as any, 'prompt');
     const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
-    const hasParameters = 'parameters' in metadata && typeof metadata.parameters === 'string';
+    const promptOnlyGraph = isComfyPromptOnlyGraph(metadata as any);
+    const hasParameters = 'parameters' in metadata &&
+        typeof metadata.parameters === 'string' &&
+        metadata.parameters.trim().length > 0;
 
-    if (!hasParameters && (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph)) {
+    if (!hasParameters && (workflowCI !== undefined || (promptCI && typeof promptCI === 'object') || promptLooksLikeGraph || promptOnlyGraph)) {
         return {
             parse: (data: ComfyUIMetadata) => {
                 // Parse workflow and prompt if they are strings
@@ -138,6 +155,9 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     }
                 } catch (e) {
                     console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
+                }
+                if (!workflow && !prompt && promptOnlyGraph) {
+                    prompt = data as any;
                 }
                 const resolvedParams = resolvePromptFromGraph(workflow, prompt);
                 return {

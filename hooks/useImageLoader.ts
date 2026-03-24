@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useImageStore } from '../store/useImageStore';
 import { processFiles } from '../services/fileIndexer';
 import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
+import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -227,7 +228,7 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing
+        setFilterOptions, removeImages, addImages, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -451,6 +452,7 @@ export function useImageLoader() {
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
             setSuccess(`Loaded 0 images from ${directory.name}.`);
+            setDirectoryProgress(directory.id, null);
             if (!suppressIndexingState) {
                 setLoading(false);
             } else {
@@ -470,6 +472,7 @@ export function useImageLoader() {
 
         scheduleGlobalFilterRefresh(true);
         setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        setDirectoryProgress(directory.id, null);
         if (!suppressIndexingState) {
             setLoading(false);
             setIndexingState('completed');
@@ -495,6 +498,25 @@ export function useImageLoader() {
         }, 3000);
     }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
 
+    const CACHE_HYDRATE_FLUSH_SIZE = 2048;
+    const DIRECTORY_THUMBNAIL_WARMUP_LIMIT = 384;
+
+    const scheduleDirectoryThumbnailWarmup = useCallback((scopeKey: string, images: IndexedImage[]) => {
+        if (!images || images.length === 0) {
+            return;
+        }
+
+        const warmupCandidates = images.slice(0, DIRECTORY_THUMBNAIL_WARMUP_LIMIT);
+        if (warmupCandidates.length === 0) {
+            return;
+        }
+
+        thumbnailManager.scheduleWarmup(scopeKey, warmupCandidates, {
+            batchSize: 96,
+            delayMs: 16,
+        });
+    }, []);
+
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
@@ -506,6 +528,36 @@ export function useImageLoader() {
                 const isElectron = getIsElectron();
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
+                const hydratedImagesBuffer: IndexedImage[] = [];
+                let hasHydratedDirectory = false;
+                let cacheWarmupScheduled = false;
+                setProgress({ current: 0, total: cachedData.imageCount });
+                setDirectoryProgress(directory.id, { current: 0, total: cachedData.imageCount });
+
+                const flushHydratedImages = async () => {
+                    if (hydratedImagesBuffer.length === 0) {
+                        return;
+                    }
+
+                    const batch = hydratedImagesBuffer.splice(0, hydratedImagesBuffer.length);
+
+                    if (!hasHydratedDirectory) {
+                        replaceDirectoryImages(directory.id, batch);
+                        hasHydratedDirectory = true;
+                        void useImageStore.getState().importMetadataTags(batch);
+                    } else {
+                        addImages(batch);
+                        useImageStore.getState().flushPendingImages();
+                    }
+
+                    if (!cacheWarmupScheduled) {
+                        cacheWarmupScheduled = true;
+                        scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:cache`, batch);
+                    }
+
+                    // Yield between large cache batches to keep the renderer responsive.
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                };
 
                 await cacheManager.iterateCachedMetadata(directory.path, shouldScanSubfolders, async (metadataChunk) => {
                     if (!metadataChunk || metadataChunk.length === 0) {
@@ -574,13 +626,18 @@ export function useImageLoader() {
 
                     totalLoaded += validImages.length;
                     totalFilteredOut += chunkImages.length - validImages.length;
+                    setProgress({ current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
+                    setDirectoryProgress(directory.id, { current: Math.min(totalLoaded, cachedData.imageCount), total: cachedData.imageCount });
 
                     if (validImages.length > 0) {
-                        addImages(validImages);
-                        // Yield to keep UI responsive when loading large caches
-                        await new Promise(resolve => setTimeout(resolve, 0));
+                        hydratedImagesBuffer.push(...validImages);
+                        if (hydratedImagesBuffer.length >= CACHE_HYDRATE_FLUSH_SIZE) {
+                            await flushHydratedImages();
+                        }
                     }
                 });
+
+                await flushHydratedImages();
 
                 if (totalFilteredOut > 0) {
                     console.warn(`Filtered out ${totalFilteredOut} cached images that can't be loaded in current environment`);
@@ -589,16 +646,20 @@ export function useImageLoader() {
                 if (totalLoaded > 0) {
                     log(`Loaded ${totalLoaded} images from cache for ${directory.name}`);
                 }
+                setDirectoryProgress(directory.id, null);
+            } else {
+                setDirectoryProgress(directory.id, null);
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
+            setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [addImages]);
+    }, [addImages, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
 
     const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
-        console.log(`[loadDirectory] Starting for ${directory.name}, isUpdate: ${isUpdate}, refreshPath: ${refreshPath || 'full'}`);
         const suppressIndexingState = isUpdate;
+        setDirectoryProgress(directory.id, { current: 0, total: 0 });
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
             setError(null);
@@ -608,7 +669,6 @@ export function useImageLoader() {
             setError(null);
             setSuccess(null);
             setIndexingState('indexing');
-            console.log(`[loadDirectory] State set to 'indexing'`);
         }
 
         // Start performance timer
@@ -730,8 +790,6 @@ export function useImageLoader() {
 
             const totalNewFiles = diff.newAndModifiedFiles.length;
             setProgress({ current: 0, total: totalNewFiles });
-            console.log(`[loadDirectory] Progress set to 0/${totalNewFiles}`);
-
             const sortedFiles = totalNewFiles > 0
                 ? [...diff.newAndModifiedFiles].sort((a, b) => b.lastModified - a.lastModified)
                 : [];
@@ -747,8 +805,22 @@ export function useImageLoader() {
                 ? await getFileHandles(directory.handle, directory.path, sortedFilesWithStats)
                 : [];
 
+            const totalCatalogItems = preloadedImages.length + totalNewFiles;
+            let loadedCatalogItems = 0;
+            if (totalCatalogItems > 0) {
+                setDirectoryProgress(directory.id, { current: 0, total: totalCatalogItems });
+            }
+
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 addImages(batch);
+                thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
+                if (totalCatalogItems > 0) {
+                    loadedCatalogItems += batch.length;
+                    setDirectoryProgress(directory.id, {
+                        current: Math.min(loadedCatalogItems, totalCatalogItems),
+                        total: totalCatalogItems,
+                    });
+                }
             };
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
@@ -769,6 +841,7 @@ export function useImageLoader() {
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
+                    setDirectoryProgress(directory.id, null);
                     if (suppressIndexingState) {
                         setDirectoryRefreshing(directory.id, false);
                         setProgress(null);
@@ -822,6 +895,11 @@ export function useImageLoader() {
             } else {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
+                    scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:preloaded`, preloadedImages);
+                    setDirectoryProgress(directory.id, {
+                        current: preloadedImages.length,
+                        total: preloadedImages.length,
+                    });
                 }
                 finalizeDirectoryLoad(directory, { suppressIndexingState });
             }
@@ -831,6 +909,7 @@ export function useImageLoader() {
                 console.error(err);
                 setError(`Failed to load directory ${directory.name}. Check console for details.`);
             }
+            setDirectoryProgress(directory.id, null);
             if (suppressIndexingState) {
                 setDirectoryRefreshing(directory.id, false);
                 setProgress(null);
@@ -840,7 +919,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad]);
+    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
 
 
     // Helper function to detect if a path is a root disk
@@ -981,7 +1060,6 @@ export function useImageLoader() {
                     // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
 
-                    setLoading(false);
                     const hydrateInBackground = async () => {
                         // Update allowed paths BEFORE loading from cache to avoid security violations
                         const allPaths = useImageStore.getState().directories.map(d => d.path);
@@ -995,13 +1073,14 @@ export function useImageLoader() {
                         setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
                     };
 
-                    void hydrateInBackground();
+                    await hydrateInBackground();
 
                     return;
                 } catch (e) {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");
                 } finally {
+                    setProgress(null);
                     setLoading(false);
                 }
             } else {

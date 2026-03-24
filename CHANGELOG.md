@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-03-23
+
+### Added
+
+- **Indexed Folder Transfers**: Added desktop support for copying or moving images between indexed folders, including a destination picker modal, concurrent transfer handling, and preservation of tags, favorites, and shadow metadata.
+- **Editable Field Context Menu**: Added a native right-click context menu with `Cut`, `Copy`, and `Paste` for editable text fields such as the search bar.
+- **Metadata Selection Context Menu**: Added right-click actions for selected text in `ImageModal` and `ImagePreviewSidebar`, including `Copy` and `Search Selection` for faster filtering from prompts and metadata.
+- **Viewer Annotation Hotkeys**: Added customizable image-viewer shortcuts for toggling favorites, focusing the add-tag field, and deleting the current image without leaving keyboard navigation.
+
+### Improved
+
+- **Large Library Browsing Performance**: Significantly improved browsing responsiveness for large libraries by separating thumbnail state from the main image collections, reducing unnecessary full-list updates as thumbnails arrive.
+- **Thumbnail Loading Pipeline**: Reworked thumbnail scheduling so visible items are prioritized, background warmup is throttled, and the first visible images fill in faster during startup, folder changes, and infinite scrolling.
+- **Directory Load Feedback**: Added a "Loading Library" progress bar with per-folder progress directly in the directory list, including a scanning state while totals are still being determined.
+- **Directory Discovery Speed**: Greatly reduced the delay before indexing starts on large folders by parallelizing Electron-side file stat collection during directory scanning.
+- **Viewer Responsiveness**: Improved Image Modal loading behavior so the full-resolution image is prioritized over background thumbnail warmup, reducing the delay after the thumbnail preview appears.
+- **Viewer Generate Actions**: Added per-provider viewer toggles in Settings so Automatic1111 and ComfyUI actions can be hidden independently in Image Modal and Image Preview Sidebar, with single-provider labels simplified to `Generate`.
+- **Favorites & Tags Filters**: Favorites and manual tags in the sidebar now cycle through include, exclude, and off states, making it possible to quickly hide favorites or exclude specific tags without leaving the current view.
+- **ComfyUI Metadata Compatibility**: Improved parsing for prompt-only ComfyUI graph payloads, added support for `smZ CLIPTextEncode`, and normalized prompt whitespace for cleaner imported prompts.
+
+### Fixed
+
+- **Search Filter**: Fixed a bug where pressing the ESC key to close the image modal would also inadvertently clear the active search filter text.
+- **Settings**: Fixed a critical bug where `settings.json` could become corrupted on exit, causing user preferences (like disabling auto-updates) to reset to defaults on the next launch. Implemented atomic file saves to guarantee settings integrity.
+- **Auto-Updater**: Fixed an issue where background update checks would display an intrusive error dialog if the internet was disconnected or blocked by a firewall. Also prevented cached update dialogs from appearing when the auto-update setting is disabled.
+- **Draw Things**: Fixed missing LoRA weights and parsing issues for recent Draw Things metadata formats.
+- **Metadata Display**: Fixed inconsistent CFG scale display for some parsed images by normalizing both `cfgScale` and `cfg_scale` metadata field variants.
+- **Library Grid**: Fixed filename labels being overlapped by thumbnails below them when "Show filenames under thumbnails" was enabled.
+- **Display Settings**: Fixed "Show full file path" so it now displays the actual full image path in both grid and list views, with safer truncation for long paths in the grid.
+- **Thumbnail Generation During Indexing**: Fixed a regression where thumbnail generation could be blocked while a directory was still indexing, causing empty-looking grids and delayed thumbnail appearance exactly when loading a folder.
+- **Folder Load Empty State**: Fixed cases where newly added or cached folders could briefly show "No images found" even though discovery or cache hydration was still in progress.
+- **Electron Fallback Image Paths**: Fixed Electron image loading fallbacks for files inside subfolders so modal/sidebar/comparison views resolve the correct relative path and avoid unnecessary load failures or delays.
+- **Image Source Refresh**: Fixed thumbnail/full-image refresh behavior for files that change content while keeping the same image id, reducing stale visual state after updates.
+
 ## [0.13.1] - 2026-03-16
 
 ### Added

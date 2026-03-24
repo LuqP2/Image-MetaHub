@@ -7,14 +7,16 @@ const ActiveFilters: React.FC = () => {
     const selectedLoras = useImageStore((state) => state.selectedLoras);
     const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
     const selectedTags = useImageStore((state) => state.selectedTags);
+    const excludedTags = useImageStore((state) => state.excludedTags);
     const searchQuery = useImageStore((state) => state.searchQuery);
-    const showFavoritesOnly = useImageStore((state) => state.showFavoritesOnly);
+    const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
     const advancedFilters = useImageStore((state) => state.advancedFilters);
 
     const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
     const setSelectedTags = useImageStore((state) => state.setSelectedTags);
+    const setExcludedTags = useImageStore((state) => state.setExcludedTags);
     const setSearchQuery = useImageStore((state) => state.setSearchQuery);
-    const setShowFavoritesOnly = useImageStore((state) => state.setShowFavoritesOnly);
+    const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
     const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
     const hasActiveFilters = 
@@ -22,8 +24,9 @@ const ActiveFilters: React.FC = () => {
         selectedLoras.length > 0 ||
         selectedSchedulers.length > 0 ||
         selectedTags.length > 0 ||
+        excludedTags.length > 0 ||
         !!searchQuery ||
-        showFavoritesOnly ||
+        favoriteFilterMode !== 'neutral' ||
         (advancedFilters && Object.keys(advancedFilters).length > 0);
 
     if (!hasActiveFilters) {
@@ -52,12 +55,16 @@ const ActiveFilters: React.FC = () => {
         setSelectedTags(selectedTags.filter((t) => t !== tag));
     };
 
+    const removeExcludedTag = (tag: string) => {
+        setExcludedTags(excludedTags.filter((t) => t !== tag));
+    };
+
     const clearSearch = () => {
         setSearchQuery('');
     };
 
     const clearFavorites = () => {
-        setShowFavoritesOnly(false);
+        setFavoriteFilterMode('neutral');
     };
 
     const removeAdvancedFilter = (key: string) => {
@@ -83,12 +90,24 @@ const ActiveFilters: React.FC = () => {
             )}
 
             {/* Favorites Tag */}
-            {showFavoritesOnly && (
+            {favoriteFilterMode === 'include' && (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-yellow-900/40 text-yellow-200 border border-yellow-700/50 flex-shrink-0 animate-fade-in">
-                     <span>★ Favorites</span>
+                    <span>★ Favorites</span>
                     <button
                         onClick={clearFavorites}
                         className="ml-1 hover:text-yellow-100 rounded-full hover:bg-yellow-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            )}
+
+            {favoriteFilterMode === 'exclude' && (
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in">
+                    <span>★ Not Favorites</span>
+                    <button
+                        onClick={clearFavorites}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
                     >
                         <X size={12} />
                     </button>
@@ -229,6 +248,22 @@ const ActiveFilters: React.FC = () => {
                     <button
                         onClick={() => removeTag(tag)}
                         className="ml-1 hover:text-white rounded-full hover:bg-gray-600 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
+            {excludedTags.map((tag) => (
+                <div
+                    key={`excluded-tag-${tag}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
+                >
+                    <span className="opacity-80">not #</span>
+                    <span className="truncate max-w-[150px]">{tag}</span>
+                    <button
+                        onClick={() => removeExcludedTag(tag)}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
                     >
                         <X size={12} />
                     </button>

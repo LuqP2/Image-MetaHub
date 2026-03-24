@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { type IndexedImage } from '../types';
+import { type IndexedImage, type Directory } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import ProBadge from './ProBadge';
+import TransferImagesModal from './TransferImagesModal';
+import { transferIndexedImages } from '../services/fileTransferService';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -28,11 +33,37 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const getRelativeImagePath = (image: IndexedImage): string => {
+  const [, relativePath = ''] = image.id.split('::');
+  return relativePath || image.name;
+};
+
+const joinDisplayPath = (basePath: string, relativePath: string): string => {
+  const normalizedBase = (basePath || '').replace(/[/\\]+$/, '');
+  const normalizedRelative = (relativePath || '').replace(/\\/g, '/').replace(/^[/\\]+/, '');
+
+  if (!normalizedBase) {
+    return normalizedRelative;
+  }
+
+  if (!normalizedRelative) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}/${normalizedRelative}`;
+};
+
 const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
   const directories = useImageStore((state) => state.directories);
+  const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [sortedImages, setSortedImages] = useState<IndexedImage[]>(images);
+  const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferStatusText, setTransferStatusText] = useState<string>('');
+  const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
 
   const {
     contextMenu,
@@ -59,6 +90,64 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     hideContextMenu();
     onBatchExport();
   };
+
+  const getContextTargetImages = useCallback(() => {
+    if (!contextMenu.image) {
+      return [];
+    }
+
+    if (selectedImages.has(contextMenu.image.id)) {
+      return images.filter((image) => selectedImages.has(image.id));
+    }
+
+    return [contextMenu.image];
+  }, [contextMenu.image, images, selectedImages]);
+
+  const openTransferModal = useCallback((mode: 'copy' | 'move') => {
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setTransferMode(mode);
+    setTransferStatusText('');
+    setIsTransferModalOpen(true);
+    hideContextMenu();
+  }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
+
+  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+    if (!transferMode) {
+      return;
+    }
+
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      setIsTransferModalOpen(false);
+      return;
+    }
+
+    setIsTransferring(true);
+    setTransferStatusText(transferMode === 'move' ? 'Moving files...' : 'Copying files...');
+    try {
+      await transferIndexedImages({
+        images: targetImages,
+        destinationDirectory: directory,
+        mode: transferMode,
+        onStatus: setTransferStatusText,
+      });
+      setIsTransferModalOpen(false);
+      setTransferMode(null);
+      setTransferStatusText('');
+    } finally {
+      setIsTransferring(false);
+    }
+  }, [getContextTargetImages, transferMode]);
 
   // Function to apply sorting based on current field and direction
   // Memoized for performance - avoids recreating sort function on every render
@@ -327,6 +416,26 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             Show in Folder
           </button>
 
+          <button
+            onClick={() => openTransferModal('copy')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Copy To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
+            onClick={() => openTransferModal('move')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Folder className="w-4 h-4" />
+            <span className="flex-1">Move To...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
             <button
               onClick={exportImage}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -345,6 +454,20 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             )}
           </div>
         )}
+
+      <TransferImagesModal
+        isOpen={isTransferModalOpen && !!transferMode}
+        onClose={() => {
+          setIsTransferModalOpen(false);
+        }}
+        images={getContextTargetImages()}
+        directories={directories}
+        mode={transferMode || 'copy'}
+        isSubmitting={isTransferring}
+        statusText={transferStatusText}
+        progress={transferProgress}
+        onConfirm={handleTransferConfirm}
+      />
     </div>
   );
 };
@@ -361,9 +484,16 @@ interface ImageTableRowProps {
 const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImageClick, isSelected, onContextMenu, gridTemplateColumns }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const thumbnail = useResolvedThumbnail(image);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
+  const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const relativeImagePath = getRelativeImagePath(image);
+  const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
+  const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
+  const displayName = showFullFilePath ? fullImagePath : image.handle.name;
 
   useThumbnail(image);
 
@@ -374,8 +504,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
-      setImageUrl(image.thumbnailUrl);
+    if (thumbnail?.thumbnailStatus === 'ready' && thumbnail.thumbnailUrl) {
+      setImageUrl(thumbnail.thumbnailUrl);
       setIsLoading(false);
       return;
     }
@@ -386,49 +516,15 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    let isMounted = true;
-    let fallbackUrl: string | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const fileHandle = image.thumbnailHandle || image.handle;
-    const isElectron = typeof window !== 'undefined' && window.electronAPI;
-
-    if (!fileHandle || typeof fileHandle.getFile !== 'function') {
+    if (thumbnail?.thumbnailStatus === 'error') {
+      setImageUrl(null);
       setIsLoading(false);
       return;
     }
 
-    const loadFallback = async () => {
-      setIsLoading(true);
-      try {
-        const file = await fileHandle.getFile();
-        if (!isMounted) return;
-        fallbackUrl = URL.createObjectURL(file);
-        setImageUrl(fallbackUrl);
-      } catch (error) {
-        if (isElectron) {
-          console.error('Failed to load image:', error);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fallbackTimer = setTimeout(() => {
-      void loadFallback();
-    }, 180);
-
-    return () => {
-      isMounted = false;
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-      }
-      if (fallbackUrl) {
-        URL.revokeObjectURL(fallbackUrl);
-      }
-    };
-  }, [image.thumbnailHandle, image.handle, image.thumbnailStatus, image.thumbnailUrl, thumbnailsDisabled, isVideo]);
+    setImageUrl(null);
+    setIsLoading(true);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -476,8 +572,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
           )}
         </div>
       </div>
-      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={image.handle.name}>
-        {image.handle.name}
+      <div className="px-3 py-2 text-gray-300 font-medium truncate" title={displayName}>
+        {displayName}
       </div>
       <div className="px-3 py-2 text-gray-400 truncate" title={image.models?.[0] || 'Unknown'}>
         {image.models?.[0] || <span className="text-gray-600">Unknown</span>}

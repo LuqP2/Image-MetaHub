@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -14,6 +14,19 @@ import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/u
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = 12;
+
+type ThumbnailEntryState = {
+    lastModified: number;
+    thumbnailUrl?: string | null;
+    thumbnailHandle?: FileSystemFileHandle | null;
+    thumbnailStatus: ThumbnailStatus;
+    thumbnailError?: string | null;
+};
+
+type DirectoryProgressState = {
+    current: number;
+    total: number;
+};
 
 const loadRecentTags = (): string[] => {
     if (typeof window === 'undefined') {
@@ -158,6 +171,7 @@ interface ImageState {
   // Core Data
   images: IndexedImage[];
   filteredImages: IndexedImage[];
+  thumbnailEntries: Record<string, ThumbnailEntryState>;
   selectionTotalImages: number;
   selectionDirectoryCount: number;
   directories: Directory[];
@@ -169,10 +183,12 @@ interface ImageState {
   // UI State
   isLoading: boolean;
   progress: { current: number; total: number } | null;
+  directoryProgress: Record<string, DirectoryProgressState>;
   enrichmentProgress: { processed: number; total: number } | null;
   indexingState: 'idle' | 'indexing' | 'paused' | 'completed';
   error: string | null;
   success: string | null;
+  transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   previewImage: IndexedImage | null;
@@ -205,8 +221,9 @@ interface ImageState {
   availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   recentTags: string[];
   selectedTags: string[];
+  excludedTags: string[];
   selectedAutoTags: string[]; // Filter by auto-tags
-  showFavoritesOnly: boolean;
+  favoriteFilterMode: InclusionFilterMode;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
@@ -245,10 +262,12 @@ interface ImageState {
   toggleIncludeSubfolders: () => void;
   setLoading: (loading: boolean) => void;
   setProgress: (progress: { current: number; total: number } | null) => void;
+  setDirectoryProgress: (directoryId: string, progress: DirectoryProgressState | null) => void;
   setEnrichmentProgress: (progress: { processed: number; total: number } | null) => void;
   setIndexingState: (indexingState: 'idle' | 'indexing' | 'paused' | 'completed') => void;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
+  setTransferProgress: (progress: IndexedImageTransferProgress | null) => void;
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
@@ -324,8 +343,9 @@ interface ImageState {
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
+  setExcludedTags: (tags: string[]) => void;
   setSelectedAutoTags: (tags: string[]) => void;
-  setShowFavoritesOnly: (show: boolean) => void;
+  setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
   refreshAvailableAutoTags: () => void;
@@ -408,15 +428,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             const existingIds = new Set(state.images.map(img => img.id));
             const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
             if (uniqueNewImages.length === 0) {
-                console.log('[store] No new images to flush (all duplicates)');
                 return state;
             }
             addedImages = uniqueNewImages;
             const allImages = [...state.images, ...uniqueNewImages];
-            console.log('[store] Flushing', uniqueNewImages.length, 'new images. Total images:', allImages.length);
-            const newState = _updateState(state, allImages);
-            console.log('[store] After update - filteredImages:', newState.filteredImages.length);
-            return newState;
+            return _updateState(state, allImages);
         });
 
         // Import tags from metadata after images are added to store
@@ -543,8 +559,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const isFilteringActive = (state: ImageState) => {
         if (state.searchQuery) return true;
-        if (state.showFavoritesOnly) return true;
+        if (state.favoriteFilterMode !== 'neutral') return true;
         if (state.selectedTags?.length) return true;
+        if (state.excludedTags?.length) return true;
         if (state.selectedAutoTags?.length) return true;
         if (state.selectedModels?.length || state.selectedLoras?.length || state.selectedSchedulers?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
@@ -731,8 +748,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         let results = selectionFiltered;
 
         // Step 2: Favorites filter
-        if (state.showFavoritesOnly) {
+        if (state.favoriteFilterMode === 'include') {
             results = results.filter(img => img.isFavorite === true);
+        } else if (state.favoriteFilterMode === 'exclude') {
+            results = results.filter(img => img.isFavorite !== true);
         }
 
         // Step 3: Sensitive tags filter (safe mode)
@@ -755,6 +774,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 if (!img.tags || img.tags.length === 0) return false;
                 // Match ANY selected tag (OR logic)
                 return state.selectedTags.some(tag => img.tags!.includes(tag));
+            });
+        }
+
+        if (state.excludedTags && state.excludedTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.tags || img.tags.length === 0) return true;
+                return !state.excludedTags.some(tag => img.tags!.includes(tag));
             });
         }
 
@@ -954,6 +980,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Initial State
         images: [],
         filteredImages: [],
+        thumbnailEntries: {},
         selectionTotalImages: 0,
         selectionDirectoryCount: 0,
         directories: [],
@@ -963,10 +990,12 @@ export const useImageStore = create<ImageState>((set, get) => {
         includeSubfolders: localStorage.getItem('image-metahub-include-subfolders') !== 'false', // Default to true
         isLoading: false,
         progress: null,
+        directoryProgress: {},
         enrichmentProgress: null,
         indexingState: 'idle',
         error: null,
         success: null,
+        transferProgress: null,
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
@@ -995,8 +1024,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableAutoTags: [],
         recentTags: loadRecentTags(),
         selectedTags: [],
+        excludedTags: [],
         selectedAutoTags: [],
-        showFavoritesOnly: false,
+        favoriteFilterMode: 'neutral',
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
@@ -1213,7 +1243,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             set(state => {
-                const baseState = { ...state, directories: newDirectories, selectedFolders: updatedSelection };
+                const nextDirectoryProgress = { ...state.directoryProgress };
+                delete nextDirectoryProgress[directoryId];
+                const baseState = {
+                    ...state,
+                    directories: newDirectories,
+                    selectedFolders: updatedSelection,
+                    directoryProgress: nextDirectoryProgress,
+                };
                 return _updateState(baseState, newImages);
             });
 
@@ -1224,6 +1261,15 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setLoading: (loading) => set({ isLoading: loading }),
         setProgress: (progress) => set({ progress }),
+        setDirectoryProgress: (directoryId, progress) => set(state => {
+            const nextDirectoryProgress = { ...state.directoryProgress };
+            if (progress) {
+                nextDirectoryProgress[directoryId] = progress;
+            } else {
+                delete nextDirectoryProgress[directoryId];
+            }
+            return { directoryProgress: nextDirectoryProgress };
+        }),
         setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
@@ -1233,6 +1279,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
         setError: (error) => set({ error, success: null }),
         setSuccess: (success) => set({ success, error: null }),
+        setTransferProgress: (transferProgress) => set({ transferProgress }),
 
         filterAndSortImages: () => set(state => filterAndSort(state)),
 
@@ -1324,14 +1371,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const nextThumbnailUrl = data.thumbnailUrl ?? preImage.thumbnailUrl;
-            const nextThumbnailHandle = data.thumbnailHandle ?? preImage.thumbnailHandle;
+            const versionKey = `${imageId}:${preImage.lastModified}`;
+            const preEntry = preState.thumbnailEntries[imageId];
+            const activePreEntry = preEntry && preEntry.lastModified === preImage.lastModified ? preEntry : undefined;
+
+            const nextThumbnailUrl = data.thumbnailUrl ?? activePreEntry?.thumbnailUrl ?? preImage.thumbnailUrl;
+            const nextThumbnailHandle = data.thumbnailHandle ?? activePreEntry?.thumbnailHandle ?? preImage.thumbnailHandle;
             const nextThumbnailStatus = data.status;
             const nextThumbnailError = data.error ?? (data.status === 'error'
                 ? 'Failed to load thumbnail'
-                : preImage.thumbnailError);
+                : activePreEntry?.thumbnailError ?? preImage.thumbnailError);
 
-            const lastState = lastThumbnailState.get(imageId);
+            const lastState = lastThumbnailState.get(versionKey);
             if (
                 lastState &&
                 lastState.url === nextThumbnailUrl &&
@@ -1343,12 +1394,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             if (
-                preImage.thumbnailUrl === nextThumbnailUrl &&
-                preImage.thumbnailHandle === nextThumbnailHandle &&
-                preImage.thumbnailStatus === nextThumbnailStatus &&
-                preImage.thumbnailError === nextThumbnailError
+                activePreEntry &&
+                activePreEntry.thumbnailUrl === nextThumbnailUrl &&
+                activePreEntry.thumbnailHandle === nextThumbnailHandle &&
+                activePreEntry.thumbnailStatus === nextThumbnailStatus &&
+                activePreEntry.thumbnailError === nextThumbnailError
             ) {
-                lastThumbnailState.set(imageId, {
+                lastThumbnailState.set(versionKey, {
                     url: nextThumbnailUrl,
                     handle: nextThumbnailHandle,
                     status: nextThumbnailStatus,
@@ -1357,17 +1409,24 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            if (thumbnailUpdateInProgress.has(imageId)) {
+            if (thumbnailUpdateInProgress.has(versionKey)) {
                 return;
             }
 
-            thumbnailUpdateInProgress.add(imageId);
+            thumbnailUpdateInProgress.add(versionKey);
 
             try {
                 set(state => {
                     // CIRCUIT BREAKER: Prevent excessive updates
                     const now = Date.now();
-                    const stats = thumbnailUpdateTimestamps.get(imageId) || { count: 0, lastUpdate: now };
+                    const currentImage = getImageById(state, imageId);
+
+                    if (!currentImage) {
+                        return state;
+                    }
+
+                    const currentVersionKey = `${imageId}:${currentImage.lastModified}`;
+                    const stats = thumbnailUpdateTimestamps.get(currentVersionKey) || { count: 0, lastUpdate: now };
 
                     if (now - stats.lastUpdate > 1000) {
                         stats.count = 0;
@@ -1375,71 +1434,36 @@ export const useImageStore = create<ImageState>((set, get) => {
                     }
 
                     stats.count++;
-                    thumbnailUpdateTimestamps.set(imageId, stats);
+                    thumbnailUpdateTimestamps.set(currentVersionKey, stats);
 
                     if (stats.count > 10) {
                         console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
                         return state;
                     }
 
-                    const currentImage = getImageById(state, imageId);
+                    const currentEntry = state.thumbnailEntries[imageId];
+                    const activeCurrentEntry = currentEntry && currentEntry.lastModified === currentImage.lastModified
+                        ? currentEntry
+                        : undefined;
 
-                    if (!currentImage) {
-                        return state;
-                    }
-
-                    const nextThumbnailUrl = data.thumbnailUrl ?? currentImage.thumbnailUrl;
-                    const nextThumbnailHandle = data.thumbnailHandle ?? currentImage.thumbnailHandle;
+                    const nextThumbnailUrl = data.thumbnailUrl ?? activeCurrentEntry?.thumbnailUrl ?? currentImage.thumbnailUrl;
+                    const nextThumbnailHandle = data.thumbnailHandle ?? activeCurrentEntry?.thumbnailHandle ?? currentImage.thumbnailHandle;
                     const nextThumbnailStatus = data.status;
                     const nextThumbnailError = data.error ?? (data.status === 'error'
                         ? 'Failed to load thumbnail'
-                        : currentImage.thumbnailError);
+                        : activeCurrentEntry?.thumbnailError ?? currentImage.thumbnailError);
 
                     if (
-                        currentImage.thumbnailUrl === nextThumbnailUrl &&
-                        currentImage.thumbnailHandle === nextThumbnailHandle &&
-                        currentImage.thumbnailStatus === nextThumbnailStatus &&
-                        currentImage.thumbnailError === nextThumbnailError
+                        activeCurrentEntry &&
+                        activeCurrentEntry.thumbnailUrl === nextThumbnailUrl &&
+                        activeCurrentEntry.thumbnailHandle === nextThumbnailHandle &&
+                        activeCurrentEntry.thumbnailStatus === nextThumbnailStatus &&
+                        activeCurrentEntry.thumbnailError === nextThumbnailError
                     ) {
                         return state;
                     }
 
-                    const updateList = (list: IndexedImage[]) => {
-                        const index = list.findIndex(img => img.id === imageId);
-                        if (index === -1) {
-                            return list;
-                        }
-
-                        const current = list[index];
-
-                        if (
-                            current.thumbnailUrl === nextThumbnailUrl &&
-                            current.thumbnailHandle === nextThumbnailHandle &&
-                            current.thumbnailStatus === nextThumbnailStatus &&
-                            current.thumbnailError === nextThumbnailError
-                        ) {
-                            return list;
-                        }
-
-                        const newList = [...list];
-                        newList[index] = {
-                            ...list[index],
-                            thumbnailUrl: nextThumbnailUrl,
-                            thumbnailHandle: nextThumbnailHandle,
-                            thumbnailStatus: nextThumbnailStatus,
-                            thumbnailError: nextThumbnailError,
-                        };
-                        return newList;
-                    };
-
-                    const updatedImages = updateList(state.images);
-                    const updatedFilteredImages = updateList(state.filteredImages);
-
-                    if (updatedImages === state.images && updatedFilteredImages === state.filteredImages) {
-                        return state;
-                    }
-
-                    lastThumbnailState.set(imageId, {
+                    lastThumbnailState.set(currentVersionKey, {
                         url: nextThumbnailUrl,
                         handle: nextThumbnailHandle,
                         status: nextThumbnailStatus,
@@ -1448,12 +1472,20 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                     return {
                         ...state,
-                        images: updatedImages,
-                        filteredImages: updatedFilteredImages,
+                        thumbnailEntries: {
+                            ...state.thumbnailEntries,
+                            [imageId]: {
+                                lastModified: currentImage.lastModified,
+                                thumbnailUrl: nextThumbnailUrl,
+                                thumbnailHandle: nextThumbnailHandle,
+                                thumbnailStatus: nextThumbnailStatus,
+                                thumbnailError: nextThumbnailError,
+                            },
+                        },
                     };
                 });
             } finally {
-                thumbnailUpdateInProgress.delete(imageId);
+                thumbnailUpdateInProgress.delete(versionKey);
             }
         },
 
@@ -2105,8 +2137,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
-        setShowFavoritesOnly: (show) => set(state => {
-            const newState = { ...state, showFavoritesOnly: show };
+        setExcludedTags: (tags) => set(state => {
+            const newState = { ...state, excludedTags: tags };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        setFavoriteFilterMode: (mode) => set(state => {
+            const newState = { ...state, favoriteFilterMode: mode };
             return { ...newState, ...filterAndSort(newState) };
         }),
 
@@ -2284,6 +2321,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         resetState: () => set({
             images: [],
             filteredImages: [],
+            thumbnailEntries: {},
             selectionTotalImages: 0,
             selectionDirectoryCount: 0,
             directories: [],
@@ -2291,6 +2329,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             isFolderSelectionLoaded: false,
             isLoading: false,
             progress: { current: 0, total: 0 },
+            directoryProgress: {},
             enrichmentProgress: null,
             error: null,
             success: null,
@@ -2319,8 +2358,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableAutoTags: [],
             recentTags: loadRecentTags(),
             selectedTags: [],
+            excludedTags: [],
             selectedAutoTags: [],
-            showFavoritesOnly: false,
+            favoriteFilterMode: 'neutral',
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),

@@ -5,10 +5,6 @@ import { FileOperations } from '../services/fileOperations';
 
 export function useImageSelection() {
     const {
-        images,
-        filteredImages,
-        selectedImage,
-        selectedImages,
         setSelectedImage,
         toggleImageSelection,
         clearImageSelection,
@@ -18,6 +14,8 @@ export function useImageSelection() {
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+        const { filteredImages, selectedImage, selectedImages } = useImageStore.getState();
+
         // Update focused index
         const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
         if (clickedIndex !== -1) {
@@ -46,9 +44,10 @@ export function useImageSelection() {
             setSelectedImage(image);
             useImageStore.setState({ selectedImages: new Set([image.id]) });
         }
-    }, [filteredImages, selectedImage, selectedImages, toggleImageSelection, clearImageSelection, setSelectedImage, setFocusedImageIndex]);
+    }, [toggleImageSelection, setSelectedImage, setFocusedImageIndex]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
+        const { selectedImages, images } = useImageStore.getState();
         if (selectedImages.size === 0) return;
 
         const confirmMessage = `Are you sure you want to delete ${selectedImages.size} image(s)?`;
@@ -71,7 +70,7 @@ export function useImageSelection() {
             }
         }
         clearImageSelection();
-    }, [selectedImages, images, removeImage, setError, clearImageSelection]);
+    }, [removeImage, setError, clearImageSelection]);
 
     return { handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
 }
