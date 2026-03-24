@@ -32,7 +32,6 @@ import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
-import Loader from './components/Loader';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -679,11 +678,34 @@ export default function App() {
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
   const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
-  const shouldShowInitialLibraryLoader =
-    libraryView === 'library' &&
-    isLoading &&
-    safeFilteredImages.length === 0 &&
-    hasDirectories;
+  const activeDirectoryProgressEntries = useMemo(
+    () =>
+      Object.entries(directoryProgress)
+        .map(([directoryId, progressState]) => ({
+          directoryId,
+          progressState,
+          directory: safeDirectories.find((entry) => entry.id === directoryId),
+        }))
+        .filter((entry) => entry.directory),
+    [directoryProgress, safeDirectories]
+  );
+  const loadingStatusText = useMemo(() => {
+    const activeEntry = activeDirectoryProgressEntries[0];
+    if (!activeEntry) {
+      return progress && progress.total > 0
+        ? `Loading library: ${progress.current} / ${progress.total}`
+        : 'Scanning folders...';
+    }
+
+    const folderName = activeEntry.directory?.name || 'folder';
+    const folderProgress = activeEntry.progressState;
+
+    if (!folderProgress || folderProgress.total === 0) {
+      return `Loading folder ${folderName}...`;
+    }
+
+    return `Loading folder ${folderName}: ${folderProgress.current} / ${folderProgress.total}`;
+  }, [activeDirectoryProgressEntries, progress]);
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
@@ -814,6 +836,15 @@ export default function App() {
             />
           )}
 
+          {hasDirectories && (isLoading || indexingState === 'indexing') && (
+            <div className="mb-3 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-200">
+              <div className="flex items-center gap-3">
+                <div className="h-4 w-4 rounded-full border-2 border-blue-300/50 border-t-blue-200 animate-spin" />
+                <span>{loadingStatusText}</span>
+              </div>
+            </div>
+          )}
+
           {/* New Images Toast */}
           {newImagesToast && (
             <div className="fixed bottom-4 right-4 z-50 animate-slide-in-right">
@@ -862,9 +893,7 @@ export default function App() {
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
-                  shouldShowInitialLibraryLoader ? (
-                    <Loader progress={progress} />
-                  ) : viewMode === 'grid' ? (
+                  viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
                           onImageClick={handleImageSelection}

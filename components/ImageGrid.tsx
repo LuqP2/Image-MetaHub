@@ -90,6 +90,9 @@ const abbreviatePathForDisplay = (relativePath: string): string => {
   return `${firstFolder}/.../${fileName}`;
 };
 
+const normalizeFolderPath = (path: string): string =>
+  path.replace(/\\/g, '/').replace(/\/+$/, '');
+
 const getWarmupImage = (item: IndexedImage | ImageStack): IndexedImage =>
   isImageStack(item) ? item.coverImage : item;
 
@@ -605,6 +608,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
+  const directoryProgress = useImageStore((state) => state.directoryProgress);
+  const selectedFolders = useImageStore((state) => state.selectedFolders);
   
   // Needed for filter effect
   const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
@@ -1416,6 +1421,34 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   // Use itemsToRender for calculations
   // const isInfinite = itemsPerPage === -1; // Moved to top
   const isEmpty = itemsToRender.length === 0;
+  const activeFolderHasProgress = useMemo(() => {
+    const progressDirectoryIds = Object.keys(directoryProgress);
+    if (progressDirectoryIds.length === 0) {
+      return false;
+    }
+
+    if (selectedFolders.size === 0) {
+      return progressDirectoryIds.some((directoryId) =>
+        directories.some((directory) => directory.id === directoryId && (directory.visible ?? true))
+      );
+    }
+
+    const normalizedSelectedFolders = Array.from(selectedFolders).map(normalizeFolderPath);
+
+    return progressDirectoryIds.some((directoryId) => {
+      const directory = directories.find((entry) => entry.id === directoryId);
+      if (!directory || directory.visible === false) {
+        return false;
+      }
+
+      const normalizedDirectoryPath = normalizeFolderPath(directory.path);
+      return normalizedSelectedFolders.some((selectedFolder) =>
+        selectedFolder === normalizedDirectoryPath ||
+        selectedFolder.startsWith(`${normalizedDirectoryPath}/`) ||
+        normalizedDirectoryPath.startsWith(`${selectedFolder}/`)
+      );
+    });
+  }, [directories, directoryProgress, selectedFolders]);
 
 
   // Dummy handler for image loading since aspect ratio tracking was removed but prop is required
@@ -1427,7 +1460,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
      return (
         <div className="flex flex-col h-full w-full">
             <div className="flex-1 flex items-center justify-center h-64 text-gray-500">
-                No images found
+                {activeFolderHasProgress ? (
+                  <div className="flex items-center gap-3 text-sm text-gray-400">
+                    <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Loading folder...</span>
+                  </div>
+                ) : (
+                  'No images found'
+                )}
             </div>
             {modalsContent}
         </div>
