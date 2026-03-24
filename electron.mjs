@@ -980,11 +980,36 @@ async function getFilesRecursively(directory, baseDirectory) {
 }
 
 function setupFileOperationHandlers() {
+  const normalizeAllowedPath = (inputPath) => {
+    if (!inputPath) return '';
+
+    const resolvedPath = path.resolve(inputPath);
+    const parsedPath = path.parse(resolvedPath);
+    const normalizedPath = resolvedPath === parsedPath.root
+      ? resolvedPath
+      : resolvedPath.replace(/[\\/]+$/, '');
+
+    return process.platform === 'win32'
+      ? normalizedPath.toLowerCase()
+      : normalizedPath;
+  };
+
+  const isSameOrChildPath = (candidatePath, allowedPath) => {
+    if (!candidatePath || !allowedPath) return false;
+    if (candidatePath === allowedPath) return true;
+
+    const allowedPrefix = allowedPath.endsWith(path.sep)
+      ? allowedPath
+      : `${allowedPath}${path.sep}`;
+
+    return candidatePath.startsWith(allowedPrefix);
+  };
+
   // Security helper to check if a file path is within one of the allowed directories
   const isPathAllowed = (filePath) => {
-    if (allowedDirectoryPaths.size === 0) return false;
-    const normalizedFilePath = path.normalize(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => normalizedFilePath.startsWith(allowedPath));
+    if (allowedDirectoryPaths.size === 0 || !filePath) return false;
+    const normalizedFilePath = normalizeAllowedPath(filePath);
+    return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
   };
   const userDataPath = path.normalize(app.getPath('userData'));
   const isInternalPath = (filePath) => {
@@ -1422,7 +1447,7 @@ function setupFileOperationHandlers() {
       }
       allowedDirectoryPaths.clear();
       for (const p of paths) {
-        const normalized = path.normalize(p);
+        const normalized = normalizeAllowedPath(p);
         allowedDirectoryPaths.add(normalized);
         console.log('[Main] Added allowed directory:', normalized);
       }
