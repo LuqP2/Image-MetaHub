@@ -781,6 +781,20 @@ function createWindow(startupDirectory = null) {
     return { action: 'deny' };
   });
 
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable) {
+      return;
+    }
+
+    const menu = Menu.buildFromTemplate([
+      { role: 'cut', enabled: params.editFlags?.canCut ?? false },
+      { role: 'copy', enabled: params.editFlags?.canCopy ?? false },
+      { role: 'paste', enabled: params.editFlags?.canPaste ?? false },
+    ]);
+
+    menu.popup({ window: mainWindow });
+  });
+
   mainWindow.webContents.on('before-input-event', (event, input) => {
     const isZoomModifier = input.control || input.meta;
     if (!isZoomModifier) return;
