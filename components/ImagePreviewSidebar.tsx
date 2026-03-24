@@ -7,6 +7,7 @@ import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
@@ -190,10 +191,16 @@ const ImagePreviewSidebar: React.FC = () => {
 
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
+  const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
+  const showA1111Actions = !isVideo && a1111Enabled;
+  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
+  const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
+  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, activeImage?.tags ?? []);
 
@@ -665,7 +672,7 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* A1111 Actions - Separate Buttons with Visual Hierarchy */}
-            {!isVideo && (
+            {showA1111Actions && (
               <div className="mt-4 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
@@ -690,7 +697,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with A1111</span>
+                    <span>{a1111GenerateLabel}</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -737,7 +744,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               {/* Generate Variation Modal */}
-              {isGenerateModalOpen && nMeta && (
+              {showA1111Actions && isGenerateModalOpen && nMeta && (
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
@@ -764,8 +771,11 @@ const ImagePreviewSidebar: React.FC = () => {
             )}
 
             {/* ComfyUI Actions */}
-            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-              <h4 className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+            {showComfyUIActions && (
+            <div className={`mt-3 ${showComfyUIHeading ? 'pt-3 border-t border-gray-200 dark:border-gray-700' : ''}`}>
+              {showComfyUIHeading && (
+                <h4 className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+              )}
 
               {/* Generate Button */}
               <button
@@ -790,7 +800,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with ComfyUI</span>
+                    <span>{comfyGenerateLabel}</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -837,7 +847,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               {/* ComfyUI Generate Modal */}
-              {isComfyUIGenerateModalOpen && nMeta && (
+              {showComfyUIActions && isComfyUIGenerateModalOpen && nMeta && (
                 <ComfyUIGenerateModal
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}
@@ -868,6 +878,7 @@ const ImagePreviewSidebar: React.FC = () => {
                 />
               )}
             </div>
+            )}
 
           </>
         ) : (

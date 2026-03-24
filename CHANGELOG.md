@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Indexed Folder Transfers**: Added desktop support for copying or moving images between indexed folders, including a destination picker modal, concurrent transfer handling, and preservation of tags, favorites, and shadow metadata.
 - **Editable Field Context Menu**: Added a native right-click context menu with `Cut`, `Copy`, and `Paste` for editable text fields such as the search bar.
 - **Metadata Selection Context Menu**: Added right-click actions for selected text in `ImageModal` and `ImagePreviewSidebar`, including `Copy` and `Search Selection` for faster filtering from prompts and metadata.
+- **Viewer Annotation Hotkeys**: Added customizable image-viewer shortcuts for toggling favorites, focusing the add-tag field, and deleting the current image without leaving keyboard navigation.
 
 ### Improved
 
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Directory Load Feedback**: Added a "Loading Library" progress bar with per-folder progress directly in the directory list, including a scanning state while totals are still being determined.
 - **Directory Discovery Speed**: Greatly reduced the delay before indexing starts on large folders by parallelizing Electron-side file stat collection during directory scanning.
 - **Viewer Responsiveness**: Improved Image Modal loading behavior so the full-resolution image is prioritized over background thumbnail warmup, reducing the delay after the thumbnail preview appears.
+- **Viewer Generate Actions**: Added per-provider viewer toggles in Settings so Automatic1111 and ComfyUI actions can be hidden independently in Image Modal and Image Preview Sidebar, with single-provider labels simplified to `Generate`.
+- **Favorites & Tags Filters**: Favorites and manual tags in the sidebar now cycle through include, exclude, and off states, making it possible to quickly hide favorites or exclude specific tags without leaving the current view.
 - **ComfyUI Metadata Compatibility**: Improved parsing for prompt-only ComfyUI graph payloads, added support for `smZ CLIPTextEncode`, and normalized prompt whitespace for cleaner imported prompts.
 
 ### Fixed

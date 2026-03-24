@@ -705,6 +705,8 @@ export interface TagInfo {
   count: number;                 // Number of images with this tag
 }
 
+export type InclusionFilterMode = 'neutral' | 'include' | 'exclude';
+
 export interface Directory {
   id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)
   name: string;

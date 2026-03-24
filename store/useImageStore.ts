@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -221,8 +221,9 @@ interface ImageState {
   availableAutoTags: TagInfo[]; // Top auto-tags by frequency
   recentTags: string[];
   selectedTags: string[];
+  excludedTags: string[];
   selectedAutoTags: string[]; // Filter by auto-tags
-  showFavoritesOnly: boolean;
+  favoriteFilterMode: InclusionFilterMode;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
@@ -342,8 +343,9 @@ interface ImageState {
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
+  setExcludedTags: (tags: string[]) => void;
   setSelectedAutoTags: (tags: string[]) => void;
-  setShowFavoritesOnly: (show: boolean) => void;
+  setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
   refreshAvailableAutoTags: () => void;
@@ -557,8 +559,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const isFilteringActive = (state: ImageState) => {
         if (state.searchQuery) return true;
-        if (state.showFavoritesOnly) return true;
+        if (state.favoriteFilterMode !== 'neutral') return true;
         if (state.selectedTags?.length) return true;
+        if (state.excludedTags?.length) return true;
         if (state.selectedAutoTags?.length) return true;
         if (state.selectedModels?.length || state.selectedLoras?.length || state.selectedSchedulers?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
@@ -745,8 +748,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         let results = selectionFiltered;
 
         // Step 2: Favorites filter
-        if (state.showFavoritesOnly) {
+        if (state.favoriteFilterMode === 'include') {
             results = results.filter(img => img.isFavorite === true);
+        } else if (state.favoriteFilterMode === 'exclude') {
+            results = results.filter(img => img.isFavorite !== true);
         }
 
         // Step 3: Sensitive tags filter (safe mode)
@@ -769,6 +774,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 if (!img.tags || img.tags.length === 0) return false;
                 // Match ANY selected tag (OR logic)
                 return state.selectedTags.some(tag => img.tags!.includes(tag));
+            });
+        }
+
+        if (state.excludedTags && state.excludedTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.tags || img.tags.length === 0) return true;
+                return !state.excludedTags.some(tag => img.tags!.includes(tag));
             });
         }
 
@@ -1012,8 +1024,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableAutoTags: [],
         recentTags: loadRecentTags(),
         selectedTags: [],
+        excludedTags: [],
         selectedAutoTags: [],
-        showFavoritesOnly: false,
+        favoriteFilterMode: 'neutral',
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
@@ -2124,8 +2137,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
-        setShowFavoritesOnly: (show) => set(state => {
-            const newState = { ...state, showFavoritesOnly: show };
+        setExcludedTags: (tags) => set(state => {
+            const newState = { ...state, excludedTags: tags };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        setFavoriteFilterMode: (mode) => set(state => {
+            const newState = { ...state, favoriteFilterMode: mode };
             return { ...newState, ...filterAndSort(newState) };
         }),
 
@@ -2340,8 +2358,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableAutoTags: [],
             recentTags: loadRecentTags(),
             selectedTags: [],
+            excludedTags: [],
             selectedAutoTags: [],
-            showFavoritesOnly: false,
+            favoriteFilterMode: 'neutral',
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),

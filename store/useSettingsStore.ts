@@ -73,11 +73,13 @@ interface SettingsState {
   enableSafeMode: boolean;
 
   // A1111 Integration settings
+  a1111Enabled: boolean;
   a1111ServerUrl: string;
   a1111AutoStart: boolean;
   a1111LastConnectionStatus: 'unknown' | 'connected' | 'error';
 
   // ComfyUI Integration settings
+  comfyUIEnabled: boolean;
   comfyUIServerUrl: string;
   comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
 
@@ -102,9 +104,11 @@ interface SettingsState {
   setSensitiveTags: (tags: string[]) => void;
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
+  setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
   setA1111ConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setComfyUIEnabled: (value: boolean) => void;
   setComfyUIServerUrl: (url: string) => void;
   setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   resetState: () => void;
@@ -140,11 +144,13 @@ export const useSettingsStore = create<SettingsState>()(
       enableSafeMode: true,
 
       // A1111 Integration initial state
+      a1111Enabled: true,
       a1111ServerUrl: 'http://127.0.0.1:7860',
       a1111AutoStart: false,
       a1111LastConnectionStatus: 'unknown',
 
       // ComfyUI Integration initial state
+      comfyUIEnabled: true,
       comfyUIServerUrl: 'http://127.0.0.1:8188',
       comfyUILastConnectionStatus: 'unknown',
 
@@ -194,11 +200,13 @@ export const useSettingsStore = create<SettingsState>()(
       resetKeymap: () => set({ keymap: getDefaultKeymap() }),
 
       // A1111 Integration actions
+      setA1111Enabled: (value) => set({ a1111Enabled: !!value }),
       setA1111ServerUrl: (url) => set({ a1111ServerUrl: url }),
       toggleA1111AutoStart: () => set((state) => ({ a1111AutoStart: !state.a1111AutoStart })),
       setA1111ConnectionStatus: (status) => set({ a1111LastConnectionStatus: status }),
 
       // ComfyUI Integration actions
+      setComfyUIEnabled: (value) => set({ comfyUIEnabled: !!value }),
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
       setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
 
@@ -222,9 +230,11 @@ export const useSettingsStore = create<SettingsState>()(
         sensitiveTags: ['nsfw', 'private', 'hidden'],
         blurSensitiveImages: true,
         enableSafeMode: true,
+        a1111Enabled: true,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
         a1111LastConnectionStatus: 'unknown',
+        comfyUIEnabled: true,
         comfyUIServerUrl: 'http://127.0.0.1:8188',
         comfyUILastConnectionStatus: 'unknown',
       }),
@@ -233,6 +243,22 @@ export const useSettingsStore = create<SettingsState>()(
       name: 'image-metahub-settings',
       storage: createJSONStorage(() => isElectron ? electronStorage : localStorage),
       onRehydrateStorage: () => (state) => {
+        if (state) {
+          const defaultKeymap = getDefaultKeymap();
+          state.keymap = {
+            ...defaultKeymap,
+            ...state.keymap,
+            global: {
+              ...(defaultKeymap.global as Record<string, string>),
+              ...((state.keymap?.global as Record<string, string> | undefined) ?? {}),
+            },
+            preview: {
+              ...(defaultKeymap.preview as Record<string, string>),
+              ...((state.keymap?.preview as Record<string, string> | undefined) ?? {}),
+            },
+          };
+        }
+
         // Migration: Fix invalid itemsPerPage values from older versions
         if (state && (typeof state.itemsPerPage !== 'number' || (state.itemsPerPage <= 0 && state.itemsPerPage !== -1) || state.itemsPerPage > 100)) {
           state.itemsPerPage = 100;
@@ -256,6 +282,14 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.enableSafeMode !== 'boolean') {
           state.enableSafeMode = true;
+        }
+
+        if (state && typeof state.a1111Enabled !== 'boolean') {
+          state.a1111Enabled = true;
+        }
+
+        if (state && typeof state.comfyUIEnabled !== 'boolean') {
+          state.comfyUIEnabled = true;
         }
       },
     }
