@@ -6,6 +6,7 @@ import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
