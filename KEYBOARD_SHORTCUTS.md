@@ -47,6 +47,9 @@ These shortcuts work when viewing an image in the modal:
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `←/→` | Previous/Next Image | Navigate through images |
+| `F` | Toggle Favorite | Add or remove the current image from favorites |
+| `T` | Focus Add Tag | Jump to the add-tag field and start typing |
+| `Delete` | Delete Image | Move the current image to trash |
 | `Enter` | Close Modal | Close modal and return to grid |
 | `Alt+Enter` | Toggle Image Viewer | Switch between modal view and fullscreen image viewer |
 | `Esc` | Exit or Close | Exit fullscreen viewer or close modal |

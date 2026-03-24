@@ -30,6 +30,9 @@ export const hotkeyConfig: HotkeyDefinition[] = [
   // Preview Scope
   { id: 'navigatePrevious', name: 'Previous Image', scope: 'preview', defaultKey: 'left' },
   { id: 'navigateNext', name: 'Next Image', scope: 'preview', defaultKey: 'right' },
+  { id: 'toggleFavoriteInViewer', name: 'Toggle Favorite in Viewer', scope: 'preview', defaultKey: 'f' },
+  { id: 'focusAddTagInViewer', name: 'Focus Add Tag in Viewer', scope: 'preview', defaultKey: 't' },
+  { id: 'deleteImageInViewer', name: 'Delete Image in Viewer', scope: 'preview', defaultKey: 'delete' },
 ];
 
 export const getDefaultKeymap = (): Keymap => {

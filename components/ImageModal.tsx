@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC, useCallback } from 'react';
+import React, { useEffect, useState, FC, useCallback, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -9,15 +9,18 @@ import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useImageComparison } from '../hooks/useImageComparison';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
+import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal } from './MetadataEditorModal';
 
@@ -420,6 +423,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
+  const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -442,6 +446,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
   const thumbnail = useResolvedThumbnail(imageFromStore ?? image);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const showA1111Actions = !isVideo && a1111Enabled;
+  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
+  const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
+  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
   const currentTags = imageFromStore?.tags || image.tags || [];
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
@@ -451,6 +460,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   // State for tag input
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -865,52 +876,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isVideo]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
-      if (hotkeyManager.areHotkeysPaused()) {
-        return;
-      }
+  const handleToggleFavorite = useCallback(() => {
+    toggleFavorite(image.id);
+  }, [image.id, toggleFavorite]);
 
-      if (isRenaming) return;
-
-      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
-      if (event.key === 'Enter' && event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleFullscreen(); // Toggle fullscreen ON/OFF
-        return;
-      }
-
-      // Escape = Exit fullscreen first, then close modal
-      if (event.key === 'Escape') {
-        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
-        if (isFullscreen) {
-          // Call toggleFullscreen to actually exit Electron fullscreen
-          toggleFullscreen();
-        } else {
-          onClose();
-        }
-        return;
-      }
-
-      if (event.key === 'ArrowLeft') onNavigatePrevious?.();
-      if (event.key === 'ArrowRight') onNavigateNext?.();
-      if (event.key === 'Delete') handleDelete();
+  const focusTagInput = useCallback(async () => {
+    const focusInput = () => {
+      tagInputRef.current?.focus();
+      tagInputRef.current?.select();
+      setShowTagAutocomplete((tagInputRef.current?.value ?? '').trim().length > 0);
     };
 
-    const handleClickOutside = () => {
-      hideContextMenu();
-    };
+    if (isFullscreen) {
+      await toggleFullscreen();
+      window.setTimeout(focusInput, 50);
+      return;
+    }
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('click', handleClickOutside);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('click', handleClickOutside);
-    };
-  }, [hideContextMenu, isFullscreen, isRenaming, onClose, onNavigateNext, onNavigatePrevious, toggleFullscreen]);
+    focusInput();
+  }, [isFullscreen, toggleFullscreen]);
 
   // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {
@@ -926,7 +910,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [handleWheel]);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
+    if (isIndexing) {
+      return;
+    }
+
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
       const imageToDelete = image; // Capture reference
@@ -956,7 +944,102 @@ const ImageModal: React.FC<ImageModalProps> = ({
         alert(`Failed to delete file: ${result.error}`);
       }
     }
-  };
+  }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
+      if (hotkeyManager.areHotkeysPaused()) {
+        return;
+      }
+
+      if (isRenaming) return;
+      const isTypingContext = isTypingElement(event.target);
+
+      // Let focused text fields handle their own Escape behavior.
+      if (event.key === 'Escape') {
+        if (isTypingContext) {
+          return;
+        }
+
+        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
+        if (isFullscreen) {
+          // Call toggleFullscreen to actually exit Electron fullscreen
+          toggleFullscreen();
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      if (isTypingContext) {
+        return;
+      }
+
+      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
+      if (event.key === 'Enter' && event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleFullscreen(); // Toggle fullscreen ON/OFF
+        return;
+      }
+
+      if (eventMatchesKeybinding(event, previewKeymap?.toggleFavoriteInViewer)) {
+        event.preventDefault();
+        handleToggleFavorite();
+        return;
+      }
+
+      if (eventMatchesKeybinding(event, previewKeymap?.focusAddTagInViewer)) {
+        event.preventDefault();
+        focusTagInput().catch((error) => {
+          console.error('Failed to focus tag input:', error);
+        });
+        return;
+      }
+
+      if (eventMatchesKeybinding(event, previewKeymap?.deleteImageInViewer)) {
+        event.preventDefault();
+        handleDelete().catch((error) => {
+          console.error('Failed to delete image from shortcut:', error);
+        });
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        onNavigatePrevious?.();
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        onNavigateNext?.();
+      }
+    };
+
+    const handleClickOutside = () => {
+      hideContextMenu();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', handleClickOutside);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', handleClickOutside);
+    };
+  }, [
+    focusTagInput,
+    handleDelete,
+    handleToggleFavorite,
+    hideContextMenu,
+    isFullscreen,
+    isRenaming,
+    onClose,
+    onNavigateNext,
+    onNavigatePrevious,
+    previewKeymap,
+    toggleFullscreen,
+  ]);
 
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {
@@ -992,10 +1075,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     // Add as manual tag and remove from auto-tags
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
-  };
-
-  const handleToggleFavorite = () => {
-    toggleFavorite(image.id);
   };
 
   // Filter autocomplete tags
@@ -1202,6 +1281,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 {/* Add Tag Input */}
                 <div className="relative">
                   <input
+                    ref={tagInputRef}
                     type="text"
                     placeholder="Add tag..."
                     value={tagInput}
@@ -1503,7 +1583,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
 
           {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
-          {nMeta && !isVideo && (
+          {nMeta && showA1111Actions && (
             <div className="mt-3 space-y-2">
               {/* Hero Button: Generate Variation */}
               <button
@@ -1528,7 +1608,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with A1111</span>
+                    <span>{a1111GenerateLabel}</span>
                     {!canUseA1111 && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -1575,7 +1655,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               )}
 
               {/* Generate Variation Modal */}
-              {isGenerateModalOpen && nMeta && (
+              {showA1111Actions && isGenerateModalOpen && nMeta && (
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
@@ -1602,9 +1682,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           {/* ComfyUI Integration */}
-          {nMeta && !isVideo && (
-            <div className="mt-3 pt-3 border-t border-gray-700">
-              <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+          {nMeta && showComfyUIActions && (
+            <div className={`mt-3 ${showComfyUIHeading ? 'pt-3 border-t border-gray-700' : ''}`}>
+              {showComfyUIHeading && (
+                <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
+              )}
 
               {/* Generate Button */}
               <button
@@ -1629,7 +1711,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>Generate with ComfyUI</span>
+                    <span>{comfyGenerateLabel}</span>
                     {!canUseComfyUI && initialized && <ProBadge size="sm" />}
                   </>
                 )}
@@ -1676,7 +1758,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               )}
 
               {/* ComfyUI Generate Modal */}
-              {isComfyUIGenerateModalOpen && nMeta && (
+              {showComfyUIActions && isComfyUIGenerateModalOpen && nMeta && (
                 <ComfyUIGenerateModal
                   isOpen={isComfyUIGenerateModalOpen}
                   onClose={() => setIsComfyUIGenerateModalOpen(false)}

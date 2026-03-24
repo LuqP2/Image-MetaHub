@@ -5,6 +5,7 @@ import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useImageStore } from '../store/useImageStore';
 
 interface SidebarProps {
   searchQuery: string;
@@ -67,6 +68,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSortOrderChange,
   onReshuffle
 }) => {
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
 
   const [expandedSections, setExpandedSections] = useState({
     models: true,
@@ -477,7 +482,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Clear All Filters */}
-      {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0 || Object.keys(advancedFilters || {}).length > 0) && (
+      {(selectedModels.length > 0 ||
+        selectedLoras.length > 0 ||
+        selectedSchedulers.length > 0 ||
+        selectedTags.length > 0 ||
+        excludedTags.length > 0 ||
+        selectedAutoTags.length > 0 ||
+        favoriteFilterMode !== 'neutral' ||
+        Object.keys(advancedFilters || {}).length > 0) && (
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClearAllFilters}

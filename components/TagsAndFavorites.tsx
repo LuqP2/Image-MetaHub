@@ -1,17 +1,54 @@
 import React, { useState } from 'react';
-import { ChevronDown, X, Star, Tag } from 'lucide-react';
+import { Check, ChevronDown, Star, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
+import { InclusionFilterMode } from '../types';
+
+const getNextFilterMode = (mode: InclusionFilterMode): InclusionFilterMode => {
+  if (mode === 'neutral') return 'include';
+  if (mode === 'include') return 'exclude';
+  return 'neutral';
+};
+
+const getFilterModeLabel = (mode: InclusionFilterMode): string => {
+  if (mode === 'include') return 'Include';
+  if (mode === 'exclude') return 'Exclude';
+  return 'Off';
+};
+
+const CycleToggle: React.FC<{
+  mode: InclusionFilterMode;
+  onClick: () => void;
+  title: string;
+}> = ({ mode, onClick, title }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    title={title}
+    aria-label={title}
+    className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+      mode === 'include'
+        ? 'border-blue-500 bg-blue-500/20 text-blue-300'
+        : mode === 'exclude'
+          ? 'border-red-500 bg-red-500/20 text-red-300'
+          : 'border-gray-600 bg-gray-700 text-transparent hover:border-gray-500 hover:bg-gray-700/80'
+    }`}
+  >
+    {mode === 'include' ? <Check className="h-3 w-3" /> : mode === 'exclude' ? <X className="h-3 w-3" /> : <span className="h-3 w-3" />}
+  </button>
+);
 
 const TagsAndFavorites: React.FC = () => {
   const {
-    showFavoritesOnly,
-    setShowFavoritesOnly,
+    favoriteFilterMode,
+    setFavoriteFilterMode,
     availableTags,
     availableAutoTags,
     selectedTags,
+    excludedTags,
     selectedAutoTags,
     setSelectedTags,
+    setExcludedTags,
     setSelectedAutoTags,
     refreshAvailableAutoTags,
     filteredImages,
@@ -32,6 +69,7 @@ const TagsAndFavorites: React.FC = () => {
 
   // Count favorites in filtered set (for display)
   const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
+  const favoriteBadgeCount = favoriteFilterMode === 'include' ? favoriteCount : totalFavoriteCount;
 
   // Get tags only from current images (not all from IndexedDB)
   const currentImagesTags = React.useMemo(() => {
@@ -62,12 +100,30 @@ const TagsAndFavorites: React.FC = () => {
       )
     : availableAutoTags;
 
-  const handleTagToggle = (tagName: string, checked: boolean) => {
-    if (checked) {
-      setSelectedTags([...selectedTags, tagName]);
-    } else {
-      setSelectedTags(selectedTags.filter(t => t !== tagName));
+  const getTagFilterMode = (tagName: string): InclusionFilterMode => {
+    if (selectedTags.includes(tagName)) return 'include';
+    if (excludedTags.includes(tagName)) return 'exclude';
+    return 'neutral';
+  };
+
+  const handleTagCycle = (tagName: string) => {
+    const currentMode = getTagFilterMode(tagName);
+    const nextMode = getNextFilterMode(currentMode);
+
+    if (nextMode === 'include') {
+      setSelectedTags([...selectedTags.filter(t => t !== tagName), tagName]);
+      setExcludedTags(excludedTags.filter(t => t !== tagName));
+      return;
     }
+
+    if (nextMode === 'exclude') {
+      setSelectedTags(selectedTags.filter(t => t !== tagName));
+      setExcludedTags([...excludedTags.filter(t => t !== tagName), tagName]);
+      return;
+    }
+
+    setSelectedTags(selectedTags.filter(t => t !== tagName));
+    setExcludedTags(excludedTags.filter(t => t !== tagName));
   };
 
   const handleAutoTagToggle = (tagName: string, checked: boolean) => {
@@ -80,6 +136,7 @@ const TagsAndFavorites: React.FC = () => {
 
   const clearSelectedTags = () => {
     setSelectedTags([]);
+    setExcludedTags([]);
   };
 
   const clearSelectedAutoTags = () => {
@@ -99,7 +156,7 @@ const TagsAndFavorites: React.FC = () => {
       >
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Favorites & Tags</span>
-          {(showFavoritesOnly || selectedTags.length > 0) && (
+          {(favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0) && (
             <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
               active
             </span>
@@ -121,23 +178,32 @@ const TagsAndFavorites: React.FC = () => {
             <div className="px-4 pb-4 space-y-3">
               {/* Favorites Toggle */}
               {totalFavoriteCount > 0 && (
-                <label className="flex items-center space-x-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={showFavoritesOnly}
-                    onChange={(e) => setShowFavoritesOnly(e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                <div className="flex items-center space-x-2 group py-1 px-2 rounded hover:bg-gray-700/50">
+                  <CycleToggle
+                    mode={favoriteFilterMode}
+                    onClick={() => setFavoriteFilterMode(getNextFilterMode(favoriteFilterMode))}
+                    title={`Favorites filter: ${getFilterModeLabel(favoriteFilterMode)}. Click to cycle.`}
                   />
                   <Star
-                    className={`w-4 h-4 ${showFavoritesOnly ? 'text-yellow-400 fill-yellow-400' : 'text-gray-400 group-hover:text-yellow-400'}`}
+                    className={`w-4 h-4 ${
+                      favoriteFilterMode === 'include'
+                        ? 'text-yellow-400 fill-yellow-400'
+                        : favoriteFilterMode === 'exclude'
+                          ? 'text-red-300'
+                          : 'text-gray-400 group-hover:text-yellow-400'
+                    }`}
                   />
-                  <span className="text-sm text-gray-300 group-hover:text-gray-50">
-                    Show Favorites Only
+                  <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
+                    {favoriteFilterMode === 'include'
+                      ? 'Show Favorites Only'
+                      : favoriteFilterMode === 'exclude'
+                        ? 'Exclude Favorites'
+                        : 'Favorites'}
                   </span>
                   <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                    {favoriteCount}
+                    {favoriteBadgeCount}
                   </span>
-                </label>
+                </div>
               )}
 
               {/* Tags Section */}
@@ -149,12 +215,18 @@ const TagsAndFavorites: React.FC = () => {
                       <span className="text-sm text-gray-400 font-medium">Tags</span>
                       {selectedTags.length > 0 && (
                         <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                          {selectedTags.length} selected
+                          {selectedTags.length} include
+                        </span>
+                      )}
+                      {excludedTags.length > 0 && (
+                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                          {excludedTags.length} exclude
                         </span>
                       )}
                     </div>
-                    {selectedTags.length > 0 && (
+                    {(selectedTags.length > 0 || excludedTags.length > 0) && (
                       <button
+                        type="button"
                         onClick={clearSelectedTags}
                         className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                         title="Clear tag filters"
@@ -175,6 +247,10 @@ const TagsAndFavorites: React.FC = () => {
                     />
                   )}
 
+                  <p className="text-[11px] text-gray-500">
+                    Click a tag to cycle include, exclude, and off.
+                  </p>
+
                   {/* Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
                     {filteredTags.length === 0 ? (
@@ -183,15 +259,14 @@ const TagsAndFavorites: React.FC = () => {
                       </div>
                     ) : (
                       filteredTags.map((tag) => (
-                        <label
+                        <div
                           key={tag.name}
                           className="flex items-center space-x-2 cursor-pointer group py-1 px-2 rounded hover:bg-gray-700/50"
                         >
-                          <input
-                            type="checkbox"
-                            checked={selectedTags.includes(tag.name)}
-                            onChange={(e) => handleTagToggle(tag.name, e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                          <CycleToggle
+                            mode={getTagFilterMode(tag.name)}
+                            onClick={() => handleTagCycle(tag.name)}
+                            title={`Tag "${tag.name}": ${getFilterModeLabel(getTagFilterMode(tag.name))}. Click to cycle.`}
                           />
                           <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">
                             {tag.name}
@@ -199,7 +274,7 @@ const TagsAndFavorites: React.FC = () => {
                           <span className="text-xs text-gray-500 group-hover:text-gray-400">
                             {tag.count}
                           </span>
-                        </label>
+                        </div>
                       ))
                     )}
                   </div>
