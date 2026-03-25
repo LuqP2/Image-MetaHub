@@ -137,10 +137,13 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 return (
                   <div
                     key={item}
-                    className="flex items-center gap-2 rounded-lg border border-gray-800/80 bg-gray-950/30 px-3 py-2"
+                    className="rounded-lg border border-gray-800/80 bg-gray-950/30 px-3 py-2"
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm text-gray-200" title={item}>
+                    <div className="min-w-0">
+                      <div
+                        className="text-sm leading-5 text-gray-200 whitespace-normal break-all"
+                        title={item}
+                      >
                         {item}
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
@@ -149,28 +152,30 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                         {isExcluded && <span className="text-rose-400">Excluded</span>}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onIncludeToggle(item)}
-                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        isIncluded
-                          ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
-                          : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-emerald-500/40 hover:text-emerald-200'
-                      }`}
-                    >
-                      Include
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onExcludeToggle(item)}
-                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        isExcluded
-                          ? 'border-rose-500/60 bg-rose-500/15 text-rose-200'
-                          : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-rose-500/40 hover:text-rose-200'
-                      }`}
-                    >
-                      Exclude
-                    </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onIncludeToggle(item)}
+                        className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          isIncluded
+                            ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
+                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-emerald-500/40 hover:text-emerald-200'
+                        }`}
+                      >
+                        Include
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onExcludeToggle(item)}
+                        className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                          isExcluded
+                            ? 'border-rose-500/60 bg-rose-500/15 text-rose-200'
+                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-rose-500/40 hover:text-rose-200'
+                        }`}
+                      >
+                        Exclude
+                      </button>
+                    </div>
                   </div>
                 );
               })
