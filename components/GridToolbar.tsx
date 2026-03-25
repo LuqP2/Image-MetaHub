@@ -181,10 +181,15 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
 
@@ -192,10 +197,15 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
   const hasActiveFilters = 
       selectedModels.length > 0 ||
+      excludedModels.length > 0 ||
       selectedLoras.length > 0 ||
+      excludedLoras.length > 0 ||
       selectedSchedulers.length > 0 ||
+      excludedSchedulers.length > 0 ||
       selectedTags.length > 0 ||
       excludedTags.length > 0 ||
+      selectedAutoTags.length > 0 ||
+      excludedAutoTags.length > 0 ||
       !!searchQuery ||
       favoriteFilterMode !== 'neutral' ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);

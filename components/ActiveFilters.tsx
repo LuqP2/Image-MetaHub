@@ -4,10 +4,15 @@ import { X, CheckCircle, Calendar, Settings } from 'lucide-react';
 
 const ActiveFilters: React.FC = () => {
     const selectedModels = useImageStore((state) => state.selectedModels);
+    const excludedModels = useImageStore((state) => state.excludedModels);
     const selectedLoras = useImageStore((state) => state.selectedLoras);
+    const excludedLoras = useImageStore((state) => state.excludedLoras);
     const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+    const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
     const selectedTags = useImageStore((state) => state.selectedTags);
     const excludedTags = useImageStore((state) => state.excludedTags);
+    const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+    const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
     const searchQuery = useImageStore((state) => state.searchQuery);
     const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
     const advancedFilters = useImageStore((state) => state.advancedFilters);
@@ -15,16 +20,23 @@ const ActiveFilters: React.FC = () => {
     const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
     const setSelectedTags = useImageStore((state) => state.setSelectedTags);
     const setExcludedTags = useImageStore((state) => state.setExcludedTags);
+    const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+    const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
     const setSearchQuery = useImageStore((state) => state.setSearchQuery);
     const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
     const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
     const hasActiveFilters = 
         selectedModels.length > 0 ||
+        excludedModels.length > 0 ||
         selectedLoras.length > 0 ||
+        excludedLoras.length > 0 ||
         selectedSchedulers.length > 0 ||
+        excludedSchedulers.length > 0 ||
         selectedTags.length > 0 ||
         excludedTags.length > 0 ||
+        selectedAutoTags.length > 0 ||
+        excludedAutoTags.length > 0 ||
         !!searchQuery ||
         favoriteFilterMode !== 'neutral' ||
         (advancedFilters && Object.keys(advancedFilters).length > 0);
@@ -45,9 +57,27 @@ const ActiveFilters: React.FC = () => {
         });
     };
 
+    const removeExcludedModel = (model: string) => {
+        setSelectedFilters({
+            excludedModels: excludedModels.filter((m) => m !== model),
+        });
+    };
+
+    const removeExcludedLora = (lora: string) => {
+        setSelectedFilters({
+            excludedLoras: excludedLoras.filter((l) => l !== lora),
+        });
+    };
+
     const removeScheduler = (scheduler: string) => {
         setSelectedFilters({
             schedulers: selectedSchedulers.filter((s) => s !== scheduler),
+        });
+    };
+
+    const removeExcludedScheduler = (scheduler: string) => {
+        setSelectedFilters({
+            excludedSchedulers: excludedSchedulers.filter((s) => s !== scheduler),
         });
     };
 
@@ -57,6 +87,14 @@ const ActiveFilters: React.FC = () => {
 
     const removeExcludedTag = (tag: string) => {
         setExcludedTags(excludedTags.filter((t) => t !== tag));
+    };
+
+    const removeAutoTag = (tag: string) => {
+        setSelectedAutoTags(selectedAutoTags.filter((t) => t !== tag));
+    };
+
+    const removeExcludedAutoTag = (tag: string) => {
+        setExcludedAutoTags(excludedAutoTags.filter((t) => t !== tag));
     };
 
     const clearSearch = () => {
@@ -203,6 +241,23 @@ const ActiveFilters: React.FC = () => {
                 </div>
             ))}
 
+            {excludedModels.map((model) => (
+                <div
+                    key={`excluded-model-${model}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
+                    title="Excluded model"
+                >
+                    <span className="opacity-80">not</span>
+                    <span className="truncate max-w-[150px]">{model}</span>
+                    <button
+                        onClick={() => removeExcludedModel(model)}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
             {/* LoRA Tags - Purple */}
             {selectedLoras.map((lora) => (
                 <div
@@ -220,6 +275,23 @@ const ActiveFilters: React.FC = () => {
                 </div>
             ))}
 
+            {excludedLoras.map((lora) => (
+                <div
+                    key={`excluded-lora-${lora}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
+                    title="Excluded LoRA"
+                >
+                    <span className="opacity-80">not</span>
+                    <span className="truncate max-w-[150px]">{lora}</span>
+                    <button
+                        onClick={() => removeExcludedLora(lora)}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
             {/* Scheduler Tags - Cyan/Teal */}
             {selectedSchedulers.map((scheduler) => (
                 <div
@@ -231,6 +303,23 @@ const ActiveFilters: React.FC = () => {
                     <button
                         onClick={() => removeScheduler(scheduler)}
                         className="ml-1 hover:text-teal-100 rounded-full hover:bg-teal-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
+            {excludedSchedulers.map((scheduler) => (
+                <div
+                    key={`excluded-scheduler-${scheduler}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
+                    title="Excluded scheduler"
+                >
+                    <span className="opacity-80">not</span>
+                    <span className="truncate max-w-[150px]">{scheduler}</span>
+                    <button
+                        onClick={() => removeExcludedScheduler(scheduler)}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
                     >
                         <X size={12} />
                     </button>
@@ -263,6 +352,38 @@ const ActiveFilters: React.FC = () => {
                     <span className="truncate max-w-[150px]">{tag}</span>
                     <button
                         onClick={() => removeExcludedTag(tag)}
+                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
+            {selectedAutoTags.map((tag) => (
+                <div
+                    key={`auto-tag-${tag}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sky-900/40 text-sky-200 border border-sky-700/50 flex-shrink-0 animate-fade-in"
+                >
+                    <span className="opacity-80">auto</span>
+                    <span className="truncate max-w-[150px]">{tag}</span>
+                    <button
+                        onClick={() => removeAutoTag(tag)}
+                        className="ml-1 hover:text-sky-100 rounded-full hover:bg-sky-800/50 p-0.5 transition-colors"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            ))}
+
+            {excludedAutoTags.map((tag) => (
+                <div
+                    key={`excluded-auto-tag-${tag}`}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
+                >
+                    <span className="opacity-80">not auto</span>
+                    <span className="truncate max-w-[150px]">{tag}</span>
+                    <button
+                        onClick={() => removeExcludedAutoTag(tag)}
                         className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
                     >
                         <X size={12} />

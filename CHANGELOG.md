@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14] - Unreleased
+
+### Improved
+
+- **Tri-State Sidebar Filters**: Favorites, tags, auto-tags, models, LoRAs, and samplers/schedulers in the sidebar now cycle through include, exclude, and off states, making it possible to quickly narrow or remove matching images without leaving the current view.
+
 ## [0.13.2] - 2026-03-23
 
 ### Added
@@ -22,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Directory Discovery Speed**: Greatly reduced the delay before indexing starts on large folders by parallelizing Electron-side file stat collection during directory scanning.
 - **Viewer Responsiveness**: Improved Image Modal loading behavior so the full-resolution image is prioritized over background thumbnail warmup, reducing the delay after the thumbnail preview appears.
 - **Viewer Generate Actions**: Added per-provider viewer toggles in Settings so Automatic1111 and ComfyUI actions can be hidden independently in Image Modal and Image Preview Sidebar, with single-provider labels simplified to `Generate`.
-- **Favorites & Tags Filters**: Favorites and manual tags in the sidebar now cycle through include, exclude, and off states, making it possible to quickly hide favorites or exclude specific tags without leaving the current view.
 - **ComfyUI Metadata Compatibility**: Improved parsing for prompt-only ComfyUI graph payloads, added support for `smZ CLIPTextEncode`, and normalized prompt whitespace for cleaner imported prompts.
 
 ### Fixed

@@ -6,6 +6,8 @@ import TagsAndFavorites from './TagsAndFavorites';
 import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
+import { InclusionFilterMode } from '../types';
+import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 
 interface SidebarProps {
   searchQuery: string;
@@ -71,7 +73,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const excludedModels = useImageStore((state) => state.excludedModels);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
 
   const [expandedSections, setExpandedSections] = useState({
     models: true,
@@ -86,40 +93,64 @@ const Sidebar: React.FC<SidebarProps> = ({
     }));
   };
 
-  const handleModelToggle = (model: string, checked: boolean) => {
-    if (checked) {
-      onModelChange([...selectedModels, model]);
-    } else {
-      onModelChange(selectedModels.filter(m => m !== model));
-    }
+  const getFilterMode = (value: string, selectedValues: string[], excludedValues: string[]): InclusionFilterMode => {
+    if (selectedValues.includes(value)) return 'include';
+    if (excludedValues.includes(value)) return 'exclude';
+    return 'neutral';
   };
 
-  const handleLoraToggle = (lora: string, checked: boolean) => {
-    if (checked) {
-      onLoraChange([...selectedLoras, lora]);
-    } else {
-      onLoraChange(selectedLoras.filter(l => l !== lora));
-    }
+  const handleModelCycle = (model: string) => {
+    const currentMode = getFilterMode(model, selectedModels, excludedModels);
+    const nextMode = getNextFilterMode(currentMode);
+
+    setSelectedFilters({
+      models: nextMode === 'include'
+        ? [...selectedModels.filter(item => item !== model), model]
+        : selectedModels.filter(item => item !== model),
+      excludedModels: nextMode === 'exclude'
+        ? [...excludedModels.filter(item => item !== model), model]
+        : excludedModels.filter(item => item !== model),
+    });
   };
 
-  const handleSchedulerToggle = (scheduler: string, checked: boolean) => {
-    if (checked) {
-      onSchedulerChange([...selectedSchedulers, scheduler]);
-    } else {
-      onSchedulerChange(selectedSchedulers.filter(s => s !== scheduler));
-    }
+  const handleLoraCycle = (lora: string) => {
+    const currentMode = getFilterMode(lora, selectedLoras, excludedLoras);
+    const nextMode = getNextFilterMode(currentMode);
+
+    setSelectedFilters({
+      loras: nextMode === 'include'
+        ? [...selectedLoras.filter(item => item !== lora), lora]
+        : selectedLoras.filter(item => item !== lora),
+      excludedLoras: nextMode === 'exclude'
+        ? [...excludedLoras.filter(item => item !== lora), lora]
+        : excludedLoras.filter(item => item !== lora),
+    });
+  };
+
+  const handleSchedulerCycle = (scheduler: string) => {
+    const currentMode = getFilterMode(scheduler, selectedSchedulers, excludedSchedulers);
+    const nextMode = getNextFilterMode(currentMode);
+
+    setSelectedFilters({
+      schedulers: nextMode === 'include'
+        ? [...selectedSchedulers.filter(item => item !== scheduler), scheduler]
+        : selectedSchedulers.filter(item => item !== scheduler),
+      excludedSchedulers: nextMode === 'exclude'
+        ? [...excludedSchedulers.filter(item => item !== scheduler), scheduler]
+        : excludedSchedulers.filter(item => item !== scheduler),
+    });
   };
 
   const clearSection = (section: 'models' | 'loras' | 'schedulers') => {
     switch (section) {
       case 'models':
-        onModelChange([]);
+        setSelectedFilters({ models: [], excludedModels: [] });
         break;
       case 'loras':
-        onLoraChange([]);
+        setSelectedFilters({ loras: [], excludedLoras: [] });
         break;
       case 'schedulers':
-        onSchedulerChange([]);
+        setSelectedFilters({ schedulers: [], excludedSchedulers: [] });
         break;
     }
   };
@@ -139,7 +170,17 @@ const Sidebar: React.FC<SidebarProps> = ({
            <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
         </button>
         <div className="flex flex-col space-y-3">
-          {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
+          {(selectedModels.length > 0 ||
+            excludedModels.length > 0 ||
+            selectedLoras.length > 0 ||
+            excludedLoras.length > 0 ||
+            selectedSchedulers.length > 0 ||
+            excludedSchedulers.length > 0 ||
+            selectedTags.length > 0 ||
+            excludedTags.length > 0 ||
+            selectedAutoTags.length > 0 ||
+            excludedAutoTags.length > 0 ||
+            favoriteFilterMode !== 'neutral') && (
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
@@ -264,12 +305,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 {selectedModels.length > 0 && (
                   <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedModels.length} selected
+                    {selectedModels.length} include
+                  </span>
+                )}
+                {excludedModels.length > 0 && (
+                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                    {excludedModels.length} exclude
                   </span>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                {selectedModels.length > 0 && (
+                {(selectedModels.length > 0 || excludedModels.length > 0) && (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -304,18 +350,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
+                    <p className="pb-2 text-[11px] text-gray-500">
+                      Click a model to cycle include, exclude, and off.
+                    </p>
                     {availableModels
                       .filter(model => typeof model === 'string' && model.trim() !== '')
                       .map((model, index) => (
-                      <label key={`model-${index}-${model}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedModels.includes(model)}
-                          onChange={(e) => handleModelToggle(model, e.target.checked)}
-                          className="w-4 h-4 text-accent bg-gray-700 border-gray-600 rounded-md focus:ring-accent focus:ring-2"
+                      <div key={`model-${index}-${model}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
+                        <TriStateToggle
+                          mode={getFilterMode(model, selectedModels, excludedModels)}
+                          onClick={() => handleModelCycle(model)}
+                          title={`Model "${model}": ${getFilterModeLabel(getFilterMode(model, selectedModels, excludedModels))}. Click to cycle.`}
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={model}>{model}</span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 </motion.div>
@@ -338,12 +386,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 {selectedLoras.length > 0 && (
                   <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedLoras.length} selected
+                    {selectedLoras.length} include
+                  </span>
+                )}
+                {excludedLoras.length > 0 && (
+                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                    {excludedLoras.length} exclude
                   </span>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                {selectedLoras.length > 0 && (
+                {(selectedLoras.length > 0 || excludedLoras.length > 0) && (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -378,18 +431,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
+                    <p className="pb-2 text-[11px] text-gray-500">
+                      Click a LoRA to cycle include, exclude, and off.
+                    </p>
                     {availableLoras
                       .filter(lora => typeof lora === 'string' && lora.trim() !== '')
                       .map((lora, index) => (
-                      <label key={`lora-${index}-${lora}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedLoras.includes(lora)}
-                          onChange={(e) => handleLoraToggle(lora, e.target.checked)}
-                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
+                      <div key={`lora-${index}-${lora}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
+                        <TriStateToggle
+                          mode={getFilterMode(lora, selectedLoras, excludedLoras)}
+                          onClick={() => handleLoraCycle(lora)}
+                          title={`LoRA "${lora}": ${getFilterModeLabel(getFilterMode(lora, selectedLoras, excludedLoras))}. Click to cycle.`}
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={lora}>{lora}</span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 </motion.div>
@@ -412,12 +467,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 {selectedSchedulers.length > 0 && (
                   <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedSchedulers.length} selected
+                    {selectedSchedulers.length} include
+                  </span>
+                )}
+                {excludedSchedulers.length > 0 && (
+                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                    {excludedSchedulers.length} exclude
                   </span>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                {selectedSchedulers.length > 0 && (
+                {(selectedSchedulers.length > 0 || excludedSchedulers.length > 0) && (
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
@@ -452,18 +512,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
+                    <p className="pb-2 text-[11px] text-gray-500">
+                      Click a sampler to cycle include, exclude, and off.
+                    </p>
                     {availableSchedulers
                       .filter(scheduler => typeof scheduler === 'string' && scheduler.trim() !== '')
                       .map((scheduler, index) => (
-                      <label key={`scheduler-${index}-${scheduler}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedSchedulers.includes(scheduler)}
-                          onChange={(e) => handleSchedulerToggle(scheduler, e.target.checked)}
-                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
+                      <div key={`scheduler-${index}-${scheduler}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
+                        <TriStateToggle
+                          mode={getFilterMode(scheduler, selectedSchedulers, excludedSchedulers)}
+                          onClick={() => handleSchedulerCycle(scheduler)}
+                          title={`Sampler "${scheduler}": ${getFilterModeLabel(getFilterMode(scheduler, selectedSchedulers, excludedSchedulers))}. Click to cycle.`}
                         />
                         <span className="text-gray-200 text-sm flex-1 truncate" title={scheduler}>{scheduler}</span>
-                      </label>
+                      </div>
                     ))}
                   </div>
                 </motion.div>
@@ -485,9 +547,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       {(selectedModels.length > 0 ||
         selectedLoras.length > 0 ||
         selectedSchedulers.length > 0 ||
+        excludedModels.length > 0 ||
+        excludedLoras.length > 0 ||
+        excludedSchedulers.length > 0 ||
         selectedTags.length > 0 ||
         excludedTags.length > 0 ||
         selectedAutoTags.length > 0 ||
+        excludedAutoTags.length > 0 ||
         favoriteFilterMode !== 'neutral' ||
         Object.keys(advancedFilters || {}).length > 0) && (
         <div className="p-4 border-t border-gray-700">

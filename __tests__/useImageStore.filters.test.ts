@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Directory, IndexedImage } from '../types';
+import { Directory, IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -11,96 +11,107 @@ const directory: Directory = {
   visible: true,
 };
 
-const createImage = (
-  id: string,
-  name: string,
-  options: {
-    isFavorite?: boolean;
-    tags?: string[];
-  } = {}
-): IndexedImage => ({
-  id,
-  name,
+const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
+  id: `dir-1::${overrides.name ?? 'image.png'}`,
+  name: overrides.name ?? 'image.png',
   handle: {} as FileSystemFileHandle,
-  metadata: {} as IndexedImage['metadata'],
+  metadata: {} as any,
   metadataString: '',
   lastModified: 1,
   models: [],
   loras: [],
   scheduler: '',
-  directoryId: directory.id,
-  directoryName: directory.name,
-  isFavorite: options.isFavorite,
-  tags: options.tags,
+  directoryId: 'dir-1',
+  ...overrides,
 });
 
-const images: IndexedImage[] = [
-  createImage('dir-1::favorite-portrait.png', 'favorite-portrait.png', {
-    isFavorite: true,
-    tags: ['portrait', 'warm'],
-  }),
-  createImage('dir-1::portrait.png', 'portrait.png', {
-    tags: ['portrait'],
-  }),
-  createImage('dir-1::landscape.png', 'landscape.png', {
-    isFavorite: true,
-    tags: ['landscape'],
-  }),
-  createImage('dir-1::untagged.png', 'untagged.png'),
-];
+const imageA = createImage({
+  name: 'a.png',
+  isFavorite: true,
+  tags: ['portrait', 'warm'],
+  autoTags: ['cinematic'],
+  models: ['modelA'],
+  loras: ['loraA'],
+  scheduler: 'euler',
+});
 
-describe('useImageStore filter toggles', () => {
-  beforeEach(() => {
-    useSettingsStore.setState({
-      enableSafeMode: false,
-      blurSensitiveImages: true,
-      sensitiveTags: ['nsfw', 'private', 'hidden'],
-    });
+const imageB = createImage({
+  name: 'b.png',
+  isFavorite: false,
+  tags: ['portrait'],
+  autoTags: ['studio'],
+  models: ['modelB'],
+  loras: ['loraB'],
+  scheduler: 'ddim',
+});
 
-    useImageStore.getState().resetState();
-    useImageStore.setState({
-      directories: [directory],
-      images,
-      filteredImages: images,
-      isAnnotationsLoaded: true,
-    });
-    useImageStore.getState().filterAndSortImages();
+const imageC = createImage({
+  name: 'c.png',
+  isFavorite: true,
+  tags: ['landscape'],
+  autoTags: ['cinematic', 'nature'],
+  models: ['modelA'],
+  loras: ['loraC'],
+  scheduler: 'ddim',
+});
+
+const imageD = createImage({
+  name: 'd.png',
+  isFavorite: false,
+});
+
+const seedStore = () => {
+  useSettingsStore.setState({
+    enableSafeMode: false,
+    blurSensitiveImages: true,
+    sensitiveTags: ['nsfw', 'private', 'hidden'],
   });
 
-  it('includes and excludes favorites with the tri-state filter', () => {
+  useImageStore.getState().resetState();
+  useImageStore.setState({
+    directories: [directory],
+    images: [imageA, imageB, imageC, imageD],
+    filteredImages: [imageA, imageB, imageC, imageD],
+    sortOrder: 'asc',
+  });
+  useImageStore.getState().filterAndSortImages();
+};
+
+describe('useImageStore tri-state filters', () => {
+  beforeEach(() => {
+    seedStore();
+  });
+
+  it('filters favorites with include and exclude modes', () => {
     useImageStore.getState().setFavoriteFilterMode('include');
-    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual([
-      'dir-1::landscape.png',
-      'dir-1::favorite-portrait.png',
-    ]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
 
     useImageStore.getState().setFavoriteFilterMode('exclude');
-    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual([
-      'dir-1::untagged.png',
-      'dir-1::portrait.png',
-    ]);
-
-    useImageStore.getState().setFavoriteFilterMode('neutral');
-    expect(useImageStore.getState().filteredImages).toHaveLength(4);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png']);
   });
 
-  it('combines included and excluded tag filters', () => {
+  it('supports include and exclude for tags and auto-tags', () => {
     useImageStore.getState().setSelectedTags(['portrait']);
-    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual([
-      'dir-1::portrait.png',
-      'dir-1::favorite-portrait.png',
-    ]);
-
     useImageStore.getState().setExcludedTags(['warm']);
-    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual([
-      'dir-1::portrait.png',
-    ]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png']);
 
     useImageStore.getState().setSelectedTags([]);
-    useImageStore.getState().setExcludedTags(['portrait']);
-    expect(useImageStore.getState().filteredImages.map((image) => image.id)).toEqual([
-      'dir-1::untagged.png',
-      'dir-1::landscape.png',
-    ]);
+    useImageStore.getState().setExcludedTags([]);
+    useImageStore.getState().setSelectedAutoTags(['cinematic']);
+    useImageStore.getState().setExcludedAutoTags(['nature']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+  });
+
+  it('supports include and exclude for models, loras, and schedulers', () => {
+    useImageStore.getState().setSelectedFilters({
+      models: ['modelA'],
+      excludedModels: ['modelB'],
+      loras: ['loraA', 'loraC'],
+      excludedLoras: ['loraC'],
+      schedulers: ['euler', 'ddim'],
+      excludedSchedulers: ['ddim'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 });

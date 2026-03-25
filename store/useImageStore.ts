@@ -209,8 +209,11 @@ interface ImageState {
   availableSchedulers: string[];
   availableDimensions: string[];
   selectedModels: string[];
+  excludedModels: string[];
   selectedLoras: string[];
+  excludedLoras: string[];
   selectedSchedulers: string[];
+  excludedSchedulers: string[];
   sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
   randomSeed: number;
   advancedFilters: any;
@@ -223,6 +226,7 @@ interface ImageState {
   selectedTags: string[];
   excludedTags: string[];
   selectedAutoTags: string[]; // Filter by auto-tags
+  excludedAutoTags: string[];
   favoriteFilterMode: InclusionFilterMode;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
@@ -289,7 +293,14 @@ interface ImageState {
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
   setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[]; dimensions: string[] }) => void;
-  setSelectedFilters: (filters: { models?: string[]; loras?: string[]; schedulers?: string[] }) => void;
+  setSelectedFilters: (filters: {
+    models?: string[];
+    excludedModels?: string[];
+    loras?: string[];
+    excludedLoras?: string[];
+    schedulers?: string[];
+    excludedSchedulers?: string[];
+  }) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
   reshuffle: () => void;
   setAdvancedFilters: (filters: any) => void;
@@ -345,6 +356,7 @@ interface ImageState {
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
   setSelectedAutoTags: (tags: string[]) => void;
+  setExcludedAutoTags: (tags: string[]) => void;
   setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
@@ -563,7 +575,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedTags?.length) return true;
         if (state.excludedTags?.length) return true;
         if (state.selectedAutoTags?.length) return true;
-        if (state.selectedModels?.length || state.selectedLoras?.length || state.selectedSchedulers?.length) return true;
+        if (state.excludedAutoTags?.length) return true;
+        if (state.selectedModels?.length || state.excludedModels?.length) return true;
+        if (state.selectedLoras?.length || state.excludedLoras?.length) return true;
+        if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
         if (state.directories.some(dir => dir.visible === false)) return true;
@@ -793,6 +808,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
+        if (state.excludedAutoTags && state.excludedAutoTags.length > 0) {
+            results = results.filter(img => {
+                if (!img.autoTags || img.autoTags.length === 0) return true;
+                return !state.excludedAutoTags.some(tag => img.autoTags!.includes(tag));
+            });
+        }
+
         if (searchQuery) {
             const searchTerms = searchQuery
                 .toLowerCase()
@@ -823,6 +845,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             );
         }
 
+        if (state.excludedModels.length > 0) {
+            results = results.filter(image =>
+                !image.models?.length || !state.excludedModels.some(sm => image.models.includes(sm))
+            );
+        }
+
         if (selectedLoras.length > 0) {
             results = results.filter(image => {
                 if (!image.loras || image.loras.length === 0) return false;
@@ -836,9 +864,27 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
+        if (state.excludedLoras.length > 0) {
+            results = results.filter(image => {
+                if (!image.loras || image.loras.length === 0) return true;
+
+                const loraNames = image.loras.map(lora =>
+                    typeof lora === 'string' ? lora : (lora?.name || '')
+                ).filter(Boolean);
+
+                return !state.excludedLoras.some(sl => loraNames.includes(sl));
+            });
+        }
+
         if (selectedSchedulers.length > 0) {
             results = results.filter(image =>
                 selectedSchedulers.includes(image.scheduler)
+            );
+        }
+
+        if (state.excludedSchedulers.length > 0) {
+            results = results.filter(image =>
+                !state.excludedSchedulers.includes(image.scheduler)
             );
         }
 
@@ -1007,8 +1053,11 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableSchedulers: [],
         availableDimensions: [],
         selectedModels: [],
+        excludedModels: [],
         selectedLoras: [],
+        excludedLoras: [],
         selectedSchedulers: [],
+        excludedSchedulers: [],
         sortOrder: 'date-desc',
         randomSeed: Date.now(),
         advancedFilters: {},
@@ -1026,6 +1075,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedTags: [],
         excludedTags: [],
         selectedAutoTags: [],
+        excludedAutoTags: [],
         favoriteFilterMode: 'neutral',
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
@@ -1502,12 +1552,18 @@ export const useImageStore = create<ImageState>((set, get) => {
             ...filterAndSort({
                 ...state,
                 selectedModels: filters.models ?? state.selectedModels,
+                excludedModels: filters.excludedModels ?? state.excludedModels,
                 selectedLoras: filters.loras ?? state.selectedLoras,
+                excludedLoras: filters.excludedLoras ?? state.excludedLoras,
                 selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+                excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
             }),
             selectedModels: filters.models ?? state.selectedModels,
+            excludedModels: filters.excludedModels ?? state.excludedModels,
             selectedLoras: filters.loras ?? state.selectedLoras,
+            excludedLoras: filters.excludedLoras ?? state.excludedLoras,
             selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
+            excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
         })),
 
         setAdvancedFilters: (filters) => set(state => ({
@@ -2182,6 +2238,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             set(state => ({ ...filterAndSort({ ...state, selectedAutoTags: tags }), selectedAutoTags: tags }));
         },
 
+        setExcludedAutoTags: (tags) => {
+            set(state => ({ ...filterAndSort({ ...state, excludedAutoTags: tags }), excludedAutoTags: tags }));
+        },
+
         importMetadataTags: async (images) => {
             if (!images || images.length === 0) return;
 
@@ -2341,8 +2401,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableSchedulers: [],
             availableDimensions: [],
             selectedModels: [],
+            excludedModels: [],
             selectedLoras: [],
+            excludedLoras: [],
             selectedSchedulers: [],
+            excludedSchedulers: [],
             advancedFilters: {},
             indexingState: 'idle',
             previewImage: null,
@@ -2360,6 +2423,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedTags: [],
             excludedTags: [],
             selectedAutoTags: [],
+            excludedAutoTags: [],
             favoriteFilterMode: 'neutral',
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),

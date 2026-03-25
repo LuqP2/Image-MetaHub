@@ -93,6 +93,7 @@ export default function App() {
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+  const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
 
   // Folder selection selectors
@@ -771,10 +772,18 @@ export default function App() {
           onLoraChange={(loras) => setSelectedFilters({ loras })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
-            setSelectedFilters({ models: [], loras: [], schedulers: [] });
+            setSelectedFilters({
+              models: [],
+              excludedModels: [],
+              loras: [],
+              excludedLoras: [],
+              schedulers: [],
+              excludedSchedulers: [],
+            });
             setSelectedTags([]);
             setExcludedTags([]);
             setSelectedAutoTags([]);
+            setExcludedAutoTags([]);
             setFavoriteFilterMode('neutral');
             setAdvancedFilters({});
           }}
