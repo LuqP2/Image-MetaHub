@@ -16,12 +16,20 @@ const TRANSFORMATION_TYPES = new Set<Exclude<GenerationType, 'txt2img'>>([
   'outpaint',
 ]);
 
+const stripComfyStorageSuffix = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  return value.trim().replace(/\s+\[(input|output|temp)\]$/i, '');
+};
+
 const normalizePath = (value?: string | null): string => {
   if (!value) {
     return '';
   }
 
-  return value.replace(/\\/g, '/').replace(/[\\/]+$/, '').toLowerCase();
+  return stripComfyStorageSuffix(value).replace(/\\/g, '/').replace(/[\\/]+$/, '').toLowerCase();
 };
 
 const normalizeFileName = (value?: string | null): string => {
@@ -29,7 +37,7 @@ const normalizeFileName = (value?: string | null): string => {
     return '';
   }
 
-  const normalized = value.replace(/\\/g, '/');
+  const normalized = stripComfyStorageSuffix(value).replace(/\\/g, '/');
   const segments = normalized.split('/').filter(Boolean);
   return (segments[segments.length - 1] || value).toLowerCase();
 };

@@ -380,7 +380,7 @@ function extractSourceReferenceFromNode(node: ParserNode): SourceImageReference 
     return null;
   }
 
-  const normalized = imageValue.trim().replace(/\\/g, '/');
+  const normalized = imageValue.trim().replace(/\s+\[(input|output|temp)\]$/i, '').replace(/\\/g, '/');
   const segments = normalized.split('/').filter(Boolean);
   return {
     fileName: segments[segments.length - 1] || normalized,

@@ -191,4 +191,40 @@ describe('Image lineage detection', () => {
     expect(resolved?.sourceStatus).toBe('ambiguous');
     expect(resolved?.sourceImage).toBeUndefined();
   });
+
+  it('links ComfyUI source references that include the [output] storage suffix', () => {
+    const source = createImage('dir-1::01ZIT_2026-03-25_res_multistep_1.0_8steps_00002.png', '01ZIT_2026-03-25_res_multistep_1.0_8steps_00002.png', {
+      prompt: 'source',
+      model: '',
+      width: 1024,
+      height: 1024,
+      steps: 0,
+      scheduler: '',
+    });
+    const resultImage = createImage('dir-1::01ZIT_2026-03-25_res_multistep_1.0_8steps_00003.png', '01ZIT_2026-03-25_res_multistep_1.0_8steps_00003.png', {
+      prompt: 'result',
+      model: '',
+      width: 1024,
+      height: 1024,
+      steps: 0,
+      scheduler: '',
+      generationType: 'img2img',
+      lineage: {
+        detection: 'inferred',
+        denoiseStrength: 0.95,
+        sourceImage: { fileName: '01ZIT_2026-03-25_res_multistep_1.0_8steps_00002.png [output]' },
+      },
+    });
+    const directories: Directory[] = [{
+      id: 'dir-1',
+      name: 'Library',
+      path: 'D:/Library',
+      handle: {} as FileSystemDirectoryHandle,
+    }];
+
+    const resolved = resolveImageLineage(resultImage, resultImage.metadata.normalizedMetadata, [source, resultImage], directories);
+
+    expect(resolved?.sourceStatus).toBe('linked');
+    expect(resolved?.sourceImage?.id).toBe(source.id);
+  });
 });
