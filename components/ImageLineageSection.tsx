@@ -3,6 +3,7 @@ import { type BaseMetadata, type IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import {
+  buildImageLineageIndex,
   getDirectDerivedImages,
   getGenerationTypeLabel,
   getLineageStatusMessage,
@@ -71,14 +72,18 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
 }) => {
   const images = useImageStore((state) => state.images);
   const directories = useImageStore((state) => state.directories);
+  const lineageIndex = React.useMemo(
+    () => buildImageLineageIndex(images, directories),
+    [directories, images]
+  );
 
   const resolvedLineage = React.useMemo(
-    () => resolveImageLineage(image, metadata, images, directories),
-    [directories, image, images, metadata]
+    () => resolveImageLineage(image, metadata, images, directories, lineageIndex),
+    [directories, image, images, lineageIndex, metadata]
   );
   const derivedImages = React.useMemo(
-    () => getDirectDerivedImages(image, images, directories, 4),
-    [directories, image, images]
+    () => getDirectDerivedImages(image, images, directories, 4, lineageIndex),
+    [directories, image, images, lineageIndex]
   );
 
   if (!resolvedLineage && derivedImages.length === 0) {

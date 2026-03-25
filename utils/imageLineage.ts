@@ -10,6 +10,14 @@ export interface ResolvedImageLineage {
   sourceReference?: SourceImageReference | null;
 }
 
+export interface ImageLineageIndex {
+  byAbsolutePath: Map<string, IndexedImage[]>;
+  byRelativePath: Map<string, IndexedImage[]>;
+  byFileName: Map<string, IndexedImage[]>;
+  byFileNameAndDimensions: Map<string, IndexedImage[]>;
+  derivedBySourceId: Map<string, IndexedImage[]>;
+}
+
 const TRANSFORMATION_TYPES = new Set<Exclude<GenerationType, 'txt2img'>>([
   'img2img',
   'inpaint',
@@ -46,6 +54,12 @@ const parseRelativePath = (imageId: string): string => {
   const [, relativePath = ''] = imageId.split('::');
   return relativePath.replace(/\\/g, '/');
 };
+
+const buildDimensionKey = (
+  fileName: string,
+  width: number,
+  height: number
+): string => `${fileName}::${width}x${height}`;
 
 const buildAbsoluteImagePath = (
   image: IndexedImage,
@@ -121,15 +135,22 @@ const getSourceReference = (metadata?: BaseMetadata): SourceImageReference | nul
 const resolveSourceMatch = (
   reference: SourceImageReference | null,
   images: IndexedImage[],
-  directories: Directory[]
+  directories: Directory[],
+  lineageIndex?: ImageLineageIndex,
+  excludeImageId?: string
 ): { status: ResolvedSourceStatus; image?: IndexedImage } => {
   if (!reference) {
     return { status: 'unavailable' };
   }
 
+  const getCandidates = (bucket?: IndexedImage[]): IndexedImage[] =>
+    (bucket || []).filter((candidate) => candidate.id !== excludeImageId);
+
   const absolutePath = normalizePath(reference.absolutePath);
   if (absolutePath) {
-    const exactMatch = images.filter((image) => buildAbsoluteImagePath(image, directories) === absolutePath);
+    const exactMatch = lineageIndex
+      ? getCandidates(lineageIndex.byAbsolutePath.get(absolutePath))
+      : images.filter((image) => image.id !== excludeImageId && buildAbsoluteImagePath(image, directories) === absolutePath);
     if (exactMatch.length === 1) {
       return { status: 'linked', image: exactMatch[0] };
     }
@@ -140,7 +161,9 @@ const resolveSourceMatch = (
 
   const relativePath = normalizePath(reference.relativePath);
   if (relativePath) {
-    const exactMatch = images.filter((image) => normalizePath(parseRelativePath(image.id)) === relativePath);
+    const exactMatch = lineageIndex
+      ? getCandidates(lineageIndex.byRelativePath.get(relativePath))
+      : images.filter((image) => image.id !== excludeImageId && normalizePath(parseRelativePath(image.id)) === relativePath);
     if (exactMatch.length === 1) {
       return { status: 'linked', image: exactMatch[0] };
     }
@@ -154,16 +177,24 @@ const resolveSourceMatch = (
     return { status: 'missing' };
   }
 
-  const fileNameMatches = images.filter((image) => normalizeFileName(image.name) === fileName);
+  const fileNameMatches = lineageIndex
+    ? getCandidates(lineageIndex.byFileName.get(fileName))
+    : images.filter((image) => image.id !== excludeImageId && normalizeFileName(image.name) === fileName);
   if (fileNameMatches.length === 1) {
     return { status: 'linked', image: fileNameMatches[0] };
   }
 
   if (fileNameMatches.length > 1 && reference.width && reference.height) {
-    const dimensionMatches = fileNameMatches.filter((image) => {
-      const dims = getImageDimensions(image);
-      return dims.width === reference.width && dims.height === reference.height;
-    });
+    const dimensionMatches = lineageIndex
+      ? getCandidates(
+          lineageIndex.byFileNameAndDimensions.get(
+            buildDimensionKey(fileName, reference.width, reference.height)
+          )
+        )
+      : fileNameMatches.filter((image) => {
+          const dims = getImageDimensions(image);
+          return dims.width === reference.width && dims.height === reference.height;
+        });
 
     if (dimensionMatches.length === 1) {
       return { status: 'linked', image: dimensionMatches[0] };
@@ -175,6 +206,66 @@ const resolveSourceMatch = (
   }
 
   return fileNameMatches.length > 1 ? { status: 'ambiguous' } : { status: 'missing' };
+};
+
+const addToBucket = (
+  map: Map<string, IndexedImage[]>,
+  key: string,
+  image: IndexedImage
+): void => {
+  if (!key) {
+    return;
+  }
+
+  const bucket = map.get(key);
+  if (bucket) {
+    bucket.push(image);
+    return;
+  }
+
+  map.set(key, [image]);
+};
+
+export const buildImageLineageIndex = (
+  images: IndexedImage[],
+  directories: Directory[]
+): ImageLineageIndex => {
+  const index: ImageLineageIndex = {
+    byAbsolutePath: new Map(),
+    byRelativePath: new Map(),
+    byFileName: new Map(),
+    byFileNameAndDimensions: new Map(),
+    derivedBySourceId: new Map(),
+  };
+
+  for (const image of images) {
+    addToBucket(index.byAbsolutePath, buildAbsoluteImagePath(image, directories), image);
+    addToBucket(index.byRelativePath, normalizePath(parseRelativePath(image.id)), image);
+
+    const fileName = normalizeFileName(image.name);
+    addToBucket(index.byFileName, fileName, image);
+
+    const dims = getImageDimensions(image);
+    if (fileName && dims.width && dims.height) {
+      addToBucket(
+        index.byFileNameAndDimensions,
+        buildDimensionKey(fileName, dims.width, dims.height),
+        image
+      );
+    }
+  }
+
+  for (const image of images) {
+    const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+    const resolved = resolveImageLineage(image, metadata, images, directories, index);
+    if (!resolved?.sourceImage) {
+      continue;
+    }
+
+    addToBucket(index.derivedBySourceId, resolved.sourceImage.id, image);
+  }
+
+  return index;
 };
 
 export const isTransformationGenerationType = (
@@ -202,7 +293,8 @@ export const resolveImageLineage = (
   image: IndexedImage,
   metadata: BaseMetadata | undefined,
   images: IndexedImage[],
-  directories: Directory[]
+  directories: Directory[],
+  lineageIndex?: ImageLineageIndex
 ): ResolvedImageLineage | null => {
   const generationType = metadata?.generationType;
   if (!isTransformationGenerationType(generationType)) {
@@ -211,7 +303,7 @@ export const resolveImageLineage = (
 
   const lineage: ImageLineage = metadata?.lineage || {};
   const sourceReference = getSourceReference(metadata);
-  const resolvedSource = resolveSourceMatch(sourceReference, images.filter((entry) => entry.id !== image.id), directories);
+  const resolvedSource = resolveSourceMatch(sourceReference, images, directories, lineageIndex, image.id);
 
   return {
     generationType,
@@ -240,8 +332,13 @@ export const getDirectDerivedImages = (
   sourceImage: IndexedImage,
   images: IndexedImage[],
   directories: Directory[],
-  limit = 6
+  limit = 6,
+  lineageIndex?: ImageLineageIndex
 ): IndexedImage[] => {
+  if (lineageIndex) {
+    return (lineageIndex.derivedBySourceId.get(sourceImage.id) || []).slice(0, limit);
+  }
+
   const matches: IndexedImage[] = [];
 
   for (const candidate of images) {

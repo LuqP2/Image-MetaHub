@@ -419,6 +419,7 @@ function detectComfyLineageFromGraph(
   const visited = new Set<string>();
   let sourceReference: SourceImageReference | null = null;
   let hasLoadImage = false;
+  let hasMaskInput = false;
   let hasInpaintMarkers = false;
   let hasOutpaintMarkers = false;
 
@@ -435,28 +436,29 @@ function detectComfyLineageFromGraph(
     }
 
     const classType = node.class_type.toLowerCase();
+    const normalizedClassType = classType.replace(/\s+/g, '');
 
-    if (
-      classType === 'loadimage' ||
-      classType === 'loadimagemask' ||
-      classType.includes('load image')
-    ) {
+    if (normalizedClassType === 'loadimage') {
       hasLoadImage = true;
       sourceReference ||= extractSourceReferenceFromNode(node);
     }
 
+    if (normalizedClassType === 'loadimagemask') {
+      hasMaskInput = true;
+    }
+
     if (
-      classType.includes('outpaint') ||
-      classType.includes('padforoutpaint') ||
-      classType.includes('imagepadforoutpaint')
+      normalizedClassType.includes('outpaint') ||
+      normalizedClassType.includes('padforoutpaint') ||
+      normalizedClassType.includes('imagepadforoutpaint')
     ) {
       hasOutpaintMarkers = true;
     }
 
     if (
-      classType.includes('inpaint') ||
-      classType === 'setlatentnoisemask' ||
-      classType.includes('mask')
+      normalizedClassType.includes('inpaint') ||
+      normalizedClassType === 'setlatentnoisemask' ||
+      normalizedClassType === 'vaeencodeforinpaint'
     ) {
       hasInpaintMarkers = true;
     }
@@ -469,12 +471,22 @@ function detectComfyLineageFromGraph(
     }
   }
 
-  if (!hasLoadImage) {
+  if (!hasLoadImage && !hasMaskInput) {
     return {};
   }
 
-  const generationType: Exclude<GenerationType, 'txt2img'> =
-    hasOutpaintMarkers ? 'outpaint' : hasInpaintMarkers ? 'inpaint' : 'img2img';
+  const generationType: Exclude<GenerationType, 'txt2img'> | undefined =
+    hasOutpaintMarkers
+      ? 'outpaint'
+      : hasInpaintMarkers
+        ? 'inpaint'
+        : hasLoadImage
+          ? 'img2img'
+          : undefined;
+
+  if (!generationType) {
+    return {};
+  }
 
   return {
     generationType,
