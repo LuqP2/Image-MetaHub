@@ -64,33 +64,40 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
 
   return (
     <div className="rounded-xl border border-gray-800/80 bg-gray-900/40">
-      <button
-        type="button"
-        onClick={() => setIsExpanded((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-800/50 transition-colors rounded-xl"
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-100">{title}</span>
-            <span className="rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[11px] text-gray-400">
-              {mergedItems.length}
-            </span>
-            {selectedValues.length > 0 && (
-              <span className="rounded border border-emerald-700/60 bg-emerald-950/60 px-2 py-0.5 text-[11px] text-emerald-300">
-                {selectedValues.length} include
+      <div className="flex items-start gap-2 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="flex min-w-0 flex-1 items-start justify-between rounded-xl text-left hover:bg-gray-800/50 transition-colors"
+        >
+          <div className="min-w-0 py-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-100">{title}</span>
+              <span className="rounded border border-gray-700 bg-gray-800 px-2 py-0.5 text-[11px] text-gray-400">
+                {mergedItems.length}
               </span>
-            )}
-            {excludedValues.length > 0 && (
-              <span className="rounded border border-rose-700/60 bg-rose-950/60 px-2 py-0.5 text-[11px] text-rose-300">
-                {excludedValues.length} exclude
-              </span>
-            )}
+              {selectedValues.length > 0 && (
+                <span className="rounded border border-emerald-700/60 bg-emerald-950/60 px-2 py-0.5 text-[11px] text-emerald-300">
+                  {selectedValues.length} include
+                </span>
+              )}
+              {excludedValues.length > 0 && (
+                <span className="rounded border border-rose-700/60 bg-rose-950/60 px-2 py-0.5 text-[11px] text-rose-300">
+                  {excludedValues.length} exclude
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              {activeCount > 0 ? 'Active values stay pinned at the top.' : 'Use explicit include/exclude actions per value.'}
+            </p>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
-            {activeCount > 0 ? 'Active values stay pinned at the top.' : 'Use explicit include/exclude actions per value.'}
-          </p>
-        </div>
-        <div className="ml-3 flex items-center gap-2">
+          <div className="ml-3 flex items-center gap-2 py-1">
+            <ChevronDown
+              className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </div>
+        </button>
+        <div className="flex items-center py-1">
           {activeCount > 0 && (
             <button
               type="button"
@@ -104,11 +111,8 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
               <X className="h-4 w-4" />
             </button>
           )}
-          <ChevronDown
-            className={`h-4 w-4 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          />
         </div>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="border-t border-gray-800/80 px-4 pb-4 pt-3">
