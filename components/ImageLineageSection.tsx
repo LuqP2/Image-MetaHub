@@ -33,7 +33,7 @@ const LineagePreviewCard: React.FC<{
   return (
     <button
       onClick={() => onOpenImage(image)}
-      className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700/60 dark:bg-gray-900/50 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10"
+      className="group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg border border-gray-200 bg-white p-2 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700/60 dark:bg-gray-900/50 dark:hover:border-blue-500/40 dark:hover:bg-blue-500/10"
       title={`Open ${label.toLowerCase()}: ${image.name}`}
     >
       {thumbnailUrl ? (
@@ -47,7 +47,7 @@ const LineagePreviewCard: React.FC<{
           IMH
         </div>
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
           {label}
         </div>
