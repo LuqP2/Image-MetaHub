@@ -50,6 +50,25 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
     }
   }
 
+  const hasOutpaintMarkers = /\boutpaint(?:ing)?\b/i.test(parameters) || /Script:\s*outpainting/i.test(parameters);
+  const hasInpaintMarkers =
+    /Mask blur:\s*([\d.]+)/i.test(parameters) ||
+    /Masked content:\s*([^,\n]+)/i.test(parameters) ||
+    /Inpaint area:\s*([^,\n]+)/i.test(parameters) ||
+    /Mask mode:\s*([^,\n]+)/i.test(parameters) ||
+    /\binpaint\b/i.test(parameters);
+  const hasSourceMarkers =
+    /(?:Source|Input|Init) image:\s*([^\n,]+)/i.test(parameters) ||
+    /Resize mode:\s*([^,\n]+)/i.test(parameters) ||
+    /\bimg2img\b/i.test(parameters);
+  const generationType = hasOutpaintMarkers
+    ? 'outpaint'
+    : hasInpaintMarkers
+      ? 'inpaint'
+      : denoising != null && (!hiresUpscaler && !hiresUpscale && !hiresSteps && !hiresDenoising || hasSourceMarkers)
+        ? 'img2img'
+        : undefined;
+
   return {
     prompt: positivePrompt,
     negativePrompt,
@@ -66,11 +85,33 @@ export function parseForgeMetadata(metadata: any): BaseMetadata | null {
     // Forge-specific fields
     modelHash,
     denoising,
+    denoise: denoising,
     clipSkip,
     hiresUpscaler,
     hiresUpscale,
     hiresSteps,
     hiresDenoising,
+    generationType,
+    lineage: generationType ? {
+      detection: 'inferred',
+      denoiseStrength: denoising ?? null,
+      maskBlur: (() => {
+        const match = parameters.match(/Mask blur:\s*([\d.]+)/i);
+        return match ? parseFloat(match[1]) : null;
+      })(),
+      maskedContent: (() => {
+        const match = parameters.match(/Masked content:\s*([^,\n]+)/i);
+        return match ? match[1].trim() : null;
+      })(),
+      resizeMode: (() => {
+        const match = parameters.match(/Resize mode:\s*([^,\n]+)/i);
+        return match ? match[1].trim() : null;
+      })(),
+      sourceImage: (() => {
+        const match = parameters.match(/(?:Source|Input|Init) image:\s*([^\n,]+)/i);
+        return match ? { fileName: match[1].trim() } : undefined;
+      })(),
+    } : undefined,
   };
 }
 

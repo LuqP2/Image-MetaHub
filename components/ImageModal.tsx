@@ -23,6 +23,8 @@ import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal } from './MetadataEditorModal';
+import ImageLineageSection from './ImageLineageSection';
+import { getGenerationTypeLabel } from '../utils/imageLineage';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -433,6 +435,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const availableTags = useImageStore((state) => state.availableTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const recentTags = useImageStore((state) => state.recentTags);
+  const setSelectedImage = useImageStore((state) => state.setSelectedImage);
+  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
   // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
@@ -1384,6 +1388,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="space-y-4">
               {/* Prompt Section - Always Visible */}
               <div className="space-y-3">
+                <ImageLineageSection
+                  image={imageFromStore ?? image}
+                  metadata={nMeta}
+                  onOpenImage={(targetImage) => {
+                    setPreviewImage(targetImage);
+                    setSelectedImage(targetImage);
+                  }}
+                />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt')} />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt')} />
                 
@@ -1419,6 +1431,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </button>
                 {showDetails && (
                   <div className="space-y-3 mt-3">
+                    {nMeta.generationType && (
+                      <MetadataItem label="Generation Type" value={getGenerationTypeLabel(nMeta.generationType)} />
+                    )}
                     <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />

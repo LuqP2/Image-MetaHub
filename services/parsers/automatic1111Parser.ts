@@ -88,6 +88,42 @@ function detectGenerator(parameters: string): string {
   return 'A1111';
 }
 
+function extractGenerationType(parameters: string): BaseMetadata['generationType'] | undefined {
+  const hasDenoise = /Denoising strength:\s*([\d.]+)/i.test(parameters);
+  if (!hasDenoise) {
+    return undefined;
+  }
+
+  const hasOutpaintMarkers = /\boutpaint(?:ing)?\b/i.test(parameters) || /Script:\s*outpainting/i.test(parameters);
+  if (hasOutpaintMarkers) {
+    return 'outpaint';
+  }
+
+  const hasInpaintMarkers =
+    /Mask blur:\s*([\d.]+)/i.test(parameters) ||
+    /Masked content:\s*([^,\n]+)/i.test(parameters) ||
+    /Inpaint area:\s*([^,\n]+)/i.test(parameters) ||
+    /Mask mode:\s*([^,\n]+)/i.test(parameters) ||
+    /\binpaint\b/i.test(parameters);
+  if (hasInpaintMarkers) {
+    return 'inpaint';
+  }
+
+  const hasHiresMarkers =
+    /Hires (?:upscale|upscaler|steps|resize|strength):/i.test(parameters) ||
+    /Refiner:/i.test(parameters);
+  if (!hasHiresMarkers) {
+    return 'img2img';
+  }
+
+  const hasSourceMarkers =
+    /(?:Source|Input|Init) image:\s*([^\n,]+)/i.test(parameters) ||
+    /Resize mode:\s*([^,\n]+)/i.test(parameters) ||
+    /\bimg2img\b/i.test(parameters);
+
+  return hasSourceMarkers ? 'img2img' : undefined;
+}
+
 // --- Main Parser Function ---
 
 export function parseA1111Metadata(parameters: string): BaseMetadata {
@@ -131,6 +167,11 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   const seedMatch = parameters.match(/Seed: (\d+)/);
   if (seedMatch) result.seed = parseInt(seedMatch[1], 10);
 
+  const denoiseMatch = parameters.match(/Denoising strength:\s*([\d.]+)/i);
+  if (denoiseMatch) {
+    result.denoise = parseFloat(denoiseMatch[1]);
+  }
+
   const sizeMatch = parameters.match(/Size: (\d+)x(\d+)/);
   if (sizeMatch) {
     result.width = parseInt(sizeMatch[1], 10);
@@ -166,6 +207,34 @@ export function parseA1111Metadata(parameters: string): BaseMetadata {
   const moduleMatches = parameters.match(/Module \d+: ([^,\n]+)/g);
   if (moduleMatches && moduleMatches.length > 0) {
     result.module = moduleMatches.join(', ');
+  }
+
+  const generationType = extractGenerationType(parameters);
+  if (generationType) {
+    result.generationType = generationType;
+    result.lineage = {
+      detection: 'inferred',
+      denoiseStrength: result.denoise ?? null,
+      maskBlur: (() => {
+        const match = parameters.match(/Mask blur:\s*([\d.]+)/i);
+        return match ? parseFloat(match[1]) : null;
+      })(),
+      maskedContent: (() => {
+        const match = parameters.match(/Masked content:\s*([^,\n]+)/i);
+        return match ? match[1].trim() : null;
+      })(),
+      resizeMode: (() => {
+        const match = parameters.match(/Resize mode:\s*([^,\n]+)/i);
+        return match ? match[1].trim() : null;
+      })(),
+      sourceImage: (() => {
+        const match = parameters.match(/(?:Source|Input|Init) image:\s*([^\n,]+)/i);
+        if (!match) {
+          return undefined;
+        }
+        return { fileName: match[1].trim() };
+      })(),
+    };
   }
 
   const finalResult = result as BaseMetadata;
