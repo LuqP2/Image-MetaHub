@@ -184,6 +184,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
   const selectedTags = useImageStore((state) => state.selectedTags);
@@ -200,6 +202,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       excludedModels.length > 0 ||
       selectedLoras.length > 0 ||
       excludedLoras.length > 0 ||
+      selectedSamplers.length > 0 ||
+      excludedSamplers.length > 0 ||
       selectedSchedulers.length > 0 ||
       excludedSchedulers.length > 0 ||
       selectedTags.length > 0 ||

@@ -14,6 +14,7 @@ describe('CacheManager', () => {
           lastModified: 1000,
           models: [],
           loras: [],
+          sampler: 'euler_a',
           scheduler: '',
           enrichmentState: 'enriched', // Valid entry
         },
@@ -68,6 +69,7 @@ describe('CacheManager', () => {
       // Expect 'ready.png' to be in cachedImages (unchanged)
       expect(diff.cachedImages).toHaveLength(1);
       expect(diff.cachedImages[0].name).toBe('ready.png');
+      expect(diff.cachedImages[0].sampler).toBe('euler_a');
 
       // Expect 'incomplete.png' to be in newAndModifiedFiles (needs re-indexing)
       expect(diff.newAndModifiedFiles).toHaveLength(1);

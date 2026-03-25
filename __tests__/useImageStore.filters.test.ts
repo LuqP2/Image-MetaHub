@@ -20,6 +20,7 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   lastModified: 1,
   models: [],
   loras: [],
+  sampler: '',
   scheduler: '',
   directoryId: 'dir-1',
   ...overrides,
@@ -32,6 +33,7 @@ const imageA = createImage({
   autoTags: ['cinematic'],
   models: ['modelA'],
   loras: ['loraA'],
+  sampler: 'euler_a',
   scheduler: 'euler',
 });
 
@@ -42,6 +44,7 @@ const imageB = createImage({
   autoTags: ['studio'],
   models: ['modelB'],
   loras: ['loraB'],
+  sampler: 'dpmpp_2m',
   scheduler: 'ddim',
 });
 
@@ -52,6 +55,7 @@ const imageC = createImage({
   autoTags: ['cinematic', 'nature'],
   models: ['modelA'],
   loras: ['loraC'],
+  sampler: 'dpmpp_2m',
   scheduler: 'ddim',
 });
 
@@ -102,16 +106,42 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 
-  it('supports include and exclude for models, loras, and schedulers', () => {
+  it('supports include and exclude for checkpoints, loras, samplers, and schedulers', () => {
     useImageStore.getState().setSelectedFilters({
       models: ['modelA'],
       excludedModels: ['modelB'],
       loras: ['loraA', 'loraC'],
       excludedLoras: ['loraC'],
+      samplers: ['euler_a', 'dpmpp_2m'],
+      excludedSamplers: ['dpmpp_2m'],
       schedulers: ['euler', 'ddim'],
       excludedSchedulers: ['ddim'],
     });
 
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+  });
+
+  it('treats sampler as an independent filter from scheduler', () => {
+    useImageStore.getState().setSelectedFilters({
+      samplers: ['dpmpp_2m'],
+      schedulers: ['ddim'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      samplers: ['euler_a'],
+      schedulers: ['ddim'],
+    });
+
+    expect(useImageStore.getState().filteredImages).toEqual([]);
+  });
+
+  it('keeps images without sampler when only excluded samplers are active', () => {
+    useImageStore.getState().setSelectedFilters({
+      excludedSamplers: ['dpmpp_2m'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png']);
   });
 });

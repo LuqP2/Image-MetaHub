@@ -4,7 +4,7 @@ import { type IndexedImage } from '../types';
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 3; // v3: Improved CLIPTextEncode to trace String Literal links, added model to SamplerCustomAdvanced
+export const PARSER_VERSION = 4; // v4: Persist sampler separately from scheduler for faceted filtering
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
@@ -15,6 +15,7 @@ export interface CacheImageMetadata {
   lastModified: number;
   models: string[];
   loras: string[] | (string | { name: string; model_name?: string; weight?: number; model_weight?: number; clip_weight?: number })[]; // Support both formats for backward compatibility
+  sampler?: string;
   scheduler: string;
   board?: string;
   prompt?: string;
@@ -64,6 +65,7 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     lastModified: img.lastModified,
     models: img.models,
     loras: img.loras,
+    sampler: img.sampler,
     scheduler: img.scheduler,
     board: img.board,
     prompt: img.prompt,

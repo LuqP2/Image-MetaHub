@@ -287,6 +287,7 @@ export function useImageLoader() {
         const allImages = useImageStore.getState().images;
         const models = new Set<string>();
         const loras = new Set<string>();
+        const samplers = new Set<string>();
         const schedulers = new Set<string>();
 
         for (const image of allImages) {
@@ -300,14 +301,16 @@ export function useImageLoader() {
                     }
                 });
             }
+            if (image.sampler) samplers.add(image.sampler);
             if (image.scheduler) schedulers.add(image.scheduler);
         }
 
         setFilterOptions({
             models: Array.from(models).sort(),
             loras: Array.from(loras).sort(),
+            samplers: Array.from(samplers).sort(),
             schedulers: Array.from(schedulers).sort(),
-            dimensions: [],
+            dimensions: [] as string[],
         });
     }, [setFilterOptions]);
 

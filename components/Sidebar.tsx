@@ -1,26 +1,28 @@
 
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
+import { ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import ActiveFilters from './ActiveFilters';
+import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
-import { InclusionFilterMode } from '../types';
-import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   availableModels: string[];
   availableLoras: string[];
+  availableSamplers: string[];
   availableSchedulers: string[];
   availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
+  selectedSamplers: string[];
   selectedSchedulers: string[];
   onModelChange: (models: string[]) => void;
   onLoraChange: (loras: string[]) => void;
+  onSamplerChange: (samplers: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
   advancedFilters: any;
@@ -45,14 +47,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSearchChange,
   availableModels,
   availableLoras,
+  availableSamplers,
   availableSchedulers,
   availableDimensions,
   selectedModels,
   selectedLoras,
+  selectedSamplers,
   selectedSchedulers,
-  onModelChange,
-  onLoraChange,
-  onSchedulerChange,
   onClearAllFilters,
   advancedFilters,
   onAdvancedFiltersChange,
@@ -75,85 +76,125 @@ const Sidebar: React.FC<SidebarProps> = ({
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const filteredImages = useImageStore((state) => state.filteredImages);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
+  const countFacetValues = useMemo(() => {
+    const modelCounts = new Map<string, number>();
+    const loraCounts = new Map<string, number>();
+    const samplerCounts = new Map<string, number>();
+    const schedulerCounts = new Map<string, number>();
 
-  const [expandedSections, setExpandedSections] = useState({
-    models: true,
-    loras: true,
-    schedulers: true,
-  });
+    for (const image of filteredImages) {
+      image.models?.forEach((value) => {
+        if (value) modelCounts.set(value, (modelCounts.get(value) ?? 0) + 1);
+      });
 
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
+      image.loras?.forEach((value) => {
+        const label = typeof value === 'string' ? value : value?.name;
+        if (label) loraCounts.set(label, (loraCounts.get(label) ?? 0) + 1);
+      });
 
-  const getFilterMode = (value: string, selectedValues: string[], excludedValues: string[]): InclusionFilterMode => {
-    if (selectedValues.includes(value)) return 'include';
-    if (excludedValues.includes(value)) return 'exclude';
-    return 'neutral';
-  };
+      if (image.sampler) {
+        samplerCounts.set(image.sampler, (samplerCounts.get(image.sampler) ?? 0) + 1);
+      }
 
-  const handleModelCycle = (model: string) => {
-    const currentMode = getFilterMode(model, selectedModels, excludedModels);
-    const nextMode = getNextFilterMode(currentMode);
-
-    setSelectedFilters({
-      models: nextMode === 'include'
-        ? [...selectedModels.filter(item => item !== model), model]
-        : selectedModels.filter(item => item !== model),
-      excludedModels: nextMode === 'exclude'
-        ? [...excludedModels.filter(item => item !== model), model]
-        : excludedModels.filter(item => item !== model),
-    });
-  };
-
-  const handleLoraCycle = (lora: string) => {
-    const currentMode = getFilterMode(lora, selectedLoras, excludedLoras);
-    const nextMode = getNextFilterMode(currentMode);
-
-    setSelectedFilters({
-      loras: nextMode === 'include'
-        ? [...selectedLoras.filter(item => item !== lora), lora]
-        : selectedLoras.filter(item => item !== lora),
-      excludedLoras: nextMode === 'exclude'
-        ? [...excludedLoras.filter(item => item !== lora), lora]
-        : excludedLoras.filter(item => item !== lora),
-    });
-  };
-
-  const handleSchedulerCycle = (scheduler: string) => {
-    const currentMode = getFilterMode(scheduler, selectedSchedulers, excludedSchedulers);
-    const nextMode = getNextFilterMode(currentMode);
-
-    setSelectedFilters({
-      schedulers: nextMode === 'include'
-        ? [...selectedSchedulers.filter(item => item !== scheduler), scheduler]
-        : selectedSchedulers.filter(item => item !== scheduler),
-      excludedSchedulers: nextMode === 'exclude'
-        ? [...excludedSchedulers.filter(item => item !== scheduler), scheduler]
-        : excludedSchedulers.filter(item => item !== scheduler),
-    });
-  };
-
-  const clearSection = (section: 'models' | 'loras' | 'schedulers') => {
-    switch (section) {
-      case 'models':
-        setSelectedFilters({ models: [], excludedModels: [] });
-        break;
-      case 'loras':
-        setSelectedFilters({ loras: [], excludedLoras: [] });
-        break;
-      case 'schedulers':
-        setSelectedFilters({ schedulers: [], excludedSchedulers: [] });
-        break;
+      if (image.scheduler) {
+        schedulerCounts.set(image.scheduler, (schedulerCounts.get(image.scheduler) ?? 0) + 1);
+      }
     }
+
+    return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
+  }, [filteredImages]);
+
+  const toggleExplicitFacet = (
+    value: string,
+    selectedValues: string[],
+    excludedValues: string[],
+    mode: 'include' | 'exclude',
+    keys: {
+      selected: 'models' | 'loras' | 'samplers' | 'schedulers';
+      excluded: 'excludedModels' | 'excludedLoras' | 'excludedSamplers' | 'excludedSchedulers';
+    }
+  ) => {
+    const nextSelected = mode === 'include'
+      ? (selectedValues.includes(value) ? selectedValues.filter((item) => item !== value) : [...selectedValues, value])
+      : selectedValues.filter((item) => item !== value);
+
+    const nextExcluded = mode === 'exclude'
+      ? (excludedValues.includes(value) ? excludedValues.filter((item) => item !== value) : [...excludedValues, value])
+      : excludedValues.filter((item) => item !== value);
+
+    setSelectedFilters({
+      [keys.selected]: nextSelected,
+      [keys.excluded]: nextExcluded,
+    });
   };
+
+  const generationFacets = [
+    {
+      title: 'Checkpoints',
+      items: availableModels,
+      selectedValues: selectedModels,
+      excludedValues: excludedModels,
+      counts: countFacetValues.modelCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'include', { selected: 'models', excluded: 'excludedModels' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'exclude', { selected: 'models', excluded: 'excludedModels' }),
+      onClear: () => setSelectedFilters({ models: [], excludedModels: [] }),
+    },
+    {
+      title: 'LoRAs',
+      items: availableLoras,
+      selectedValues: selectedLoras,
+      excludedValues: excludedLoras,
+      counts: countFacetValues.loraCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'include', { selected: 'loras', excluded: 'excludedLoras' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'exclude', { selected: 'loras', excluded: 'excludedLoras' }),
+      onClear: () => setSelectedFilters({ loras: [], excludedLoras: [] }),
+    },
+    {
+      title: 'Samplers',
+      items: availableSamplers,
+      selectedValues: selectedSamplers,
+      excludedValues: excludedSamplers,
+      counts: countFacetValues.samplerCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'include', { selected: 'samplers', excluded: 'excludedSamplers' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'exclude', { selected: 'samplers', excluded: 'excludedSamplers' }),
+      onClear: () => setSelectedFilters({ samplers: [], excludedSamplers: [] }),
+    },
+    {
+      title: 'Schedulers',
+      items: availableSchedulers,
+      selectedValues: selectedSchedulers,
+      excludedValues: excludedSchedulers,
+      counts: countFacetValues.schedulerCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'include', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'exclude', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
+      onClear: () => setSelectedFilters({ schedulers: [], excludedSchedulers: [] }),
+    },
+  ].filter((facet) =>
+    facet.items.length > 0 || facet.selectedValues.length > 0 || facet.excludedValues.length > 0
+  );
+
+  const hasAnyActiveFilters =
+    Boolean(searchQuery) ||
+    selectedModels.length > 0 ||
+    excludedModels.length > 0 ||
+    selectedLoras.length > 0 ||
+    excludedLoras.length > 0 ||
+    selectedSamplers.length > 0 ||
+    excludedSamplers.length > 0 ||
+    selectedSchedulers.length > 0 ||
+    excludedSchedulers.length > 0 ||
+    selectedTags.length > 0 ||
+    excludedTags.length > 0 ||
+    selectedAutoTags.length > 0 ||
+    excludedAutoTags.length > 0 ||
+    favoriteFilterMode !== 'neutral' ||
+    Object.keys(advancedFilters || {}).length > 0;
 
   if (isCollapsed) {
     return (
@@ -174,13 +215,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             excludedModels.length > 0 ||
             selectedLoras.length > 0 ||
             excludedLoras.length > 0 ||
+            selectedSamplers.length > 0 ||
+            excludedSamplers.length > 0 ||
             selectedSchedulers.length > 0 ||
             excludedSchedulers.length > 0 ||
             selectedTags.length > 0 ||
             excludedTags.length > 0 ||
             selectedAutoTags.length > 0 ||
             excludedAutoTags.length > 0 ||
-            favoriteFilterMode !== 'neutral') && (
+            searchQuery ||
+            favoriteFilterMode !== 'neutral' ||
+            Object.keys(advancedFilters || {}).length > 0) && (
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
@@ -196,25 +241,25 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
         <div className="flex items-center gap-3 p-4 pb-2">
-            <div className="relative flex-shrink-0">
-                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
-                <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
-            </div>
-            <div className="flex flex-col overflow-hidden">
-                <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
-                <span className="text-[10px] font-mono font-normal text-gray-500">v0.14-beta</span>
-            </div>
+          <div className="relative flex-shrink-0">
+            <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
+            <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
+            <span className="text-[10px] font-mono font-normal text-gray-500">v0.14-beta</span>
+          </div>
         </div>
 
         <div className="flex items-center justify-between px-4 pb-3 pt-1">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Filters</h2>
-            <button
+          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Faceted Filters</h2>
+          <button
             onClick={onToggleCollapse}
             className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
             title="Collapse sidebar"
-            >
+          >
             <ChevronLeft className="w-4 h-4" />
-            </button>
+          </button>
         </div>
       </div>
 
@@ -228,7 +273,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
-        {/* Sort Order - Moved from footer for semantic consistency with filters */}
+        <div className="border-b border-gray-800/80">
+          <ActiveFilters />
+        </div>
+
         <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
           <div className="flex items-center">
@@ -291,250 +339,35 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Tags and Favorites Section */}
         <TagsAndFavorites />
 
-        {/* Models Section */}
-        {availableModels.length > 0 && (
-          <div className="border-b border-gray-700">
-            <button
-              onClick={() => toggleSection('models')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">Models</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableModels.length}
-                </span>
-                {selectedModels.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedModels.length} include
-                  </span>
-                )}
-                {excludedModels.length > 0 && (
-                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
-                    {excludedModels.length} exclude
-                  </span>
-                )}
+        {generationFacets.length > 0 && (
+          <section className="border-y border-gray-800/80 bg-gray-950/20 px-4 py-4">
+            <div className="mb-4 flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-gray-400" />
+              <div>
+                <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
+                <p className="text-xs text-gray-500">
+                  Checkpoints, LoRAs, samplers and schedulers with explicit include/exclude actions.
+                </p>
               </div>
-              <div className="flex items-center space-x-2">
-                {(selectedModels.length > 0 || excludedModels.length > 0) && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('models');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear model filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('models');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.models ? 'rotate-180' : ''}`}
+            </div>
+            <div className="space-y-3">
+              {generationFacets.map((facet) => (
+                <FacetFilterSection
+                  key={facet.title}
+                  title={facet.title}
+                  items={facet.items}
+                  counts={facet.counts}
+                  selectedValues={facet.selectedValues}
+                  excludedValues={facet.excludedValues}
+                  onIncludeToggle={facet.onIncludeToggle}
+                  onExcludeToggle={facet.onExcludeToggle}
+                  onClear={facet.onClear}
                 />
-              </div>
-            </button>
-            <AnimatePresence>
-              {expandedSections.models && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    <p className="pb-2 text-[11px] text-gray-500">
-                      Click a model to cycle include, exclude, and off.
-                    </p>
-                    {availableModels
-                      .filter(model => typeof model === 'string' && model.trim() !== '')
-                      .map((model, index) => (
-                      <div key={`model-${index}-${model}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <TriStateToggle
-                          mode={getFilterMode(model, selectedModels, excludedModels)}
-                          onClick={() => handleModelCycle(model)}
-                          title={`Model "${model}": ${getFilterModeLabel(getFilterMode(model, selectedModels, excludedModels))}. Click to cycle.`}
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={model}>{model}</span>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+              ))}
+            </div>
+          </section>
         )}
 
-        {/* LoRAs Section */}
-        {availableLoras.length > 0 && (
-          <div className="border-b border-gray-700">
-            <button
-              onClick={() => toggleSection('loras')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">LoRAs</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableLoras.length}
-                </span>
-                {selectedLoras.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedLoras.length} include
-                  </span>
-                )}
-                {excludedLoras.length > 0 && (
-                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
-                    {excludedLoras.length} exclude
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                {(selectedLoras.length > 0 || excludedLoras.length > 0) && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('loras');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear LoRA filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('loras');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.loras ? 'rotate-180' : ''}`}
-                />
-              </div>
-            </button>
-            <AnimatePresence>
-              {expandedSections.loras && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    <p className="pb-2 text-[11px] text-gray-500">
-                      Click a LoRA to cycle include, exclude, and off.
-                    </p>
-                    {availableLoras
-                      .filter(lora => typeof lora === 'string' && lora.trim() !== '')
-                      .map((lora, index) => (
-                      <div key={`lora-${index}-${lora}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <TriStateToggle
-                          mode={getFilterMode(lora, selectedLoras, excludedLoras)}
-                          onClick={() => handleLoraCycle(lora)}
-                          title={`LoRA "${lora}": ${getFilterModeLabel(getFilterMode(lora, selectedLoras, excludedLoras))}. Click to cycle.`}
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={lora}>{lora}</span>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Schedulers Section */}
-        {availableSchedulers.length > 0 && (
-          <div className="border-b border-gray-700">
-            <button
-              onClick={() => toggleSection('schedulers')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">Schedulers</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableSchedulers.length}
-                </span>
-                {selectedSchedulers.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedSchedulers.length} include
-                  </span>
-                )}
-                {excludedSchedulers.length > 0 && (
-                  <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
-                    {excludedSchedulers.length} exclude
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                {(selectedSchedulers.length > 0 || excludedSchedulers.length > 0) && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('schedulers');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear scheduler filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('schedulers');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.schedulers ? 'rotate-180' : ''}`}
-                />
-              </div>
-            </button>
-            <AnimatePresence>
-              {expandedSections.schedulers && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    <p className="pb-2 text-[11px] text-gray-500">
-                      Click a sampler to cycle include, exclude, and off.
-                    </p>
-                    {availableSchedulers
-                      .filter(scheduler => typeof scheduler === 'string' && scheduler.trim() !== '')
-                      .map((scheduler, index) => (
-                      <div key={`scheduler-${index}-${scheduler}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <TriStateToggle
-                          mode={getFilterMode(scheduler, selectedSchedulers, excludedSchedulers)}
-                          onClick={() => handleSchedulerCycle(scheduler)}
-                          title={`Sampler "${scheduler}": ${getFilterModeLabel(getFilterMode(scheduler, selectedSchedulers, excludedSchedulers))}. Click to cycle.`}
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={scheduler}>{scheduler}</span>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Advanced Filters */}
         <AdvancedFilters
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={onAdvancedFiltersChange}
@@ -544,18 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Clear All Filters */}
-      {(selectedModels.length > 0 ||
-        selectedLoras.length > 0 ||
-        selectedSchedulers.length > 0 ||
-        excludedModels.length > 0 ||
-        excludedLoras.length > 0 ||
-        excludedSchedulers.length > 0 ||
-        selectedTags.length > 0 ||
-        excludedTags.length > 0 ||
-        selectedAutoTags.length > 0 ||
-        excludedAutoTags.length > 0 ||
-        favoriteFilterMode !== 'neutral' ||
-        Object.keys(advancedFilters || {}).length > 0) && (
+      {hasAnyActiveFilters && (
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClearAllFilters}

@@ -84,10 +84,12 @@ export default function App() {
   const removeExcludedFolder = useImageStore((state) => state.removeExcludedFolder);
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
+  const availableSamplers = useImageStore((state) => state.availableSamplers);
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
   const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const selectedSamplers = useImageStore((state) => state.selectedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
@@ -226,6 +228,7 @@ export default function App() {
       metadataString: '',
       models: [],
       loras: [],
+      sampler: '',
       scheduler: '',
       metadata: {
         normalizedMetadata: {
@@ -764,19 +767,25 @@ export default function App() {
           onSearchChange={setSearchQuery}
           availableModels={availableModels}
           availableLoras={availableLoras}
+          availableSamplers={availableSamplers}
           availableSchedulers={availableSchedulers}
           selectedModels={selectedModels}
           selectedLoras={selectedLoras}
+          selectedSamplers={selectedSamplers}
           selectedSchedulers={selectedSchedulers}
           onModelChange={(models) => setSelectedFilters({ models })}
           onLoraChange={(loras) => setSelectedFilters({ loras })}
+          onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
+            setSearchQuery('');
             setSelectedFilters({
               models: [],
               excludedModels: [],
               loras: [],
               excludedLoras: [],
+              samplers: [],
+              excludedSamplers: [],
               schedulers: [],
               excludedSchedulers: [],
             });
