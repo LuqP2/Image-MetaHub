@@ -1136,6 +1136,8 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
     notes: enhancedResult.notes || '',
     vae: enhancedResult.vae,
     denoise: enhancedResult.denoise,
+    generationType: enhancedResult.generationType,
+    lineage: enhancedResult.lineage,
     _analytics: enhancedResult._analytics || null,
     _metahub_pro: enhancedResult._metahub_pro || null,
     _detection_method: enhancedResult._detection_method,
@@ -1350,6 +1352,8 @@ if (rawMetadata) {
       loras: Array.isArray(resolvedParams.lora) ? resolvedParams.lora : (resolvedParams.lora ? [resolvedParams.lora] : []),
       vae: resolvedParams.vae || resolvedParams.vaes?.[0]?.name,
       denoise: resolvedParams.denoise,
+      generationType: resolvedParams.generationType,
+      lineage: resolvedParams.lineage,
     };
   }
 
