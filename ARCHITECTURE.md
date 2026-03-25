@@ -6,7 +6,7 @@
 
 ### Current Version
 
-- **Version:** 0.13.2
+- **Version:** 0.14-beta
 - **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
 - **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
 - **State Management:** Zustand stores for both image data and application settings
