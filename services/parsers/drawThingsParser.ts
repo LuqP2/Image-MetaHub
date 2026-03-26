@@ -56,7 +56,64 @@ export function parseDrawThingsMetadata(parameters: string, userComment?: string
     if (typeof jsonData.sampler === 'string') result.sampler = jsonData.sampler;
     if (typeof jsonData.model === 'string') result.model = jsonData.model;
     if (typeof jsonData.c === 'string') result.prompt = jsonData.c; // Clean prompt from JSON
+    if (typeof jsonData.strength === 'number') result.denoise = jsonData.strength;
   }
+
+  const v2 = jsonData?.v2 && typeof jsonData.v2 === 'object'
+    ? jsonData.v2 as Record<string, unknown>
+    : null;
+  const maskBlur =
+    typeof jsonData?.mask_blur === 'number'
+      ? jsonData.mask_blur
+      : typeof v2?.maskBlur === 'number'
+        ? v2.maskBlur
+        : null;
+  const originalImageWidth = typeof v2?.originalImageWidth === 'number' ? v2.originalImageWidth : null;
+  const originalImageHeight = typeof v2?.originalImageHeight === 'number' ? v2.originalImageHeight : null;
+  const preserveOriginalAfterInpaint = v2?.preserveOriginalAfterInpaint === true;
+  const denoiseStrength =
+    typeof result.denoise === 'number'
+      ? result.denoise
+      : typeof v2?.strength === 'number'
+        ? v2.strength
+        : null;
+
+  if (denoiseStrength != null) {
+    result.denoise = denoiseStrength;
+  }
+
+  if (preserveOriginalAfterInpaint || maskBlur != null) {
+    const isOutpaint =
+      typeof width === 'number' &&
+      typeof height === 'number' &&
+      originalImageWidth != null &&
+      originalImageHeight != null &&
+      (width > originalImageWidth || height > originalImageHeight);
+
+    result.generationType = isOutpaint ? 'outpaint' : 'inpaint';
+    result.lineage = {
+      detection: 'inferred',
+      denoiseStrength,
+      maskBlur,
+      sourceImage: (originalImageWidth != null && originalImageHeight != null)
+        ? {
+            width: originalImageWidth,
+            height: originalImageHeight,
+          }
+        : undefined,
+    };
+  } else if (originalImageWidth != null && originalImageHeight != null) {
+    result.generationType = 'img2img';
+    result.lineage = {
+      detection: 'inferred',
+      denoiseStrength,
+      sourceImage: {
+        width: originalImageWidth,
+        height: originalImageHeight,
+      },
+    };
+  }
+
   // Build normalized metadata
   const normalizedResult: BaseMetadata = {
     prompt: result.prompt || positivePrompt || '',
@@ -71,7 +128,10 @@ export function parseDrawThingsMetadata(parameters: string, userComment?: string
     scheduler: 'Draw Things',
     sampler: result.sampler || sampler || 'Draw Things',
     loras: loras || [],
-    generator: 'Draw Things'
+    generator: 'Draw Things',
+    denoise: result.denoise,
+    generationType: result.generationType,
+    lineage: result.lineage,
   };
   return normalizedResult;
 }

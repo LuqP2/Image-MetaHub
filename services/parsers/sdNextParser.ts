@@ -139,12 +139,39 @@ export function parseSDNextMetadata(parameters: string): BaseMetadata {
     result.denoising_strength = parseFloat(hiresStrengthMatch[1]);
   }
 
+  const denoiseMatch = parameters.match(/Denoising strength:\s*([\d.]+)/i);
+  if (denoiseMatch) {
+    result.denoise = parseFloat(denoiseMatch[1]);
+  }
+
   // Set generator
   result.generator = 'SD.Next';
 
   // Extract arrays
   result.models = extractModelsFromSDNext({ parameters });
   result.loras = extractLorasFromSDNext({ parameters });
+
+  const operations = Array.isArray(result.operations)
+    ? result.operations.map(op => String(op).toLowerCase())
+    : [];
+  const generationType = operations.includes('outpaint')
+    ? 'outpaint'
+    : operations.includes('inpaint')
+      ? 'inpaint'
+      : operations.includes('img2img')
+        ? 'img2img'
+        : undefined;
+  if (generationType) {
+    result.generationType = generationType as BaseMetadata['generationType'];
+    result.lineage = {
+      detection: 'explicit',
+      denoiseStrength: typeof result.denoise === 'number' ? result.denoise : null,
+      sourceImage: (() => {
+        const match = parameters.match(/(?:Source|Input|Init) image:\s*([^\n,]+)/i);
+        return match ? { fileName: match[1].trim() } : undefined;
+      })(),
+    };
+  }
 
   return result as BaseMetadata;
 }

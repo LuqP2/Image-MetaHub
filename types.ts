@@ -392,6 +392,28 @@ export interface MotionModelInfo {
   hash?: string | null;
 }
 
+export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint';
+
+export interface SourceImageReference {
+  fileName?: string | null;
+  relativePath?: string | null;
+  absolutePath?: string | null;
+  sha256?: string | null;
+  width?: number | null;
+  height?: number | null;
+  nodeId?: string | null;
+  nodeType?: string | null;
+}
+
+export interface ImageLineage {
+  detection?: 'explicit' | 'inferred';
+  sourceImage?: SourceImageReference | null;
+  denoiseStrength?: number | null;
+  maskBlur?: number | null;
+  maskedContent?: string | null;
+  resizeMode?: string | null;
+}
+
 export interface BaseMetadata {
   prompt: string;
   negativePrompt?: string;
@@ -412,6 +434,8 @@ export interface BaseMetadata {
   media_type?: 'image' | 'video';
   video?: VideoInfo | null;
   motion_model?: MotionModelInfo | null;
+  generationType?: GenerationType;
+  lineage?: ImageLineage | null;
   // MetaHub Save Node user inputs
   tags?: string[]; // User-defined tags from MetaHub Save Node
   notes?: string; // User notes from MetaHub Save Node

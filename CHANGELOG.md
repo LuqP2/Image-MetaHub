@@ -5,11 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14] - Unreleased
+## [0.14.0] - Unreleased
+
+### Added
+
+- **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
+- **MetaHub Save Node Lineage Metadata**: Extended the companion ComfyUI MetaHub Save Node to persist explicit `generation_type` and `source_image` metadata, creating a stronger base for future multi-step transformation chains.
 
 ### Improved
 
 - **Tri-State Sidebar Filters**: Favorites, tags, auto-tags, models, LoRAs, and samplers/schedulers in the sidebar now cycle through include, exclude, and off states, making it possible to quickly narrow or remove matching images without leaving the current view.
+- **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably and surface img2img-specific parameters in a normalized way.
+- **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 
 ## [0.13.2] - 2026-03-23
 
