@@ -1,6 +1,7 @@
 import { resolveAll, resolveFacts } from './comfyui/traversalEngine';
 import { NodeRegistry } from './comfyui/nodeRegistry';
 import type { ParserNode, WorkflowFacts } from './comfyui/types';
+import type { GenerationType, ImageLineage, SourceImageReference } from '../../types';
 
 // Lazy-loaded zlib for Node.js environment
 let zlibPromise: Promise<any> | null = null;
@@ -365,6 +366,138 @@ function extractComfyVersion(workflow: any, prompt: any): string | null {
   return null;
 }
 
+function getConnectionNodeId(value: any): string | null {
+  if (!Array.isArray(value) || value.length < 2) {
+    return null;
+  }
+
+  return String(value[0]);
+}
+
+function extractSourceReferenceFromNode(node: ParserNode): SourceImageReference | null {
+  const imageValue = node.inputs?.image ?? node.inputs?.file ?? node.widgets_values?.[0];
+  if (typeof imageValue !== 'string' || !imageValue.trim()) {
+    return null;
+  }
+
+  const normalized = imageValue.trim().replace(/\s+\[(input|output|temp)\]$/i, '').replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+  return {
+    fileName: segments[segments.length - 1] || normalized,
+    relativePath: normalized,
+    nodeId: node.id,
+    nodeType: node.class_type,
+  };
+}
+
+function detectComfyLineageFromGraph(
+  graph: Graph,
+  terminalNode: ParserNode | null,
+  denoise: number | null | undefined
+): { generationType?: Exclude<GenerationType, 'txt2img'>; lineage?: ImageLineage } {
+  if (!terminalNode) {
+    return {};
+  }
+
+  const samplerNode = terminalNode.class_type?.toLowerCase().includes('sampler')
+    ? terminalNode
+    : null;
+  if (!samplerNode) {
+    return {};
+  }
+
+  const latentInput =
+    samplerNode.inputs?.latent_image ??
+    samplerNode.inputs?.latent ??
+    samplerNode.inputs?.samples;
+  const startNodeId = getConnectionNodeId(latentInput);
+  if (!startNodeId) {
+    return {};
+  }
+
+  const queue = [startNodeId];
+  const visited = new Set<string>();
+  let sourceReference: SourceImageReference | null = null;
+  let hasLoadImage = false;
+  let hasMaskInput = false;
+  let hasInpaintMarkers = false;
+  let hasOutpaintMarkers = false;
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+
+    const node = graph[nodeId];
+    if (!node?.class_type) {
+      continue;
+    }
+
+    const classType = node.class_type.toLowerCase();
+    const normalizedClassType = classType.replace(/\s+/g, '');
+
+    if (normalizedClassType === 'loadimage') {
+      hasLoadImage = true;
+      sourceReference ||= extractSourceReferenceFromNode(node);
+    }
+
+    if (normalizedClassType === 'loadimagemask') {
+      hasMaskInput = true;
+    }
+
+    if (
+      normalizedClassType.includes('outpaint') ||
+      normalizedClassType.includes('padforoutpaint') ||
+      normalizedClassType.includes('imagepadforoutpaint')
+    ) {
+      hasOutpaintMarkers = true;
+    }
+
+    if (
+      normalizedClassType.includes('inpaint') ||
+      normalizedClassType === 'setlatentnoisemask' ||
+      normalizedClassType === 'vaeencodeforinpaint'
+    ) {
+      hasInpaintMarkers = true;
+    }
+
+    for (const inputValue of Object.values(node.inputs || {})) {
+      const upstreamNodeId = getConnectionNodeId(inputValue);
+      if (upstreamNodeId && !visited.has(upstreamNodeId)) {
+        queue.push(upstreamNodeId);
+      }
+    }
+  }
+
+  if (!hasLoadImage && !hasMaskInput) {
+    return {};
+  }
+
+  const generationType: Exclude<GenerationType, 'txt2img'> | undefined =
+    hasOutpaintMarkers
+      ? 'outpaint'
+      : hasInpaintMarkers
+        ? 'inpaint'
+        : hasLoadImage
+          ? 'img2img'
+          : undefined;
+
+  if (!generationType) {
+    return {};
+  }
+
+  return {
+    generationType,
+    lineage: {
+      detection: 'inferred',
+      denoiseStrength: denoise ?? null,
+      sourceImage: sourceReference ?? undefined,
+    },
+  };
+}
+
 /**
  * Constrói um mapa de nós simplificado a partir dos dados do workflow e do prompt.
  */
@@ -572,6 +705,12 @@ export function resolvePromptFromGraph(workflow: any, prompt: any): Record<strin
     results.comfyui_version = comfyVersion;
   }
 
+  const comfyLineage = detectComfyLineageFromGraph(graph, terminalNode, results.denoise);
+  if (comfyLineage.generationType) {
+    results.generationType = comfyLineage.generationType;
+    results.lineage = comfyLineage.lineage;
+  }
+
   results.generator = 'ComfyUI';
 
   return { ...results, _telemetry: telemetry };
@@ -633,6 +772,38 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         // Extract notes from imh_pro.notes
         const userNotes = metahubData.imh_pro?.notes || '';
 
+        const workflowGraph = metahubData.workflow && typeof metahubData.workflow === 'object'
+          ? metahubData.workflow
+          : undefined;
+        const promptGraph = metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
+          ? metahubData.prompt_api
+          : metahubData.prompt && typeof metahubData.prompt === 'object'
+            ? metahubData.prompt
+            : undefined;
+        const graph = workflowGraph || promptGraph
+          ? createNodeMap(workflowGraph, promptGraph)
+          : null;
+        const explicitGenerationType = typeof metahubData.generation_type === 'string'
+          ? metahubData.generation_type as Exclude<GenerationType, 'txt2img'>
+          : undefined;
+        const explicitSourceImage = metahubData.source_image && typeof metahubData.source_image === 'object'
+          ? metahubData.source_image as SourceImageReference
+          : undefined;
+        const inferredLineage = graph
+          ? detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
+          : {};
+        const generationType = explicitGenerationType || inferredLineage.generationType;
+        const lineage = generationType
+          ? {
+              detection: explicitGenerationType ? 'explicit' : (inferredLineage.lineage?.detection || 'inferred'),
+              denoiseStrength: metahubData.denoise ?? inferredLineage.lineage?.denoiseStrength ?? null,
+              maskBlur: metahubData.mask_blur ?? inferredLineage.lineage?.maskBlur ?? null,
+              maskedContent: metahubData.masked_content ?? inferredLineage.lineage?.maskedContent ?? null,
+              resizeMode: metahubData.resize_mode ?? inferredLineage.lineage?.resizeMode ?? null,
+              sourceImage: explicitSourceImage || inferredLineage.lineage?.sourceImage,
+            }
+          : undefined;
+
         // Map MetaHub chunk fields to expected format
         return {
           prompt: metahubData.prompt,
@@ -653,6 +824,8 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
           tags: userTags,
           notes: userNotes,
           generator: 'ComfyUI',
+          generationType,
+          lineage,
           _detection_method: 'metahub_chunk',
           _metahub_pro: metahubData.imh_pro || null,
           _analytics: metahubData.analytics || null,

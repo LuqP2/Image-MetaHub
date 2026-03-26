@@ -14,6 +14,8 @@ import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import ImageLineageSection from './ImageLineageSection';
+import { getGenerationTypeLabel } from '../utils/imageLineage';
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -162,6 +164,7 @@ const ImagePreviewSidebar: React.FC = () => {
     removeAutoTagFromImage,
     availableTags,
     setSearchQuery,
+    setSelectedImage,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
@@ -554,6 +557,14 @@ const ImagePreviewSidebar: React.FC = () => {
           <>
             <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 pb-2">Metadata</h3>
             <div className="space-y-3">
+              <ImageLineageSection
+                image={activeImage}
+                metadata={nMeta}
+                onOpenImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
               <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
@@ -563,6 +574,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
+                  <MetadataItem label="Generation Type" value={nMeta.generationType ? getGenerationTypeLabel(nMeta.generationType) : undefined} />
                   <MetadataItem label="Steps" value={nMeta.steps} />
                   <MetadataItem label="CFG Scale" value={nMeta.cfgScale ?? nMeta.cfg_scale} />
                   <MetadataItem label="Seed" value={nMeta.seed} />
