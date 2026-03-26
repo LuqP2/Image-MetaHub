@@ -206,12 +206,15 @@ interface ImageState {
   searchQuery: string;
   availableModels: string[];
   availableLoras: string[];
+  availableSamplers: string[];
   availableSchedulers: string[];
   availableDimensions: string[];
   selectedModels: string[];
   excludedModels: string[];
   selectedLoras: string[];
   excludedLoras: string[];
+  selectedSamplers: string[];
+  excludedSamplers: string[];
   selectedSchedulers: string[];
   excludedSchedulers: string[];
   sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
@@ -292,12 +295,14 @@ interface ImageState {
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
-  setFilterOptions: (options: { models: string[]; loras: string[]; schedulers: string[]; dimensions: string[] }) => void;
+  setFilterOptions: (options: { models: string[]; loras: string[]; samplers: string[]; schedulers: string[]; dimensions: string[] }) => void;
   setSelectedFilters: (filters: {
     models?: string[];
     excludedModels?: string[];
     loras?: string[];
     excludedLoras?: string[];
+    samplers?: string[];
+    excludedSamplers?: string[];
     schedulers?: string[];
     excludedSchedulers?: string[];
   }) => void;
@@ -509,6 +514,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     nextFilteredImages = merged;
                     const models = new Set(state.availableModels);
                     const loras = new Set(state.availableLoras);
+                    const samplers = new Set(state.availableSamplers);
                     const schedulers = new Set(state.availableSchedulers);
                     const dimensions = new Set(state.availableDimensions);
 
@@ -521,6 +527,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                                 loras.add(lora.name);
                             }
                         });
+                        if (img.sampler) {
+                            samplers.add(img.sampler);
+                        }
                         if (img.scheduler) {
                             schedulers.add(img.scheduler);
                         }
@@ -532,6 +541,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     availableFiltersUpdate = {
                         availableModels: Array.from(models),
                         availableLoras: Array.from(loras),
+                        availableSamplers: Array.from(samplers),
                         availableSchedulers: Array.from(schedulers),
                         availableDimensions: Array.from(dimensions),
                     };
@@ -578,6 +588,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.excludedAutoTags?.length) return true;
         if (state.selectedModels?.length || state.excludedModels?.length) return true;
         if (state.selectedLoras?.length || state.excludedLoras?.length) return true;
+        if (state.selectedSamplers?.length || state.excludedSamplers?.length) return true;
         if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
@@ -607,6 +618,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
         const models = new Set<string>();
         const loras = new Set<string>();
+        const samplers = new Set<string>();
         const schedulers = new Set<string>();
         const dimensions = new Set<string>();
 
@@ -619,6 +631,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     loras.add(lora.name);
                 }
             });
+            if (image.sampler) samplers.add(image.sampler);
             if (image.scheduler) schedulers.add(image.scheduler);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
@@ -631,6 +644,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         return {
             availableModels: Array.from(models).sort(caseInsensitiveSort),
             availableLoras: Array.from(loras).sort(caseInsensitiveSort),
+            availableSamplers: Array.from(samplers).sort(caseInsensitiveSort),
             availableSchedulers: Array.from(schedulers).sort(caseInsensitiveSort),
             availableDimensions: Array.from(dimensions).sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
@@ -698,7 +712,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, excludedFolders, includeSubfolders } = state;
+        const { images, searchQuery, selectedModels, selectedLoras, selectedSamplers, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, excludedFolders, includeSubfolders } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -876,6 +890,18 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         }
 
+        if (selectedSamplers.length > 0) {
+            results = results.filter(image =>
+                Boolean(image.sampler) && selectedSamplers.includes(image.sampler)
+            );
+        }
+
+        if (state.excludedSamplers.length > 0) {
+            results = results.filter(image =>
+                !image.sampler || !state.excludedSamplers.includes(image.sampler)
+            );
+        }
+
         if (selectedSchedulers.length > 0) {
             results = results.filter(image =>
                 selectedSchedulers.includes(image.scheduler)
@@ -902,7 +928,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                  results = results.filter(image => {
                     const steps = image.steps;
                     if (steps !== null && steps !== undefined) {
-                        return steps >= advancedFilters.steps.min && steps <= advancedFilters.steps.max;
+                        const hasMin = advancedFilters.steps.min !== null && advancedFilters.steps.min !== undefined;
+                        const hasMax = advancedFilters.steps.max !== null && advancedFilters.steps.max !== undefined;
+                        if (hasMin && steps < advancedFilters.steps.min) return false;
+                        if (hasMax && steps > advancedFilters.steps.max) return false;
+                        return true;
                     }
                     return false;
                 });
@@ -911,7 +941,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                  results = results.filter(image => {
                     const cfg = image.cfgScale;
                     if (cfg !== null && cfg !== undefined) {
-                        return cfg >= advancedFilters.cfg.min && cfg <= advancedFilters.cfg.max;
+                        const hasMin = advancedFilters.cfg.min !== null && advancedFilters.cfg.min !== undefined;
+                        const hasMax = advancedFilters.cfg.max !== null && advancedFilters.cfg.max !== undefined;
+                        if (hasMin && cfg < advancedFilters.cfg.min) return false;
+                        if (hasMax && cfg > advancedFilters.cfg.max) return false;
+                        return true;
                     }
                     return false;
                 });
@@ -1050,12 +1084,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         searchQuery: '',
         availableModels: [],
         availableLoras: [],
+        availableSamplers: [],
         availableSchedulers: [],
         availableDimensions: [],
         selectedModels: [],
         excludedModels: [],
         selectedLoras: [],
         excludedLoras: [],
+        selectedSamplers: [],
+        excludedSamplers: [],
         selectedSchedulers: [],
         excludedSchedulers: [],
         sortOrder: 'date-desc',
@@ -1544,6 +1581,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         setFilterOptions: (options) => set({
             availableModels: options.models,
             availableLoras: options.loras,
+            availableSamplers: options.samplers,
             availableSchedulers: options.schedulers,
             availableDimensions: options.dimensions,
         }),
@@ -1555,6 +1593,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 excludedModels: filters.excludedModels ?? state.excludedModels,
                 selectedLoras: filters.loras ?? state.selectedLoras,
                 excludedLoras: filters.excludedLoras ?? state.excludedLoras,
+                selectedSamplers: filters.samplers ?? state.selectedSamplers,
+                excludedSamplers: filters.excludedSamplers ?? state.excludedSamplers,
                 selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
                 excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
             }),
@@ -1562,6 +1602,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             excludedModels: filters.excludedModels ?? state.excludedModels,
             selectedLoras: filters.loras ?? state.selectedLoras,
             excludedLoras: filters.excludedLoras ?? state.excludedLoras,
+            selectedSamplers: filters.samplers ?? state.selectedSamplers,
+            excludedSamplers: filters.excludedSamplers ?? state.excludedSamplers,
             selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
             excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
         })),
@@ -2398,12 +2440,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             searchQuery: '',
             availableModels: [],
             availableLoras: [],
+            availableSamplers: [],
             availableSchedulers: [],
             availableDimensions: [],
             selectedModels: [],
             excludedModels: [],
             selectedLoras: [],
             excludedLoras: [],
+            selectedSamplers: [],
+            excludedSamplers: [],
             selectedSchedulers: [],
             excludedSchedulers: [],
             advancedFilters: {},

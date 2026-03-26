@@ -1,397 +1,220 @@
 import React from 'react';
+import { Calendar, CheckCircle, Settings, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { X, CheckCircle, Calendar, Settings } from 'lucide-react';
 
 const ActiveFilters: React.FC = () => {
-    const selectedModels = useImageStore((state) => state.selectedModels);
-    const excludedModels = useImageStore((state) => state.excludedModels);
-    const selectedLoras = useImageStore((state) => state.selectedLoras);
-    const excludedLoras = useImageStore((state) => state.excludedLoras);
-    const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
-    const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
-    const selectedTags = useImageStore((state) => state.selectedTags);
-    const excludedTags = useImageStore((state) => state.excludedTags);
-    const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
-    const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
-    const searchQuery = useImageStore((state) => state.searchQuery);
-    const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
-    const advancedFilters = useImageStore((state) => state.advancedFilters);
+  const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
+  const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
+  const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const searchQuery = useImageStore((state) => state.searchQuery);
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const advancedFilters = useImageStore((state) => state.advancedFilters);
 
-    const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
-    const setSelectedTags = useImageStore((state) => state.setSelectedTags);
-    const setExcludedTags = useImageStore((state) => state.setExcludedTags);
-    const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
-    const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
-    const setSearchQuery = useImageStore((state) => state.setSearchQuery);
-    const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
-    const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
+  const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
+  const setSelectedTags = useImageStore((state) => state.setSelectedTags);
+  const setExcludedTags = useImageStore((state) => state.setExcludedTags);
+  const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+  const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
+  const setSearchQuery = useImageStore((state) => state.setSearchQuery);
+  const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
-    const hasActiveFilters = 
-        selectedModels.length > 0 ||
-        excludedModels.length > 0 ||
-        selectedLoras.length > 0 ||
-        excludedLoras.length > 0 ||
-        selectedSchedulers.length > 0 ||
-        excludedSchedulers.length > 0 ||
-        selectedTags.length > 0 ||
-        excludedTags.length > 0 ||
-        selectedAutoTags.length > 0 ||
-        excludedAutoTags.length > 0 ||
-        !!searchQuery ||
-        favoriteFilterMode !== 'neutral' ||
-        (advancedFilters && Object.keys(advancedFilters).length > 0);
+  const hasActiveFilters =
+    selectedModels.length > 0 ||
+    excludedModels.length > 0 ||
+    selectedLoras.length > 0 ||
+    excludedLoras.length > 0 ||
+    selectedSamplers.length > 0 ||
+    excludedSamplers.length > 0 ||
+    selectedSchedulers.length > 0 ||
+    excludedSchedulers.length > 0 ||
+    selectedTags.length > 0 ||
+    excludedTags.length > 0 ||
+    selectedAutoTags.length > 0 ||
+    excludedAutoTags.length > 0 ||
+    !!searchQuery ||
+    favoriteFilterMode !== 'neutral' ||
+    (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-    if (!hasActiveFilters) {
-        return null;
-    }
+  if (!hasActiveFilters) {
+    return null;
+  }
 
-    const removeModel = (model: string) => {
-        setSelectedFilters({
-            models: selectedModels.filter((m) => m !== model),
-        });
-    };
+  const chipClass =
+    'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium';
 
-    const removeLora = (lora: string) => {
-        setSelectedFilters({
-            loras: selectedLoras.filter((l) => l !== lora),
-        });
-    };
+  const removeAdvancedFilter = (key: string) => {
+    const nextFilters = { ...advancedFilters };
+    delete nextFilters[key];
+    setAdvancedFilters(nextFilters);
+  };
 
-    const removeExcludedModel = (model: string) => {
-        setSelectedFilters({
-            excludedModels: excludedModels.filter((m) => m !== model),
-        });
-    };
+  return (
+    <div className="px-4 pb-3 pt-2">
+      <div className="mb-2">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-500">
+          Active Filters
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {searchQuery && (
+          <div className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
+            <span className="opacity-70">Search</span>
+            <span className="max-w-[180px] truncate">"{searchQuery}"</span>
+            <button onClick={() => setSearchQuery('')} className="rounded p-0.5 hover:bg-gray-700 hover:text-white">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeExcludedLora = (lora: string) => {
-        setSelectedFilters({
-            excludedLoras: excludedLoras.filter((l) => l !== lora),
-        });
-    };
+        {favoriteFilterMode === 'include' && (
+          <div className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
+            <span>Favorites only</span>
+            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-yellow-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeScheduler = (scheduler: string) => {
-        setSelectedFilters({
-            schedulers: selectedSchedulers.filter((s) => s !== scheduler),
-        });
-    };
+        {favoriteFilterMode === 'exclude' && (
+          <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
+            <span>Exclude favorites</span>
+            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-rose-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeExcludedScheduler = (scheduler: string) => {
-        setSelectedFilters({
-            excludedSchedulers: excludedSchedulers.filter((s) => s !== scheduler),
-        });
-    };
+        {advancedFilters?.hasVerifiedTelemetry && (
+          <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
+            <CheckCircle size={12} />
+            <span>Verified telemetry</span>
+            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-emerald-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeTag = (tag: string) => {
-        setSelectedTags(selectedTags.filter((t) => t !== tag));
-    };
+        {advancedFilters?.dimension && (
+          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+            <Settings size={12} />
+            <span>{advancedFilters.dimension}</span>
+            <button onClick={() => removeAdvancedFilter('dimension')} className="rounded p-0.5 hover:bg-indigo-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeExcludedTag = (tag: string) => {
-        setExcludedTags(excludedTags.filter((t) => t !== tag));
-    };
+        {advancedFilters?.steps && (
+          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+            <Settings size={12} />
+            <span>Steps {advancedFilters.steps.min}-{advancedFilters.steps.max}</span>
+            <button onClick={() => removeAdvancedFilter('steps')} className="rounded p-0.5 hover:bg-indigo-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeAutoTag = (tag: string) => {
-        setSelectedAutoTags(selectedAutoTags.filter((t) => t !== tag));
-    };
+        {advancedFilters?.cfg && (
+          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+            <Settings size={12} />
+            <span>CFG {advancedFilters.cfg.min}-{advancedFilters.cfg.max}</span>
+            <button onClick={() => removeAdvancedFilter('cfg')} className="rounded p-0.5 hover:bg-indigo-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const removeExcludedAutoTag = (tag: string) => {
-        setExcludedAutoTags(excludedAutoTags.filter((t) => t !== tag));
-    };
+        {advancedFilters?.date && (
+          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+            <Calendar size={12} />
+            <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
+            <button onClick={() => removeAdvancedFilter('date')} className="rounded p-0.5 hover:bg-indigo-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
-    const clearSearch = () => {
-        setSearchQuery('');
-    };
+        {selectedModels.map((value) => (
+          <FacetChip key={`checkpoint-${value}`} label="Checkpoint" value={value} tone="blue" onRemove={() => setSelectedFilters({ models: selectedModels.filter((item) => item !== value) })} />
+        ))}
+        {excludedModels.map((value) => (
+          <FacetChip key={`checkpoint-ex-${value}`} label="Exclude checkpoint" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedModels: excludedModels.filter((item) => item !== value) })} />
+        ))}
 
-    const clearFavorites = () => {
-        setFavoriteFilterMode('neutral');
-    };
+        {selectedLoras.map((value) => (
+          <FacetChip key={`lora-${value}`} label="LoRA" value={value} tone="violet" onRemove={() => setSelectedFilters({ loras: selectedLoras.filter((item) => item !== value) })} />
+        ))}
+        {excludedLoras.map((value) => (
+          <FacetChip key={`lora-ex-${value}`} label="Exclude LoRA" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedLoras: excludedLoras.filter((item) => item !== value) })} />
+        ))}
 
-    const removeAdvancedFilter = (key: string) => {
-        const newFilters = { ...advancedFilters };
-        delete newFilters[key];
-        setAdvancedFilters(newFilters);
-    };
+        {selectedSamplers.map((value) => (
+          <FacetChip key={`sampler-${value}`} label="Sampler" value={value} tone="amber" onRemove={() => setSelectedFilters({ samplers: selectedSamplers.filter((item) => item !== value) })} />
+        ))}
+        {excludedSamplers.map((value) => (
+          <FacetChip key={`sampler-ex-${value}`} label="Exclude sampler" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSamplers: excludedSamplers.filter((item) => item !== value) })} />
+        ))}
 
-    return (
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-2 flex-nowrap mask-linear-fade">
-            {/* Search Query Tag */}
-            {searchQuery && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-200 border border-gray-600 flex-shrink-0 animate-fade-in group">
-                    <span className="opacity-70 group-hover:opacity-100 transition-opacity">Search:</span>
-                    <span className="max-w-[150px] truncate">"{searchQuery}"</span>
-                    <button
-                        onClick={clearSearch}
-                        className="ml-1 hover:text-white rounded-full hover:bg-gray-600 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
+        {selectedSchedulers.map((value) => (
+          <FacetChip key={`scheduler-${value}`} label="Scheduler" value={value} tone="teal" onRemove={() => setSelectedFilters({ schedulers: selectedSchedulers.filter((item) => item !== value) })} />
+        ))}
+        {excludedSchedulers.map((value) => (
+          <FacetChip key={`scheduler-ex-${value}`} label="Exclude scheduler" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSchedulers: excludedSchedulers.filter((item) => item !== value) })} />
+        ))}
 
-            {/* Favorites Tag */}
-            {favoriteFilterMode === 'include' && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-yellow-900/40 text-yellow-200 border border-yellow-700/50 flex-shrink-0 animate-fade-in">
-                    <span>★ Favorites</span>
-                    <button
-                        onClick={clearFavorites}
-                        className="ml-1 hover:text-yellow-100 rounded-full hover:bg-yellow-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
+        {selectedTags.map((value) => (
+          <FacetChip key={`tag-${value}`} label="Tag" value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
+        ))}
+        {excludedTags.map((value) => (
+          <FacetChip key={`tag-ex-${value}`} label="Exclude tag" value={value} tone="rose" onRemove={() => setExcludedTags(excludedTags.filter((item) => item !== value))} />
+        ))}
 
-            {favoriteFilterMode === 'exclude' && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in">
-                    <span>★ Not Favorites</span>
-                    <button
-                        onClick={clearFavorites}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* Verified Telemetry Tag */}
-            {advancedFilters?.hasVerifiedTelemetry && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-900/40 text-green-200 border border-green-700/50 flex-shrink-0 animate-fade-in">
-                    <CheckCircle size={10} />
-                    <span>Verified Only</span>
-                    <button
-                        onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')}
-                        className="ml-1 hover:text-green-100 rounded-full hover:bg-green-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* Dimensions Tag */}
-            {advancedFilters?.dimension && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex-shrink-0 animate-fade-in">
-                    <Settings size={10} />
-                    <span>{advancedFilters.dimension}</span>
-                    <button
-                        onClick={() => removeAdvancedFilter('dimension')}
-                        className="ml-1 hover:text-indigo-100 rounded-full hover:bg-indigo-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* Steps Tag */}
-            {advancedFilters?.steps && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex-shrink-0 animate-fade-in">
-                    <Settings size={10} />
-                    <span>Steps: {advancedFilters.steps.min}-{advancedFilters.steps.max}</span>
-                    <button
-                        onClick={() => removeAdvancedFilter('steps')}
-                        className="ml-1 hover:text-indigo-100 rounded-full hover:bg-indigo-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* CFG Tag */}
-            {advancedFilters?.cfg && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex-shrink-0 animate-fade-in">
-                    <Settings size={10} />
-                    <span>CFG: {advancedFilters.cfg.min}-{advancedFilters.cfg.max}</span>
-                    <button
-                        onClick={() => removeAdvancedFilter('cfg')}
-                        className="ml-1 hover:text-indigo-100 rounded-full hover:bg-indigo-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* Date Tag */}
-            {advancedFilters?.date && (
-                 <div className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex-shrink-0 animate-fade-in">
-                    <Calendar size={10} />
-                    <span>
-                        {advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}
-                    </span>
-                    <button
-                        onClick={() => removeAdvancedFilter('date')}
-                        className="ml-1 hover:text-indigo-100 rounded-full hover:bg-indigo-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-
-            {/* Model Tags - Blue */}
-            {selectedModels.map((model) => (
-                <div
-                    key={`model-${model}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-900/40 text-blue-200 border border-blue-700/50 flex-shrink-0 animate-fade-in"
-                    title="Model"
-                >
-                    <span className="truncate max-w-[150px]">{model}</span>
-                    <button
-                        onClick={() => removeModel(model)}
-                        className="ml-1 hover:text-blue-100 rounded-full hover:bg-blue-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {excludedModels.map((model) => (
-                <div
-                    key={`excluded-model-${model}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
-                    title="Excluded model"
-                >
-                    <span className="opacity-80">not</span>
-                    <span className="truncate max-w-[150px]">{model}</span>
-                    <button
-                        onClick={() => removeExcludedModel(model)}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {/* LoRA Tags - Purple */}
-            {selectedLoras.map((lora) => (
-                <div
-                    key={`lora-${lora}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-900/40 text-purple-200 border border-purple-700/50 flex-shrink-0 animate-fade-in"
-                    title="LoRA"
-                >
-                    <span className="truncate max-w-[150px]">{lora}</span>
-                    <button
-                        onClick={() => removeLora(lora)}
-                        className="ml-1 hover:text-purple-100 rounded-full hover:bg-purple-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {excludedLoras.map((lora) => (
-                <div
-                    key={`excluded-lora-${lora}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
-                    title="Excluded LoRA"
-                >
-                    <span className="opacity-80">not</span>
-                    <span className="truncate max-w-[150px]">{lora}</span>
-                    <button
-                        onClick={() => removeExcludedLora(lora)}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {/* Scheduler Tags - Cyan/Teal */}
-            {selectedSchedulers.map((scheduler) => (
-                <div
-                    key={`scheduler-${scheduler}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-teal-900/40 text-teal-200 border border-teal-700/50 flex-shrink-0 animate-fade-in"
-                    title="Scheduler"
-                >
-                    <span className="truncate max-w-[150px]">{scheduler}</span>
-                    <button
-                        onClick={() => removeScheduler(scheduler)}
-                        className="ml-1 hover:text-teal-100 rounded-full hover:bg-teal-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {excludedSchedulers.map((scheduler) => (
-                <div
-                    key={`excluded-scheduler-${scheduler}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
-                    title="Excluded scheduler"
-                >
-                    <span className="opacity-80">not</span>
-                    <span className="truncate max-w-[150px]">{scheduler}</span>
-                    <button
-                        onClick={() => removeExcludedScheduler(scheduler)}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {/* General Tags - Gray */}
-            {selectedTags.map((tag) => (
-                <div
-                    key={`tag-${tag}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-700/60 text-gray-300 border border-gray-600 flex-shrink-0 animate-fade-in"
-                >
-                    <span className="opacity-70">#</span>
-                    <span className="truncate max-w-[150px]">{tag}</span>
-                    <button
-                        onClick={() => removeTag(tag)}
-                        className="ml-1 hover:text-white rounded-full hover:bg-gray-600 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {excludedTags.map((tag) => (
-                <div
-                    key={`excluded-tag-${tag}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
-                >
-                    <span className="opacity-80">not #</span>
-                    <span className="truncate max-w-[150px]">{tag}</span>
-                    <button
-                        onClick={() => removeExcludedTag(tag)}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {selectedAutoTags.map((tag) => (
-                <div
-                    key={`auto-tag-${tag}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sky-900/40 text-sky-200 border border-sky-700/50 flex-shrink-0 animate-fade-in"
-                >
-                    <span className="opacity-80">auto</span>
-                    <span className="truncate max-w-[150px]">{tag}</span>
-                    <button
-                        onClick={() => removeAutoTag(tag)}
-                        className="ml-1 hover:text-sky-100 rounded-full hover:bg-sky-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-
-            {excludedAutoTags.map((tag) => (
-                <div
-                    key={`excluded-auto-tag-${tag}`}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-900/40 text-red-200 border border-red-700/50 flex-shrink-0 animate-fade-in"
-                >
-                    <span className="opacity-80">not auto</span>
-                    <span className="truncate max-w-[150px]">{tag}</span>
-                    <button
-                        onClick={() => removeExcludedAutoTag(tag)}
-                        className="ml-1 hover:text-red-100 rounded-full hover:bg-red-800/50 p-0.5 transition-colors"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            ))}
-        </div>
-    );
+        {selectedAutoTags.map((value) => (
+          <FacetChip key={`auto-${value}`} label="Auto tag" value={value} tone="sky" onRemove={() => setSelectedAutoTags(selectedAutoTags.filter((item) => item !== value))} />
+        ))}
+        {excludedAutoTags.map((value) => (
+          <FacetChip key={`auto-ex-${value}`} label="Exclude auto tag" value={value} tone="rose" onRemove={() => setExcludedAutoTags(excludedAutoTags.filter((item) => item !== value))} />
+        ))}
+      </div>
+    </div>
+  );
 };
+
+interface FacetChipProps {
+  label: string;
+  value: string;
+  tone: 'blue' | 'violet' | 'amber' | 'teal' | 'gray' | 'sky' | 'rose';
+  onRemove: () => void;
+}
+
+const toneClasses: Record<FacetChipProps['tone'], string> = {
+  blue: 'border-blue-700/50 bg-blue-950/50 text-blue-200',
+  violet: 'border-violet-700/50 bg-violet-950/50 text-violet-200',
+  amber: 'border-amber-700/50 bg-amber-950/50 text-amber-200',
+  teal: 'border-teal-700/50 bg-teal-950/50 text-teal-200',
+  gray: 'border-gray-700/50 bg-gray-800/70 text-gray-200',
+  sky: 'border-sky-700/50 bg-sky-950/50 text-sky-200',
+  rose: 'border-rose-700/50 bg-rose-950/50 text-rose-200',
+};
+
+const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => (
+  <div className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium ${toneClasses[tone]}`}>
+    <span className="opacity-70">{label}</span>
+    <span className="max-w-[180px] truncate">{value}</span>
+    <button onClick={onRemove} className="rounded p-0.5 hover:bg-black/10">
+      <X size={12} />
+    </button>
+  </div>
+);
 
 export default ActiveFilters;

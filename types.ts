@@ -684,6 +684,7 @@ export interface IndexedImage {
   lastModified: number; // File's last modified date
   models: string[]; // Extracted models from metadata
   loras: (string | LoRAInfo)[]; // Extracted LoRAs from metadata
+  sampler?: string; // Extracted sampler from metadata
   scheduler: string; // Extracted scheduler from metadata
   board?: string; // Extracted board name from metadata
   prompt?: string; // Extracted prompt from metadata
@@ -743,9 +744,11 @@ export interface Directory {
 export interface FilterOptions {
   models: string[];
   loras: string[];
+  samplers: string[];
   schedulers:string[];
   selectedModel: string;
   selectedLora: string;
+  selectedSampler: string;
   selectedScheduler: string;
 }
 
