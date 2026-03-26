@@ -133,7 +133,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             const currentMax = localFilters[key]?.max;
             updateFilter(key, {
               min: parsed,
-              max: currentMax === null || currentMax === undefined ? parsed : Math.max(parsed, currentMax),
+              max: currentMax === null || currentMax === undefined ? null : Math.max(parsed, currentMax),
             });
           }}
           className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
@@ -155,7 +155,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             if (Number.isNaN(parsed) || parsed < 0) return;
             const currentMin = localFilters[key]?.min;
             updateFilter(key, {
-              min: currentMin === null || currentMin === undefined ? parsed : Math.min(currentMin, parsed),
+              min: currentMin === null || currentMin === undefined ? null : Math.min(currentMin, parsed),
               max: parsed,
             });
           }}

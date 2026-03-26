@@ -928,7 +928,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                  results = results.filter(image => {
                     const steps = image.steps;
                     if (steps !== null && steps !== undefined) {
-                        return steps >= advancedFilters.steps.min && steps <= advancedFilters.steps.max;
+                        const hasMin = advancedFilters.steps.min !== null && advancedFilters.steps.min !== undefined;
+                        const hasMax = advancedFilters.steps.max !== null && advancedFilters.steps.max !== undefined;
+                        if (hasMin && steps < advancedFilters.steps.min) return false;
+                        if (hasMax && steps > advancedFilters.steps.max) return false;
+                        return true;
                     }
                     return false;
                 });
@@ -937,7 +941,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                  results = results.filter(image => {
                     const cfg = image.cfgScale;
                     if (cfg !== null && cfg !== undefined) {
-                        return cfg >= advancedFilters.cfg.min && cfg <= advancedFilters.cfg.max;
+                        const hasMin = advancedFilters.cfg.min !== null && advancedFilters.cfg.min !== undefined;
+                        const hasMax = advancedFilters.cfg.max !== null && advancedFilters.cfg.max !== undefined;
+                        if (hasMin && cfg < advancedFilters.cfg.min) return false;
+                        if (hasMax && cfg > advancedFilters.cfg.max) return false;
+                        return true;
                     }
                     return false;
                 });

@@ -33,6 +33,8 @@ const imageA = createImage({
   autoTags: ['cinematic'],
   models: ['modelA'],
   loras: ['loraA'],
+  steps: 20,
+  cfgScale: 7,
   sampler: 'euler_a',
   scheduler: 'euler',
 });
@@ -44,6 +46,8 @@ const imageB = createImage({
   autoTags: ['studio'],
   models: ['modelB'],
   loras: ['loraB'],
+  steps: 35,
+  cfgScale: 5,
   sampler: 'dpmpp_2m',
   scheduler: 'ddim',
 });
@@ -55,6 +59,8 @@ const imageC = createImage({
   autoTags: ['cinematic', 'nature'],
   models: ['modelA'],
   loras: ['loraC'],
+  steps: 50,
+  cfgScale: 9,
   sampler: 'dpmpp_2m',
   scheduler: 'ddim',
 });
@@ -143,5 +149,27 @@ describe('useImageStore tri-state filters', () => {
     });
 
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png']);
+  });
+
+  it('supports open-ended advanced ranges for steps and cfg', () => {
+    useImageStore.getState().setAdvancedFilters({
+      steps: { min: 30, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      steps: { min: null, max: 35 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      cfg: { min: 6, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      cfg: { min: null, max: 7 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
   });
 });
