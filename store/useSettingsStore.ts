@@ -56,6 +56,7 @@ interface SettingsState {
   itemsPerPage: number;
   scanSubfolders: boolean;
   imageSize: number;
+  thumbnailLayout: 'fixed' | 'mosaic';
   cachePath: string | null;
   autoUpdate: boolean;
   viewMode: 'grid' | 'list';
@@ -88,6 +89,8 @@ interface SettingsState {
   setItemsPerPage: (count: number) => void;
   toggleScanSubfolders: () => void;
   setImageSize: (size: number) => void;
+  setThumbnailLayout: (layout: 'fixed' | 'mosaic') => void;
+  toggleThumbnailLayout: () => void;
   setCachePath: (path: string) => void;
   toggleAutoUpdate: () => void;
   toggleViewMode: () => void;
@@ -127,6 +130,7 @@ export const useSettingsStore = create<SettingsState>()(
       itemsPerPage: 20,
       scanSubfolders: true,
       imageSize: 120,
+      thumbnailLayout: 'fixed',
       cachePath: null, // Default cache path, null means use app data dir
       autoUpdate: true, // Check for updates by default
       viewMode: 'grid',
@@ -163,6 +167,11 @@ export const useSettingsStore = create<SettingsState>()(
       },
       toggleScanSubfolders: () => set((state) => ({ scanSubfolders: !state.scanSubfolders })),
       setImageSize: (size) => set({ imageSize: size }),
+      setThumbnailLayout: (layout) => set({ thumbnailLayout: layout }),
+      toggleThumbnailLayout: () =>
+        set((state) => ({
+          thumbnailLayout: state.thumbnailLayout === 'fixed' ? 'mosaic' : 'fixed',
+        })),
       setCachePath: (path) => set({ cachePath: path }),
       toggleAutoUpdate: () => set((state) => ({ autoUpdate: !state.autoUpdate })),
       toggleViewMode: () => set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
@@ -215,6 +224,7 @@ export const useSettingsStore = create<SettingsState>()(
         itemsPerPage: 20,
         scanSubfolders: true,
         imageSize: 120,
+        thumbnailLayout: 'fixed',
         cachePath: null,
         autoUpdate: true,
         viewMode: 'grid',

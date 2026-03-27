@@ -35,6 +35,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setIndexingConcurrency = useSettingsStore((state) => state.setIndexingConcurrency);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
   const setShowFilenames = useSettingsStore((state) => state.setShowFilenames);
+  const thumbnailLayout = useSettingsStore((state) => state.thumbnailLayout);
+  const setThumbnailLayout = useSettingsStore((state) => state.setThumbnailLayout);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const setShowFullFilePath = useSettingsStore((state) => state.setShowFullFilePath);
   const doubleClickToOpen = useSettingsStore((state) => state.doubleClickToOpen);
@@ -434,6 +436,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                     type="checkbox"
                     checked={showFullFilePath}
                     onChange={(event) => setShowFullFilePath(event.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <div className="flex items-center justify-between bg-gray-900 p-3 rounded-md">
+                <div>
+                  <p className="text-sm">Adaptive thumbnail layout</p>
+                  <p className="text-xs text-gray-400">
+                    Switch the grid to a mosaic-style layout so unusual aspect ratios are shown with more natural thumbnail shapes.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={thumbnailLayout === 'mosaic'}
+                    onChange={(event) => setThumbnailLayout(event.target.checked ? 'mosaic' : 'fixed')}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>

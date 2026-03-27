@@ -1,4 +1,4 @@
-import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-window';
+import { FixedSizeGrid as Grid, FixedSizeList as List, GridChildComponentProps, ListChildComponentProps, areEqual } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -31,6 +31,14 @@ import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 
+const GAP_SIZE = 16;
+const CARD_HEIGHT_RATIO = 1.2;
+const FILENAME_HEIGHT = 24;
+const MOSAIC_MIN_WIDTH_RATIO = 0.55;
+const MOSAIC_MAX_WIDTH_RATIO = 2.6;
+
+type ThumbnailLayout = 'fixed' | 'mosaic';
+
 // --- ImageCard Component ---
 interface ImageCardProps {
   image: IndexedImage;
@@ -40,6 +48,8 @@ interface ImageCardProps {
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   baseWidth: number;
+  frameWidth?: number;
+  frameHeight?: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
   isMarkedBest?: boolean;       // For deduplication: marked as best to keep
@@ -113,9 +123,126 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const parseAspectRatio = (dimensions?: string): number | null => {
+  if (!dimensions) {
+    return null;
+  }
+
+  const match = dimensions.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
+  if (!match) {
+    return null;
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
+};
+
+const getItemAspectRatio = (item: IndexedImage | ImageStack): number => {
+  const image = isImageStack(item) ? item.coverImage : item;
+  return parseAspectRatio(image.dimensions) ?? 1;
+};
+
+const clamp = (value: number, min: number, max: number): number => {
+  return Math.max(min, Math.min(max, value));
+};
+
+const getMosaicFrameHeight = (imageSize: number): number => {
+  return imageSize * CARD_HEIGHT_RATIO;
+};
+
+const getMosaicFrameWidth = (item: IndexedImage | ImageStack, imageSize: number): number => {
+  const frameHeight = getMosaicFrameHeight(imageSize);
+  const minWidth = imageSize * MOSAIC_MIN_WIDTH_RATIO;
+  const maxWidth = imageSize * MOSAIC_MAX_WIDTH_RATIO;
+  return clamp(frameHeight * getItemAspectRatio(item), minWidth, maxWidth);
+};
+
+const getFrameWidth = (
+  item: IndexedImage | ImageStack,
+  imageSize: number,
+  thumbnailLayout: ThumbnailLayout
+): number => {
+  return thumbnailLayout === 'mosaic'
+    ? getMosaicFrameWidth(item, imageSize)
+    : imageSize;
+};
+
+const getFrameHeight = (imageSize: number, thumbnailLayout: ThumbnailLayout): number => {
+  return thumbnailLayout === 'mosaic'
+    ? getMosaicFrameHeight(imageSize)
+    : imageSize * CARD_HEIGHT_RATIO;
+};
+
+const getItemHeight = (
+  imageSize: number,
+  showFilenames: boolean,
+  thumbnailLayout: ThumbnailLayout
+): number => {
+  return getFrameHeight(imageSize, thumbnailLayout) + (showFilenames ? FILENAME_HEIGHT : 0);
+};
+
+interface MosaicRowItem {
+  item: IndexedImage | ImageStack;
+  index: number;
+  width: number;
+}
+
+interface MosaicRow {
+  items: MosaicRowItem[];
+  startIndex: number;
+  endIndex: number;
+}
+
+const buildMosaicRows = (
+  items: (IndexedImage | ImageStack)[],
+  availableWidth: number,
+  imageSize: number
+): MosaicRow[] => {
+  const rows: MosaicRow[] = [];
+  const safeWidth = Math.max(imageSize, availableWidth);
+  let currentRow: MosaicRowItem[] = [];
+  let currentWidth = 0;
+
+  items.forEach((item, index) => {
+    const itemWidth = getMosaicFrameWidth(item, imageSize);
+    const additionalWidth = currentRow.length === 0 ? itemWidth : itemWidth + GAP_SIZE;
+
+    if (currentRow.length > 0 && currentWidth + additionalWidth > safeWidth) {
+      rows.push({
+        items: currentRow,
+        startIndex: currentRow[0].index,
+        endIndex: currentRow[currentRow.length - 1].index,
+      });
+      currentRow = [];
+      currentWidth = 0;
+    }
+
+    currentRow.push({ item, index, width: itemWidth });
+    currentWidth += currentRow.length === 1 ? itemWidth : itemWidth + GAP_SIZE;
+  });
+
+  if (currentRow.length > 0) {
+    rows.push({
+      items: currentRow,
+      startIndex: currentRow[0].index,
+      endIndex: currentRow[currentRow.length - 1].index,
+    });
+  }
+
+  return rows;
+};
+
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, frameWidth, frameHeight, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const thumbnail = useResolvedThumbnail(image);
+  const cardWidth = frameWidth ?? baseWidth;
+  const cardHeight = frameHeight ?? (baseWidth * CARD_HEIGHT_RATIO);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -228,7 +355,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
   };
 
   return (
-    <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
+    <div className="flex flex-col items-center" style={{ width: `${cardWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         ref={mergedRef}
@@ -239,7 +366,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         } ${
           isFocused ? 'outline outline-2 outline-dashed outline-blue-400 outline-offset-2 z-10' : ''
         }`}
-        style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
+        style={{ width: '100%', height: `${cardHeight}px`, flexShrink: 0 }}
         onClick={(e) => {
           if (doubleClickToOpen) {
             if (e.ctrlKey || e.metaKey) {
@@ -410,14 +537,6 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
   return (item as ImageStack).coverImage !== undefined;
 }
 
-const GAP_SIZE = 16;
-const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
-const CARD_HEIGHT_RATIO = 1.2;
-const FILENAME_HEIGHT = 24;
-
-const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
-  (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
-
 // --- Virtualized Cell Component ---
 interface CellData {
   items: (IndexedImage | ImageStack)[];
@@ -427,6 +546,7 @@ interface CellData {
   selectedImages: Set<string>;
   focusedImageIndex: number | null;
   imageSize: number;
+  thumbnailLayout: ThumbnailLayout;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
   comparisonFirstImage: IndexedImage | null;
@@ -448,6 +568,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     selectedImages,
     focusedImageIndex,
     imageSize,
+    thumbnailLayout,
     handleImageLoad,
     handleContextMenu,
     comparisonFirstImage,
@@ -474,6 +595,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     const isSensitive = enableSafeMode &&
       sensitiveTagSet && sensitiveTagSet.size > 0 &&
       !!item.coverImage.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+    const frameWidth = getFrameWidth(item, imageSize, thumbnailLayout);
+    const frameHeight = getFrameHeight(imageSize, thumbnailLayout);
 
     return (
       <div style={{
@@ -505,6 +628,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
               baseWidth={imageSize}
+              frameWidth={frameWidth}
+              frameHeight={frameHeight}
               isComparisonFirst={false}
               cardRef={createCardRef(item.id)}
               isMarkedBest={markedBestIds?.has(item.coverImage.id)}
@@ -531,6 +656,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
   const isSensitive = enableSafeMode &&
     sensitiveTagSet && sensitiveTagSet.size > 0 &&
     !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+  const frameWidth = getFrameWidth(image, imageSize, thumbnailLayout);
+  const frameHeight = getFrameHeight(imageSize, thumbnailLayout);
 
   return (
     <div 
@@ -551,12 +678,147 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         onImageLoad={handleImageLoad}
         onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
         baseWidth={imageSize}
+        frameWidth={frameWidth}
+        frameHeight={frameHeight}
         isComparisonFirst={comparisonFirstImage?.id === image.id}
         cardRef={createCardRef(image.id)}
         isMarkedBest={markedBestIds?.has(image.id)}
         isMarkedArchived={markedArchivedIds?.has(image.id)}
         isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
       />
+    </div>
+  );
+}, areEqual);
+
+interface MosaicRowData {
+  rows: MosaicRow[];
+  imageSize: number;
+  thumbnailLayout: ThumbnailLayout;
+  showFilenames: boolean;
+  onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  onStackClick: (stack: ImageStack) => void;
+  selectedImages: Set<string>;
+  focusedImageIndex: number | null;
+  handleImageLoad: (id: string, aspectRatio: number) => void;
+  handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
+  comparisonFirstImage: IndexedImage | null;
+  createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
+  markedBestIds?: Set<string>;
+  markedArchivedIds?: Set<string>;
+  enableSafeMode?: boolean;
+  sensitiveTagSet?: Set<string>;
+  blurSensitiveImages?: boolean;
+}
+
+const MosaicRowRenderer = React.memo(({ index: rowIndex, style, data }: ListChildComponentProps<MosaicRowData>) => {
+  const {
+    rows,
+    imageSize,
+    thumbnailLayout,
+    showFilenames,
+    onImageClick,
+    onStackClick,
+    selectedImages,
+    focusedImageIndex,
+    handleImageLoad,
+    handleContextMenu,
+    comparisonFirstImage,
+    createCardRef,
+    markedBestIds,
+    markedArchivedIds,
+    enableSafeMode,
+    sensitiveTagSet,
+    blurSensitiveImages,
+  } = data;
+
+  const row = rows[rowIndex];
+  const frameHeight = getFrameHeight(imageSize, thumbnailLayout);
+
+  return (
+    <div
+      style={{
+        ...style,
+        top: (style.top as number) + GAP_SIZE,
+        left: GAP_SIZE,
+        width: Math.max(0, (style.width as number) - (GAP_SIZE * 2)),
+        height: (style.height as number) - GAP_SIZE,
+      }}
+      className="flex items-start gap-4"
+      data-grid-background="true"
+    >
+      {row.items.map(({ item, index, width }) => {
+        if (isImageStack(item)) {
+          const isSensitive = enableSafeMode &&
+            sensitiveTagSet && sensitiveTagSet.size > 0 &&
+            !!item.coverImage.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+          return (
+            <div
+              key={item.id}
+              className="relative group cursor-pointer"
+              style={{ width, height: getItemHeight(imageSize, showFilenames, thumbnailLayout) }}
+              onClick={() => onStackClick(item)}
+              data-image-id={item.coverImage.id}
+            >
+              <div className="absolute top-[-4px] left-[4px] right-[-4px] bottom-[4px] bg-gray-700 rounded-lg border border-gray-600 shadow-sm z-0"></div>
+              <div className="absolute top-[-8px] left-[8px] right-[-8px] bottom-[8px] bg-gray-800 rounded-lg border border-gray-700 shadow-sm z-[-1]"></div>
+              <div className="relative z-10 w-full h-full">
+                <ImageCard
+                  image={item.coverImage}
+                  onImageClick={(img, e) => {
+                    e.stopPropagation();
+                    onStackClick(item);
+                  }}
+                  isSelected={selectedImages.has(item.coverImage.id)}
+                  isFocused={false}
+                  onImageLoad={handleImageLoad}
+                  onContextMenu={(img, e) => handleContextMenu(img, e)}
+                  baseWidth={imageSize}
+                  frameWidth={width}
+                  frameHeight={frameHeight}
+                  isComparisonFirst={false}
+                  cardRef={createCardRef(item.id)}
+                  isMarkedBest={markedBestIds?.has(item.coverImage.id)}
+                  isMarkedArchived={markedArchivedIds?.has(item.coverImage.id)}
+                  isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+                />
+                <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg z-20 border border-blue-400">
+                  +{item.count}
+                </div>
+                <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none">
+                  Stack
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const image = item;
+        const isFocused = focusedImageIndex === index;
+        const isSensitive = enableSafeMode &&
+          sensitiveTagSet && sensitiveTagSet.size > 0 &&
+          !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+
+        return (
+          <ImageCard
+            key={image.id}
+            image={image}
+            onImageClick={onImageClick}
+            isSelected={selectedImages.has(image.id)}
+            isFocused={isFocused}
+            onImageLoad={handleImageLoad}
+            onContextMenu={handleContextMenu}
+            baseWidth={imageSize}
+            frameWidth={width}
+            frameHeight={frameHeight}
+            isComparisonFirst={comparisonFirstImage?.id === image.id}
+            cardRef={createCardRef(image.id)}
+            isMarkedBest={markedBestIds?.has(image.id)}
+            isMarkedArchived={markedArchivedIds?.has(image.id)}
+            isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
+          />
+        );
+      })}
     </div>
   );
 }, areEqual);
@@ -584,6 +846,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
+  const thumbnailLayout = useSettingsStore((state) => state.thumbnailLayout);
 
   // --- Stacking Logic (Must be top-level) ---
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
@@ -598,6 +861,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const gridRef = useRef<HTMLDivElement>(null);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const columnCountRef = useRef<number>(1);
+  const mosaicRowsRef = useRef<MosaicRow[]>([]);
   const lastWarmupWindowRef = useRef<string>('');
 
   // Missing state restored
@@ -874,41 +1138,76 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
 
       if (isInfinite) {
-        // Coordinate-based selection for virtualized grid
-        // OPTIMIZED: only check items that intersect with the selection box row/col range
-        const columnCount = columnCountRef.current;
-        const colWidth = imageSize + GAP_SIZE;
-        const itemHeight = getItemHeight(imageSize, showFilenames);
+        const itemHeight = getItemHeight(imageSize, showFilenames, thumbnailLayout);
         const rowHeight = itemHeight + GAP_SIZE;
 
-        const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
-        const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
-        
-        const minCol = Math.max(0, Math.floor((box.left - GAP_SIZE) / colWidth));
-        const maxCol = Math.min(columnCount - 1, Math.floor((box.right - GAP_SIZE) / colWidth));
+        if (thumbnailLayout === 'mosaic') {
+          const rows = mosaicRowsRef.current;
+          const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
+          const maxRow = Math.min(rows.length - 1, Math.floor((box.bottom - GAP_SIZE) / rowHeight));
 
-        for (let r = minRow; r <= maxRow; r++) {
-            for (let c = minCol; c <= maxCol; c++) {
-                const index = r * columnCount + c;
-                if (index >= 0 && index < itemsToRender.length) {
-                    const item = itemsToRender[index];
-                    const itemLeft = c * colWidth + GAP_SIZE;
-                    const itemTop = r * rowHeight + GAP_SIZE;
-                    const itemRight = itemLeft + imageSize;
-                    const itemBottom = itemTop + itemHeight;
-
-                    const intersects = !(
-                        itemRight < box.left ||
-                        itemLeft > box.right ||
-                        itemBottom < box.top ||
-                        itemTop > box.bottom
-                    );
-
-                    if (intersects) {
-                        newSelection.add(typeof item === 'object' && 'coverImage' in item ? item.coverImage.id : item.id);
-                    }
-                }
+          for (let r = minRow; r <= maxRow; r++) {
+            const row = rows[r];
+            if (!row) {
+              continue;
             }
+
+            let currentLeft = GAP_SIZE;
+
+            for (const rowItem of row.items) {
+              const itemLeft = currentLeft;
+              const itemTop = r * rowHeight + GAP_SIZE;
+              const itemRight = itemLeft + rowItem.width;
+              const itemBottom = itemTop + itemHeight;
+
+              const intersects = !(
+                itemRight < box.left ||
+                itemLeft > box.right ||
+                itemBottom < box.top ||
+                itemTop > box.bottom
+              );
+
+              if (intersects) {
+                newSelection.add(isImageStack(rowItem.item) ? rowItem.item.coverImage.id : rowItem.item.id);
+              }
+
+              currentLeft = itemRight + GAP_SIZE;
+            }
+          }
+        } else {
+          // Coordinate-based selection for virtualized fixed grid
+          const columnCount = columnCountRef.current;
+          const colWidth = imageSize + GAP_SIZE;
+
+          const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
+          const maxRow = Math.floor((box.bottom - GAP_SIZE) / rowHeight);
+
+          const minCol = Math.max(0, Math.floor((box.left - GAP_SIZE) / colWidth));
+          const maxCol = Math.min(columnCount - 1, Math.floor((box.right - GAP_SIZE) / colWidth));
+
+          for (let r = minRow; r <= maxRow; r++) {
+              for (let c = minCol; c <= maxCol; c++) {
+                  const index = r * columnCount + c;
+                  if (index >= 0 && index < itemsToRender.length) {
+                      const item = itemsToRender[index];
+                      const itemLeft = c * colWidth + GAP_SIZE;
+                      const itemTop = r * rowHeight + GAP_SIZE;
+                      const itemRight = itemLeft + imageSize;
+                      const itemBottom = itemTop + itemHeight;
+
+                      const intersects = !(
+                          itemRight < box.left ||
+                          itemLeft > box.right ||
+                          itemBottom < box.top ||
+                          itemTop > box.bottom
+                      );
+
+                      if (intersects) {
+                          newSelection.add(typeof item === 'object' && 'coverImage' in item ? item.coverImage.id : item.id);
+                      }
+                  }
+              }
+          }
         }
       } else {
         // DOM-based selection for existing rendered items
@@ -941,7 +1240,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
+  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames, thumbnailLayout]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1448,21 +1747,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <AutoSizer>
               {({ height, width }) => {
-                const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
-                const safeColumnCount = columnCount > 0 ? columnCount : 1;
-                const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
-                
-                // Update ref for selection logic
-                columnCountRef.current = safeColumnCount;
+                const itemHeight = getItemHeight(imageSize, showFilenames, thumbnailLayout);
 
-                const cellData: CellData = {
-                    items: itemsToRender,
-                    columnCount: safeColumnCount,
+                if (thumbnailLayout === 'mosaic') {
+                  const rows = buildMosaicRows(itemsToRender, width - (GAP_SIZE * 2), imageSize);
+                  mosaicRowsRef.current = rows;
+
+                  const rowData: MosaicRowData = {
+                    rows,
+                    imageSize,
+                    thumbnailLayout,
+                    showFilenames,
                     onImageClick,
                     onStackClick: handleStackClick,
                     selectedImages,
                     focusedImageIndex,
-                    imageSize,
                     handleImageLoad,
                     handleContextMenu,
                     comparisonFirstImage,
@@ -1472,7 +1771,79 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     enableSafeMode,
                     sensitiveTagSet,
                     blurSensitiveImages,
-                    toggleImageSelection
+                  };
+
+                  return (
+                    <List
+                      height={height}
+                      itemCount={rows.length}
+                      itemData={rowData}
+                      itemSize={itemHeight + GAP_SIZE}
+                      width={width}
+                      outerRef={gridRef}
+                      className="no-scrollbar-if-needed"
+                      style={{ overflowX: 'hidden' }}
+                      onItemsRendered={({ visibleStartIndex, visibleStopIndex, overscanStopIndex }) => {
+                        if (rows.length === 0) {
+                          return;
+                        }
+
+                        const visibleStartRow = rows[Math.max(0, visibleStartIndex)];
+                        const visibleStopRow = rows[Math.min(rows.length - 1, visibleStopIndex)];
+                        const aheadStopRow = rows[Math.min(rows.length - 1, overscanStopIndex)];
+
+                        if (!visibleStartRow || !visibleStopRow || !aheadStopRow) {
+                          return;
+                        }
+
+                        const visibleStartItem = visibleStartRow.startIndex;
+                        const visibleStopItem = visibleStopRow.endIndex;
+                        const aheadStopItem = aheadStopRow.endIndex;
+                        const windowKey = `${visibleStartItem}:${visibleStopItem}:${aheadStopItem}:${itemsToRender.length}:mosaic`;
+
+                        if (lastWarmupWindowRef.current === windowKey) {
+                          return;
+                        }
+                        lastWarmupWindowRef.current = windowKey;
+
+                        const primaryImages = collectWarmupImages(itemsToRender, visibleStartItem, visibleStopItem);
+                        const secondaryImages = collectWarmupImages(itemsToRender, visibleStopItem + 1, aheadStopItem);
+
+                        thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
+                        thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
+                      }}
+                    >
+                      {MosaicRowRenderer}
+                    </List>
+                  );
+                }
+
+                const columnCount = Math.floor(width / (imageSize + GAP_SIZE));
+                const safeColumnCount = columnCount > 0 ? columnCount : 1;
+                const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
+
+                mosaicRowsRef.current = [];
+                columnCountRef.current = safeColumnCount;
+
+                const cellData: CellData = {
+                  items: itemsToRender,
+                  columnCount: safeColumnCount,
+                  onImageClick,
+                  onStackClick: handleStackClick,
+                  selectedImages,
+                  focusedImageIndex,
+                  imageSize,
+                  thumbnailLayout,
+                  handleImageLoad,
+                  handleContextMenu,
+                  comparisonFirstImage,
+                  createCardRef,
+                  markedBestIds,
+                  markedArchivedIds,
+                  enableSafeMode,
+                  sensitiveTagSet,
+                  blurSensitiveImages,
+                  toggleImageSelection
                 };
 
                 return (
@@ -1483,7 +1854,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     overscanColumnCount={1}
                     overscanRowCount={4}
                     rowCount={rowCount}
-                    rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
+                    rowHeight={itemHeight + GAP_SIZE}
                     width={width}
                     outerRef={gridRef}
                     className="no-scrollbar-if-needed"
@@ -1570,12 +1941,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                const isSensitive = enableSafeMode &&
                 sensitiveTagSet && sensitiveTagSet.size > 0 &&
                 !!item.coverImage.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+                const frameWidth = getFrameWidth(item, imageSize, thumbnailLayout);
+                const frameHeight = getFrameHeight(imageSize, thumbnailLayout);
                 
                 return (
                     <div 
                         key={item.id}
                         className="relative group cursor-pointer"
-                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenames) }}
+                        style={{ width: frameWidth, height: getItemHeight(imageSize, showFilenames, thumbnailLayout) }}
                         onClick={() => handleStackClick(item)}
                     >
                         {/* Back cards effect */}
@@ -1591,6 +1964,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                                 onImageLoad={handleImageLoad}
                                 onContextMenu={(img, e) => handleContextMenu(img, e)}
                                 baseWidth={imageSize}
+                                frameWidth={frameWidth}
+                                frameHeight={frameHeight}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.id)}
                                 isMarkedBest={markedBestIds?.has(item.coverImage.id)}
@@ -1614,6 +1989,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             const isSensitive = enableSafeMode &&
               sensitiveTagSet.size > 0 &&
               !!image.tags?.some(tag => sensitiveTagSet.has(tag.toLowerCase()));
+            const frameWidth = getFrameWidth(image, imageSize, thumbnailLayout);
+            const frameHeight = getFrameHeight(imageSize, thumbnailLayout);
 
             return (
               <ImageCard
@@ -1625,6 +2002,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
                 baseWidth={imageSize}
+                frameWidth={frameWidth}
+                frameHeight={frameHeight}
                 isComparisonFirst={comparisonFirstImage?.id === image.id}
                 cardRef={createCardRef(image.id)}
                 isMarkedBest={markedBestIds?.has(image.id)}

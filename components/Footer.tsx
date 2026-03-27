@@ -4,6 +4,7 @@ import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, 
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { IndexedImageTransferProgress } from '../types';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface FooterProps {
   currentPage: number;
@@ -54,6 +55,8 @@ const Footer: React.FC<FooterProps> = ({
   onToggleQueue
 }) => {
   const { canUseA1111 } = useFeatureAccess();
+  const thumbnailLayout = useSettingsStore((state) => state.thumbnailLayout);
+  const toggleThumbnailLayout = useSettingsStore((state) => state.toggleThumbnailLayout);
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
 
@@ -222,6 +225,19 @@ const Footer: React.FC<FooterProps> = ({
       </nav>
       <div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
         <ImageSizeSlider />
+        {viewMode === 'grid' && (
+          <button
+            onClick={toggleThumbnailLayout}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+              thumbnailLayout === 'mosaic'
+                ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                : 'bg-gray-800/70 text-gray-300 border-gray-700/60 hover:bg-gray-800 hover:text-white'
+            }`}
+            title={`Switch to ${thumbnailLayout === 'mosaic' ? 'fixed' : 'mosaic'} thumbnail layout`}
+          >
+            {thumbnailLayout === 'mosaic' ? 'Mosaic' : 'Fixed'}
+          </button>
+        )}
         <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
           {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
         </button>
