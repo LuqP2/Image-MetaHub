@@ -31,7 +31,7 @@ import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 
-const GAP_SIZE = 16;
+const GAP_SIZE = 12;
 const CARD_HEIGHT_RATIO = 1.2;
 const FILENAME_HEIGHT = 24;
 const MOSAIC_MIN_WIDTH_RATIO = 0.55;
@@ -150,6 +150,18 @@ const getItemAspectRatio = (item: IndexedImage | ImageStack): number => {
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, value));
+};
+
+const subtractStylePixels = (value: number | string | undefined, pixels: number): number | string | undefined => {
+  if (typeof value === 'number') {
+    return Math.max(0, value - pixels);
+  }
+
+  if (typeof value === 'string' && value.length > 0) {
+    return `calc(${value} - ${pixels}px)`;
+  }
+
+  return value;
 };
 
 const getMosaicFrameHeight = (imageSize: number): number => {
@@ -740,10 +752,10 @@ const MosaicRowRenderer = React.memo(({ index: rowIndex, style, data }: ListChil
         ...style,
         top: (style.top as number) + GAP_SIZE,
         left: GAP_SIZE,
-        width: Math.max(0, (style.width as number) - (GAP_SIZE * 2)),
-        height: (style.height as number) - GAP_SIZE,
+        width: subtractStylePixels(style.width, GAP_SIZE * 2),
+        height: subtractStylePixels(style.height, GAP_SIZE),
       }}
-      className="flex items-start gap-4"
+      className="flex items-start gap-3"
       data-grid-background="true"
     >
       {row.items.map(({ item, index, width }) => {
@@ -1930,7 +1942,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         onMouseUp={handleMouseUp}
       >
         <div
-          className="flex flex-wrap gap-4"
+          className="flex flex-wrap gap-3"
           style={{
             alignContent: 'flex-start',
           }}
