@@ -10,6 +10,7 @@ import {
 interface ComfyUIWorkflowVisualEditorProps {
   graph: VisualWorkflowGraph | null;
   selectedNodeId: string | null;
+  fieldOptions?: Record<string, Array<string | number | boolean>>;
   onSelectNode: (nodeId: string) => void;
   onFieldChange: (nodeId: string, inputKey: string, value: string | number | boolean) => void;
 }
@@ -57,6 +58,7 @@ const LONG_TEXT_KEYS = new Set(['text', 'prompt', 'positive', 'negative', 'posit
 
 function renderFieldControl(
   field: VisualWorkflowField,
+  options: Array<string | number | boolean> | undefined,
   onChange: (value: string | number | boolean) => void
 ): React.ReactNode {
   if (field.type === 'boolean') {
@@ -85,6 +87,31 @@ function renderFieldControl(
   }
 
   const stringValue = String(field.value ?? '');
+  if (options && options.length > 0) {
+    const normalizedOptions = options.some((option) => option === field.value) ? options : [field.value, ...options];
+    return (
+      <select
+        value={stringValue}
+        onChange={(event) => {
+          const rawValue = event.target.value;
+          const matchedOption = normalizedOptions.find((option) => String(option) === rawValue);
+          if (matchedOption !== undefined) {
+            onChange(matchedOption);
+            return;
+          }
+          onChange(rawValue);
+        }}
+        className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+      >
+        {normalizedOptions.map((option) => (
+          <option key={String(option)} value={String(option)}>
+            {String(option)}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   const isLongText = LONG_TEXT_KEYS.has(field.key) || stringValue.length > 80 || stringValue.includes('\n');
   if (isLongText) {
     return (
@@ -110,6 +137,7 @@ function renderFieldControl(
 export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorProps> = ({
   graph,
   selectedNodeId,
+  fieldOptions,
   onSelectNode,
   onFieldChange,
 }) => {
@@ -161,7 +189,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
           <div className="rounded-full border border-gray-700 bg-gray-800/80 px-3 py-1 text-[11px] text-gray-300">
             <span className="inline-flex items-center gap-1">
               <Move size={12} />
-              Pan and zoom enabled
+              Drag anywhere to pan
             </span>
           </div>
         </div>
@@ -171,7 +199,13 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
             minScale={0.35}
             maxScale={2.5}
             centerOnInit
+            centerZoomedOut={false}
             initialScale={graph.nodes.length > 10 ? 0.7 : 0.95}
+            limitToBounds={false}
+            panning={{
+              disabled: false,
+              velocityDisabled: true,
+            }}
             wheel={{ step: 0.1 }}
           >
             {({ zoomIn, zoomOut, resetTransform }) => (
@@ -184,7 +218,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                 >
                   <div className="relative h-full w-full">
                     <div
-                      className="relative"
+                      className="relative cursor-grab active:cursor-grabbing"
                       style={{
                         width: `${scene.width}px`,
                         height: `${scene.height}px`,
@@ -230,12 +264,21 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                         const styles = CATEGORY_STYLES[node.category];
                         const isSelected = node.id === selectedNode?.id;
                         return (
-                          <button
+                          <div
                             key={node.id}
-                            type="button"
                             onClick={() => onSelectNode(node.id)}
-                            className={`absolute rounded-xl border p-3 text-left shadow-lg transition-all ${styles.card} ${
-                              isSelected ? 'ring-2 ring-purple-400 shadow-purple-500/30' : 'hover:border-gray-500'
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                onSelectNode(node.id);
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                            className={`absolute cursor-grab rounded-xl border p-3 text-left shadow-lg transition-all active:cursor-grabbing ${styles.card} ${
+                              isSelected
+                                ? 'ring-2 ring-purple-400 shadow-purple-500/30'
+                                : 'hover:border-gray-500'
                             }`}
                             style={{
                               left: `${node.x}px`,
@@ -272,7 +315,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                                 <div className="text-[11px] text-gray-400">+{node.fields.length - 3} more editable fields</div>
                               )}
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -336,7 +379,11 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                 {selectedNode.fields.map((field) => (
                   <label key={field.key} className="block space-y-1.5">
                     <span className="text-sm font-medium text-gray-300">{field.label}</span>
-                    {renderFieldControl(field, (value) => onFieldChange(selectedNode.id, field.key, value))}
+                    {renderFieldControl(
+                      field,
+                      fieldOptions?.[`${selectedNode.id}:${field.key}`],
+                      (value) => onFieldChange(selectedNode.id, field.key, value)
+                    )}
                   </label>
                 ))}
               </div>

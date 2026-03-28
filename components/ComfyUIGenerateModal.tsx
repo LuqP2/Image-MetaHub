@@ -108,6 +108,50 @@ const createModelOverrideFromLiteral = (
   inputKey,
 });
 
+const getObjectInfoStringOptions = (
+  objectInfo: Record<string, any> | null | undefined,
+  classType: string,
+  inputKey: string
+): Array<string | number | boolean> => {
+  const isPrimitiveList = (value: unknown): value is Array<string | number | boolean> =>
+    Array.isArray(value) && value.every((entry) => ['string', 'number', 'boolean'].includes(typeof entry));
+
+  const nodeSpec = objectInfo?.[classType];
+  if (!nodeSpec?.input) {
+    return [];
+  }
+
+  const candidateSpecs = [
+    nodeSpec.input.required?.[inputKey],
+    nodeSpec.input.optional?.[inputKey],
+  ].filter(Boolean);
+
+  for (const spec of candidateSpecs) {
+    if (isPrimitiveList(spec)) {
+      return Array.from(new Set(spec));
+    }
+
+    if (!Array.isArray(spec) || spec.length === 0) {
+      continue;
+    }
+
+    const firstEntry = spec[0];
+    if (isPrimitiveList(firstEntry)) {
+      return Array.from(new Set(firstEntry));
+    }
+
+    const config = spec.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+    if (config && typeof config === 'object') {
+      const choices = (config as any).choices || (config as any).values || (config as any).options;
+      if (isPrimitiveList(choices)) {
+        return Array.from(new Set(choices));
+      }
+    }
+  }
+
+  return [];
+};
+
 export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   isOpen,
   onClose,
@@ -174,6 +218,55 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     () => buildVisualWorkflowGraph(workingPromptGraph, workingWorkflowUi, visualPromptAnalysis),
     [visualPromptAnalysis, workingPromptGraph, workingWorkflowUi]
   );
+
+  const visualFieldOptions = useMemo(() => {
+    const fieldOptions: Record<string, Array<string | number | boolean>> = {};
+
+    if (visualGraph && resources?.objectInfo) {
+      for (const node of visualGraph.nodes) {
+        for (const field of node.fields) {
+          const options = getObjectInfoStringOptions(resources.objectInfo, node.classType, field.key);
+          if (options.length > 0) {
+            fieldOptions[`${node.id}:${field.key}`] = options;
+          }
+        }
+      }
+    }
+
+    for (const target of visualPromptAnalysis.modelTargets) {
+      const options = (resources?.models || [])
+        .filter((model) => model.family === target.family)
+        .map((model) => model.name);
+      if (options.length > 0) {
+        fieldOptions[`${target.nodeId}:${target.inputKey}`] = options;
+      }
+    }
+
+    for (const target of visualPromptAnalysis.loraTargets) {
+      if ((resources?.loras || []).length > 0) {
+        fieldOptions[`${target.nodeId}:${target.nameKey}`] = resources?.loras || [];
+      }
+    }
+
+    for (const nodeId of visualPromptAnalysis.samplerTargets) {
+      if ((resources?.samplers || []).length > 0) {
+        fieldOptions[`${nodeId}:sampler_name`] = resources?.samplers || [];
+      }
+      if ((resources?.schedulers || []).length > 0) {
+        fieldOptions[`${nodeId}:scheduler`] = resources?.schedulers || [];
+      }
+    }
+
+    return fieldOptions;
+  }, [
+    resources?.loras,
+    resources?.models,
+    resources?.objectInfo,
+    resources?.samplers,
+    resources?.schedulers,
+    visualGraph,
+    visualPromptAnalysis,
+  ]);
 
   const patchPromptGraphForParams = (basePrompt: ComfyUIPromptGraph | null, nextParams: GenerationParams) => {
     if (!basePrompt || !workflowAnalysis.originalAvailable) {
@@ -1007,6 +1100,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                   <ComfyUIWorkflowVisualEditor
                     graph={visualGraph}
                     selectedNodeId={selectedVisualNodeId}
+                    fieldOptions={visualFieldOptions}
                     onSelectNode={setSelectedVisualNodeId}
                     onFieldChange={handleVisualFieldChange}
                   />
