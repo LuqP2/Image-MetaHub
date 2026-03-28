@@ -786,6 +786,9 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const explicitGenerationType = typeof metahubData.generation_type === 'string'
           ? metahubData.generation_type as Exclude<GenerationType, 'txt2img'>
           : undefined;
+        const explicitParentImage = metahubData.parent_image && typeof metahubData.parent_image === 'object'
+          ? metahubData.parent_image as SourceImageReference
+          : undefined;
         const explicitSourceImage = metahubData.source_image && typeof metahubData.source_image === 'object'
           ? metahubData.source_image as SourceImageReference
           : undefined;
@@ -800,7 +803,10 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
               maskBlur: metahubData.mask_blur ?? inferredLineage.lineage?.maskBlur ?? null,
               maskedContent: metahubData.masked_content ?? inferredLineage.lineage?.maskedContent ?? null,
               resizeMode: metahubData.resize_mode ?? inferredLineage.lineage?.resizeMode ?? null,
-              sourceImage: explicitSourceImage || inferredLineage.lineage?.sourceImage,
+              sourceImage: explicitParentImage || explicitSourceImage || inferredLineage.lineage?.sourceImage,
+              workflowSourceImage: explicitParentImage && explicitSourceImage
+                ? explicitSourceImage
+                : undefined,
             }
           : undefined;
 

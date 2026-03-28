@@ -190,33 +190,39 @@ With Pro enabled, Image MetaHub can generate variations of your images by sendin
 
 1. Select any image in Image MetaHub with generation metadata
 2. Click "Generate with ComfyUI" from the image details panel
-3. Customize generation parameters (prompt, seed, steps, CFG, etc.)
-4. Image MetaHub creates a simple txt2img workflow from the metadata
-5. Workflow is sent to ComfyUI via `POST /prompt` API
-6. **Real-time WebSocket-based progress tracking** during generation
-7. Generated images are automatically saved by MetaHub Save Node with full metadata
+3. Choose `Original workflow` or `Simple rebuild`
+4. Customize generation parameters, models, LoRAs, source image policy, and advanced JSON when needed
+5. Image MetaHub patches the embedded workflow when available, or falls back to a simple txt2img rebuild
+6. Workflow is sent to ComfyUI via `POST /prompt` API
+7. **Real-time WebSocket-based progress tracking** during generation
+8. Generated images are automatically saved by MetaHub Save Node with full metadata
 
 **Key Features:**
 
-* **Full parameter customization** - Model, LoRAs, seed, steps, CFG, image size
+* **Workflow-native generation** - Reuse embedded ComfyUI workflows when the image contains an executable prompt graph
+* **Dual generation modes** - `Original workflow` by default, `Simple rebuild` as explicit fallback
+* **Expanded parameter customization** - Model families, LoRAs, seed, steps, CFG, size, and source image policy for img2img/inpaint flows
 * **Real-time progress tracking** - Live WebSocket updates during generation
-* **Copy workflow JSON** - Export workflow to clipboard for manual tweaking
+* **Copy workflow JSON** - Prefer the original embedded workflow when available
 * **Unified generation queue** - Track both A1111 and ComfyUI jobs in one sidebar
 * **Queue management** - Cancel, retry, remove items, clear finished/all jobs
-* **Automatic metadata preservation** - MetaHub Save Node ensures all generation data is saved
+* **Automatic metadata preservation** - MetaHub Save Node stores the edited workflow plus explicit lineage parent metadata
 
-**Important: The workflow doesn't need to match your original workflow.**
+**Important: Image MetaHub now supports both approaches.**
 
-Image MetaHub creates a **basic txt2img workflow** from the extracted metadata. This means:
+When a ComfyUI image includes an executable prompt graph, Image MetaHub can patch and re-run the **original workflow structure**. When it cannot, the app uses a **basic txt2img workflow** built from normalized metadata.
 
-**Preserved Parameters:**
+**Original workflow mode preserves much more of the source graph**, including existing routing, loaders, transformation nodes, and save-chain metadata when they can be patched safely.
+
+**Simple rebuild preserves:**
+
 - Positive and negative prompts
-- Model name (checkpoint)
+- Model name (checkpoint-compatible rebuild)
 - Seed, steps, CFG scale
 - Sampler and scheduler
 - Image dimensions (width/height)
 
-**Not Preserved (Advanced Features):**
+**Simple rebuild does not preserve:**
 - ControlNet inputs and preprocessing
 - Upscalers and high-res fixes
 - Refiner models and switch points
@@ -224,7 +230,7 @@ Image MetaHub creates a **basic txt2img workflow** from the extracted metadata. 
 - Multi-stage workflows
 - Advanced LoRA configurations beyond basic weights
 
-**Generated Workflow Structure:**
+**Simple rebuild structure:**
 
 The generated workflow is a simple linear pipeline:
 ```
@@ -233,16 +239,11 @@ CheckpointLoader -> MetaHub Timer -> CLIPTextEncode (positive/negative)
 EmptyLatent -> KSampler -> VAEDecode -> MetaHub Save Node
 ```
 
-The **MetaHub Timer** node is automatically included to ensure accurate `generation_time_ms` and `steps_per_second` metrics in your variation images.
+The **MetaHub Timer** node is automatically included so variation images keep accurate `generation_time_ms` and `steps_per_second` metrics.
 
-**Why This Approach?**
+**Why both modes exist**
 
-This simplified workflow approach ensures:
-- Reliable generation from any source image (A1111, ComfyUI, Fooocus, etc.)
-- Consistent parameter extraction across different formats
-- Compatibility across different ComfyUI setups and versions
-- Fast workflow execution with minimal overhead
-- No dependency on complex custom nodes
+This dual-mode approach keeps the old compatibility benefits for non-ComfyUI images while unlocking workflow-native variations, better model-family support (`checkpoints`, `unet`, `vae`, `clip`), and stronger lineage for derived images.
 
 **Setup:**
 

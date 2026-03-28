@@ -104,6 +104,10 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({ onClose
     await generateWithComfyUI(image, {
       customMetadata: payload?.customMetadata,
       overrides: payload?.overrides,
+      workflowMode: payload?.workflowMode,
+      sourceImagePolicy: payload?.sourceImagePolicy,
+      advancedPromptJson: payload?.advancedPromptJson,
+      advancedWorkflowJson: payload?.advancedWorkflowJson,
     });
   };
 
