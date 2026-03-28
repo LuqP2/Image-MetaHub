@@ -253,6 +253,36 @@ function addUniqueTextTarget(targets: TextTarget[], next: TextTarget): void {
   }
 }
 
+function addUniqueAssetTarget(targets: AssetTarget[], next: AssetTarget): void {
+  if (!targets.some((target) => target.nodeId === next.nodeId && target.inputKey === next.inputKey)) {
+    targets.push(next);
+  }
+}
+
+function buildConsumerMap(prompt: ComfyUIPromptGraph): Record<string, string[]> {
+  const consumerMap: Record<string, string[]> = {};
+
+  for (const nodeId of Object.keys(prompt)) {
+    consumerMap[nodeId] = [];
+  }
+
+  for (const [nodeId, node] of Object.entries(prompt)) {
+    for (const inputValue of Object.values(node.inputs || {})) {
+      const upstreamNodeId = getNodeIdFromConnection(inputValue);
+      if (!upstreamNodeId) {
+        continue;
+      }
+
+      if (!consumerMap[upstreamNodeId]) {
+        consumerMap[upstreamNodeId] = [];
+      }
+      consumerMap[upstreamNodeId].push(nodeId);
+    }
+  }
+
+  return consumerMap;
+}
+
 function collectTextTargets(prompt: ComfyUIPromptGraph, startNodeIds: string[]): TextTarget[] {
   const targets: TextTarget[] = [];
   const visited = new Set<string>();
@@ -363,6 +393,125 @@ function collectUpstreamLoraTargets(prompt: ComfyUIPromptGraph, startNodeIds: st
   return targets;
 }
 
+function collectUpstreamAssetTargets(
+  prompt: ComfyUIPromptGraph,
+  startNodeIds: string[]
+): { imageTargets: AssetTarget[]; maskTargets: AssetTarget[] } {
+  const imageTargets: AssetTarget[] = [];
+  const maskTargets: AssetTarget[] = [];
+  const visited = new Set<string>();
+  const queue = [...startNodeIds];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+
+    const node = prompt[nodeId];
+    if (!node) {
+      continue;
+    }
+
+    const classType = (node.class_type || '').toLowerCase();
+    if (classType === 'loadimage' && typeof node.inputs?.image === 'string') {
+      addUniqueAssetTarget(imageTargets, { nodeId, inputKey: 'image' });
+    }
+
+    if (classType === 'loadimagemask' && typeof node.inputs?.image === 'string') {
+      addUniqueAssetTarget(maskTargets, { nodeId, inputKey: 'image' });
+    }
+
+    for (const inputValue of Object.values(node.inputs || {})) {
+      const upstreamNodeId = getNodeIdFromConnection(inputValue);
+      if (upstreamNodeId && !visited.has(upstreamNodeId)) {
+        queue.push(upstreamNodeId);
+      }
+    }
+  }
+
+  return {
+    imageTargets,
+    maskTargets,
+  };
+}
+
+function compareNodeIdsDescending(left: string, right: string): number {
+  const leftNumeric = Number(left);
+  const rightNumeric = Number(right);
+
+  if (Number.isFinite(leftNumeric) && Number.isFinite(rightNumeric)) {
+    return rightNumeric - leftNumeric;
+  }
+
+  return right.localeCompare(left);
+}
+
+function hasDownstreamCandidate(
+  startNodeId: string,
+  candidateNodeIds: Set<string>,
+  consumerMap: Record<string, string[]>
+): boolean {
+  const queue = [...(consumerMap[startNodeId] || [])];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+
+    if (candidateNodeIds.has(nodeId)) {
+      return true;
+    }
+
+    for (const consumerId of consumerMap[nodeId] || []) {
+      if (!visited.has(consumerId)) {
+        queue.push(consumerId);
+      }
+    }
+  }
+
+  return false;
+}
+
+function findTerminalImageProducer(prompt: ComfyUIPromptGraph, samplerNodeIds: string[]): string | null {
+  const consumerMap = buildConsumerMap(prompt);
+  const candidateNodeIds = Object.entries(prompt)
+    .filter(([, node]) => typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode'))
+    .map(([nodeId]) => nodeId);
+
+  if (candidateNodeIds.length === 0) {
+    return null;
+  }
+
+  const reachableFromSampler = new Set<string>();
+  const queue = [...samplerNodeIds];
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (reachableFromSampler.has(nodeId)) {
+      continue;
+    }
+    reachableFromSampler.add(nodeId);
+
+    for (const consumerId of consumerMap[nodeId] || []) {
+      if (!reachableFromSampler.has(consumerId)) {
+        queue.push(consumerId);
+      }
+    }
+  }
+
+  const reachableCandidates = candidateNodeIds.filter((nodeId) => reachableFromSampler.has(nodeId));
+  const candidates = reachableCandidates.length > 0 ? reachableCandidates : candidateNodeIds;
+  const candidateSet = new Set(candidates);
+  const terminalCandidates = candidates.filter((nodeId) => !hasDownstreamCandidate(nodeId, candidateSet, consumerMap));
+  const preferredCandidates = terminalCandidates.length > 0 ? terminalCandidates : candidates;
+
+  return preferredCandidates.sort(compareNodeIdsDescending)[0] || null;
+}
+
 function getRelativePathFromImageId(imageId: string): string | null {
   const parts = imageId.split('::');
   return parts.length > 1 ? parts.slice(1).join('::') : null;
@@ -453,10 +602,9 @@ export function analyzeComfyWorkflow(source: IndexedImage | Record<string, any>,
   const positiveStartIds: string[] = [];
   const negativeStartIds: string[] = [];
   const modelStartIds: string[] = [];
+  const latentStartIds: string[] = [];
   const saveNodeIds: string[] = [];
   const timerNodeIds: string[] = [];
-  const imageTargets: AssetTarget[] = [];
-  const maskTargets: AssetTarget[] = [];
   const dimensionTargets: TextTarget[] = [];
   const batchTargets: TextTarget[] = [];
 
@@ -499,6 +647,10 @@ export function analyzeComfyWorkflow(source: IndexedImage | Record<string, any>,
       if (modelNodeId) {
         modelStartIds.push(modelNodeId);
       }
+      const latentNodeId = getNodeIdFromConnection(node.inputs.latent_image);
+      if (latentNodeId) {
+        latentStartIds.push(latentNodeId);
+      }
     }
 
     if (classType === 'metahubsavenode' || classType === 'saveimage') {
@@ -507,14 +659,6 @@ export function analyzeComfyWorkflow(source: IndexedImage | Record<string, any>,
 
     if (classType === 'metahubtimernode') {
       timerNodeIds.push(nodeId);
-    }
-
-    if (classType === 'loadimage' && typeof node.inputs?.image === 'string') {
-      imageTargets.push({ nodeId, inputKey: 'image' });
-    }
-
-    if (classType === 'loadimagemask' && typeof node.inputs?.image === 'string') {
-      maskTargets.push({ nodeId, inputKey: 'image' });
     }
 
     if (typeof node.inputs?.width === 'number' || typeof node.inputs?.height === 'number') {
@@ -535,6 +679,7 @@ export function analyzeComfyWorkflow(source: IndexedImage | Record<string, any>,
   const negativeTargets = collectTextTargets(embedded.prompt, negativeStartIds);
   const modelTargets = collectUpstreamModelTargets(embedded.prompt, modelStartIds);
   const loraTargets = collectUpstreamLoraTargets(embedded.prompt, modelStartIds);
+  const { imageTargets, maskTargets } = collectUpstreamAssetTargets(embedded.prompt, latentStartIds);
 
   if (saveNodeIds.length === 0) {
     warnings.push('Workflow does not contain MetaHubSaveNode or SaveImage. A save node will be injected.');
@@ -659,8 +804,9 @@ function ensureSaveNode(
   const imageProducer = Object.entries(prompt).find(([, node]) =>
     typeof node.class_type === 'string' && node.class_type.toLowerCase().includes('vaedecode')
   );
+  const imageProducerNodeId = findTerminalImageProducer(prompt, analysis.samplerTargets) || imageProducer?.[0] || null;
 
-  if (!imageProducer) {
+  if (!imageProducerNodeId) {
     return false;
   }
 
@@ -668,7 +814,7 @@ function ensureSaveNode(
   prompt[saveNodeId] = {
     class_type: 'MetaHubSaveNode',
     inputs: {
-      images: [imageProducer[0], 0],
+      images: [imageProducerNodeId, 0],
       filename_pattern: 'MetaHub_%date%_%time%_%counter%',
       file_format: 'PNG',
       ...(timerNodeId ? { generation_time_override: [timerNodeId, 4] } : {}),
@@ -852,25 +998,25 @@ async function applyAssetOverrides(
 export async function prepareOriginalWorkflowForExecution(
   options: PrepareOriginalWorkflowOptions
 ): Promise<PreparedComfyExecution> {
-  const analysis = analyzeComfyWorkflow(options.image, options.metadata);
-  if (!analysis.originalAvailable || !analysis.rawPrompt) {
+  const baseAnalysis = analyzeComfyWorkflow(options.image, options.metadata);
+  if (!baseAnalysis.originalAvailable || !baseAnalysis.rawPrompt) {
     return {
       payload: {
         prompt: {},
         client_id: options.clientId,
       },
       modeUsed: 'simple',
-      warnings: [...analysis.warnings],
-      analysis,
+      warnings: [...baseAnalysis.warnings],
+      analysis: baseAnalysis,
     };
   }
 
   let prompt = options.advancedPromptJson
     ? parseMaybeJson<ComfyUIPromptGraph>(options.advancedPromptJson)
-    : analysis.rawPrompt;
+    : baseAnalysis.rawPrompt;
   let workflow = options.advancedWorkflowJson
     ? parseMaybeJson<ComfyUIWorkflowUi>(options.advancedWorkflowJson)
-    : analysis.rawWorkflow;
+    : baseAnalysis.rawWorkflow;
 
   if (!prompt || !isPromptGraph(prompt)) {
     return {
@@ -879,14 +1025,15 @@ export async function prepareOriginalWorkflowForExecution(
         client_id: options.clientId,
       },
       modeUsed: 'simple',
-      warnings: [...analysis.warnings, 'Advanced Prompt API JSON is invalid. Falling back to simple rebuild.'],
-      analysis,
+      warnings: [...baseAnalysis.warnings, 'Advanced Prompt API JSON is invalid. Falling back to simple rebuild.'],
+      analysis: baseAnalysis,
     };
   }
 
   prompt = cloneJson(prompt);
   workflow = workflow ? cloneJson(workflow) : null;
 
+  const analysis = analyzeComfyWorkflow({ prompt, workflow }, options.metadata);
   const warnings = [...analysis.warnings];
 
   setTextTargets(prompt, analysis.positiveTargets, options.metadata.prompt || '');
