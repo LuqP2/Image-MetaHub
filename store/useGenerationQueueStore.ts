@@ -20,6 +20,7 @@ export type ComfyUIQueuePayload = {
   sourceImagePolicy?: ComfyUISourceImagePolicy;
   advancedPromptJson?: string;
   advancedWorkflowJson?: string;
+  maskFile?: File | null;
 };
 
 export type GenerationQueuePayload = A1111QueuePayload | ComfyUIQueuePayload;

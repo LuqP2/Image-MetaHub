@@ -108,6 +108,7 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({ onClose
       sourceImagePolicy: payload?.sourceImagePolicy,
       advancedPromptJson: payload?.advancedPromptJson,
       advancedWorkflowJson: payload?.advancedWorkflowJson,
+      maskFile: payload?.maskFile,
     });
   };
 

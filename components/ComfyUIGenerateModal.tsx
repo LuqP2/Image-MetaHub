@@ -87,7 +87,7 @@ const buildMetadataFromParams = (
   model: params.model?.name || baseMetadata?.model || 'unknown',
   cfg_scale: params.cfgScale,
   steps: params.steps,
-  seed: params.randomSeed ? -1 : params.seed,
+  seed: params.seed,
   width: params.width,
   height: params.height,
   sampler: params.sampler,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   analyzeComfyWorkflow,
   applyWorkflowOverridesToPromptGraph,
@@ -388,5 +388,121 @@ describe('ComfyUI workflow builder', () => {
     expect(prepared.payload.prompt['2'].inputs.text).toBe('visual prompt');
     expect(prepared.payload.prompt['5'].inputs.steps).toBe(77);
     expect(prepared.payload.prompt['5'].inputs.sampler_name).toBe('heun');
+  });
+
+  it('injects a save node when advanced prompt json replaces the original save chain', async () => {
+    const image = createImage({
+      workflow: { nodes: [{ id: 7, type: 'SaveImage', title: 'Save Image' }] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'old positive',
+        negativePrompt: 'old negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+      } as BaseMetadata,
+    });
+
+    const advancedPrompt = {
+      '101': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'base.safetensors',
+        },
+      },
+      '102': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced positive',
+          clip: ['101', 1],
+        },
+      },
+      '103': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced negative',
+          clip: ['101', 1],
+        },
+      },
+      '104': {
+        class_type: 'EmptyLatentImage',
+        inputs: {
+          width: 512,
+          height: 512,
+          batch_size: 1,
+        },
+      },
+      '105': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['101', 0],
+          positive: ['102', 0],
+          negative: ['103', 0],
+          latent_image: ['104', 0],
+        },
+      },
+      '106': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['105', 0],
+          vae: ['101', 2],
+        },
+      },
+    };
+
+    const prepared = await prepareOriginalWorkflowForExecution({
+      image,
+      metadata: image.metadata.normalizedMetadata as BaseMetadata,
+      clientId: 'client-4',
+      sourceImagePolicy: 'reuse_original',
+      advancedPromptJson: JSON.stringify(advancedPrompt),
+    });
+
+    expect(prepared.modeUsed).toBe('original');
+    expect(Object.values(prepared.payload.prompt).some((node) => node.class_type === 'MetaHubSaveNode')).toBe(true);
+  });
+
+  it('replaces random seed placeholders in advanced prompt json before queueing', async () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'form prompt',
+        negativePrompt: 'form negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+        cfg_scale: 7,
+        scheduler: 'normal',
+        sampler: 'euler',
+      } as BaseMetadata,
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.123456789);
+
+    try {
+      const prepared = await prepareOriginalWorkflowForExecution({
+        image,
+        metadata: {
+          ...(image.metadata.normalizedMetadata as BaseMetadata),
+          seed: -1,
+        } as BaseMetadata,
+        clientId: 'client-5',
+        sourceImagePolicy: 'reuse_original',
+        advancedPromptJson: JSON.stringify(rawPrompt),
+      });
+
+      expect(prepared.modeUsed).toBe('original');
+      expect(prepared.payload.prompt['5'].inputs.seed).toBe(123456789);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });

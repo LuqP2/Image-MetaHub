@@ -178,6 +178,18 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
+function generateRandomSeed(): number {
+  return Math.floor(Math.random() * 1000000000);
+}
+
+function resolveExecutionSeed(seed: unknown): number {
+  if (typeof seed === 'number' && Number.isFinite(seed) && seed >= 0) {
+    return Math.floor(seed);
+  }
+
+  return generateRandomSeed();
+}
+
 export function clonePromptGraph(prompt: ComfyUIPromptGraph | null | undefined): ComfyUIPromptGraph | null {
   return prompt ? cloneJson(prompt) : null;
 }
@@ -599,8 +611,9 @@ function ensureTimerNode(
   analysis: ComfyWorkflowAnalysis,
   workflow: ComfyUIWorkflowUi | null
 ): string | null {
-  if (analysis.timerNodeIds.length > 0) {
-    return analysis.timerNodeIds[0];
+  const existingTimerNodeId = analysis.timerNodeIds.find((nodeId) => Boolean(prompt[nodeId]));
+  if (existingTimerNodeId) {
+    return existingTimerNodeId;
   }
 
   const clipTargets = [...analysis.positiveTargets, ...analysis.negativeTargets].filter(
@@ -662,7 +675,12 @@ function ensureSaveNode(
   };
 
   if (analysis.saveNodeIds.length > 0) {
+    let appliedExistingSaveNode = false;
     for (const saveNodeId of analysis.saveNodeIds) {
+      if (!prompt[saveNodeId]) {
+        continue;
+      }
+      appliedExistingSaveNode = true;
       applySaveDefaults(saveNodeId);
     }
 
@@ -674,7 +692,10 @@ function ensureSaveNode(
         }
       }
     }
-    return true;
+
+    if (appliedExistingSaveNode) {
+      return true;
+    }
   }
 
   const imageProducer = Object.entries(prompt).find(([, node]) =>
@@ -721,6 +742,7 @@ function applyNumericOverrides(
 ): void {
   const cfgScale = (metadata as any).cfgScale ?? metadata.cfg_scale;
   const denoiseValue = (metadata as any).denoise;
+  const resolvedSeed = resolveExecutionSeed(metadata.seed);
 
   for (const samplerNodeId of analysis.samplerTargets) {
     const samplerNode = prompt[samplerNodeId];
@@ -728,7 +750,7 @@ function applyNumericOverrides(
       continue;
     }
 
-    samplerNode.inputs.seed = metadata.seed;
+    samplerNode.inputs.seed = resolvedSeed;
     samplerNode.inputs.steps = metadata.steps;
     if (cfgScale != null) {
       samplerNode.inputs.cfg = cfgScale;
@@ -766,6 +788,28 @@ function applyNumericOverrides(
     const node = prompt[target.nodeId];
     if (node) {
       node.inputs.batch_size = batchSize;
+    }
+  }
+}
+
+function applyRandomSeedOverrideIfNeeded(
+  prompt: ComfyUIPromptGraph,
+  analysis: ComfyWorkflowAnalysis,
+  metadata: BaseMetadata
+): void {
+  if (typeof metadata.seed !== 'number') {
+    return;
+  }
+
+  if (Number.isFinite(metadata.seed) && metadata.seed >= 0) {
+    return;
+  }
+
+  const resolvedSeed = resolveExecutionSeed(metadata.seed);
+  for (const samplerNodeId of analysis.samplerTargets) {
+    const samplerNode = prompt[samplerNodeId];
+    if (samplerNode) {
+      samplerNode.inputs.seed = resolvedSeed;
     }
   }
 }
@@ -897,25 +941,25 @@ async function applyAssetOverrides(
 export async function prepareOriginalWorkflowForExecution(
   options: PrepareOriginalWorkflowOptions
 ): Promise<PreparedComfyExecution> {
-  const analysis = analyzeComfyWorkflow(options.image, options.metadata);
-  if (!analysis.originalAvailable || !analysis.rawPrompt) {
+  const baseAnalysis = analyzeComfyWorkflow(options.image, options.metadata);
+  if (!baseAnalysis.originalAvailable || !baseAnalysis.rawPrompt) {
     return {
       payload: {
         prompt: {},
         client_id: options.clientId,
       },
       modeUsed: 'simple',
-      warnings: [...analysis.warnings],
-      analysis,
+      warnings: [...baseAnalysis.warnings],
+      analysis: baseAnalysis,
     };
   }
 
   let prompt = options.advancedPromptJson
     ? parseMaybeJson<ComfyUIPromptGraph>(options.advancedPromptJson)
-    : analysis.rawPrompt;
+    : baseAnalysis.rawPrompt;
   let workflow = options.advancedWorkflowJson
     ? parseMaybeJson<ComfyUIWorkflowUi>(options.advancedWorkflowJson)
-    : analysis.rawWorkflow;
+    : baseAnalysis.rawWorkflow;
 
   if (!prompt || !isPromptGraph(prompt)) {
     return {
@@ -924,26 +968,34 @@ export async function prepareOriginalWorkflowForExecution(
         client_id: options.clientId,
       },
       modeUsed: 'simple',
-      warnings: [...analysis.warnings, 'Advanced Prompt API JSON is invalid. Falling back to simple rebuild.'],
-      analysis,
+      warnings: [...baseAnalysis.warnings, 'Advanced Prompt API JSON is invalid. Falling back to simple rebuild.'],
+      analysis: baseAnalysis,
     };
   }
 
   prompt = cloneJson(prompt);
   workflow = workflow ? cloneJson(workflow) : null;
 
-  const warnings = [...analysis.warnings];
-
-  if (!options.advancedPromptJson) {
-    const patched = applyWorkflowOverridesToPromptGraph(prompt, analysis, options.metadata, options.overrides);
-    prompt = patched.prompt;
-    warnings.push(...patched.warnings);
+  const runtimeAnalysis = analyzeComfyWorkflow({ workflow, prompt }, options.metadata);
+  const warnings = [...baseAnalysis.warnings];
+  for (const warning of runtimeAnalysis.warnings) {
+    if (!warnings.includes(warning)) {
+      warnings.push(warning);
+    }
   }
 
-  await applyAssetOverrides(prompt, analysis, options, warnings);
+  if (!options.advancedPromptJson) {
+    const patched = applyWorkflowOverridesToPromptGraph(prompt, runtimeAnalysis, options.metadata, options.overrides);
+    prompt = patched.prompt;
+    warnings.push(...patched.warnings);
+  } else {
+    applyRandomSeedOverrideIfNeeded(prompt, runtimeAnalysis, options.metadata);
+  }
 
-  const timerNodeId = ensureTimerNode(prompt, analysis, workflow);
-  const saveOk = ensureSaveNode(prompt, analysis, workflow, timerNodeId);
+  await applyAssetOverrides(prompt, runtimeAnalysis, options, warnings);
+
+  const timerNodeId = ensureTimerNode(prompt, runtimeAnalysis, workflow);
+  const saveOk = ensureSaveNode(prompt, runtimeAnalysis, workflow, timerNodeId);
   if (!saveOk) {
     return {
       payload: {
@@ -952,12 +1004,12 @@ export async function prepareOriginalWorkflowForExecution(
       },
       modeUsed: 'simple',
       warnings: [...warnings, 'Could not guarantee a MetaHub save chain in the original workflow. Falling back to simple rebuild.'],
-      analysis,
+      analysis: runtimeAnalysis,
     };
   }
 
   const extraPngInfo: Record<string, any> = {
-    workflow: workflow || analysis.rawWorkflow || {},
+    workflow: workflow || runtimeAnalysis.rawWorkflow || {},
     prompt,
     parent_image: buildImageSourceReference(options.image),
   };
@@ -973,7 +1025,7 @@ export async function prepareOriginalWorkflowForExecution(
     modeUsed: 'original',
     warnings,
     analysis: {
-      ...analysis,
+      ...runtimeAnalysis,
       rawWorkflow: workflow,
       rawPrompt: prompt,
     },
