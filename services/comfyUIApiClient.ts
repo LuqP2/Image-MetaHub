@@ -8,7 +8,6 @@ import { handleComfyUIError } from '../utils/comfyUIErrorHandler';
 import {
   type ComfyUIExecutionPayload,
   type ComfyUILoRAConfig,
-  type ComfyUIModelResource,
   type ComfyUIWorkflowMode,
   type ComfyUISourceImagePolicy,
   type ComfyUIWorkflowOverrides,
@@ -63,6 +62,26 @@ function generateClientId(): string {
   });
 }
 
+export function normalizeLoopbackServerUrl(serverUrl: string): string {
+  try {
+    const parsed = new URL(serverUrl);
+    const isLoopback = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+    if (!isLoopback || typeof window === 'undefined') {
+      return serverUrl;
+    }
+
+    const originHost = window.location.hostname;
+    if (originHost === '127.0.0.1' || originHost === 'localhost') {
+      parsed.hostname = originHost;
+      return parsed.toString().replace(/\/$/, '');
+    }
+  } catch {
+    // Ignore malformed URLs and use the original value.
+  }
+
+  return serverUrl;
+}
+
 export class ComfyUIApiClient {
   private config: ComfyUIConfig;
   private clientId: string;
@@ -71,7 +90,8 @@ export class ComfyUIApiClient {
   constructor(config: ComfyUIConfig) {
     this.config = {
       timeout: 10000, // 10 second default timeout
-      ...config
+      ...config,
+      serverUrl: normalizeLoopbackServerUrl(config.serverUrl),
     };
     this.clientId = generateClientId();
   }
