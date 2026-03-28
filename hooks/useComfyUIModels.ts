@@ -16,6 +16,7 @@ export interface ComfyUIResources {
   loras: string[];
   samplers: string[];
   schedulers: string[];
+  objectInfo?: Record<string, any> | null;
 }
 
 interface UseComfyUIModelsReturn {
@@ -48,6 +49,7 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
         loras: catalog.loras,
         samplers: catalog.samplers,
         schedulers: catalog.schedulers,
+        objectInfo,
       });
 
       console.log('[useComfyUIModels] Fetched resources:', {

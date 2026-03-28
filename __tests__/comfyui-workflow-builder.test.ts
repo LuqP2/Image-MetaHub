@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   analyzeComfyWorkflow,
+  applyWorkflowOverridesToPromptGraph,
   buildComfyUIResourceCatalog,
   prepareOriginalWorkflowForExecution,
+  updatePromptNodeLiteralValue,
   type ComfyUIModelResource,
 } from '../services/comfyUIWorkflowBuilder';
+import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
 import { type BaseMetadata, type IndexedImage } from '../types';
 
 const createImage = (metadata: any): IndexedImage => ({
@@ -410,5 +413,242 @@ describe('ComfyUI workflow builder', () => {
     expect(prepared.modeUsed).toBe('original');
     expect(prepared.payload.prompt['12'].class_type).toBe('MetaHubSaveNode');
     expect(prepared.payload.prompt['12'].inputs.images).toEqual(['10', 0]);
+  });
+
+  it('builds a visual graph with auto-layout and editable literal fields', () => {
+    const analysis = analyzeComfyWorkflow(
+      createImage({
+        workflow: { nodes: [] },
+        prompt: rawPrompt,
+        normalizedMetadata: {
+          prompt: 'old positive',
+          width: 512,
+          height: 512,
+          steps: 20,
+        } as BaseMetadata,
+      }),
+      {
+        prompt: 'old positive',
+        width: 512,
+        height: 512,
+        steps: 20,
+      } as BaseMetadata
+    );
+
+    const graph = buildVisualWorkflowGraph(rawPrompt, null, analysis);
+    expect(graph).not.toBeNull();
+    expect(graph?.hasStoredLayout).toBe(false);
+    expect(graph?.nodes.find((node) => node.id === '5')?.category).toBe('sampler');
+    expect(graph?.nodes.find((node) => node.id === '5')?.fields.some((field) => field.key === 'steps')).toBe(true);
+    expect(graph?.edges.some((edge) => edge.from === '1' && edge.to === '5' && edge.label === 'model')).toBe(true);
+  });
+
+  it('applies workflow override helpers without mutating the source prompt', () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'seed prompt',
+        negativePrompt: 'seed negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+      } as BaseMetadata,
+    });
+    const analysis = analyzeComfyWorkflow(image, image.metadata.normalizedMetadata as BaseMetadata);
+
+    const patched = applyWorkflowOverridesToPromptGraph(
+      rawPrompt,
+      analysis,
+      {
+        ...(image.metadata.normalizedMetadata as BaseMetadata),
+        prompt: 'patched prompt',
+        negativePrompt: 'patched negative',
+        steps: 44,
+        seed: 987,
+        width: 640,
+        height: 768,
+        cfg_scale: 9,
+      } as BaseMetadata
+    );
+    const editedLiteral = updatePromptNodeLiteralValue(patched.prompt, '5', 'steps', 55);
+
+    expect(rawPrompt['2'].inputs.text).toBe('old positive');
+    expect(patched.prompt['2'].inputs.text).toBe('patched prompt');
+    expect(patched.prompt['5'].inputs.steps).toBe(44);
+    expect(editedLiteral['5'].inputs.steps).toBe(55);
+    expect(patched.prompt['5'].inputs.steps).toBe(44);
+  });
+
+  it('treats advanced prompt json as authoritative during original workflow preparation', async () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'form prompt',
+        negativePrompt: 'form negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+        cfg_scale: 7,
+        scheduler: 'normal',
+        sampler: 'euler',
+      } as BaseMetadata,
+    });
+
+    const advancedPrompt = {
+      ...rawPrompt,
+      '2': {
+        ...rawPrompt['2'],
+        inputs: {
+          ...rawPrompt['2'].inputs,
+          text: 'visual prompt',
+        },
+      },
+      '5': {
+        ...rawPrompt['5'],
+        inputs: {
+          ...rawPrompt['5'].inputs,
+          steps: 77,
+          sampler_name: 'heun',
+        },
+      },
+    };
+
+    const prepared = await prepareOriginalWorkflowForExecution({
+      image,
+      metadata: {
+        ...(image.metadata.normalizedMetadata as BaseMetadata),
+        prompt: 'form prompt should not win',
+        steps: 22,
+        sampler: 'euler_ancestral',
+      } as BaseMetadata,
+      clientId: 'client-3',
+      sourceImagePolicy: 'reuse_original',
+      advancedPromptJson: JSON.stringify(advancedPrompt),
+    });
+
+    expect(prepared.modeUsed).toBe('original');
+    expect(prepared.payload.prompt['2'].inputs.text).toBe('visual prompt');
+    expect(prepared.payload.prompt['5'].inputs.steps).toBe(77);
+    expect(prepared.payload.prompt['5'].inputs.sampler_name).toBe('heun');
+  });
+
+  it('injects a save node when advanced prompt json replaces the original save chain', async () => {
+    const image = createImage({
+      workflow: { nodes: [{ id: 7, type: 'SaveImage', title: 'Save Image' }] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'old positive',
+        negativePrompt: 'old negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+      } as BaseMetadata,
+    });
+
+    const advancedPrompt = {
+      '101': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'base.safetensors',
+        },
+      },
+      '102': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced positive',
+          clip: ['101', 1],
+        },
+      },
+      '103': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced negative',
+          clip: ['101', 1],
+        },
+      },
+      '104': {
+        class_type: 'EmptyLatentImage',
+        inputs: {
+          width: 512,
+          height: 512,
+          batch_size: 1,
+        },
+      },
+      '105': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['101', 0],
+          positive: ['102', 0],
+          negative: ['103', 0],
+          latent_image: ['104', 0],
+        },
+      },
+      '106': {
+        class_type: 'VAEDecode',
+        inputs: {
+          samples: ['105', 0],
+          vae: ['101', 2],
+        },
+      },
+    };
+
+    const prepared = await prepareOriginalWorkflowForExecution({
+      image,
+      metadata: image.metadata.normalizedMetadata as BaseMetadata,
+      clientId: 'client-4',
+      sourceImagePolicy: 'reuse_original',
+      advancedPromptJson: JSON.stringify(advancedPrompt),
+    });
+
+    expect(prepared.modeUsed).toBe('original');
+    expect(Object.values(prepared.payload.prompt).some((node) => node.class_type === 'MetaHubSaveNode')).toBe(true);
+  });
+
+  it('replaces random seed placeholders in advanced prompt json before queueing', async () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'form prompt',
+        negativePrompt: 'form negative',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+        cfg_scale: 7,
+        scheduler: 'normal',
+        sampler: 'euler',
+      } as BaseMetadata,
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.123456789);
+
+    try {
+      const prepared = await prepareOriginalWorkflowForExecution({
+        image,
+        metadata: {
+          ...(image.metadata.normalizedMetadata as BaseMetadata),
+          seed: -1,
+        } as BaseMetadata,
+        clientId: 'client-5',
+        sourceImagePolicy: 'reuse_original',
+        advancedPromptJson: JSON.stringify(rawPrompt),
+      });
+
+      expect(prepared.modeUsed).toBe('original');
+      expect(prepared.payload.prompt['5'].inputs.seed).toBe(123456789);
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });

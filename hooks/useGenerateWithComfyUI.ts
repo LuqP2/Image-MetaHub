@@ -84,6 +84,7 @@ export function useGenerateWithComfyUI() {
           sourceImagePolicy: params?.sourceImagePolicy,
           advancedPromptJson: params?.advancedPromptJson,
           advancedWorkflowJson: params?.advancedWorkflowJson,
+          maskFile: params?.maskFile || null,
         },
       });
       const { activeJobs } = useGenerationQueueStore.getState();

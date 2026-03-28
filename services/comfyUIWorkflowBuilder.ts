@@ -178,6 +178,26 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
+function generateRandomSeed(): number {
+  return Math.floor(Math.random() * 1000000000);
+}
+
+function resolveExecutionSeed(seed: unknown): number {
+  if (typeof seed === 'number' && Number.isFinite(seed) && seed >= 0) {
+    return Math.floor(seed);
+  }
+
+  return generateRandomSeed();
+}
+
+export function clonePromptGraph(prompt: ComfyUIPromptGraph | null | undefined): ComfyUIPromptGraph | null {
+  return prompt ? cloneJson(prompt) : null;
+}
+
+export function cloneWorkflowUi(workflow: ComfyUIWorkflowUi | null | undefined): ComfyUIWorkflowUi | null {
+  return workflow ? cloneJson(workflow) : null;
+}
+
 function isPromptGraph(value: unknown): value is ComfyUIPromptGraph {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -718,13 +738,27 @@ function setTextTargets(prompt: ComfyUIPromptGraph, targets: TextTarget[], value
   }
 }
 
+export function updatePromptNodeLiteralValue(
+  prompt: ComfyUIPromptGraph,
+  nodeId: string,
+  inputKey: string,
+  value: string | number | boolean
+): ComfyUIPromptGraph {
+  const nextPrompt = cloneJson(prompt);
+  if (nextPrompt[nodeId]) {
+    nextPrompt[nodeId].inputs[inputKey] = value;
+  }
+  return nextPrompt;
+}
+
 function ensureTimerNode(
   prompt: ComfyUIPromptGraph,
   analysis: ComfyWorkflowAnalysis,
   workflow: ComfyUIWorkflowUi | null
 ): string | null {
-  if (analysis.timerNodeIds.length > 0) {
-    return analysis.timerNodeIds[0];
+  const existingTimerNodeId = analysis.timerNodeIds.find((nodeId) => Boolean(prompt[nodeId]));
+  if (existingTimerNodeId) {
+    return existingTimerNodeId;
   }
 
   const clipTargets = [...analysis.positiveTargets, ...analysis.negativeTargets].filter(
@@ -786,7 +820,12 @@ function ensureSaveNode(
   };
 
   if (analysis.saveNodeIds.length > 0) {
+    let appliedExistingSaveNode = false;
     for (const saveNodeId of analysis.saveNodeIds) {
+      if (!prompt[saveNodeId]) {
+        continue;
+      }
+      appliedExistingSaveNode = true;
       applySaveDefaults(saveNodeId);
     }
 
@@ -798,7 +837,10 @@ function ensureSaveNode(
         }
       }
     }
-    return true;
+
+    if (appliedExistingSaveNode) {
+      return true;
+    }
   }
 
   const imageProducer = Object.entries(prompt).find(([, node]) =>
@@ -846,6 +888,7 @@ function applyNumericOverrides(
 ): void {
   const cfgScale = (metadata as any).cfgScale ?? metadata.cfg_scale;
   const denoiseValue = (metadata as any).denoise;
+  const resolvedSeed = resolveExecutionSeed(metadata.seed);
 
   for (const samplerNodeId of analysis.samplerTargets) {
     const samplerNode = prompt[samplerNodeId];
@@ -853,7 +896,7 @@ function applyNumericOverrides(
       continue;
     }
 
-    samplerNode.inputs.seed = metadata.seed;
+    samplerNode.inputs.seed = resolvedSeed;
     samplerNode.inputs.steps = metadata.steps;
     if (cfgScale != null) {
       samplerNode.inputs.cfg = cfgScale;
@@ -891,6 +934,28 @@ function applyNumericOverrides(
     const node = prompt[target.nodeId];
     if (node) {
       node.inputs.batch_size = batchSize;
+    }
+  }
+}
+
+function applyRandomSeedOverrideIfNeeded(
+  prompt: ComfyUIPromptGraph,
+  analysis: ComfyWorkflowAnalysis,
+  metadata: BaseMetadata
+): void {
+  if (typeof metadata.seed !== 'number') {
+    return;
+  }
+
+  if (Number.isFinite(metadata.seed) && metadata.seed >= 0) {
+    return;
+  }
+
+  const resolvedSeed = resolveExecutionSeed(metadata.seed);
+  for (const samplerNodeId of analysis.samplerTargets) {
+    const samplerNode = prompt[samplerNodeId];
+    if (samplerNode) {
+      samplerNode.inputs.seed = resolvedSeed;
     }
   }
 }
@@ -955,6 +1020,30 @@ function applyLoraOverrides(
     node.inputs[target.nameKey] = config.name;
     node.inputs[target.strengthKey] = config.strength;
   });
+}
+
+export function applyWorkflowOverridesToPromptGraph(
+  prompt: ComfyUIPromptGraph,
+  analysis: ComfyWorkflowAnalysis,
+  metadata: BaseMetadata,
+  overrides?: ComfyUIWorkflowOverrides
+): {
+  prompt: ComfyUIPromptGraph;
+  warnings: string[];
+} {
+  const nextPrompt = cloneJson(prompt);
+  const warnings: string[] = [];
+
+  setTextTargets(nextPrompt, analysis.positiveTargets, metadata.prompt || '');
+  setTextTargets(nextPrompt, analysis.negativeTargets, metadata.negativePrompt || '');
+  applyNumericOverrides(nextPrompt, analysis, metadata);
+  applyModelOverride(nextPrompt, analysis, overrides?.model, warnings);
+  applyLoraOverrides(nextPrompt, analysis, overrides?.loras, warnings);
+
+  return {
+    prompt: nextPrompt,
+    warnings,
+  };
 }
 
 async function applyAssetOverrides(
@@ -1033,18 +1122,26 @@ export async function prepareOriginalWorkflowForExecution(
   prompt = cloneJson(prompt);
   workflow = workflow ? cloneJson(workflow) : null;
 
-  const analysis = analyzeComfyWorkflow({ prompt, workflow }, options.metadata);
-  const warnings = [...analysis.warnings];
+  const runtimeAnalysis = analyzeComfyWorkflow({ workflow, prompt }, options.metadata);
+  const warnings = [...baseAnalysis.warnings];
+  for (const warning of runtimeAnalysis.warnings) {
+    if (!warnings.includes(warning)) {
+      warnings.push(warning);
+    }
+  }
 
-  setTextTargets(prompt, analysis.positiveTargets, options.metadata.prompt || '');
-  setTextTargets(prompt, analysis.negativeTargets, options.metadata.negativePrompt || '');
-  applyNumericOverrides(prompt, analysis, options.metadata);
-  applyModelOverride(prompt, analysis, options.overrides?.model, warnings);
-  applyLoraOverrides(prompt, analysis, options.overrides?.loras, warnings);
-  await applyAssetOverrides(prompt, analysis, options, warnings);
+  if (!options.advancedPromptJson) {
+    const patched = applyWorkflowOverridesToPromptGraph(prompt, runtimeAnalysis, options.metadata, options.overrides);
+    prompt = patched.prompt;
+    warnings.push(...patched.warnings);
+  } else {
+    applyRandomSeedOverrideIfNeeded(prompt, runtimeAnalysis, options.metadata);
+  }
 
-  const timerNodeId = ensureTimerNode(prompt, analysis, workflow);
-  const saveOk = ensureSaveNode(prompt, analysis, workflow, timerNodeId);
+  await applyAssetOverrides(prompt, runtimeAnalysis, options, warnings);
+
+  const timerNodeId = ensureTimerNode(prompt, runtimeAnalysis, workflow);
+  const saveOk = ensureSaveNode(prompt, runtimeAnalysis, workflow, timerNodeId);
   if (!saveOk) {
     return {
       payload: {
@@ -1053,12 +1150,12 @@ export async function prepareOriginalWorkflowForExecution(
       },
       modeUsed: 'simple',
       warnings: [...warnings, 'Could not guarantee a MetaHub save chain in the original workflow. Falling back to simple rebuild.'],
-      analysis,
+      analysis: runtimeAnalysis,
     };
   }
 
   const extraPngInfo: Record<string, any> = {
-    workflow: workflow || analysis.rawWorkflow || {},
+    workflow: workflow || runtimeAnalysis.rawWorkflow || {},
     prompt,
     parent_image: buildImageSourceReference(options.image),
   };
@@ -1074,7 +1171,7 @@ export async function prepareOriginalWorkflowForExecution(
     modeUsed: 'original',
     warnings,
     analysis: {
-      ...analysis,
+      ...runtimeAnalysis,
       rawWorkflow: workflow,
       rawPrompt: prompt,
     },
