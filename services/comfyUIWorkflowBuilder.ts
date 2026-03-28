@@ -178,6 +178,14 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
+export function clonePromptGraph(prompt: ComfyUIPromptGraph | null | undefined): ComfyUIPromptGraph | null {
+  return prompt ? cloneJson(prompt) : null;
+}
+
+export function cloneWorkflowUi(workflow: ComfyUIWorkflowUi | null | undefined): ComfyUIWorkflowUi | null {
+  return workflow ? cloneJson(workflow) : null;
+}
+
 function isPromptGraph(value: unknown): value is ComfyUIPromptGraph {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -573,6 +581,19 @@ function setTextTargets(prompt: ComfyUIPromptGraph, targets: TextTarget[], value
   }
 }
 
+export function updatePromptNodeLiteralValue(
+  prompt: ComfyUIPromptGraph,
+  nodeId: string,
+  inputKey: string,
+  value: string | number | boolean
+): ComfyUIPromptGraph {
+  const nextPrompt = cloneJson(prompt);
+  if (nextPrompt[nodeId]) {
+    nextPrompt[nodeId].inputs[inputKey] = value;
+  }
+  return nextPrompt;
+}
+
 function ensureTimerNode(
   prompt: ComfyUIPromptGraph,
   analysis: ComfyWorkflowAnalysis,
@@ -811,6 +832,30 @@ function applyLoraOverrides(
   });
 }
 
+export function applyWorkflowOverridesToPromptGraph(
+  prompt: ComfyUIPromptGraph,
+  analysis: ComfyWorkflowAnalysis,
+  metadata: BaseMetadata,
+  overrides?: ComfyUIWorkflowOverrides
+): {
+  prompt: ComfyUIPromptGraph;
+  warnings: string[];
+} {
+  const nextPrompt = cloneJson(prompt);
+  const warnings: string[] = [];
+
+  setTextTargets(nextPrompt, analysis.positiveTargets, metadata.prompt || '');
+  setTextTargets(nextPrompt, analysis.negativeTargets, metadata.negativePrompt || '');
+  applyNumericOverrides(nextPrompt, analysis, metadata);
+  applyModelOverride(nextPrompt, analysis, overrides?.model, warnings);
+  applyLoraOverrides(nextPrompt, analysis, overrides?.loras, warnings);
+
+  return {
+    prompt: nextPrompt,
+    warnings,
+  };
+}
+
 async function applyAssetOverrides(
   prompt: ComfyUIPromptGraph,
   analysis: ComfyWorkflowAnalysis,
@@ -889,11 +934,12 @@ export async function prepareOriginalWorkflowForExecution(
 
   const warnings = [...analysis.warnings];
 
-  setTextTargets(prompt, analysis.positiveTargets, options.metadata.prompt || '');
-  setTextTargets(prompt, analysis.negativeTargets, options.metadata.negativePrompt || '');
-  applyNumericOverrides(prompt, analysis, options.metadata);
-  applyModelOverride(prompt, analysis, options.overrides?.model, warnings);
-  applyLoraOverrides(prompt, analysis, options.overrides?.loras, warnings);
+  if (!options.advancedPromptJson) {
+    const patched = applyWorkflowOverridesToPromptGraph(prompt, analysis, options.metadata, options.overrides);
+    prompt = patched.prompt;
+    warnings.push(...patched.warnings);
+  }
+
   await applyAssetOverrides(prompt, analysis, options, warnings);
 
   const timerNodeId = ensureTimerNode(prompt, analysis, workflow);
