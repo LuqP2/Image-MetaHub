@@ -1066,15 +1066,21 @@ export default function App() {
                 width: params.width,
                 height: params.height,
                 batch_size: params.numberOfImages,
+                model: params.model?.name || imageToUse.metadata?.normalizedMetadata?.model,
                 ...(params.sampler ? { sampler: params.sampler } : {}),
                 ...(params.scheduler ? { scheduler: params.scheduler } : {}),
               };
               await generateWithComfyUI(imageToUse, {
                 customMetadata,
                 overrides: {
-                  model: params.model,
+                  model: params.model || undefined,
                   loras: params.loras,
                 },
+                workflowMode: params.workflowMode,
+                sourceImagePolicy: params.sourceImagePolicy,
+                advancedPromptJson: params.advancedPromptJson,
+                advancedWorkflowJson: params.advancedWorkflowJson,
+                maskFile: params.maskFile,
               });
               setIsComfyUIGenerateModalOpen(false);
               setSelectedImageForGeneration(null);

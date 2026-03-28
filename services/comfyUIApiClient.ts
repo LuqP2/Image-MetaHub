@@ -3,33 +3,25 @@
  * Handles communication with ComfyUI server, workflow generation, and WebSocket progress tracking
  */
 
-import { BaseMetadata } from '../types';
+import { BaseMetadata, IndexedImage } from '../types';
 import { handleComfyUIError } from '../utils/comfyUIErrorHandler';
+import {
+  type ComfyUIExecutionPayload,
+  type ComfyUILoRAConfig,
+  type ComfyUIModelResource,
+  type ComfyUIWorkflowMode,
+  type ComfyUISourceImagePolicy,
+  type ComfyUIWorkflowOverrides,
+  prepareOriginalWorkflowForExecution,
+} from './comfyUIWorkflowBuilder';
 
 export interface ComfyUIConfig {
   serverUrl: string;        // e.g., "http://127.0.0.1:8188"
   timeout?: number;
 }
 
-export interface LoRAConfig {
-  name: string;
-  strength: number;
-}
-
-export interface WorkflowOverrides {
-  model?: string;
-  loras?: LoRAConfig[];
-}
-
-export interface ComfyUIWorkflow {
-  prompt: {
-    [nodeId: string]: {
-      class_type: string;
-      inputs: any;
-    };
-  };
-  client_id: string;
-}
+export interface WorkflowOverrides extends ComfyUIWorkflowOverrides {}
+export interface LoRAConfig extends ComfyUILoRAConfig {}
 
 export interface ComfyUIResponse {
   success: boolean;
@@ -47,6 +39,17 @@ export interface ComfyUIProgressUpdate {
     max?: number;       // Total steps
     prompt_id?: string;
   };
+}
+
+export interface PrepareWorkflowParams {
+  image: IndexedImage;
+  metadata: BaseMetadata;
+  workflowMode?: ComfyUIWorkflowMode;
+  sourceImagePolicy?: ComfyUISourceImagePolicy;
+  overrides?: WorkflowOverrides;
+  advancedPromptJson?: string;
+  advancedWorkflowJson?: string;
+  maskFile?: File | null;
 }
 
 /**
@@ -169,12 +172,12 @@ export class ComfyUIApiClient {
    * Uses MetaHub Save Node for automatic metadata saving
    * Supports model and LoRA overrides for customization
    */
-  buildWorkflowFromMetadata(metadata: BaseMetadata, overrides?: WorkflowOverrides): ComfyUIWorkflow {
+  buildWorkflowFromMetadata(metadata: BaseMetadata, overrides?: WorkflowOverrides): ComfyUIExecutionPayload {
     // Extract CFG scale - handle both cfgScale and cfg_scale
     const cfgScale = (metadata as any).cfgScale || metadata.cfg_scale || 7.0;
 
     // Use override model if provided, otherwise use metadata model or default
-    const modelName = overrides?.model || metadata.model || "sd_xl_base_1.0.safetensors";
+    const modelName = overrides?.model?.name || metadata.model || "sd_xl_base_1.0.safetensors";
 
     // Dynamic node numbering based on LoRAs
     const loras = overrides?.loras || [];
@@ -337,14 +340,92 @@ export class ComfyUIApiClient {
 
     return {
       prompt: workflow,
-      client_id: this.clientId
+      client_id: this.clientId,
+      extra_data: {
+        extra_pnginfo: {
+          workflow: {},
+          prompt: workflow,
+        },
+      },
     };
+  }
+
+  async prepareWorkflow(params: PrepareWorkflowParams): Promise<{
+    workflow: ComfyUIExecutionPayload;
+    modeUsed: ComfyUIWorkflowMode;
+    warnings: string[];
+  }> {
+    const preferredMode = params.workflowMode || 'original';
+    if (preferredMode === 'original') {
+      const prepared = await prepareOriginalWorkflowForExecution({
+        image: params.image,
+        metadata: params.metadata,
+        clientId: this.clientId,
+        sourceImagePolicy: params.sourceImagePolicy || 'reuse_original',
+        overrides: params.overrides,
+        advancedPromptJson: params.advancedPromptJson,
+        advancedWorkflowJson: params.advancedWorkflowJson,
+        maskFile: params.maskFile || null,
+        uploadAsset: async (file, kind) => this.uploadAsset(file, kind),
+      });
+
+      if (prepared.modeUsed === 'original') {
+        return {
+          workflow: prepared.payload,
+          modeUsed: prepared.modeUsed,
+          warnings: prepared.warnings,
+        };
+      }
+
+      const rebuilt = this.buildWorkflowFromMetadata(params.metadata, params.overrides);
+      return {
+        workflow: rebuilt,
+        modeUsed: 'simple',
+        warnings: prepared.warnings,
+      };
+    }
+
+    return {
+      workflow: this.buildWorkflowFromMetadata(params.metadata, params.overrides),
+      modeUsed: 'simple',
+      warnings: [],
+    };
+  }
+
+  async uploadAsset(file: File, kind: 'image' | 'mask'): Promise<string> {
+    const endpoint = kind === 'mask' ? 'upload/mask' : 'upload/image';
+    const formData = new FormData();
+    formData.append('image', file, file.name);
+    formData.append('overwrite', 'true');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const response = await fetch(`${this.config.serverUrl}/${endpoint}`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      return result?.name || result?.filename || file.name;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
   }
 
   /**
    * Queue a workflow for execution
    */
-  async queuePrompt(workflow: ComfyUIWorkflow): Promise<ComfyUIResponse> {
+  async queuePrompt(workflow: ComfyUIExecutionPayload): Promise<ComfyUIResponse> {
     try {
       const controller = new AbortController();
       // 3 minute timeout for generation

@@ -408,6 +408,7 @@ export interface SourceImageReference {
 export interface ImageLineage {
   detection?: 'explicit' | 'inferred';
   sourceImage?: SourceImageReference | null;
+  workflowSourceImage?: SourceImageReference | null;
   denoiseStrength?: number | null;
   maskBlur?: number | null;
   maskedContent?: string | null;

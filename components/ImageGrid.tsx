@@ -1361,15 +1361,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               width: params.width,
               height: params.height,
               batch_size: params.numberOfImages,
+              model: params.model?.name || selectedImageForGeneration.metadata?.normalizedMetadata?.model,
               ...(params.sampler ? { sampler: params.sampler } : {}),
               ...(params.scheduler ? { scheduler: params.scheduler } : {}),
             };
             await generateWithComfyUI(selectedImageForGeneration, {
               customMetadata,
               overrides: {
-                model: params.model,
+                model: params.model || undefined,
                 loras: params.loras,
               },
+              workflowMode: params.workflowMode,
+              sourceImagePolicy: params.sourceImagePolicy,
+              advancedPromptJson: params.advancedPromptJson,
+              advancedWorkflowJson: params.advancedWorkflowJson,
+              maskFile: params.maskFile,
             });
             setIsComfyUIGenerateModalOpen(false);
             setSelectedImageForGeneration(null);

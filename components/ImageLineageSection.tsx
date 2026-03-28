@@ -95,6 +95,11 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
     resolvedLineage?.sourceReference?.relativePath ||
     resolvedLineage?.sourceReference?.absolutePath ||
     null;
+  const workflowSourceName =
+    resolvedLineage?.lineage.workflowSourceImage?.fileName ||
+    resolvedLineage?.lineage.workflowSourceImage?.relativePath ||
+    resolvedLineage?.lineage.workflowSourceImage?.absolutePath ||
+    null;
 
   return (
     <div className="space-y-3 rounded-lg border border-blue-200/70 bg-blue-50/60 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
@@ -128,6 +133,11 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
             {resolvedLineage.lineage.resizeMode && (
               <div className={detailClassName}>
                 Resize mode: {resolvedLineage.lineage.resizeMode}
+              </div>
+            )}
+            {workflowSourceName && (
+              <div className={detailClassName}>
+                Workflow asset: {workflowSourceName}
               </div>
             )}
           </div>

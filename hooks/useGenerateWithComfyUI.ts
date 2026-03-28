@@ -9,6 +9,7 @@ import { ComfyUIApiClient, WorkflowOverrides } from '../services/comfyUIApiClien
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useComfyUIProgressContext } from '../contexts/ComfyUIProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
+import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfyUIWorkflowBuilder';
 
 interface GenerateStatus {
   success: boolean;
@@ -18,6 +19,11 @@ interface GenerateStatus {
 export interface GenerateParams {
   customMetadata?: Partial<BaseMetadata>;
   overrides?: WorkflowOverrides;
+  workflowMode?: ComfyUIWorkflowMode;
+  sourceImagePolicy?: ComfyUISourceImagePolicy;
+  advancedPromptJson?: string;
+  advancedWorkflowJson?: string;
+  maskFile?: File | null;
 }
 
 export function useGenerateWithComfyUI() {
@@ -74,6 +80,10 @@ export function useGenerateWithComfyUI() {
           provider: 'comfyui',
           customMetadata: params?.customMetadata,
           overrides: params?.overrides,
+          workflowMode: params?.workflowMode,
+          sourceImagePolicy: params?.sourceImagePolicy,
+          advancedPromptJson: params?.advancedPromptJson,
+          advancedWorkflowJson: params?.advancedWorkflowJson,
         },
       });
       const { activeJobs } = useGenerationQueueStore.getState();
@@ -94,8 +104,17 @@ export function useGenerateWithComfyUI() {
       try {
         const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
 
-        // Build workflow from metadata with overrides (model, loras)
-        const workflow = client.buildWorkflowFromMetadata(metadata, params?.overrides);
+        const prepared = await client.prepareWorkflow({
+          image,
+          metadata,
+          overrides: params?.overrides,
+          workflowMode: params?.workflowMode,
+          sourceImagePolicy: params?.sourceImagePolicy,
+          advancedPromptJson: params?.advancedPromptJson,
+          advancedWorkflowJson: params?.advancedWorkflowJson,
+          maskFile: params?.maskFile || null,
+        });
+        const workflow = prepared.workflow;
 
         // Queue prompt
         const result = await client.queuePrompt(workflow);
@@ -107,7 +126,9 @@ export function useGenerateWithComfyUI() {
 
           setGenerateStatus({
             success: true,
-            message: 'Workflow queued! Check ComfyUI for results.',
+            message: prepared.warnings.length > 0
+              ? `Workflow queued in ${prepared.modeUsed} mode. ${prepared.warnings[0]}`
+              : `Workflow queued in ${prepared.modeUsed} mode.`,
           });
         } else {
           setGenerateStatus({
