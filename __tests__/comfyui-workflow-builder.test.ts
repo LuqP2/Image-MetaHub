@@ -234,10 +234,24 @@ describe('ComfyUI workflow builder', () => {
             vae: ['1', 2],
           },
         },
+        '10': {
+          class_type: 'LoadImage',
+          inputs: {
+            image: 'control.png',
+          },
+        },
+        '11': {
+          class_type: 'ControlNetApplyAdvanced',
+          inputs: {
+            image: ['10', 0],
+            conditioning: ['2', 0],
+          },
+        },
         '5': {
           ...rawPrompt['5'],
           inputs: {
             ...rawPrompt['5'].inputs,
+            positive: ['11', 0],
             latent_image: ['9', 0],
           },
         },
@@ -267,6 +281,138 @@ describe('ComfyUI workflow builder', () => {
 
     expect(prepared.modeUsed).toBe('original');
     expect(prepared.payload.prompt['8'].inputs.image).toBe('uploaded.png');
+    expect(prepared.payload.prompt['10'].inputs.image).toBe('control.png');
+  });
+
+  it('reanalyzes advanced prompt JSON before applying prompt overrides', async () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: rawPrompt,
+      normalizedMetadata: {
+        prompt: 'edited positive',
+        negativePrompt: 'edited negative',
+        model: 'base.safetensors',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+        cfg_scale: 7,
+        scheduler: 'normal',
+        sampler: 'euler',
+      } as BaseMetadata,
+    });
+
+    const advancedPrompt = {
+      '1': rawPrompt['1'],
+      '20': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced positive',
+          clip: ['1', 1],
+        },
+      },
+      '30': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'advanced negative',
+          clip: ['1', 1],
+        },
+      },
+      '4': rawPrompt['4'],
+      '5': {
+        ...rawPrompt['5'],
+        inputs: {
+          ...rawPrompt['5'].inputs,
+          positive: ['20', 0],
+          negative: ['30', 0],
+        },
+      },
+      '6': rawPrompt['6'],
+      '7': rawPrompt['7'],
+    };
+
+    const prepared = await prepareOriginalWorkflowForExecution({
+      image,
+      metadata: image.metadata.normalizedMetadata as BaseMetadata,
+      clientId: 'client-3',
+      sourceImagePolicy: 'reuse_original',
+      advancedPromptJson: JSON.stringify(advancedPrompt),
+    });
+
+    expect(prepared.modeUsed).toBe('original');
+    expect(prepared.payload.prompt['20'].inputs.text).toBe('edited positive');
+    expect(prepared.payload.prompt['30'].inputs.text).toBe('edited negative');
+  });
+
+  it('injects MetaHub save node after the terminal decode when no save node exists', async () => {
+    const image = createImage({
+      workflow: { nodes: [] },
+      prompt: {
+        '1': rawPrompt['1'],
+        '2': rawPrompt['2'],
+        '3': rawPrompt['3'],
+        '4': rawPrompt['4'],
+        '5': rawPrompt['5'],
+        '6': rawPrompt['6'],
+        '7': {
+          class_type: 'ImageScale',
+          inputs: {
+            image: ['6', 0],
+          },
+        },
+        '8': {
+          class_type: 'VAEEncode',
+          inputs: {
+            image: ['7', 0],
+            vae: ['1', 2],
+          },
+        },
+        '9': {
+          class_type: 'KSampler',
+          inputs: {
+            seed: 456,
+            steps: 12,
+            cfg: 6,
+            sampler_name: 'euler',
+            scheduler: 'normal',
+            model: ['1', 0],
+            positive: ['2', 0],
+            negative: ['3', 0],
+            latent_image: ['8', 0],
+          },
+        },
+        '10': {
+          class_type: 'VAEDecode',
+          inputs: {
+            samples: ['9', 0],
+            vae: ['1', 2],
+          },
+        },
+      },
+      normalizedMetadata: {
+        prompt: 'terminal decode test',
+        negativePrompt: '',
+        model: 'base.safetensors',
+        width: 512,
+        height: 512,
+        steps: 20,
+        seed: 123,
+        cfg_scale: 7,
+        scheduler: 'normal',
+        sampler: 'euler',
+      } as BaseMetadata,
+    });
+
+    const prepared = await prepareOriginalWorkflowForExecution({
+      image,
+      metadata: image.metadata.normalizedMetadata as BaseMetadata,
+      clientId: 'client-4',
+      sourceImagePolicy: 'reuse_original',
+    });
+
+    expect(prepared.modeUsed).toBe('original');
+    expect(prepared.payload.prompt['12'].class_type).toBe('MetaHubSaveNode');
+    expect(prepared.payload.prompt['12'].inputs.images).toEqual(['10', 0]);
   });
 
   it('builds a visual graph with auto-layout and editable literal fields', () => {

@@ -338,7 +338,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       }
     }
 
-    const nextParams: GenerationParams = {
+    const nextWorkflowMode = workflowAnalysis.originalAvailable
+      ? (storedMode || 'original')
+      : 'simple';
+
+    setParams({
       prompt: normalizedMetadata.prompt || '',
       negativePrompt: normalizedMetadata.negativePrompt || '',
       cfgScale: (normalizedMetadata as any).cfgScale ?? normalizedMetadata.cfg_scale ?? 7,
@@ -348,7 +352,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       numberOfImages: 1,
       width: normalizedMetadata.width || 1024,
       height: normalizedMetadata.height || 1024,
-      model: parsedModel,
+      model: sanitizeStoredModelForWorkflowMode(parsedModel, nextWorkflowMode),
       loras: parsedLoras,
       sampler: normalizedMetadata.sampler || undefined,
       scheduler: normalizedMetadata.scheduler || undefined,
@@ -389,6 +393,20 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       setActiveTab('parameters');
     }
   }, [activeTab, params.workflowMode]);
+
+  useEffect(() => {
+    setParams((prev) => {
+      const sanitizedModel = sanitizeStoredModelForWorkflowMode(prev.model || null, prev.workflowMode);
+      if (sanitizedModel === prev.model) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        model: sanitizedModel,
+      };
+    });
+  }, [params.workflowMode]);
 
   useEffect(() => {
     if (!showAdvancedEditor || advancedEditorLoaded) {
@@ -598,9 +616,13 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       localStorage.setItem('IMH_COMFYUI_LAST_RANDOM_SEED', String(params.randomSeed));
       if (params.model) {
         localStorage.setItem('IMH_COMFYUI_LAST_MODEL_OBJECT', JSON.stringify(params.model));
+      } else {
+        localStorage.removeItem('IMH_COMFYUI_LAST_MODEL_OBJECT');
       }
       if (params.loras && params.loras.length > 0) {
         localStorage.setItem('IMH_COMFYUI_LAST_LORAS', JSON.stringify(params.loras));
+      } else {
+        localStorage.removeItem('IMH_COMFYUI_LAST_LORAS');
       }
     }
 
