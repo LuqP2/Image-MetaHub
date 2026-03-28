@@ -108,6 +108,9 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   const [modelSearch, setModelSearch] = useState('');
   const [loraSearch, setLoraSearch] = useState('');
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
+  const [advancedPromptJsonText, setAdvancedPromptJsonText] = useState('');
+  const [advancedWorkflowJsonText, setAdvancedWorkflowJsonText] = useState('');
+  const [advancedEditorLoaded, setAdvancedEditorLoaded] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -170,15 +173,29 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
         ? (storedMode || 'original')
         : 'simple',
       sourceImagePolicy: storedSourcePolicy || 'reuse_original',
-      advancedPromptJson: formatJson(embeddedWorkflow.prompt),
-      advancedWorkflowJson: formatJson(embeddedWorkflow.workflow),
+      advancedPromptJson: '',
+      advancedWorkflowJson: '',
       maskFile: null,
     });
 
+    setAdvancedPromptJsonText('');
+    setAdvancedWorkflowJsonText('');
+    setAdvancedEditorLoaded(false);
+    setShowAdvancedEditor(false);
     setValidationError('');
     setModelSearch('');
     setLoraSearch('');
   }, [embeddedWorkflow.prompt, embeddedWorkflow.workflow, isOpen, normalizedMetadata, workflowAnalysis.originalAvailable]);
+
+  useEffect(() => {
+    if (!showAdvancedEditor || advancedEditorLoaded) {
+      return;
+    }
+
+    setAdvancedPromptJsonText(formatJson(embeddedWorkflow.prompt));
+    setAdvancedWorkflowJsonText(formatJson(embeddedWorkflow.workflow));
+    setAdvancedEditorLoaded(true);
+  }, [advancedEditorLoaded, embeddedWorkflow.prompt, embeddedWorkflow.workflow, showAdvancedEditor]);
 
   const compatibleModelFamilies = useMemo(() => {
     if (params.workflowMode === 'simple') {
@@ -229,18 +246,21 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       return;
     }
 
-    if (params.advancedPromptJson?.trim()) {
+    const resolvedAdvancedPromptJson = showAdvancedEditor ? advancedPromptJsonText : '';
+    const resolvedAdvancedWorkflowJson = showAdvancedEditor ? advancedWorkflowJsonText : '';
+
+    if (resolvedAdvancedPromptJson.trim()) {
       try {
-        JSON.parse(params.advancedPromptJson);
+        JSON.parse(resolvedAdvancedPromptJson);
       } catch {
         setValidationError('Prompt API JSON is invalid.');
         return;
       }
     }
 
-    if (params.advancedWorkflowJson?.trim()) {
+    if (resolvedAdvancedWorkflowJson.trim()) {
       try {
-        JSON.parse(params.advancedWorkflowJson);
+        JSON.parse(resolvedAdvancedWorkflowJson);
       } catch {
         setValidationError('Workflow UI JSON is invalid.');
         return;
@@ -261,7 +281,11 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       }
     }
 
-    await onGenerate(params);
+    await onGenerate({
+      ...params,
+      advancedPromptJson: resolvedAdvancedPromptJson || undefined,
+      advancedWorkflowJson: resolvedAdvancedWorkflowJson || undefined,
+    });
   };
 
   const handleAddLora = (loraName: string) => {
@@ -643,8 +667,8 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                   <label className="block text-sm font-medium text-gray-300">Prompt API JSON</label>
                   <textarea
                     rows={10}
-                    value={params.advancedPromptJson || ''}
-                    onChange={(event) => setParams((prev) => ({ ...prev, advancedPromptJson: event.target.value }))}
+                    value={advancedPromptJsonText}
+                    onChange={(event) => setAdvancedPromptJsonText(event.target.value)}
                     className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
@@ -652,8 +676,8 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                   <label className="block text-sm font-medium text-gray-300">Workflow UI JSON</label>
                   <textarea
                     rows={8}
-                    value={params.advancedWorkflowJson || ''}
-                    onChange={(event) => setParams((prev) => ({ ...prev, advancedWorkflowJson: event.target.value }))}
+                    value={advancedWorkflowJsonText}
+                    onChange={(event) => setAdvancedWorkflowJsonText(event.target.value)}
                     className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                 </div>

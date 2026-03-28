@@ -167,7 +167,8 @@ export class ComfyUIApiClient {
   async getObjectInfo(): Promise<any> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
+      const timeoutMs = Math.max(this.config.timeout || 10000, 60000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(`${this.config.serverUrl}/object_info`, {
         method: 'GET',
@@ -182,6 +183,9 @@ export class ComfyUIApiClient {
 
       return await response.json();
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error('Timed out loading ComfyUI object info. Large installs may need longer to answer /object_info.');
+      }
       console.warn('Failed to fetch object info:', error.message);
       throw error;
     }
