@@ -284,7 +284,7 @@ describe('ComfyUI workflow builder', () => {
     expect(prepared.payload.prompt['10'].inputs.image).toBe('control.png');
   });
 
-  it('reanalyzes advanced prompt JSON before applying prompt overrides', async () => {
+  it('reanalyzes advanced prompt JSON using the remapped prompt targets', async () => {
     const image = createImage({
       workflow: { nodes: [] },
       prompt: rawPrompt,
@@ -340,8 +340,10 @@ describe('ComfyUI workflow builder', () => {
     });
 
     expect(prepared.modeUsed).toBe('original');
-    expect(prepared.payload.prompt['20'].inputs.text).toBe('edited positive');
-    expect(prepared.payload.prompt['30'].inputs.text).toBe('edited negative');
+    expect(prepared.payload.prompt['20'].inputs.text).toBe('advanced positive');
+    expect(prepared.payload.prompt['30'].inputs.text).toBe('advanced negative');
+    expect(prepared.analysis?.positiveTargets.some((target) => target.nodeId === '20')).toBe(true);
+    expect(prepared.analysis?.negativeTargets.some((target) => target.nodeId === '30')).toBe(true);
   });
 
   it('injects MetaHub save node after the terminal decode when no save node exists', async () => {
@@ -441,6 +443,78 @@ describe('ComfyUI workflow builder', () => {
     expect(graph?.nodes.find((node) => node.id === '5')?.category).toBe('sampler');
     expect(graph?.nodes.find((node) => node.id === '5')?.fields.some((field) => field.key === 'steps')).toBe(true);
     expect(graph?.edges.some((edge) => edge.from === '1' && edge.to === '5' && edge.label === 'model')).toBe(true);
+  });
+
+  it('anchors nodes without stored positions near the existing workflow layout', () => {
+    const promptWithMissingLayout = {
+      '1': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'base.safetensors',
+        },
+      },
+      '2': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'positive',
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['1', 0],
+          positive: ['2', 0],
+          negative: ['2', 0],
+        },
+      },
+    };
+
+    const analysis = analyzeComfyWorkflow(
+      {
+        workflow: {
+          last_node_id: 3,
+          last_link_id: 0,
+          nodes: [
+            { id: 1, type: 'CheckpointLoaderSimple', pos: [0, 100], size: { 0: 280, 1: 140 } },
+            { id: 3, type: 'KSampler', pos: [900, 120], size: { 0: 320, 1: 180 } },
+          ],
+        },
+        prompt: promptWithMissingLayout,
+      },
+      {
+        prompt: 'positive',
+        width: 512,
+        height: 512,
+        steps: 20,
+      } as BaseMetadata
+    );
+
+    const graph = buildVisualWorkflowGraph(
+      promptWithMissingLayout,
+      {
+        last_node_id: 3,
+        last_link_id: 0,
+        nodes: [
+          { id: 1, type: 'CheckpointLoaderSimple', pos: [0, 100], size: { 0: 280, 1: 140 } },
+          { id: 3, type: 'KSampler', pos: [900, 120], size: { 0: 320, 1: 180 } },
+        ],
+      },
+      analysis
+    );
+
+    const node2 = graph?.nodes.find((node) => node.id === '2');
+    expect(graph?.hasStoredLayout).toBe(true);
+    expect(node2).toBeDefined();
+    expect(node2?.x).toBeGreaterThan(0);
+    expect(node2?.x).toBeLessThan(900);
+    expect(node2?.y).toBeGreaterThanOrEqual(90);
+    expect(node2?.y).toBeLessThanOrEqual(130);
   });
 
   it('applies workflow override helpers without mutating the source prompt', () => {

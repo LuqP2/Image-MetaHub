@@ -28,6 +28,7 @@ export interface VisualWorkflowNode {
   label: string;
   classType: string;
   category: VisualWorkflowNodeCategory;
+  order: number;
   x: number;
   y: number;
   width: number;
@@ -188,6 +189,97 @@ function getNodeDimensions(
   };
 }
 
+function getNodeOrder(nodeId: string, workflow?: ComfyUIWorkflow | null): number {
+  const workflowNode = workflow?.nodes?.find((entry) => String(entry.id) === nodeId);
+  return typeof workflowNode?.order === 'number' ? workflowNode.order : Number(nodeId) || 0;
+}
+
+function buildStoredLayout(workflow?: ComfyUIWorkflow | null): Map<string, { x: number; y: number }> {
+  const storedLayout = new Map<string, { x: number; y: number }>();
+  for (const node of workflow?.nodes || []) {
+    if (Array.isArray(node.pos) && node.pos.length === 2) {
+      const [x, y] = node.pos;
+      if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+        storedLayout.set(String(node.id), { x, y });
+      }
+    }
+  }
+  return storedLayout;
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildHybridLayout(
+  prompt: ComfyUIPromptGraph,
+  edges: VisualWorkflowEdge[],
+  storedLayout: Map<string, { x: number; y: number }>,
+  autoLayout: Map<string, { x: number; y: number }>
+): Map<string, { x: number; y: number }> {
+  if (storedLayout.size === 0) {
+    return autoLayout;
+  }
+
+  if (storedLayout.size === Object.keys(prompt).length) {
+    return storedLayout;
+  }
+
+  const hybridLayout = new Map(storedLayout);
+  const unresolved = new Set(
+    Object.keys(prompt).filter((nodeId) => !hybridLayout.has(nodeId))
+  );
+
+  let placedInPass = true;
+  while (unresolved.size > 0 && placedInPass) {
+    placedInPass = false;
+
+    for (const nodeId of Array.from(unresolved)) {
+      const incoming = edges
+        .filter((edge) => edge.to === nodeId)
+        .map((edge) => hybridLayout.get(edge.from))
+        .filter((entry): entry is { x: number; y: number } => Boolean(entry));
+      const outgoing = edges
+        .filter((edge) => edge.from === nodeId)
+        .map((edge) => hybridLayout.get(edge.to))
+        .filter((entry): entry is { x: number; y: number } => Boolean(entry));
+
+      if (incoming.length === 0 && outgoing.length === 0) {
+        continue;
+      }
+
+      const xCandidates: number[] = [];
+      const yCandidates: number[] = [];
+
+      for (const position of incoming) {
+        xCandidates.push(position.x + AUTO_LAYOUT_X_GAP * 0.85);
+        yCandidates.push(position.y);
+      }
+
+      for (const position of outgoing) {
+        xCandidates.push(position.x - AUTO_LAYOUT_X_GAP * 0.85);
+        yCandidates.push(position.y);
+      }
+
+      hybridLayout.set(nodeId, {
+        x: average(xCandidates),
+        y: average(yCandidates),
+      });
+      unresolved.delete(nodeId);
+      placedInPass = true;
+    }
+  }
+
+  for (const nodeId of unresolved) {
+    const autoPosition = autoLayout.get(nodeId);
+    if (autoPosition) {
+      hybridLayout.set(nodeId, autoPosition);
+    }
+  }
+
+  return hybridLayout;
+}
+
 function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]): Map<string, { x: number; y: number }> {
   const nodeIds = sortNodeIds(Object.keys(prompt));
   const upstreamMap = new Map<string, string[]>();
@@ -265,25 +357,22 @@ export function buildVisualWorkflowGraph(
     }
   }
 
-  const storedLayout = new Map<string, { x: number; y: number }>();
-  for (const node of workflow?.nodes || []) {
-    if (Array.isArray(node.pos) && node.pos.length === 2) {
-      storedLayout.set(String(node.id), { x: node.pos[0], y: node.pos[1] });
-    }
-  }
+  const storedLayout = buildStoredLayout(workflow);
   const autoLayout = buildAutoLayout(prompt, edges);
+  const finalLayout = buildHybridLayout(prompt, edges, storedLayout, autoLayout);
 
   const nodes = sortNodeIds(Object.keys(prompt)).map((nodeId) => {
     const node = prompt[nodeId];
     const category = getNodeCategory(nodeId, node, analysis || undefined);
     const fields = getNodeFields(node, category);
-    const position = storedLayout.get(nodeId) || autoLayout.get(nodeId) || { x: 0, y: 0 };
+    const position = finalLayout.get(nodeId) || { x: 0, y: 0 };
     const dimensions = getNodeDimensions(nodeId, workflow, fields);
     return {
       id: nodeId,
       label: getNodeLabel(nodeId, node, workflow),
       classType: node.class_type,
       category,
+      order: getNodeOrder(nodeId, workflow),
       x: position.x,
       y: position.y,
       width: dimensions.width,
@@ -294,7 +383,7 @@ export function buildVisualWorkflowGraph(
   });
 
   return {
-    nodes,
+    nodes: [...nodes].sort((left, right) => left.order - right.order),
     edges,
     hasStoredLayout: storedLayout.size > 0,
   };

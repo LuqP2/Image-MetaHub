@@ -290,6 +290,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
                               top: `${node.y}px`,
                               width: `${node.width}px`,
                               minHeight: `${node.height}px`,
+                              zIndex: node.order + 1,
                             }}
                           >
                             <div className="flex items-start justify-between gap-2">
