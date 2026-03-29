@@ -211,23 +211,62 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function hasCompleteStoredLayout(
+  promptNodeIds: string[],
+  storedLayout: Map<string, { x: number; y: number }>
+): boolean {
+  return promptNodeIds.every((nodeId) => storedLayout.has(nodeId));
+}
+
+function positionsOverlap(
+  left: { x: number; y: number },
+  right: { x: number; y: number }
+): boolean {
+  return Math.abs(left.x - right.x) < MIN_NODE_WIDTH * 0.75
+    && Math.abs(left.y - right.y) < AUTO_LAYOUT_Y_GAP * 0.75;
+}
+
+function resolveHybridCollision(
+  candidate: { x: number; y: number },
+  occupied: Array<{ x: number; y: number }>
+): { x: number; y: number } {
+  if (!occupied.some((position) => positionsOverlap(position, candidate))) {
+    return candidate;
+  }
+
+  for (let step = 1; step <= occupied.length + 1; step += 1) {
+    const downward = { x: candidate.x, y: candidate.y + AUTO_LAYOUT_Y_GAP * step };
+    if (!occupied.some((position) => positionsOverlap(position, downward))) {
+      return downward;
+    }
+
+    const upward = { x: candidate.x, y: candidate.y - AUTO_LAYOUT_Y_GAP * step };
+    if (!occupied.some((position) => positionsOverlap(position, upward))) {
+      return upward;
+    }
+  }
+
+  return candidate;
+}
+
 function buildHybridLayout(
   prompt: ComfyUIPromptGraph,
   edges: VisualWorkflowEdge[],
   storedLayout: Map<string, { x: number; y: number }>,
   autoLayout: Map<string, { x: number; y: number }>
 ): Map<string, { x: number; y: number }> {
+  const promptNodeIds = Object.keys(prompt);
   if (storedLayout.size === 0) {
     return autoLayout;
   }
 
-  if (storedLayout.size === Object.keys(prompt).length) {
+  if (storedLayout.size >= promptNodeIds.length && hasCompleteStoredLayout(promptNodeIds, storedLayout)) {
     return storedLayout;
   }
 
   const hybridLayout = new Map(storedLayout);
   const unresolved = new Set(
-    Object.keys(prompt).filter((nodeId) => !hybridLayout.has(nodeId))
+    promptNodeIds.filter((nodeId) => !hybridLayout.has(nodeId))
   );
 
   let placedInPass = true;
@@ -261,10 +300,11 @@ function buildHybridLayout(
         yCandidates.push(position.y);
       }
 
-      hybridLayout.set(nodeId, {
+      const position = resolveHybridCollision({
         x: average(xCandidates),
         y: average(yCandidates),
-      });
+      }, Array.from(hybridLayout.values()));
+      hybridLayout.set(nodeId, position);
       unresolved.delete(nodeId);
       placedInPass = true;
     }

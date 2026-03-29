@@ -517,6 +517,111 @@ describe('ComfyUI workflow builder', () => {
     expect(node2?.y).toBeLessThanOrEqual(130);
   });
 
+  it('separates sibling nodes that resolve to the same hybrid anchor point', () => {
+    const promptWithSiblingGap = {
+      '1': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'base.safetensors',
+        },
+      },
+      '2': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'positive',
+          clip: ['1', 1],
+        },
+      },
+      '3': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'negative',
+          clip: ['1', 1],
+        },
+      },
+      '4': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['1', 0],
+          positive: ['2', 0],
+          negative: ['3', 0],
+        },
+      },
+    };
+
+    const graph = buildVisualWorkflowGraph(
+      promptWithSiblingGap,
+      {
+        last_node_id: 4,
+        last_link_id: 0,
+        nodes: [
+          { id: 1, type: 'CheckpointLoaderSimple', pos: [0, 100], size: { 0: 280, 1: 140 } },
+          { id: 4, type: 'KSampler', pos: [900, 120], size: { 0: 320, 1: 180 } },
+        ],
+      }
+    );
+
+    const node2 = graph?.nodes.find((node) => node.id === '2');
+    const node3 = graph?.nodes.find((node) => node.id === '3');
+    expect(node2).toBeDefined();
+    expect(node3).toBeDefined();
+    expect(node2?.x === node3?.x && node2?.y === node3?.y).toBe(false);
+  });
+
+  it('falls back to hybrid layout when stored positions do not match prompt node ids', () => {
+    const remappedPrompt = {
+      '1': {
+        class_type: 'CheckpointLoaderSimple',
+        inputs: {
+          ckpt_name: 'base.safetensors',
+        },
+      },
+      '20': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: 'positive',
+          clip: ['1', 1],
+        },
+      },
+      '4': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 123,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          model: ['1', 0],
+          positive: ['20', 0],
+          negative: ['20', 0],
+        },
+      },
+    };
+
+    const graph = buildVisualWorkflowGraph(
+      remappedPrompt,
+      {
+        last_node_id: 4,
+        last_link_id: 0,
+        nodes: [
+          { id: 1, type: 'CheckpointLoaderSimple', pos: [0, 100], size: { 0: 280, 1: 140 } },
+          { id: 2, type: 'CLIPTextEncode', pos: [420, 100], size: { 0: 320, 1: 180 } },
+          { id: 4, type: 'KSampler', pos: [900, 120], size: { 0: 320, 1: 180 } },
+        ],
+      }
+    );
+
+    const node20 = graph?.nodes.find((node) => node.id === '20');
+    expect(node20).toBeDefined();
+    expect(node20?.x).toBeGreaterThan(0);
+    expect(node20?.y).toBeGreaterThan(0);
+  });
+
   it('applies workflow override helpers without mutating the source prompt', () => {
     const image = createImage({
       workflow: { nodes: [] },
