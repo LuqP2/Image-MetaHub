@@ -68,6 +68,10 @@ interface ImageModalProps {
   onNavigatePrevious?: () => void;
   directoryPath?: string;
   isIndexing?: boolean;
+  zIndex?: number;
+  isActive?: boolean;
+  onActivate?: () => void;
+  initialWindowOffset?: number;
 }
 
 interface ModalWindowState {
@@ -481,7 +485,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onNavigateNext,
   onNavigatePrevious,
   directoryPath,
-  isIndexing = false
+  isIndexing = false,
+  zIndex = 50,
+  isActive = true,
+  onActivate,
+  initialWindowOffset = 0,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -500,7 +508,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
-  const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => createDefaultModalWindow());
+  const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
+    const defaultWindow = createDefaultModalWindow();
+    return clampModalWindowToViewport({
+      ...defaultWindow,
+      x: defaultWindow.x + initialWindowOffset,
+      y: defaultWindow.y + initialWindowOffset,
+    });
+  });
   const [modalInteraction, setModalInteraction] = useState<ModalInteractionState>({ mode: 'idle' });
   const modalShellRef = useRef<HTMLDivElement>(null);
   const modalWindowRef = useRef<ModalWindowState>(modalWindow);
@@ -567,6 +582,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
@@ -608,6 +624,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Listen for fullscreen changes from Electron
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
     const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
       setIsFullscreen(data.isFullscreen);
@@ -622,10 +642,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       unsubscribeFullscreenChanged?.();
       unsubscribeFullscreenStateCheck?.();
     };
-  }, []);
+  }, [isActive]);
 
   // Initialize fullscreen mode from sessionStorage (backward compatibility)
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     const shouldStartFullscreen = sessionStorage.getItem('openImageFullscreen') === 'true';
     if (shouldStartFullscreen) {
       sessionStorage.removeItem('openImageFullscreen');
@@ -639,7 +663,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       }, 100);
     }
-  }, []);
+  }, [isActive]);
 
   useEffect(() => {
     modalWindowRef.current = modalWindow;
@@ -1174,7 +1198,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {
-    const imageContainer = document.getElementById('image-zoom-container');
+    const imageContainer = imageContainerRef.current;
     if (imageContainer) {
       imageContainer.addEventListener('wheel', handleWheel, { passive: false });
     }
@@ -1223,6 +1247,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
       if (hotkeyManager.areHotkeysPaused()) {
@@ -1308,6 +1336,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     handleDelete,
     handleToggleFavorite,
     hideContextMenu,
+    isActive,
     isFullscreen,
     isRenaming,
     onClose,
@@ -1365,10 +1394,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 transition-all duration-300 ${
-        isFullscreen ? 'bg-black' : 'bg-black/90 backdrop-blur-md'
+      className={`fixed inset-0 transition-all duration-300 ${
+        isFullscreen ? 'pointer-events-auto bg-black' : 'pointer-events-none'
       }`}
-      onClick={onClose}
+      style={{ zIndex }}
+      onClick={isFullscreen ? onClose : undefined}
     >
       <div
         ref={modalShellRef}
@@ -1376,7 +1406,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
           isFullscreen 
             ? 'fixed inset-0 h-full w-full rounded-none'
             : 'fixed bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
-        } flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+        } pointer-events-auto flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+        onPointerDown={() => onActivate?.()}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
@@ -1451,7 +1482,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         <div className={`flex min-h-0 flex-1 ${isCompactModal ? 'flex-col' : 'flex-col md:flex-row'}`}>
         {/* Image Display Section */}
         <div
-          id="image-zoom-container"
+          ref={imageContainerRef}
           className={`w-full ${
             isFullscreen
               ? 'h-full'
@@ -2370,15 +2401,13 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
     tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
-    prevProps.onClose === nextProps.onClose &&
-    prevProps.onImageDeleted === nextProps.onImageDeleted &&
-    prevProps.onImageRenamed === nextProps.onImageRenamed &&
     prevProps.currentIndex === nextProps.currentIndex &&
     prevProps.totalImages === nextProps.totalImages &&
-    prevProps.onNavigateNext === nextProps.onNavigateNext &&
-    prevProps.onNavigatePrevious === nextProps.onNavigatePrevious &&
     prevProps.directoryPath === nextProps.directoryPath &&
-    prevProps.isIndexing === nextProps.isIndexing;
+    prevProps.isIndexing === nextProps.isIndexing &&
+    prevProps.zIndex === nextProps.zIndex &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.initialWindowOffset === nextProps.initialWindowOffset;
 
   return propsEqual; // true = skip re-render, false = re-render
 });
