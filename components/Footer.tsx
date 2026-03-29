@@ -23,6 +23,13 @@ interface FooterProps {
   queueCount?: number;
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
+  windowItems?: Array<{
+    id: string;
+    title: string;
+    isActive: boolean;
+    isMinimized: boolean;
+  }>;
+  onWindowSelect?: (id: string) => void;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -51,7 +58,9 @@ const Footer: React.FC<FooterProps> = ({
   transferProgress,
   queueCount = 0,
   isQueueOpen = false,
-  onToggleQueue
+  onToggleQueue,
+  windowItems = [],
+  onWindowSelect,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -74,7 +83,32 @@ const Footer: React.FC<FooterProps> = ({
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
-    <footer className={`sticky bottom-0 px-6 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
+    <footer className="sticky bottom-0 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
+      {windowItems.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-800/60 px-4 py-2">
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+            Windows
+          </span>
+          {windowItems.map((windowItem) => (
+            <button
+              key={windowItem.id}
+              onClick={() => onWindowSelect?.(windowItem.id)}
+              className={`max-w-[220px] shrink-0 truncate rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                windowItem.isActive
+                  ? 'border-blue-500/50 bg-blue-500/15 text-blue-100'
+                  : windowItem.isMinimized
+                    ? 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                    : 'border-gray-700 bg-gray-800/90 text-gray-300 hover:border-gray-600 hover:text-white'
+              }`}
+              title={windowItem.title}
+            >
+              {windowItem.isMinimized ? '[_] ' : ''}
+              {windowItem.title}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className={`px-6 flex items-center gap-4 ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
       <div className="min-w-0 flex-1 flex items-center gap-3 text-xs">
         {customText ? (
            <Token>
@@ -243,6 +277,7 @@ const Footer: React.FC<FooterProps> = ({
             )}
           </button>
         )}
+      </div>
       </div>
     </footer>
   );

@@ -49,6 +49,7 @@ interface OpenImageModalState {
   navigationImageIds: string[];
   zIndex: number;
   initialWindowOffset: number;
+  isMinimized: boolean;
 }
 
 export default function App() {
@@ -666,7 +667,7 @@ export default function App() {
       if (existingModal) {
         setActiveImageModalId(existingModal.modalId);
         return current.map((modal) =>
-          modal.modalId === existingModal.modalId ? { ...modal, zIndex: nextZIndex } : modal
+          modal.modalId === existingModal.modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
         );
       }
 
@@ -681,6 +682,7 @@ export default function App() {
           navigationImageIds,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
+          isMinimized: false,
         },
       ];
     });
@@ -712,11 +714,18 @@ export default function App() {
   }, [imageMap, safeDirectories]);
 
   useEffect(() => {
-    if (activeImageModalId && openImageModals.some((modal) => modal.modalId === activeImageModalId)) {
+    if (
+      activeImageModalId &&
+      openImageModals.some((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
+    ) {
       return;
     }
 
-    setActiveImageModalId(openImageModals.length > 0 ? openImageModals[openImageModals.length - 1].modalId : null);
+    const nextActiveModal = [...openImageModals]
+      .filter((modal) => !modal.isMinimized)
+      .sort((left, right) => right.zIndex - left.zIndex)[0];
+
+    setActiveImageModalId(nextActiveModal?.modalId ?? null);
 
     if (openImageModals.length === 0) {
       setClusterNavigationContext(null);
@@ -753,10 +762,18 @@ export default function App() {
 
       const nextZIndex = Math.max(...current.map((modal) => modal.zIndex)) + 1;
       return current.map((modal) =>
-        modal.modalId === modalId ? { ...modal, zIndex: nextZIndex } : modal
+        modal.modalId === modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
       );
     });
     setActiveImageModalId(modalId);
+  }, []);
+
+  const handleMinimizeImageModal = useCallback((modalId: string) => {
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, isMinimized: true } : modal
+      )
+    );
   }, []);
 
   const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
@@ -846,6 +863,29 @@ export default function App() {
         totalImages: number;
       }>;
   }, [imageMap, openImageModals, safeDirectories]);
+
+  const footerWindowItems = useMemo(() => {
+    return openImageModals
+      .map((modal) => {
+        const image = imageMap.get(modal.imageId);
+        if (!image) {
+          return null;
+        }
+
+        return {
+          id: modal.modalId,
+          title: image.name,
+          isActive: activeImageModalId === modal.modalId,
+          isMinimized: modal.isMinimized,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        title: string;
+        isActive: boolean;
+        isMinimized: boolean;
+      }>;
+  }, [activeImageModalId, imageMap, openImageModals]);
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
   const activeFolderHasProgress = (() => {
@@ -1134,6 +1174,8 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  windowItems={footerWindowItems}
+                  onWindowSelect={handleActivateImageModal}
                 />
               )}
             </>
@@ -1154,9 +1196,11 @@ export default function App() {
             directoryPath={modal.directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
             zIndex={modal.zIndex}
-            isActive={activeImageModalId === modal.modalId}
+            isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
             onActivate={() => handleActivateImageModal(modal.modalId)}
             initialWindowOffset={modal.initialWindowOffset}
+            isMinimized={modal.isMinimized}
+            onMinimize={() => handleMinimizeImageModal(modal.modalId)}
           />
         ))}
 

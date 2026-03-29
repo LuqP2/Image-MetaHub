@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Move } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Move, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -72,6 +72,8 @@ interface ImageModalProps {
   isActive?: boolean;
   onActivate?: () => void;
   initialWindowOffset?: number;
+  isMinimized?: boolean;
+  onMinimize?: () => void;
 }
 
 interface ModalWindowState {
@@ -151,6 +153,20 @@ const createDefaultModalWindow = (): ModalWindowState => {
     height,
     x: Math.round((metrics.viewportWidth - width) / 2),
     y: Math.round((metrics.viewportHeight - height) / 2),
+  };
+};
+
+const createMaximizedModalWindow = (): ModalWindowState => {
+  const metrics = getModalViewportMetrics();
+  const margin = Math.max(8, metrics.margin - 8);
+  const width = Math.max(metrics.minWidth, metrics.viewportWidth - margin * 2);
+  const height = Math.max(metrics.minHeight, metrics.viewportHeight - margin * 2);
+
+  return {
+    x: margin,
+    y: margin,
+    width,
+    height,
   };
 };
 
@@ -490,6 +506,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   isActive = true,
   onActivate,
   initialWindowOffset = 0,
+  isMinimized = false,
+  onMinimize,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -506,6 +524,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
@@ -521,6 +541,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const modalWindowRef = useRef<ModalWindowState>(modalWindow);
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
+  const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Zoom and pan states
@@ -586,7 +607,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
-  const isCompactModal = !isFullscreen && modalWindow.width < 1180;
+  const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
+  const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
     if (isFullscreen || !modalShellRef.current) {
@@ -685,12 +707,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const handleResize = () => {
+      if (isWindowMaximized) {
+        setModalWindow(createMaximizedModalWindow());
+        return;
+      }
+
       setModalWindow((current) => clampModalWindowToViewport(current));
     };
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isFullscreen]);
+  }, [isFullscreen, isWindowMaximized]);
 
   useEffect(() => {
     if (isFullscreen || modalInteraction.mode === 'idle') {
@@ -798,7 +825,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const motionModel = (nMeta as any)?.motion_model;
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (isFullscreen || event.button !== 0) {
+    if (isFullscreen || isWindowMaximized || event.button !== 0) {
       return;
     }
 
@@ -811,10 +838,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialX: currentWindow.x,
       initialY: currentWindow.y,
     });
-  }, [isFullscreen]);
+  }, [isFullscreen, isWindowMaximized]);
 
   const beginWindowResize = useCallback((direction: 'right' | 'bottom' | 'corner') => (event: React.PointerEvent<HTMLDivElement>) => {
-    if (isFullscreen || event.button !== 0) {
+    if (isFullscreen || isWindowMaximized || event.button !== 0) {
       return;
     }
 
@@ -831,11 +858,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialX: currentWindow.x,
       initialY: currentWindow.y,
     });
-  }, [isFullscreen]);
+  }, [isFullscreen, isWindowMaximized]);
 
   const resetModalWindow = useCallback(() => {
+    setIsWindowMaximized(false);
     setModalWindow(createDefaultModalWindow());
   }, []);
+
+  const toggleWindowMaximize = useCallback(() => {
+    if (isWindowMaximized) {
+      setIsWindowMaximized(false);
+      setModalWindow(restoredModalWindowRef.current ?? createDefaultModalWindow());
+      return;
+    }
+
+    restoredModalWindowRef.current = modalWindowRef.current;
+    setIsWindowMaximized(true);
+    setModalWindow(createMaximizedModalWindow());
+  }, [isWindowMaximized]);
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) {
@@ -1392,6 +1432,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         .slice(0, 5)
     : [];
 
+  if (isMinimized) {
+    return null;
+  }
+
   return (
     <div
       className={`fixed inset-0 transition-all duration-300 ${
@@ -1420,6 +1464,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 top: `${modalWindow.y}px`,
                 width: `${modalWindow.width}px`,
                 height: `${modalWindow.height}px`,
+                transition: isWindowInteractionActive ? 'none' : 'box-shadow 160ms ease, border-color 160ms ease',
               }
         }
       >
@@ -1427,6 +1472,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div
             className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur-sm cursor-move"
             onPointerDown={beginWindowDrag}
+            onDoubleClick={toggleWindowMaximize}
           >
             <div className="flex min-w-0 items-center gap-3">
               <div
@@ -1444,6 +1490,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title={showSidebarOnRight ? 'Move details to bottom' : 'Move details to right side'}
+              >
+                Details: {showSidebarOnRight ? 'Right' : 'Bottom'}
+              </button>
+              <button
                 onClick={() => setIsSidebarCollapsed((current) => !current)}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
@@ -1458,6 +1512,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 title="Reset window size and position"
               >
                 Reset Window
+              </button>
+              <button
+                onClick={onMinimize}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title="Minimize window"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <button
+                onClick={toggleWindowMaximize}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+              >
+                {isWindowMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
               <button
                 onClick={toggleFullscreen}
@@ -1479,7 +1549,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
         )}
 
-        <div className={`flex min-h-0 flex-1 ${isCompactModal ? 'flex-col' : 'flex-col md:flex-row'}`}>
+        <div className={`flex min-h-0 flex-1 ${showSidebarOnBottom ? 'flex-col' : 'flex-row'}`}>
         {/* Image Display Section */}
         <div
           ref={imageContainerRef}
@@ -1488,9 +1558,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
               ? 'h-full'
               : !showSidebar
                 ? 'h-full'
-              : isCompactModal
-                ? 'h-[55%] min-h-[280px]'
-                : 'h-1/2 md:h-full md:w-[72%]'
+              : showSidebarOnBottom
+                ? 'min-h-[280px] flex-1'
+                : 'h-full flex-1 min-w-0'
           } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onMouseDown={isVideo ? undefined : handleMouseDown}
           onMouseMove={isVideo ? undefined : handleMouseMove}
@@ -1587,7 +1657,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
         {/* Metadata Panel */}
         {showSidebar && (
         <div
-          className={`w-full ${isCompactModal ? 'h-[45%]' : 'h-1/2 md:h-full md:w-[28%]'} p-6 overflow-y-auto space-y-4 border-l border-gray-800/80`}
+          className={`w-full ${
+            showSidebarOnBottom
+              ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
+              : 'h-full w-[340px] max-w-[42%] min-w-[300px] border-l border-gray-800/80'
+          } p-6 overflow-y-auto space-y-4`}
           onContextMenu={handleSelectionContextMenu}
         >
           <div>
