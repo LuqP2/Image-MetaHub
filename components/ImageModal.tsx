@@ -949,6 +949,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
     beginWindowDrag(event);
   }, [beginWindowDrag, shouldStartWindowDrag]);
 
+  const handleImageContainerPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    revealMediaOverlay();
+
+    if (!isFullscreen) {
+      handleWindowSurfacePointerDown(event);
+    }
+  }, [handleWindowSurfacePointerDown, isFullscreen, revealMediaOverlay]);
+
   const beginWindowResize = useCallback((direction: 'top' | 'right' | 'bottom' | 'left' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullscreen || isWindowMaximized || event.button !== 0) {
       return;
@@ -1183,9 +1191,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-    setIsMediaOverlayVisible(false);
-    clearMediaOverlayHideTimer();
-  }, [clearMediaOverlayHideTimer, image.id]);
+    revealMediaOverlay();
+  }, [image.id, revealMediaOverlay]);
 
   // Reset zoom and pan when entering/exiting fullscreen
   useEffect(() => {
@@ -1649,7 +1656,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
           } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
-          onPointerDown={!isFullscreen ? handleWindowSurfacePointerDown : undefined}
+          onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isVideo ? undefined : handleMouseDown}
           onMouseMove={isVideo ? undefined : handleMouseMove}
