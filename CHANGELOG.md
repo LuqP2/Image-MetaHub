@@ -9,13 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Workflow-Native ComfyUI Generation**: Added an `Original workflow` mode that reuses and patches embedded executable ComfyUI prompt graphs when available, alongside the existing `Simple rebuild` fallback for metadata-only images.
+- **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside the ComfyUI generation modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
 - **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
+- **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
 - **MetaHub Save Node Lineage Metadata**: Extended the companion ComfyUI MetaHub Save Node to persist explicit `generation_type` and `source_image` metadata, creating a stronger base for future multi-step transformation chains.
 
 ### Improved
 
-- **Tri-State Sidebar Filters**: Favorites, tags, auto-tags, models, LoRAs, and samplers/schedulers in the sidebar now cycle through include, exclude, and off states, making it possible to quickly narrow or remove matching images without leaving the current view.
-- **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably and surface img2img-specific parameters in a normalized way.
+- **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
+- **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
+- **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
+- **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
+- **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 
 ## [0.13.2] - 2026-03-23
