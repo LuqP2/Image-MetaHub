@@ -714,10 +714,16 @@ export default function App() {
   }, [imageMap, safeDirectories]);
 
   useEffect(() => {
-    if (
-      activeImageModalId &&
-      openImageModals.some((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
-    ) {
+    const currentActiveModal =
+      activeImageModalId
+        ? openImageModals.find((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
+        : null;
+
+    if (currentActiveModal) {
+      const activeImage = imageMap.get(currentActiveModal.imageId);
+      if (activeImage && useImageStore.getState().selectedImage?.id !== activeImage.id) {
+        setSelectedImage(activeImage);
+      }
       return;
     }
 
@@ -727,10 +733,18 @@ export default function App() {
 
     setActiveImageModalId(nextActiveModal?.modalId ?? null);
 
-    if (openImageModals.length === 0) {
-      setClusterNavigationContext(null);
+    if (nextActiveModal) {
+      const nextActiveImage = imageMap.get(nextActiveModal.imageId);
+      if (nextActiveImage && useImageStore.getState().selectedImage?.id !== nextActiveImage.id) {
+        setSelectedImage(nextActiveImage);
+      }
+    } else {
+      setSelectedImage(null);
+      if (openImageModals.length === 0) {
+        setClusterNavigationContext(null);
+      }
     }
-  }, [activeImageModalId, openImageModals, setClusterNavigationContext]);
+  }, [activeImageModalId, imageMap, openImageModals, setClusterNavigationContext, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
@@ -766,7 +780,12 @@ export default function App() {
       );
     });
     setActiveImageModalId(modalId);
-  }, []);
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    const targetImage = targetModal ? imageMap.get(targetModal.imageId) : null;
+    if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
+      setSelectedImage(targetImage);
+    }
+  }, [imageMap, openImageModals, setSelectedImage]);
 
   const handleMinimizeImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) =>
@@ -806,31 +825,38 @@ export default function App() {
   }, [handleCloseImageModal, openImageModals]);
 
   const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    const availableImageIds = targetModal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+    const currentIndex = availableImageIds.findIndex((imageId) => imageId === targetModal.imageId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextImageId =
+      direction === 'next'
+        ? availableImageIds[currentIndex + 1]
+        : availableImageIds[currentIndex - 1];
+
+    if (!nextImageId) {
+      return;
+    }
+
     setOpenImageModals((current) =>
-      current.map((modal) => {
-        if (modal.modalId !== modalId) {
-          return modal;
-        }
-
-        const availableImageIds = modal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
-        const currentIndex = availableImageIds.findIndex((imageId) => imageId === modal.imageId);
-
-        if (currentIndex === -1) {
-          return modal;
-        }
-
-        if (direction === 'next' && currentIndex < availableImageIds.length - 1) {
-          return { ...modal, imageId: availableImageIds[currentIndex + 1] };
-        }
-
-        if (direction === 'previous' && currentIndex > 0) {
-          return { ...modal, imageId: availableImageIds[currentIndex - 1] };
-        }
-
-        return modal;
-      })
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, imageId: nextImageId } : modal
+      )
     );
-  }, [imageMap]);
+
+    const nextImage = imageMap.get(nextImageId);
+    if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
+      setSelectedImage(nextImage);
+    }
+  }, [imageMap, openImageModals, setSelectedImage]);
 
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {

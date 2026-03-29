@@ -2641,9 +2641,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-// Wrap with React.memo to prevent re-renders during Phase B metadata updates
-// Custom comparator: only compare image.id, onClose, and isIndexing
-// This prevents flickering when the image object reference changes but the ID stays the same
+// Wrap with React.memo to avoid churn during metadata updates while still
+// invalidating on the props that change visible window state.
 export default React.memo(ImageModal, (prevProps, nextProps) => {
   // Return true if props are EQUAL (skip re-render)
   // Return false if props are DIFFERENT (re-render)
@@ -2658,6 +2657,7 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
 
   const propsEqual =
     prevProps.image.id === nextProps.image.id &&
+    prevProps.image.name === nextProps.image.name &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
     tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
     prevProps.currentIndex === nextProps.currentIndex &&
@@ -2666,7 +2666,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.isIndexing === nextProps.isIndexing &&
     prevProps.zIndex === nextProps.zIndex &&
     prevProps.isActive === nextProps.isActive &&
-    prevProps.initialWindowOffset === nextProps.initialWindowOffset;
+    prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
+    prevProps.isMinimized === nextProps.isMinimized;
 
   return propsEqual; // true = skip re-render, false = re-render
 });
