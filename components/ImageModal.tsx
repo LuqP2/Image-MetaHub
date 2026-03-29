@@ -497,10 +497,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   });
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => createDefaultModalWindow());
   const [modalInteraction, setModalInteraction] = useState<ModalInteractionState>({ mode: 'idle' });
+  const modalShellRef = useRef<HTMLDivElement>(null);
+  const modalWindowRef = useRef<ModalWindowState>(modalWindow);
+  const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
+  const modalPaintFrameRef = useRef<number | null>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Zoom and pan states
@@ -564,7 +569,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const tagInputRef = useRef<HTMLInputElement>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
+  const showSidebar = !isFullscreen && !isSidebarCollapsed;
   const isCompactModal = !isFullscreen && modalWindow.width < 1180;
+
+  const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
+    if (isFullscreen || !modalShellRef.current) {
+      return;
+    }
+
+    modalShellRef.current.style.left = `${windowState.x}px`;
+    modalShellRef.current.style.top = `${windowState.y}px`;
+    modalShellRef.current.style.width = `${windowState.width}px`;
+    modalShellRef.current.style.height = `${windowState.height}px`;
+  }, [isFullscreen]);
+
+  const scheduleModalWindowPaint = useCallback((windowState: ModalWindowState) => {
+    liveModalWindowRef.current = windowState;
+
+    if (typeof window === 'undefined' || modalPaintFrameRef.current !== null) {
+      return;
+    }
+
+    modalPaintFrameRef.current = window.requestAnimationFrame(() => {
+      modalPaintFrameRef.current = null;
+      applyModalWindowStyles(liveModalWindowRef.current);
+    });
+  }, [applyModalWindowStyles]);
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -612,6 +642,20 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, []);
 
   useEffect(() => {
+    modalWindowRef.current = modalWindow;
+    liveModalWindowRef.current = modalWindow;
+    applyModalWindowStyles(modalWindow);
+  }, [applyModalWindowStyles, modalWindow]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && modalPaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(modalPaintFrameRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (isFullscreen) {
       return;
     }
@@ -631,52 +675,59 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     const handlePointerMove = (event: PointerEvent) => {
       event.preventDefault();
+      const metrics = getModalViewportMetrics();
+      const currentWindow = liveModalWindowRef.current;
 
-      setModalWindow((current) => {
-        const metrics = getModalViewportMetrics();
+      if (modalInteraction.mode === 'drag') {
+        scheduleModalWindowPaint({
+          ...currentWindow,
+          x: clamp(
+            modalInteraction.initialX + (event.clientX - modalInteraction.startX),
+            metrics.margin,
+            metrics.viewportWidth - metrics.margin - currentWindow.width
+          ),
+          y: clamp(
+            modalInteraction.initialY + (event.clientY - modalInteraction.startY),
+            metrics.margin,
+            metrics.viewportHeight - metrics.margin - currentWindow.height
+          ),
+        });
+        return;
+      }
 
-        if (modalInteraction.mode === 'drag') {
-          return {
-            ...current,
-            x: clamp(
-              modalInteraction.initialX + (event.clientX - modalInteraction.startX),
-              metrics.margin,
-              metrics.viewportWidth - metrics.margin - current.width
-            ),
-            y: clamp(
-              modalInteraction.initialY + (event.clientY - modalInteraction.startY),
-              metrics.margin,
-              metrics.viewportHeight - metrics.margin - current.height
-            ),
-          };
-        }
+      const nextWidth =
+        modalInteraction.direction === 'bottom'
+          ? currentWindow.width
+          : clamp(
+              modalInteraction.initialWidth + (event.clientX - modalInteraction.startX),
+              metrics.minWidth,
+              metrics.viewportWidth - metrics.margin - modalInteraction.initialX
+            );
+      const nextHeight =
+        modalInteraction.direction === 'right'
+          ? currentWindow.height
+          : clamp(
+              modalInteraction.initialHeight + (event.clientY - modalInteraction.startY),
+              metrics.minHeight,
+              metrics.viewportHeight - metrics.margin - modalInteraction.initialY
+            );
 
-        const nextWidth =
-          modalInteraction.direction === 'bottom'
-            ? current.width
-            : clamp(
-                modalInteraction.initialWidth + (event.clientX - modalInteraction.startX),
-                metrics.minWidth,
-                metrics.viewportWidth - metrics.margin - modalInteraction.initialX
-              );
-        const nextHeight =
-          modalInteraction.direction === 'right'
-            ? current.height
-            : clamp(
-                modalInteraction.initialHeight + (event.clientY - modalInteraction.startY),
-                metrics.minHeight,
-                metrics.viewportHeight - metrics.margin - modalInteraction.initialY
-              );
-
-        return {
-          ...current,
-          width: nextWidth,
-          height: nextHeight,
-        };
+      scheduleModalWindowPaint({
+        x: currentWindow.x,
+        y: currentWindow.y,
+        width: nextWidth,
+        height: nextHeight,
       });
     };
 
     const handlePointerUp = () => {
+      if (typeof window !== 'undefined' && modalPaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(modalPaintFrameRef.current);
+        modalPaintFrameRef.current = null;
+        applyModalWindowStyles(liveModalWindowRef.current);
+      }
+
+      setModalWindow(clampModalWindowToViewport(liveModalWindowRef.current));
       setModalInteraction({ mode: 'idle' });
     };
 
@@ -691,7 +742,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [isFullscreen, modalInteraction]);
+  }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
    // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -727,21 +778,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
       return;
     }
 
+    const currentWindow = modalWindowRef.current;
     event.preventDefault();
     setModalInteraction({
       mode: 'drag',
       startX: event.clientX,
       startY: event.clientY,
-      initialX: modalWindow.x,
-      initialY: modalWindow.y,
+      initialX: currentWindow.x,
+      initialY: currentWindow.y,
     });
-  }, [isFullscreen, modalWindow.x, modalWindow.y]);
+  }, [isFullscreen]);
 
   const beginWindowResize = useCallback((direction: 'right' | 'bottom' | 'corner') => (event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullscreen || event.button !== 0) {
       return;
     }
 
+    const currentWindow = modalWindowRef.current;
     event.preventDefault();
     event.stopPropagation();
     setModalInteraction({
@@ -749,12 +802,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
       direction,
       startX: event.clientX,
       startY: event.clientY,
-      initialWidth: modalWindow.width,
-      initialHeight: modalWindow.height,
-      initialX: modalWindow.x,
-      initialY: modalWindow.y,
+      initialWidth: currentWindow.width,
+      initialHeight: currentWindow.height,
+      initialX: currentWindow.x,
+      initialY: currentWindow.y,
     });
-  }, [isFullscreen, modalWindow.height, modalWindow.width, modalWindow.x, modalWindow.y]);
+  }, [isFullscreen]);
 
   const resetModalWindow = useCallback(() => {
     setModalWindow(createDefaultModalWindow());
@@ -1318,11 +1371,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={modalShellRef}
         className={`${
           isFullscreen 
             ? 'fixed inset-0 h-full w-full rounded-none'
             : 'fixed bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
-        } flex flex-col transition-all duration-300 animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+        } flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
@@ -1339,11 +1393,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       >
         {!isFullscreen && (
-          <div className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur-sm">
+          <div
+            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur-sm cursor-move"
+            onPointerDown={beginWindowDrag}
+          >
             <div className="flex min-w-0 items-center gap-3">
               <div
-                onPointerDown={beginWindowDrag}
-                className="inline-flex max-w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-1.5 text-sm text-gray-300 cursor-move"
+                className="inline-flex max-w-full items-center gap-2 rounded-lg border border-gray-700 bg-gray-900/90 px-3 py-1.5 text-sm text-gray-300"
                 title="Drag to move"
               >
                 <Move size={14} className="text-gray-500" />
@@ -1357,7 +1413,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setIsSidebarCollapsed((current) => !current)}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+              >
+                {showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
+              </button>
+              <button
                 onClick={resetModalWindow}
+                onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Reset window size and position"
               >
@@ -1365,12 +1430,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </button>
               <button
                 onClick={toggleFullscreen}
+                onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
               >
                 Fullscreen
               </button>
               <button
                 onClick={onClose}
+                onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 aria-label="Close image"
                 title="Close (Esc)"
@@ -1388,6 +1455,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
           className={`w-full ${
             isFullscreen
               ? 'h-full'
+              : !showSidebar
+                ? 'h-full'
               : isCompactModal
                 ? 'h-[55%] min-h-[280px]'
                 : 'h-1/2 md:h-full md:w-[72%]'
@@ -1485,8 +1554,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
         </div>
 
         {/* Metadata Panel */}
+        {showSidebar && (
         <div
-          className={`w-full ${isFullscreen ? 'hidden' : isCompactModal ? 'h-[45%]' : 'h-1/2 md:h-full md:w-[28%]'} p-6 overflow-y-auto space-y-4`}
+          className={`w-full ${isCompactModal ? 'h-[45%]' : 'h-1/2 md:h-full md:w-[28%]'} p-6 overflow-y-auto space-y-4 border-l border-gray-800/80`}
           onContextMenu={handleSelectionContextMenu}
         >
           <div>
@@ -2151,6 +2221,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
         </div>
+        )}
         </div>
 
         {!isFullscreen && (
