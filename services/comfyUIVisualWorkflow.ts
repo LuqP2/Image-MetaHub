@@ -53,6 +53,7 @@ const AUTO_LAYOUT_X_GAP = 320;
 const AUTO_LAYOUT_Y_GAP = 190;
 const DEFAULT_NODE_WIDTH = 260;
 const MIN_NODE_HEIGHT = 128;
+const MIN_NODE_WIDTH = 220;
 
 function sortNodeIds(nodeIds: string[]): string[] {
   return [...nodeIds].sort((left, right) => {
@@ -170,6 +171,23 @@ function getNodeLabel(nodeId: string, node: ComfyUIPromptNode, workflow?: ComfyU
   return node._meta?.title || workflowNode?.title || node.class_type || `Node ${nodeId}`;
 }
 
+function getNodeDimensions(
+  nodeId: string,
+  workflow: ComfyUIWorkflow | null | undefined,
+  fields: VisualWorkflowField[]
+): { width: number; height: number } {
+  const workflowNode = workflow?.nodes?.find((entry) => String(entry.id) === nodeId);
+  const storedSize = workflowNode?.size;
+  const storedWidth = storedSize?.[0];
+  const storedHeight = storedSize?.[1];
+  const previewHeight = Math.max(MIN_NODE_HEIGHT, 88 + Math.min(fields.length, 3) * 38);
+
+  return {
+    width: typeof storedWidth === 'number' ? Math.max(MIN_NODE_WIDTH, storedWidth) : DEFAULT_NODE_WIDTH,
+    height: typeof storedHeight === 'number' ? Math.max(previewHeight, storedHeight) : previewHeight,
+  };
+}
+
 function buildAutoLayout(prompt: ComfyUIPromptGraph, edges: VisualWorkflowEdge[]): Map<string, { x: number; y: number }> {
   const nodeIds = sortNodeIds(Object.keys(prompt));
   const upstreamMap = new Map<string, string[]>();
@@ -260,6 +278,7 @@ export function buildVisualWorkflowGraph(
     const category = getNodeCategory(nodeId, node, analysis || undefined);
     const fields = getNodeFields(node, category);
     const position = storedLayout.get(nodeId) || autoLayout.get(nodeId) || { x: 0, y: 0 };
+    const dimensions = getNodeDimensions(nodeId, workflow, fields);
     return {
       id: nodeId,
       label: getNodeLabel(nodeId, node, workflow),
@@ -267,8 +286,8 @@ export function buildVisualWorkflowGraph(
       category,
       x: position.x,
       y: position.y,
-      width: DEFAULT_NODE_WIDTH,
-      height: Math.max(MIN_NODE_HEIGHT, 88 + fields.length * 38),
+      width: dimensions.width,
+      height: dimensions.height,
       isEditable: fields.length > 0,
       fields,
     } satisfies VisualWorkflowNode;

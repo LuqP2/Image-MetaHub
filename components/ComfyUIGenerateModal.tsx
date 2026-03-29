@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, Maximize2, Minimize2, SlidersHorizontal, X } from 'lucide-react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useComfyUIModels } from '../hooks/useComfyUIModels';
@@ -76,6 +76,17 @@ const formatJson = (value: unknown): string => {
     return '';
   }
 };
+
+export function sanitizeStoredModelForWorkflowMode(
+  model: ComfyUIModelResource | null,
+  workflowMode: ComfyUIWorkflowMode
+): ComfyUIModelResource | null {
+  if (workflowMode === 'simple' && model?.family !== 'checkpoint') {
+    return null;
+  }
+
+  return model;
+}
 
 const buildMetadataFromParams = (
   params: GenerationParams,
@@ -199,6 +210,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   const [selectedVisualNodeId, setSelectedVisualNodeId] = useState<string | null>(null);
   const [workingPromptGraph, setWorkingPromptGraph] = useState<ComfyUIPromptGraph | null>(null);
   const [workingWorkflowUi, setWorkingWorkflowUi] = useState(embeddedWorkflow.workflow);
+  const [isExpandedModal, setIsExpandedModal] = useState(false);
 
   const visualPromptAnalysis = useMemo(() => {
     if (!workingPromptGraph) {
@@ -342,7 +354,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       ? (storedMode || 'original')
       : 'simple';
 
-    setParams({
+    const nextParams: GenerationParams = {
       prompt: normalizedMetadata.prompt || '',
       negativePrompt: normalizedMetadata.negativePrompt || '',
       cfgScale: (normalizedMetadata as any).cfgScale ?? normalizedMetadata.cfg_scale ?? 7,
@@ -356,7 +368,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
       loras: parsedLoras,
       sampler: normalizedMetadata.sampler || undefined,
       scheduler: normalizedMetadata.scheduler || undefined,
-      workflowMode: workflowAnalysis.originalAvailable ? (storedMode || 'original') : 'simple',
+      workflowMode: nextWorkflowMode,
       sourceImagePolicy: storedSourcePolicy || 'reuse_original',
       advancedPromptJson: '',
       advancedWorkflowJson: '',
@@ -380,6 +392,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     setLoraSearch('');
     setActiveTab('parameters');
     setSelectedVisualNodeId(null);
+    setIsExpandedModal(false);
   }, [
     embeddedWorkflow.prompt,
     embeddedWorkflow.workflow,
@@ -468,6 +481,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     || visualPromptAnalysis.generationType === 'outpaint';
   const requiresMaskInput = isTransformation && visualPromptAnalysis.maskTargets.length > 0;
   const visualTabDisabled = params.workflowMode !== 'original' || !workflowAnalysis.originalAvailable || !workingPromptGraph;
+  const visualViewportHeight = isExpandedModal ? 720 : 560;
 
   const syncParamsFromVisualField = (
     currentParams: GenerationParams,
@@ -694,8 +708,16 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="flex max-h-[88vh] w-full max-w-6xl flex-col rounded-lg bg-gray-800 p-6 text-gray-100 shadow-xl"
+        className="flex flex-col rounded-lg bg-gray-800 p-6 text-gray-100 shadow-xl"
         onClick={(event) => event.stopPropagation()}
+        style={{
+          width: isExpandedModal ? 'min(96vw, 1680px)' : 'min(92vw, 1320px)',
+          height: isExpandedModal ? '92vh' : '88vh',
+          maxHeight: '92vh',
+          minHeight: '720px',
+          resize: 'both',
+          overflow: 'hidden',
+        }}
       >
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -706,9 +728,19 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                 : 'Original workflow is unavailable. Generation will use simple rebuild.'}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsExpandedModal((current) => !current)}
+              className="rounded-full p-2 text-gray-300 hover:bg-gray-700"
+              title={isExpandedModal ? 'Restore modal size' : 'Expand modal'}
+            >
+              {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto pr-1">
@@ -1123,6 +1155,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
                     graph={visualGraph}
                     selectedNodeId={selectedVisualNodeId}
                     fieldOptions={visualFieldOptions}
+                    viewportHeight={visualViewportHeight}
                     onSelectNode={setSelectedVisualNodeId}
                     onFieldChange={handleVisualFieldChange}
                   />

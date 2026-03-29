@@ -11,6 +11,7 @@ interface ComfyUIWorkflowVisualEditorProps {
   graph: VisualWorkflowGraph | null;
   selectedNodeId: string | null;
   fieldOptions?: Record<string, Array<string | number | boolean>>;
+  viewportHeight?: number;
   onSelectNode: (nodeId: string) => void;
   onFieldChange: (nodeId: string, inputKey: string, value: string | number | boolean) => void;
 }
@@ -138,6 +139,7 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
   graph,
   selectedNodeId,
   fieldOptions,
+  viewportHeight = 560,
   onSelectNode,
   onFieldChange,
 }) => {
@@ -194,7 +196,10 @@ export const ComfyUIWorkflowVisualEditor: React.FC<ComfyUIWorkflowVisualEditorPr
           </div>
         </div>
 
-        <div className="relative h-[560px] bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.08),transparent_55%)]">
+        <div
+          className="relative bg-[radial-gradient(circle_at_center,rgba(148,163,184,0.08),transparent_55%)]"
+          style={{ height: `${viewportHeight}px` }}
+        >
           <TransformWrapper
             minScale={0.35}
             maxScale={2.5}
