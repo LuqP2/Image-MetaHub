@@ -784,6 +784,15 @@ export default function App() {
     }
   }, [setSelectedImage]);
 
+  const handleCloseImageModalFromFooter = useCallback((modalId: string) => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    handleCloseImageModal(targetModal.modalId, targetModal.imageId);
+  }, [handleCloseImageModal, openImageModals]);
+
   const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
     setOpenImageModals((current) =>
       current.map((modal) => {
@@ -1176,6 +1185,7 @@ export default function App() {
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                   windowItems={footerWindowItems}
                   onWindowSelect={handleActivateImageModal}
+                  onWindowClose={handleCloseImageModalFromFooter}
                 />
               )}
             </>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { IndexedImageTransferProgress } from '../types';
@@ -30,6 +30,7 @@ interface FooterProps {
     isMinimized: boolean;
   }>;
   onWindowSelect?: (id: string) => void;
+  onWindowClose?: (id: string) => void;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -61,6 +62,7 @@ const Footer: React.FC<FooterProps> = ({
   onToggleQueue,
   windowItems = [],
   onWindowSelect,
+  onWindowClose,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -90,21 +92,48 @@ const Footer: React.FC<FooterProps> = ({
             Windows
           </span>
           {windowItems.map((windowItem) => (
-            <button
+            <div
               key={windowItem.id}
-              onClick={() => onWindowSelect?.(windowItem.id)}
-              className={`max-w-[220px] shrink-0 truncate rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              onAuxClick={(event) => {
+                if (event.button !== 1) {
+                  return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                onWindowClose?.(windowItem.id);
+              }}
+              className={`flex max-w-[260px] shrink-0 items-stretch overflow-hidden rounded-lg border transition-colors ${
                 windowItem.isActive
                   ? 'border-blue-500/50 bg-blue-500/15 text-blue-100'
                   : windowItem.isMinimized
                     ? 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
                     : 'border-gray-700 bg-gray-800/90 text-gray-300 hover:border-gray-600 hover:text-white'
               }`}
-              title={windowItem.title}
             >
-              {windowItem.isMinimized ? '[_] ' : ''}
-              {windowItem.title}
-            </button>
+              <button
+                onClick={() => onWindowSelect?.(windowItem.id)}
+                className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-xs font-medium"
+                title={windowItem.title}
+              >
+                {windowItem.isMinimized ? '[_] ' : ''}
+                {windowItem.title}
+              </button>
+              <button
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onWindowClose?.(windowItem.id);
+                }}
+                className={`border-l px-2 text-gray-400 transition-colors hover:text-white ${
+                  windowItem.isActive ? 'border-blue-500/30 hover:bg-blue-500/20' : 'border-gray-700/80 hover:bg-gray-700/80'
+                }`}
+                aria-label={`Close ${windowItem.title}`}
+                title="Close window"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ))}
         </div>
       )}
