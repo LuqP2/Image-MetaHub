@@ -330,7 +330,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
                   />
                   <div>
-                    <div className="text-sm text-gray-200">Verified telemetry only</div>
+                    <div className="text-sm text-gray-200">MetaHub Save Node only</div>
                     <p className="mt-1 text-xs text-gray-500">
                       Restrict to images with VRAM, device, and runtime metadata from the MetaHub Save Node.
                     </p>

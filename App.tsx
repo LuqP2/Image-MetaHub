@@ -43,6 +43,15 @@ import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
 
+interface OpenImageModalState {
+  modalId: string;
+  imageId: string;
+  navigationImageIds: string[];
+  zIndex: number;
+  initialWindowOffset: number;
+  isMinimized: boolean;
+}
+
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
@@ -56,6 +65,7 @@ export default function App() {
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
   const filteredImages = useImageStore((state) => state.filteredImages);
+  const images = useImageStore((state) => state.images);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const directories = useImageStore((state) => state.directories);
@@ -63,6 +73,7 @@ export default function App() {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
+  const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -124,8 +135,6 @@ export default function App() {
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
   const setTransferProgress = useImageStore((state) => state.setTransferProgress);
-  const handleNavigateNext = useImageStore((state) => state.handleNavigateNext);
-  const handleNavigatePrevious = useImageStore((state) => state.handleNavigatePrevious);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
@@ -137,6 +146,7 @@ export default function App() {
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
 
+  const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
@@ -171,10 +181,14 @@ export default function App() {
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
+  const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
+  const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const lastOpenedModalImageIdRef = useRef<string | null>(null);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+  const imageMap = useMemo(() => new Map(safeImages.map((image) => [image.id, image])), [safeImages]);
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -629,11 +643,121 @@ export default function App() {
     }
   }, [selectedImage, safeDirectories, setSelectedImage]);
 
+  useEffect(() => {
+    if (!selectedImage) {
+      lastOpenedModalImageIdRef.current = null;
+      return;
+    }
+
+    if (lastOpenedModalImageIdRef.current === selectedImage.id) {
+      return;
+    }
+    lastOpenedModalImageIdRef.current = selectedImage.id;
+
+    const navigationSource =
+      clusterNavigationContext && clusterNavigationContext.length > 0
+        ? clusterNavigationContext
+        : safeFilteredImages;
+    const navigationImageIds = navigationSource.map((image) => image.id);
+
+    setOpenImageModals((current) => {
+      const nextZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) + 1 : 60;
+      const existingModal = current.find((modal) => modal.imageId === selectedImage.id);
+
+      if (existingModal) {
+        setActiveImageModalId(existingModal.modalId);
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
+        );
+      }
+
+      const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
+      setActiveImageModalId(modalId);
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: selectedImage.id,
+          navigationImageIds,
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+        },
+      ];
+    });
+  }, [clusterNavigationContext, safeFilteredImages, selectedImage]);
+
+  useEffect(() => {
+    setOpenImageModals((current) => {
+      let changed = false;
+      const next = current.flatMap((modal) => {
+        const image = imageMap.get(modal.imageId);
+        const directoryExists = image ? safeDirectories.some((directory) => directory.id === image.directoryId) : false;
+
+        if (!image || !directoryExists) {
+          changed = true;
+          return [];
+        }
+
+        const navigationImageIds = modal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+        if (navigationImageIds.length !== modal.navigationImageIds.length) {
+          changed = true;
+          return [{ ...modal, navigationImageIds }];
+        }
+
+        return [modal];
+      });
+
+      return changed ? next : current;
+    });
+  }, [imageMap, safeDirectories]);
+
+  useEffect(() => {
+    const currentActiveModal =
+      activeImageModalId
+        ? openImageModals.find((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
+        : null;
+
+    if (currentActiveModal) {
+      const activeImage = imageMap.get(currentActiveModal.imageId);
+      if (activeImage && useImageStore.getState().selectedImage?.id !== activeImage.id) {
+        setSelectedImage(activeImage);
+      }
+      return;
+    }
+
+    const nextActiveModal = [...openImageModals]
+      .filter((modal) => !modal.isMinimized)
+      .sort((left, right) => right.zIndex - left.zIndex)[0];
+
+    setActiveImageModalId(nextActiveModal?.modalId ?? null);
+
+    if (nextActiveModal) {
+      const nextActiveImage = imageMap.get(nextActiveModal.imageId);
+      if (nextActiveImage && useImageStore.getState().selectedImage?.id !== nextActiveImage.id) {
+        setSelectedImage(nextActiveImage);
+      }
+    } else {
+      setSelectedImage(null);
+      if (openImageModals.length === 0) {
+        setClusterNavigationContext(null);
+      }
+    }
+  }, [activeImageModalId, imageMap, openImageModals, setClusterNavigationContext, setSelectedImage]);
+
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
     removeImage(imageId);
-    // Only close modal if the deleted image is still the one currently selected
-    // (This allows ImageModal to navigate to next image BEFORE deletion without App closing it)
+    setOpenImageModals((current) => {
+      return current.flatMap((modal) => {
+        const navigationImageIds = modal.navigationImageIds.filter((id) => id !== imageId);
+        if (modal.imageId === imageId) {
+          return [];
+        }
+        return [{ ...modal, navigationImageIds }];
+      });
+    });
     if (useImageStore.getState().selectedImage?.id === imageId) {
       setSelectedImage(null);
     }
@@ -641,27 +765,98 @@ export default function App() {
 
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
     updateImage(imageId, newName);
-    setSelectedImage(null);
-  }, [updateImage, setSelectedImage]);
+  }, [updateImage]);
 
-  const getCurrentImageIndex = useCallback(() => {
-    if (!selectedImage) return 0;
-    return safeFilteredImages.findIndex(img => img.id === selectedImage.id);
-  }, [selectedImage, safeFilteredImages]);
+  const handleActivateImageModal = useCallback((modalId: string) => {
+    setOpenImageModals((current) => {
+      const targetModal = current.find((modal) => modal.modalId === modalId);
+      if (!targetModal) {
+        return current;
+      }
 
-  // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
-  const handleCloseImageModal = useCallback(() => {
-    setClusterNavigationContext(null);
-    setSelectedImage(null);
-  }, [setSelectedImage, setClusterNavigationContext]);
+      const nextZIndex = Math.max(...current.map((modal) => modal.zIndex)) + 1;
+      return current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
+      );
+    });
+    setActiveImageModalId(modalId);
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    const targetImage = targetModal ? imageMap.get(targetModal.imageId) : null;
+    if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
+      setSelectedImage(targetImage);
+    }
+  }, [imageMap, openImageModals, setSelectedImage]);
 
-  const handleImageModalNavigateNext = useCallback(() => {
-    handleNavigateNext();
-  }, [handleNavigateNext]);
+  const handleMinimizeImageModal = useCallback((modalId: string) => {
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, isMinimized: true } : modal
+      )
+    );
+  }, []);
 
-  const handleImageModalNavigatePrevious = useCallback(() => {
-    handleNavigatePrevious();
-  }, [handleNavigatePrevious]);
+  const handleMinimizeAllImageModals = useCallback(() => {
+    setOpenImageModals((current) => {
+      if (current.every((modal) => modal.isMinimized)) {
+        return current;
+      }
+
+      return current.map((modal) => (
+        modal.isMinimized ? modal : { ...modal, isMinimized: true }
+      ));
+    });
+  }, []);
+
+  const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
+    setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
+
+    if (useImageStore.getState().selectedImage?.id === imageId) {
+      setSelectedImage(null);
+    }
+  }, [setSelectedImage]);
+
+  const handleCloseImageModalFromFooter = useCallback((modalId: string) => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    handleCloseImageModal(targetModal.modalId, targetModal.imageId);
+  }, [handleCloseImageModal, openImageModals]);
+
+  const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    const availableImageIds = targetModal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+    const currentIndex = availableImageIds.findIndex((imageId) => imageId === targetModal.imageId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextImageId =
+      direction === 'next'
+        ? availableImageIds[currentIndex + 1]
+        : availableImageIds[currentIndex - 1];
+
+    if (!nextImageId) {
+      return;
+    }
+
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, imageId: nextImageId } : modal
+      )
+    );
+
+    const nextImage = imageMap.get(nextImageId);
+    if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
+      setSelectedImage(nextImage);
+    }
+  }, [imageMap, openImageModals, setSelectedImage]);
 
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {
@@ -685,7 +880,61 @@ export default function App() {
     ? 1
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
   const hasDirectories = safeDirectories.length > 0;
-  const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const openImageModalEntries = useMemo(() => {
+    return openImageModals
+      .map((modal) => {
+        const image = imageMap.get(modal.imageId);
+        if (!image) {
+          return null;
+        }
+
+        const navigationImageIds = modal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+        const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
+        const directoryPath = safeDirectories.find((directory) => directory.id === image.directoryId)?.path;
+        if (!directoryPath) {
+          return null;
+        }
+
+        return {
+          ...modal,
+          image,
+          directoryPath,
+          currentIndex: currentIndex === -1 ? 0 : currentIndex,
+          totalImages: navigationImageIds.length,
+        };
+      })
+      .filter(Boolean) as Array<OpenImageModalState & {
+        image: IndexedImage;
+        directoryPath: string;
+        currentIndex: number;
+        totalImages: number;
+      }>;
+  }, [imageMap, openImageModals, safeDirectories]);
+
+  const footerWindowItems = useMemo(() => {
+    return openImageModals
+      .map((modal) => {
+        const image = imageMap.get(modal.imageId);
+        if (!image) {
+          return null;
+        }
+
+        return {
+          id: modal.modalId,
+          title: image.name,
+          isActive: activeImageModalId === modal.modalId,
+          isMinimized: modal.isMinimized,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        title: string;
+        isActive: boolean;
+        isMinimized: boolean;
+      }>;
+  }, [activeImageModalId, imageMap, openImageModals]);
+  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
+
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -973,24 +1222,41 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  windowItems={footerWindowItems}
+                  onWindowSelect={handleActivateImageModal}
+                  onWindowClose={handleCloseImageModalFromFooter}
                 />
               )}
             </>
           )}
         </main>
 
-        {selectedImage && directoryPath && (
+        {openImageModalEntries.map((modal) => (
           <ImageModal
-            image={selectedImage}
-            onClose={handleCloseImageModal}
+            key={modal.modalId}
+            image={modal.image}
+            onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
-            currentIndex={getCurrentImageIndex()}
-            totalImages={safeFilteredImages.length}
-            onNavigateNext={handleImageModalNavigateNext}
-            onNavigatePrevious={handleImageModalNavigatePrevious}
-            directoryPath={directoryPath}
+            currentIndex={modal.currentIndex}
+            totalImages={modal.totalImages}
+            onNavigateNext={() => handleImageModalNavigate(modal.modalId, 'next')}
+            onNavigatePrevious={() => handleImageModalNavigate(modal.modalId, 'previous')}
+            directoryPath={modal.directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
+            zIndex={modal.zIndex}
+            isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
+            onActivate={() => handleActivateImageModal(modal.modalId)}
+            initialWindowOffset={modal.initialWindowOffset}
+            isMinimized={modal.isMinimized}
+            onMinimize={() => handleMinimizeImageModal(modal.modalId)}
+          />
+        ))}
+
+        {hasVisibleImageModal && (
+          <div
+            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
+            onClick={handleMinimizeAllImageModals}
           />
         )}
 

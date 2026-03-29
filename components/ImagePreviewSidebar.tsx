@@ -416,10 +416,10 @@ const ImagePreviewSidebar: React.FC = () => {
             {hasVerifiedTelemetry(activeImage) && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
-                title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                title="MetaHub Save Node - Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
               >
                 <CheckCircle size={12} className="flex-shrink-0" />
-                <span className="whitespace-nowrap">Verified</span>
+                <span className="whitespace-nowrap">MetaHub Save Node</span>
               </span>
             )}
           </div>
