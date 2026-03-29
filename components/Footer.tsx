@@ -85,7 +85,7 @@ const Footer: React.FC<FooterProps> = ({
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
-    <footer className="sticky bottom-0 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
+    <footer className="sticky bottom-0 z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
       {windowItems.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-800/60 px-4 py-2">
           <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">

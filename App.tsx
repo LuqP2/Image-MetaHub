@@ -776,6 +776,18 @@ export default function App() {
     );
   }, []);
 
+  const handleMinimizeAllImageModals = useCallback(() => {
+    setOpenImageModals((current) => {
+      if (current.every((modal) => modal.isMinimized)) {
+        return current;
+      }
+
+      return current.map((modal) => (
+        modal.isMinimized ? modal : { ...modal, isMinimized: true }
+      ));
+    });
+  }, []);
+
   const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
 
@@ -895,6 +907,7 @@ export default function App() {
         isMinimized: boolean;
       }>;
   }, [activeImageModalId, imageMap, openImageModals]);
+  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
   const activeFolderHasProgress = (() => {
@@ -1213,6 +1226,13 @@ export default function App() {
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
           />
         ))}
+
+        {hasVisibleImageModal && (
+          <div
+            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
+            onClick={handleMinimizeAllImageModals}
+          />
+        )}
 
         <ChangelogModal
           isOpen={isChangelogModalOpen}
