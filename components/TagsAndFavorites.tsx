@@ -2,8 +2,14 @@ import React, { useState } from 'react';
 import { ChevronDown, Star, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
-import { InclusionFilterMode } from '../types';
+import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
+
+type TagContextMenuState = {
+  x: number;
+  y: number;
+  tag: TagInfo;
+};
 
 const TagsAndFavorites: React.FC = () => {
   const {
@@ -19,6 +25,10 @@ const TagsAndFavorites: React.FC = () => {
     setExcludedTags,
     setSelectedAutoTags,
     setExcludedAutoTags,
+    renameTag,
+    clearTag,
+    deleteTag,
+    purgeTag,
     refreshAvailableAutoTags,
     filteredImages,
     images, // All images in current folder(s)
@@ -27,11 +37,28 @@ const TagsAndFavorites: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [autoTagSearchQuery, setAutoTagSearchQuery] = useState('');
+  const [contextMenu, setContextMenu] = useState<TagContextMenuState | null>(null);
 
   // Refresh auto-tags when images change
   React.useEffect(() => {
     refreshAvailableAutoTags();
   }, [images, refreshAvailableAutoTags]);
+
+  React.useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const handleCloseMenu = () => setContextMenu(null);
+
+    window.addEventListener('click', handleCloseMenu, true);
+    window.addEventListener('contextmenu', handleCloseMenu, true);
+
+    return () => {
+      window.removeEventListener('click', handleCloseMenu, true);
+      window.removeEventListener('contextmenu', handleCloseMenu, true);
+    };
+  }, [contextMenu]);
 
   // Count favorites in ALL current images (not just filtered)
   const totalFavoriteCount = images.filter(img => img.isFavorite).length;
@@ -114,6 +141,61 @@ const TagsAndFavorites: React.FC = () => {
   const clearSelectedAutoTags = () => {
     setSelectedAutoTags([]);
     setExcludedAutoTags([]);
+  };
+
+  const setTagFilterMode = (tagName: string, mode: InclusionFilterMode) => {
+    if (mode === 'include') {
+      setSelectedTags([...selectedTags.filter(t => t !== tagName), tagName]);
+      setExcludedTags(excludedTags.filter(t => t !== tagName));
+      return;
+    }
+
+    if (mode === 'exclude') {
+      setSelectedTags(selectedTags.filter(t => t !== tagName));
+      setExcludedTags([...excludedTags.filter(t => t !== tagName), tagName]);
+      return;
+    }
+
+    setSelectedTags(selectedTags.filter(t => t !== tagName));
+    setExcludedTags(excludedTags.filter(t => t !== tagName));
+  };
+
+  const handleTagContextMenu = (event: React.MouseEvent, tag: TagInfo) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const menuWidth = 220;
+    const menuHeight = 260;
+    const maxX = Math.max(12, window.innerWidth - menuWidth - 12);
+    const maxY = Math.max(12, window.innerHeight - menuHeight - 12);
+
+    setContextMenu({
+      x: Math.min(event.clientX, maxX),
+      y: Math.min(event.clientY, maxY),
+      tag,
+    });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const handleRenameFromMenu = async () => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const nextName = window.prompt('Rename tag', contextMenu.tag.name)?.trim();
+    closeContextMenu();
+
+    if (!nextName || nextName.toLowerCase() === contextMenu.tag.name) {
+      return;
+    }
+
+    await renameTag(contextMenu.tag.name, nextName);
+  };
+
+  const handleTagAction = async (action: () => Promise<void>) => {
+    closeContextMenu();
+    await action();
   };
 
   // Don't render if no favorites, tags, or auto-tags exist
@@ -235,6 +317,7 @@ const TagsAndFavorites: React.FC = () => {
                         <div
                           key={tag.name}
                           className="flex items-center space-x-2 cursor-pointer group py-1 px-2 rounded hover:bg-gray-700/50"
+                          onContextMenu={(event) => handleTagContextMenu(event, tag)}
                         >
                           <TriStateToggle
                             mode={getTagFilterMode(tag.name)}
@@ -350,6 +433,88 @@ const TagsAndFavorites: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={() => {
+              setTagFilterMode(contextMenu.tag.name, 'include');
+              closeContextMenu();
+            }}
+          >
+            Check Filter
+          </button>
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={() => {
+              setTagFilterMode(contextMenu.tag.name, 'exclude');
+              closeContextMenu();
+            }}
+          >
+            X Filter
+          </button>
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={() => {
+              setTagFilterMode(contextMenu.tag.name, 'neutral');
+              closeContextMenu();
+            }}
+          >
+            Un-check Filter
+          </button>
+
+          <div className="my-1 border-t border-gray-700" />
+
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={() => void handleRenameFromMenu()}
+          >
+            Rename Tag
+          </button>
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={() => void handleTagAction(() => clearTag(contextMenu.tag.name))}
+          >
+            Clear Tag
+          </button>
+          <button
+            type="button"
+            className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+              contextMenu.tag.count > 0
+                ? 'cursor-not-allowed text-gray-500'
+                : 'text-gray-300 hover:bg-gray-700'
+            }`}
+            onClick={() => {
+              if (contextMenu.tag.count > 0) {
+                return;
+              }
+              void handleTagAction(() => deleteTag(contextMenu.tag.name));
+            }}
+          >
+            Delete Tag
+          </button>
+
+          <div className="my-1 border-t border-gray-700" />
+
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
+            onClick={() => void handleTagAction(() => purgeTag(contextMenu.tag.name))}
+          >
+            Purge Tag
+          </button>
+        </div>
+      )}
     </div>
   );
 };
