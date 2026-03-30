@@ -40,27 +40,12 @@ const TagsAndFavorites: React.FC = () => {
   const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
   const favoriteBadgeCount = favoriteFilterMode === 'include' ? favoriteCount : totalFavoriteCount;
 
-  // Get tags only from current images (not all from IndexedDB)
-  const currentImagesTags = React.useMemo(() => {
-    const tagCounts = new Map<string, number>();
-    for (const image of images) {
-      if (image.tags) {
-        for (const tag of image.tags) {
-          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-        }
-      }
-    }
-    return Array.from(tagCounts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [images]);
-
   // Filter tags by search query
   const filteredTags = tagSearchQuery
-    ? currentImagesTags.filter(tag =>
+    ? availableTags.filter(tag =>
         tag.name.toLowerCase().includes(tagSearchQuery.toLowerCase())
       )
-    : currentImagesTags;
+    : availableTags;
 
   // Filter auto-tags by search query (from store, already calculated)
   const filteredAutoTags = autoTagSearchQuery
@@ -131,8 +116,8 @@ const TagsAndFavorites: React.FC = () => {
     setExcludedAutoTags([]);
   };
 
-  // Don't render if no favorites, tags, or auto-tags exist in current images
-  if (currentImagesTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0) {
+  // Don't render if no favorites, tags, or auto-tags exist
+  if (availableTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0) {
     return null;
   }
 
@@ -195,7 +180,7 @@ const TagsAndFavorites: React.FC = () => {
               )}
 
               {/* Tags Section */}
-              {currentImagesTags.length > 0 && (
+              {availableTags.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -225,7 +210,7 @@ const TagsAndFavorites: React.FC = () => {
                   </div>
 
                   {/* Tag Search */}
-                  {currentImagesTags.length > 5 && (
+                  {availableTags.length > 5 && (
                     <input
                       type="text"
                       placeholder="Filter tags..."
@@ -267,9 +252,9 @@ const TagsAndFavorites: React.FC = () => {
                     )}
                   </div>
 
-                  {filteredTags.length > 0 && currentImagesTags.length > filteredTags.length && (
+                  {filteredTags.length > 0 && availableTags.length > filteredTags.length && (
                     <div className="text-xs text-gray-500 text-center pt-1">
-                      {filteredTags.length} of {currentImagesTags.length} tags
+                      {filteredTags.length} of {availableTags.length} tags
                     </div>
                   )}
                 </div>
@@ -356,7 +341,7 @@ const TagsAndFavorites: React.FC = () => {
               )}
 
               {/* Empty State */}
-              {currentImagesTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0 && (
+              {availableTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0 && (
                 <div className="text-xs text-gray-500 text-center py-4">
                   No favorites or tags yet
                 </div>
