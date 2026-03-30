@@ -430,9 +430,10 @@ export function useImageLoader() {
 
     const finalizeDirectoryLoad = useCallback(async (
         directory: Directory,
-        options: { suppressIndexingState?: boolean } = {}
+        options: { suppressIndexingState?: boolean; suppressSuccessMessage?: boolean } = {}
     ) => {
         const suppressIndexingState = options.suppressIndexingState ?? false;
+        const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
 
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
@@ -454,7 +455,9 @@ export function useImageLoader() {
         
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
-            setSuccess(`Loaded 0 images from ${directory.name}.`);
+            if (!suppressSuccessMessage) {
+                setSuccess(`Loaded 0 images from ${directory.name}.`);
+            }
             setDirectoryProgress(directory.id, null);
             if (!suppressIndexingState) {
                 setLoading(false);
@@ -474,7 +477,9 @@ export function useImageLoader() {
         }
 
         scheduleGlobalFilterRefresh(true);
-        setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        if (!suppressSuccessMessage) {
+            setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        }
         setDirectoryProgress(directory.id, null);
         if (!suppressIndexingState) {
             setLoading(false);
@@ -660,13 +665,21 @@ export function useImageLoader() {
         }
     }, [addImages, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
 
-    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
+    const loadDirectory = useCallback(async (
+        directory: Directory,
+        isUpdate: boolean,
+        refreshPath?: string,
+        options: { suppressSuccessMessage?: boolean } = {}
+    ) => {
         const suppressIndexingState = isUpdate;
+        const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
         setDirectoryProgress(directory.id, { current: 0, total: 0 });
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
             setError(null);
-            setSuccess(null);
+            if (!suppressSuccessMessage) {
+                setSuccess(null);
+            }
         } else {
             setLoading(true);
             setError(null);
@@ -893,7 +906,7 @@ export function useImageLoader() {
                     });
 
                 if (!shouldCancelIndexing(suppressIndexingState)) {
-                    finalizeDirectoryLoad(directory, { suppressIndexingState });
+                    finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                 }
             } else {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
@@ -904,7 +917,7 @@ export function useImageLoader() {
                         total: preloadedImages.length,
                     });
                 }
-                finalizeDirectoryLoad(directory, { suppressIndexingState });
+                finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
             }
 
         } catch (err) {
@@ -1077,6 +1090,18 @@ export function useImageLoader() {
                     };
 
                     await hydrateInBackground();
+
+                    const reconcileDirectoriesFromDisk = async () => {
+                        for (const dir of directoriesToLoad) {
+                            try {
+                                await loadDirectory(dir, true, undefined, { suppressSuccessMessage: true });
+                            } catch (refreshError) {
+                                console.error(`Background refresh failed for ${dir.path}:`, refreshError);
+                            }
+                        }
+                    };
+
+                    void reconcileDirectoriesFromDisk();
 
                     return;
                 } catch (e) {
