@@ -52,6 +52,85 @@ interface OpenImageModalState {
   isMinimized: boolean;
 }
 
+const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
+const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 640;
+const RIGHT_SIDEBAR_DEFAULT_WIDTH = 384;
+const RIGHT_SIDEBAR_MIN_WIDTH = 320;
+const RIGHT_SIDEBAR_MAX_WIDTH = 640;
+const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
+const MAIN_CONTENT_MIN_WIDTH = 560;
+
+const sanitizePreferredWidth = (
+  width: number,
+  fallbackWidth: number,
+  minWidth: number,
+  maxWidth: number
+) => {
+  if (!Number.isFinite(width)) {
+    return fallbackWidth;
+  }
+
+  return Math.min(Math.max(width, minWidth), maxWidth);
+};
+
+const clampSidebarWidth = (width: number, viewportWidth: number, reservedRightWidth = 0) => {
+  const maxWidthFromViewport = viewportWidth - reservedRightWidth - MAIN_CONTENT_MIN_WIDTH;
+  const upperBound = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
+
+  return Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), upperBound);
+};
+
+const clampRightSidebarWidth = (width: number, viewportWidth: number, reservedLeftWidth = 0) => {
+  const maxWidthFromViewport = viewportWidth - reservedLeftWidth - MAIN_CONTENT_MIN_WIDTH;
+  const upperBound = Math.max(RIGHT_SIDEBAR_MIN_WIDTH, Math.min(RIGHT_SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
+
+  return Math.min(Math.max(width, RIGHT_SIDEBAR_MIN_WIDTH), upperBound);
+};
+
+const resolveSidebarWidths = ({
+  hasDirectories,
+  isSidebarCollapsed,
+  hasRightSidebar,
+  viewportWidth,
+  preferredLeftWidth,
+  preferredRightWidth,
+}: {
+  hasDirectories: boolean;
+  isSidebarCollapsed: boolean;
+  hasRightSidebar: boolean;
+  viewportWidth: number;
+  preferredLeftWidth: number;
+  preferredRightWidth: number;
+}) => {
+  let leftWidth = preferredLeftWidth;
+  let rightWidth = preferredRightWidth;
+
+  for (let iteration = 0; iteration < 4; iteration += 1) {
+    const nextLeftWidth =
+      hasDirectories && !isSidebarCollapsed
+        ? clampSidebarWidth(preferredLeftWidth, viewportWidth, hasRightSidebar ? rightWidth : 0)
+        : preferredLeftWidth;
+    const reservedLeftWidth = hasDirectories
+      ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : nextLeftWidth)
+      : 0;
+    const nextRightWidth = hasRightSidebar
+      ? clampRightSidebarWidth(preferredRightWidth, viewportWidth, reservedLeftWidth)
+      : preferredRightWidth;
+
+    if (nextLeftWidth === leftWidth && nextRightWidth === rightWidth) {
+      break;
+    }
+
+    leftWidth = nextLeftWidth;
+    rightWidth = nextRightWidth;
+  }
+
+  return { leftWidth, rightWidth };
+};
+
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
@@ -150,6 +229,7 @@ export default function App() {
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
+  const hasDirectories = safeDirectories.length > 0;
 
   // --- Settings Store State ---
   const {
@@ -169,6 +249,46 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
   const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 1440;
+    }
+
+    return window.innerWidth;
+  });
+  const [preferredSidebarWidth, setPreferredSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    const storedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+
+    return sanitizePreferredWidth(
+      storedWidth,
+      SIDEBAR_DEFAULT_WIDTH,
+      SIDEBAR_MIN_WIDTH,
+      SIDEBAR_MAX_WIDTH
+    );
+  });
+  const [preferredRightSidebarWidth, setPreferredRightSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return RIGHT_SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    const storedWidth = Number(window.localStorage.getItem(RIGHT_SIDEBAR_WIDTH_STORAGE_KEY));
+
+    return sanitizePreferredWidth(
+      storedWidth,
+      RIGHT_SIDEBAR_DEFAULT_WIDTH,
+      RIGHT_SIDEBAR_MIN_WIDTH,
+      RIGHT_SIDEBAR_MAX_WIDTH
+    );
+  });
+  const [sidebarResizeState, setSidebarResizeState] = useState<{
+    side: 'left' | 'right';
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
@@ -189,6 +309,55 @@ export default function App() {
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
   const imageMap = useMemo(() => new Map(safeImages.map((image) => [image.id, image])), [safeImages]);
+  const hasRightSidebar = Boolean(previewImage || isQueueOpen);
+  const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
+    () =>
+      resolveSidebarWidths({
+        hasDirectories,
+        isSidebarCollapsed,
+        hasRightSidebar,
+        viewportWidth,
+        preferredLeftWidth: preferredSidebarWidth,
+        preferredRightWidth: preferredRightSidebarWidth,
+      }),
+    [
+      hasDirectories,
+      hasRightSidebar,
+      isSidebarCollapsed,
+      preferredRightSidebarWidth,
+      preferredSidebarWidth,
+      viewportWidth,
+    ]
+  );
+  const mainContentMarginLeft = hasDirectories
+    ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
+    : 0;
+  const mainContentMarginRight = hasRightSidebar ? rightSidebarWidth : 0;
+  const isSidebarResizing = sidebarResizeState !== null;
+  const isLeftSidebarResizing = sidebarResizeState?.side === 'left';
+  const isRightSidebarResizing = sidebarResizeState?.side === 'right';
+
+  const handleSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      side: 'left',
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    });
+  }, [sidebarWidth]);
+
+  const handleRightSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      side: 'right',
+      startX: event.clientX,
+      startWidth: rightSidebarWidth,
+    });
+  }, [rightSidebarWidth]);
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -644,6 +813,87 @@ export default function App() {
   }, [selectedImage, safeDirectories, setSelectedImage]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredSidebarWidth))
+    );
+  }, [preferredSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      RIGHT_SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredRightSidebarWidth))
+    );
+  }, [preferredRightSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarResizeState || typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const deltaX = event.clientX - sidebarResizeState.startX;
+      if (sidebarResizeState.side === 'left') {
+        const nextWidth = sidebarResizeState.startWidth + deltaX;
+        setPreferredSidebarWidth(
+          clampSidebarWidth(nextWidth, viewportWidth, mainContentMarginRight)
+        );
+        return;
+      }
+
+      const nextWidth = sidebarResizeState.startWidth - deltaX;
+      setPreferredRightSidebarWidth(
+        clampRightSidebarWidth(nextWidth, viewportWidth, mainContentMarginLeft)
+      );
+    };
+
+    const handlePointerUp = () => {
+      setSidebarResizeState(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [mainContentMarginLeft, mainContentMarginRight, sidebarResizeState, viewportWidth]);
+
+  useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
       return;
@@ -879,7 +1129,6 @@ export default function App() {
   const totalPages = itemsPerPage === -1
     ? 1
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
-  const hasDirectories = safeDirectories.length > 0;
   const openImageModalEntries = useMemo(() => {
     return openImageModals
       .map((modal) => {
@@ -1012,6 +1261,9 @@ export default function App() {
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          width={sidebarWidth}
+          isResizing={isLeftSidebarResizing}
+          onResizeStart={handleSidebarResizeStart}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           availableModels={availableModels}
@@ -1078,12 +1330,24 @@ export default function App() {
       )}
       
       {isQueueOpen ? (
-        <GenerationQueueSidebar onClose={() => setIsQueueOpen(false)} />
+        <GenerationQueueSidebar
+          onClose={() => setIsQueueOpen(false)}
+          width={rightSidebarWidth}
+          isResizing={isRightSidebarResizing}
+          onResizeStart={handleRightSidebarResizeStart}
+        />
       ) : (
-        <ImagePreviewSidebar />
+        <ImagePreviewSidebar
+          width={rightSidebarWidth}
+          isResizing={isRightSidebarResizing}
+          onResizeStart={handleRightSidebarResizeStart}
+        />
       )}
 
-      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${(previewImage || isQueueOpen) ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div
+        className={`h-screen flex flex-col ${isSidebarResizing ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
+        style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
+      >
         <Header
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}

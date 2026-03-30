@@ -12,6 +12,9 @@ import { useComfyUIProgressContext } from '../contexts/ComfyUIProgressContext';
 
 interface GenerationQueueSidebarProps {
   onClose: () => void;
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
 }
 
 const statusStyles: Record<string, string> = {
@@ -40,7 +43,12 @@ const formatPromptPreview = (prompt?: string) => {
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({ onClose }) => {
+const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({
+  onClose,
+  width,
+  isResizing,
+  onResizeStart,
+}) => {
   const items = useGenerationQueueStore((state) => state.items);
   const removeJob = useGenerationQueueStore((state) => state.removeJob);
   const clearByStatus = useGenerationQueueStore((state) => state.clearByStatus);
@@ -151,7 +159,22 @@ const GenerationQueueSidebar: React.FC<GenerationQueueSidebarProps> = ({ onClose
   };
 
   return (
-    <div data-area="queue" tabIndex={-1} className="fixed right-0 top-0 h-full w-96 bg-gray-800 border-l border-gray-700 z-40 flex flex-col">
+    <div
+      data-area="queue"
+      tabIndex={-1}
+      style={{ width }}
+      className={`fixed right-0 top-0 h-full bg-gray-800 border-l border-gray-700 z-40 flex flex-col ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
+    >
+      <div
+        role="separator"
+        aria-label="Resize queue sidebar"
+        aria-orientation="vertical"
+        onPointerDown={onResizeStart}
+        className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+        title="Drag to resize queue sidebar"
+      >
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+      </div>
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div>
           <h2 className="text-lg font-semibold text-gray-200">Queue</h2>
