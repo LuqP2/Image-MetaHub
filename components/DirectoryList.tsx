@@ -447,6 +447,10 @@ export default function DirectoryList({
 
       const selectNodeAt = (index: number) => {
         const safeIndex = Math.max(0, Math.min(visibleNodes.length - 1, index));
+        if (selectedIndex >= 0 && safeIndex === currentIndex) {
+          treeRef.current?.focus({ preventScroll: true });
+          return;
+        }
         onToggleFolderSelection(visibleNodes[safeIndex].path, false);
         treeRef.current?.focus({ preventScroll: true });
       };

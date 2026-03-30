@@ -189,6 +189,7 @@ const settingsTempPath = `${settingsPath}.tmp`;
 const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+let settingsWriteQueue = Promise.resolve();
 
 const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
 
@@ -309,6 +310,23 @@ async function saveSettings(settings) {
     }
     throw error;
   }
+}
+
+function queueSettingsUpdate(updater) {
+  const applyUpdate = async () => {
+    const currentSettings = await readSettings();
+    const nextSettings = await updater(currentSettings ?? {});
+    await saveSettings(nextSettings);
+    return nextSettings;
+  };
+
+  const queuedUpdate = settingsWriteQueue.then(applyUpdate, applyUpdate);
+  settingsWriteQueue = queuedUpdate.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return queuedUpdate;
 }
 
 
@@ -765,9 +783,8 @@ async function persistWindowState() {
     ? mainWindow.getNormalBounds()
     : mainWindow.getBounds();
   const display = screen.getDisplayMatching(bounds);
-  const currentSettings = await readSettings();
 
-  await saveSettings({
+  await queueSettingsUpdate((currentSettings) => ({
     ...currentSettings,
     windowState: {
       bounds,
@@ -775,7 +792,7 @@ async function persistWindowState() {
       isMaximized: mainWindow.isMaximized(),
       isFullScreen: mainWindow.isFullScreen(),
     },
-  });
+  }));
 }
 
 async function createWindow(startupDirectory = null) {
@@ -1167,9 +1184,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
-      const currentSettings = await readSettings();
-      const mergedSettings = { ...currentSettings, ...newSettings };
-      await saveSettings(mergedSettings);
+      await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
+        ...newSettings,
+      }));
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };

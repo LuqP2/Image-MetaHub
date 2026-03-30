@@ -430,7 +430,10 @@ export function useImageLoader() {
 
     const finalizeDirectoryLoad = useCallback(async (
         directory: Directory,
-        options: { suppressIndexingState?: boolean; suppressSuccessMessage?: boolean } = {}
+        options: {
+            suppressIndexingState?: boolean;
+            suppressSuccessMessage?: boolean;
+        } = {}
     ) => {
         const suppressIndexingState = options.suppressIndexingState ?? false;
         const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
@@ -669,14 +672,20 @@ export function useImageLoader() {
         directory: Directory,
         isUpdate: boolean,
         refreshPath?: string,
-        options: { suppressSuccessMessage?: boolean } = {}
+        options: {
+            suppressSuccessMessage?: boolean;
+            suppressErrorMessage?: boolean;
+        } = {}
     ) => {
         const suppressIndexingState = isUpdate;
         const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
+        const suppressErrorMessage = options.suppressErrorMessage ?? false;
         setDirectoryProgress(directory.id, { current: 0, total: 0 });
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
-            setError(null);
+            if (!suppressErrorMessage) {
+                setError(null);
+            }
             if (!suppressSuccessMessage) {
                 setSuccess(null);
             }
@@ -923,7 +932,9 @@ export function useImageLoader() {
         } catch (err) {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
-                setError(`Failed to load directory ${directory.name}. Check console for details.`);
+                if (!suppressErrorMessage) {
+                    setError(`Failed to load directory ${directory.name}. Check console for details.`);
+                }
             }
             setDirectoryProgress(directory.id, null);
             if (suppressIndexingState) {
@@ -1094,7 +1105,10 @@ export function useImageLoader() {
                     const reconcileDirectoriesFromDisk = async () => {
                         for (const dir of directoriesToLoad) {
                             try {
-                                await loadDirectory(dir, true, undefined, { suppressSuccessMessage: true });
+                                await loadDirectory(dir, true, undefined, {
+                                    suppressSuccessMessage: true,
+                                    suppressErrorMessage: true,
+                                });
                             } catch (refreshError) {
                                 console.error(`Background refresh failed for ${dir.path}:`, refreshError);
                             }
