@@ -396,8 +396,19 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         )}
       </div>
       {showFilenames && (
-        <div className="mt-2 w-full px-1">
-          <p className="text-[11px] text-gray-400 text-center truncate" title={fullDisplayName}>{displayName}</p>
+        <div className="mt-2 w-full min-h-[2.25rem] px-1">
+          <p
+            className="text-[11px] leading-tight text-center text-gray-400"
+            style={{
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+            title={fullDisplayName}
+          >
+            {displayName}
+          </p>
         </div>
       )}
     </div>
@@ -413,7 +424,7 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 const GAP_SIZE = 16;
 const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
 const CARD_HEIGHT_RATIO = 1.2;
-const FILENAME_HEIGHT = 24;
+const FILENAME_HEIGHT = 40;
 
 const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
   (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
