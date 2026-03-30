@@ -52,6 +52,21 @@ interface OpenImageModalState {
   isMinimized: boolean;
 }
 
+const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 640;
+const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
+const RIGHT_PANEL_WIDTH = 384;
+const MAIN_CONTENT_MIN_WIDTH = 560;
+
+const clampSidebarWidth = (width: number, viewportWidth: number, reservedRightWidth = 0) => {
+  const maxWidthFromViewport = viewportWidth - reservedRightWidth - MAIN_CONTENT_MIN_WIDTH;
+  const upperBound = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
+
+  return Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), upperBound);
+};
+
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
   useGenerationQueueSync();
@@ -150,6 +165,7 @@ export default function App() {
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
+  const hasDirectories = safeDirectories.length > 0;
 
   // --- Settings Store State ---
   const {
@@ -169,6 +185,19 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
   const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    const storedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+
+    return clampSidebarWidth(
+      Number.isFinite(storedWidth) ? storedWidth : SIDEBAR_DEFAULT_WIDTH,
+      window.innerWidth
+    );
+  });
+  const [sidebarResizeState, setSidebarResizeState] = useState<{ startX: number; startWidth: number } | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
@@ -189,6 +218,20 @@ export default function App() {
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
   const imageMap = useMemo(() => new Map(safeImages.map((image) => [image.id, image])), [safeImages]);
+  const reservedRightPanelWidth = (previewImage || isQueueOpen) ? RIGHT_PANEL_WIDTH : 0;
+  const isSidebarResizing = sidebarResizeState !== null;
+  const mainContentMarginLeft = hasDirectories
+    ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
+    : 0;
+
+  const handleSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    setSidebarResizeState({
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    });
+  }, [sidebarWidth]);
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -644,6 +687,62 @@ export default function App() {
   }, [selectedImage, safeDirectories, setSelectedImage]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(sidebarWidth)));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleWindowResize = () => {
+      setSidebarWidth((currentWidth) =>
+        clampSidebarWidth(currentWidth, window.innerWidth, reservedRightPanelWidth)
+      );
+    };
+
+    handleWindowResize();
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, [reservedRightPanelWidth]);
+
+  useEffect(() => {
+    if (!sidebarResizeState || typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const deltaX = event.clientX - sidebarResizeState.startX;
+      const nextWidth = sidebarResizeState.startWidth + deltaX;
+
+      setSidebarWidth(clampSidebarWidth(nextWidth, window.innerWidth, reservedRightPanelWidth));
+    };
+
+    const handlePointerUp = () => {
+      setSidebarResizeState(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [reservedRightPanelWidth, sidebarResizeState]);
+
+  useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
       return;
@@ -879,7 +978,6 @@ export default function App() {
   const totalPages = itemsPerPage === -1
     ? 1
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
-  const hasDirectories = safeDirectories.length > 0;
   const openImageModalEntries = useMemo(() => {
     return openImageModals
       .map((modal) => {
@@ -1012,6 +1110,9 @@ export default function App() {
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          width={sidebarWidth}
+          isResizing={isSidebarResizing}
+          onResizeStart={handleSidebarResizeStart}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           availableModels={availableModels}
@@ -1083,7 +1184,10 @@ export default function App() {
         <ImagePreviewSidebar />
       )}
 
-      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${(previewImage || isQueueOpen) ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div
+        className={`${(previewImage || isQueueOpen) ? 'mr-96' : 'mr-0'} h-screen flex flex-col ${isSidebarResizing ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
+        style={{ marginLeft: mainContentMarginLeft }}
+      >
         <Header
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}

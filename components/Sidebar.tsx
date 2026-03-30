@@ -31,6 +31,9 @@ interface SidebarProps {
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onAddFolder?: () => void;
   isIndexing: boolean;
   scanSubfolders: boolean;
@@ -61,6 +64,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   children,
   isCollapsed,
   onToggleCollapse,
+  width,
+  isResizing,
+  onResizeStart,
   onAddFolder,
   isIndexing = false,
   scanSubfolders,
@@ -237,7 +243,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div
       data-area="sidebar"
       tabIndex={-1}
-      className="fixed left-0 top-0 h-full w-80 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-black/40">
+      style={{ width }}
+      className={`fixed left-0 top-0 h-full bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      <div
+        role="separator"
+        aria-label="Resize filters sidebar"
+        aria-orientation="vertical"
+        onPointerDown={onResizeStart}
+        className="absolute right-0 top-0 z-50 flex h-full w-3 translate-x-1/2 cursor-col-resize items-center justify-center"
+        title="Drag to resize filters sidebar"
+      >
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
+      </div>
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
         <div className="flex items-center gap-3 p-4 pb-2">
