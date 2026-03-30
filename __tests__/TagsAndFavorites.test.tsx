@@ -85,9 +85,24 @@ describe('TagsAndFavorites manual tag browser', () => {
     expect(screen.getByText('0')).toBeTruthy();
   });
 
+  it('hides filter and image-removal actions for empty tags', () => {
+    seedSidebarState({
+      availableTags: [{ name: 'ghost-tag', count: 0 }],
+    });
+
+    render(<TagsAndFavorites />);
+    openContextMenuForTag('ghost-tag');
+
+    expect(screen.queryByText('Include')).toBeNull();
+    expect(screen.queryByText('Exclude')).toBeNull();
+    expect(screen.queryByText('Clear Filter')).toBeNull();
+    expect(screen.queryByText('Clear From Images')).toBeNull();
+    expect(screen.queryByText('Clear and Delete')).toBeNull();
+  });
+
   it('uses the context menu to set an include filter', () => {
     const { setSelectedTags, setExcludedTags } = seedSidebarState({
-      availableTags: [{ name: 'ghost-tag', count: 0 }],
+      availableTags: [{ name: 'ghost-tag', count: 2 }],
     });
 
     render(<TagsAndFavorites />);
@@ -116,7 +131,7 @@ describe('TagsAndFavorites manual tag browser', () => {
     expect(renameTag).toHaveBeenCalledWith('ghost-tag', 'fixed-tag');
   });
 
-  it('offers purge when trying to delete a still-used tag', () => {
+  it('hides delete-empty for used tags and keeps purge available', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { deleteTag, purgeTag } = seedSidebarState({
       availableTags: [{ name: 'used-tag', count: 3 }],
@@ -124,10 +139,11 @@ describe('TagsAndFavorites manual tag browser', () => {
 
     render(<TagsAndFavorites />);
     openContextMenuForTag('used-tag');
-    fireEvent.click(screen.getByText('Delete Tag'));
+    expect(screen.queryByText('Remove Empty Tag')).toBeNull();
+    fireEvent.click(screen.getByText('Clear and Delete'));
 
     expect(deleteTag).not.toHaveBeenCalled();
     expect(purgeTag).toHaveBeenCalledWith('used-tag');
-    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 });

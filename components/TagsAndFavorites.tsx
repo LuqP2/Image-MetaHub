@@ -544,38 +544,42 @@ const TagsAndFavorites: React.FC = () => {
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => {
-              setTagFilterMode(contextMenu.tag.name, 'include');
-              closeContextMenu();
-            }}
-          >
-            Include
-          </button>
-          <button
-            type="button"
-            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => {
-              setTagFilterMode(contextMenu.tag.name, 'exclude');
-              closeContextMenu();
-            }}
-          >
-            Exclude
-          </button>
-          <button
-            type="button"
-            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => {
-              setTagFilterMode(contextMenu.tag.name, 'neutral');
-              closeContextMenu();
-            }}
-          >
-            Clear Filter
-          </button>
+          {contextMenu.tag.count > 0 && (
+            <>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+                onClick={() => {
+                  setTagFilterMode(contextMenu.tag.name, 'include');
+                  closeContextMenu();
+                }}
+              >
+                Include
+              </button>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+                onClick={() => {
+                  setTagFilterMode(contextMenu.tag.name, 'exclude');
+                  closeContextMenu();
+                }}
+              >
+                Exclude
+              </button>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+                onClick={() => {
+                  setTagFilterMode(contextMenu.tag.name, 'neutral');
+                  closeContextMenu();
+                }}
+              >
+                Clear Filter
+              </button>
 
-          <div className="my-1 border-t border-gray-700" />
+              <div className="my-1 border-t border-gray-700" />
+            </>
+          )}
 
           <button
             type="button"
@@ -584,34 +588,41 @@ const TagsAndFavorites: React.FC = () => {
           >
             Rename Tag
           </button>
-          <button
-            type="button"
-            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => void handleClearFromMenu()}
-          >
-            Clear Tag
-          </button>
-          <button
-            type="button"
-            className={`w-full px-4 py-2 text-left text-sm transition-colors ${
-              contextMenu.tag.count > 0
-                ? 'text-amber-300 hover:bg-amber-900/20'
-                : 'text-gray-300 hover:bg-gray-700'
-            }`}
-            onClick={() => void handleDeleteFromMenu()}
-          >
-            Delete Tag
-          </button>
+          {contextMenu.tag.count > 0 && (
+            <button
+              type="button"
+              className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+              onClick={() => void handleClearFromMenu()}
+            >
+              <span className="block">Clear From Images</span>
+              <span className="block text-xs text-gray-500">Keep the tag in the library</span>
+            </button>
+          )}
+          {contextMenu.tag.count === 0 && (
+            <button
+              type="button"
+              className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+              onClick={() => void handleDeleteFromMenu()}
+            >
+              <span className="block">Remove Empty Tag</span>
+              <span className="block text-xs text-gray-500">Removes only the unused library entry</span>
+            </button>
+          )}
 
-          <div className="my-1 border-t border-gray-700" />
+          {contextMenu.tag.count > 0 && (
+            <>
+              <div className="my-1 border-t border-gray-700" />
 
-          <button
-            type="button"
-            className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
-            onClick={() => void handlePurgeFromMenu()}
-          >
-            Purge Tag
-          </button>
+              <button
+                type="button"
+                className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
+                onClick={() => void handlePurgeFromMenu()}
+              >
+                <span className="block">Clear and Delete</span>
+                <span className="block text-xs text-red-200/80">Removes the tag from images, then deletes the tag</span>
+              </button>
+            </>
+          )}
         </div>
       )}
 
