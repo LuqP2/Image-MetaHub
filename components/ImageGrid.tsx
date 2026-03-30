@@ -57,6 +57,14 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+};
+
 const getRelativeImagePath = (image: IndexedImage): string => {
   const [, relativePath = ''] = image.id.split('::');
   return relativePath || image.name;
@@ -607,6 +615,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
   const gridRef = useRef<HTMLDivElement>(null);
+  const gridKeyboardActiveRef = useRef(false);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
@@ -853,6 +862,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setInitialSelectedImages(currentSelection);
   }, [selectedImages]);
 
+  useEffect(() => {
+    const handleGlobalPointerDown = (event: MouseEvent) => {
+      if (!gridRef.current?.contains(event.target as Node)) {
+        gridKeyboardActiveRef.current = false;
+      }
+    };
+
+    const handleGlobalFocusIn = (event: FocusEvent) => {
+      if (!gridRef.current?.contains(event.target as Node)) {
+        gridKeyboardActiveRef.current = false;
+      }
+    };
+
+    document.addEventListener('mousedown', handleGlobalPointerDown, true);
+    document.addEventListener('focusin', handleGlobalFocusIn);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalPointerDown, true);
+      document.removeEventListener('focusin', handleGlobalFocusIn);
+    };
+  }, []);
+
   // Throttled with requestAnimationFrame for performance
   const rafIdRef = useRef<number | null>(null);
 
@@ -996,7 +1027,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       // For arrow keys and page navigation, require grid focus
       const needsFocus = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key);
-      if (needsFocus && !gridRef.current?.contains(document.activeElement)) {
+      if (needsFocus && !gridKeyboardActiveRef.current) {
         return;
       }
 
@@ -1459,6 +1490,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             style={{ position: 'relative' }}
             data-area="grid"
             tabIndex={0}
+            onFocus={() => {
+              gridKeyboardActiveRef.current = true;
+            }}
+            onMouseDownCapture={(event) => {
+              if (!isTypingTarget(event.target)) {
+                gridKeyboardActiveRef.current = true;
+              }
+            }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -1570,7 +1609,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
         data-area="grid"
         tabIndex={0}
-        onClick={() => gridRef.current?.focus()}
+        onFocus={() => {
+          gridKeyboardActiveRef.current = true;
+        }}
+        onMouseDownCapture={(event) => {
+          if (!isTypingTarget(event.target)) {
+            gridKeyboardActiveRef.current = true;
+          }
+        }}
+        onClick={() => {
+          gridKeyboardActiveRef.current = true;
+          gridRef.current?.focus();
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
