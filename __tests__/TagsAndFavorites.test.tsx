@@ -92,7 +92,7 @@ describe('TagsAndFavorites manual tag browser', () => {
 
     render(<TagsAndFavorites />);
     openContextMenuForTag('ghost-tag');
-    fireEvent.click(screen.getByText('Check Filter'));
+    fireEvent.click(screen.getByText('Include'));
 
     expect(setSelectedTags).toHaveBeenCalledWith(['ghost-tag']);
     expect(setExcludedTags).toHaveBeenCalledWith([]);

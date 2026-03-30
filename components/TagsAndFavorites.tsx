@@ -552,7 +552,7 @@ const TagsAndFavorites: React.FC = () => {
               closeContextMenu();
             }}
           >
-            Check Filter
+            Include
           </button>
           <button
             type="button"
@@ -562,7 +562,7 @@ const TagsAndFavorites: React.FC = () => {
               closeContextMenu();
             }}
           >
-            X Filter
+            Exclude
           </button>
           <button
             type="button"
@@ -572,7 +572,7 @@ const TagsAndFavorites: React.FC = () => {
               closeContextMenu();
             }}
           >
-            Un-check Filter
+            Clear Filter
           </button>
 
           <div className="my-1 border-t border-gray-700" />
