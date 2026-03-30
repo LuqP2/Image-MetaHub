@@ -11,6 +11,12 @@ type TagContextMenuState = {
   tag: TagInfo;
 };
 
+type RenameDialogState = {
+  isOpen: boolean;
+  sourceTag: string;
+  value: string;
+};
+
 const TagsAndFavorites: React.FC = () => {
   const {
     favoriteFilterMode,
@@ -38,6 +44,12 @@ const TagsAndFavorites: React.FC = () => {
   const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [autoTagSearchQuery, setAutoTagSearchQuery] = useState('');
   const [contextMenu, setContextMenu] = useState<TagContextMenuState | null>(null);
+  const [renameDialog, setRenameDialog] = useState<RenameDialogState>({
+    isOpen: false,
+    sourceTag: '',
+    value: '',
+  });
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   // Refresh auto-tags when images change
   React.useEffect(() => {
@@ -59,6 +71,19 @@ const TagsAndFavorites: React.FC = () => {
       window.removeEventListener('contextmenu', handleCloseMenu, true);
     };
   }, [contextMenu]);
+
+  React.useEffect(() => {
+    if (!renameDialog.isOpen) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 10);
+
+    return () => window.clearTimeout(timeout);
+  }, [renameDialog.isOpen]);
 
   // Count favorites in ALL current images (not just filtered)
   const totalFavoriteCount = images.filter(img => img.isFavorite).length;
@@ -178,24 +203,95 @@ const TagsAndFavorites: React.FC = () => {
 
   const closeContextMenu = () => setContextMenu(null);
 
-  const handleRenameFromMenu = async () => {
+  const openRenameDialog = () => {
     if (!contextMenu) {
       return;
     }
 
-    const nextName = window.prompt('Rename tag', contextMenu.tag.name)?.trim();
+    setRenameDialog({
+      isOpen: true,
+      sourceTag: contextMenu.tag.name,
+      value: contextMenu.tag.name,
+    });
     closeContextMenu();
+  };
 
-    if (!nextName || nextName.toLowerCase() === contextMenu.tag.name) {
+  const closeRenameDialog = () => {
+    setRenameDialog({
+      isOpen: false,
+      sourceTag: '',
+      value: '',
+    });
+  };
+
+  const handleRenameSubmit = async () => {
+    const nextName = renameDialog.value.trim();
+    if (!nextName || nextName.toLowerCase() === renameDialog.sourceTag) {
+      closeRenameDialog();
       return;
     }
 
-    await renameTag(contextMenu.tag.name, nextName);
+    await renameTag(renameDialog.sourceTag, nextName);
+    closeRenameDialog();
   };
 
   const handleTagAction = async (action: () => Promise<void>) => {
     closeContextMenu();
     await action();
+  };
+
+  const handleClearFromMenu = async () => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear tag "${contextMenu.tag.name}" from all images?\n\nThe tag will remain in the library as an empty tag.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await handleTagAction(() => clearTag(contextMenu.tag.name));
+  };
+
+  const handleDeleteFromMenu = async () => {
+    if (!contextMenu) {
+      return;
+    }
+
+    if (contextMenu.tag.count > 0) {
+      const shouldPurge = window.confirm(
+        `Tag "${contextMenu.tag.name}" is still used by ${contextMenu.tag.count} image(s) and cannot be deleted directly.\n\nDo you want to purge it instead?`,
+      );
+
+      if (shouldPurge) {
+        await handlePurgeFromMenu();
+      }
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete empty tag "${contextMenu.tag.name}" from the library?`);
+    if (!confirmed) {
+      return;
+    }
+
+    await handleTagAction(() => deleteTag(contextMenu.tag.name));
+  };
+
+  const handlePurgeFromMenu = async () => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Purge tag "${contextMenu.tag.name}"?\n\nThis will remove it from all images and then delete the tag from the library. This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    await handleTagAction(() => purgeTag(contextMenu.tag.name));
   };
 
   // Don't render if no favorites, tags, or auto-tags exist
@@ -476,14 +572,14 @@ const TagsAndFavorites: React.FC = () => {
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => void handleRenameFromMenu()}
+            onClick={openRenameDialog}
           >
             Rename Tag
           </button>
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
-            onClick={() => void handleTagAction(() => clearTag(contextMenu.tag.name))}
+            onClick={() => void handleClearFromMenu()}
           >
             Clear Tag
           </button>
@@ -491,15 +587,10 @@ const TagsAndFavorites: React.FC = () => {
             type="button"
             className={`w-full px-4 py-2 text-left text-sm transition-colors ${
               contextMenu.tag.count > 0
-                ? 'cursor-not-allowed text-gray-500'
+                ? 'text-amber-300 hover:bg-amber-900/20'
                 : 'text-gray-300 hover:bg-gray-700'
             }`}
-            onClick={() => {
-              if (contextMenu.tag.count > 0) {
-                return;
-              }
-              void handleTagAction(() => deleteTag(contextMenu.tag.name));
-            }}
+            onClick={() => void handleDeleteFromMenu()}
           >
             Delete Tag
           </button>
@@ -509,10 +600,68 @@ const TagsAndFavorites: React.FC = () => {
           <button
             type="button"
             className="w-full px-4 py-2 text-left text-sm text-red-300 transition-colors hover:bg-red-900/30"
-            onClick={() => void handleTagAction(() => purgeTag(contextMenu.tag.name))}
+            onClick={() => void handlePurgeFromMenu()}
           >
             Purge Tag
           </button>
+        </div>
+      )}
+
+      {renameDialog.isOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+          onClick={closeRenameDialog}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rename tag"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-white">Rename Tag</h3>
+              <p className="mt-1 text-xs text-gray-400">
+                Renaming to an existing tag will merge both tags.
+              </p>
+            </div>
+
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameDialog.value}
+              onChange={(event) => setRenameDialog((current) => ({ ...current, value: event.target.value }))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleRenameSubmit();
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  closeRenameDialog();
+                }
+              }}
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Tag name"
+            />
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800"
+                onClick={closeRenameDialog}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                onClick={() => void handleRenameSubmit()}
+              >
+                Rename
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
