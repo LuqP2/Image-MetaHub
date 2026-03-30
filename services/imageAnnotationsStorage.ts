@@ -3,10 +3,18 @@
 import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 4; // Increment from 3 to 4 (Shadow Metadata)
+const DB_VERSION = 5; // Increment from 4 to 5 (Manual Tag Catalog)
 const STORE_NAME = 'imageAnnotations';
+const MANUAL_TAGS_STORE_NAME = 'manualTags';
+
+type ManualTagRecord = {
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+};
 
 const inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
+const inMemoryManualTags: Set<string> = new Set();
 let isPersistenceDisabled = false;
 let hasResetAttempted = false;
 
@@ -68,6 +76,44 @@ function getErrorName(error: unknown): string | undefined {
   return undefined;
 }
 
+function normalizeManualTagName(tagName: string): string {
+  return tagName.trim().toLowerCase();
+}
+
+function seedManualTagsFromAnnotations(
+  annotationStore: IDBObjectStore,
+  manualTagsStore: IDBObjectStore,
+): void {
+  const request = annotationStore.getAll();
+
+  request.onsuccess = () => {
+    const annotations = request.result as ImageAnnotations[];
+    const timestamp = Date.now();
+    const uniqueTags = new Set<string>();
+
+    for (const annotation of annotations) {
+      for (const tag of annotation.tags) {
+        const normalizedTag = normalizeManualTagName(tag);
+        if (normalizedTag) {
+          uniqueTags.add(normalizedTag);
+        }
+      }
+    }
+
+    for (const tagName of uniqueTags) {
+      manualTagsStore.put({
+        name: tagName,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      } satisfies ManualTagRecord);
+    }
+  };
+
+  request.onerror = () => {
+    console.error('Failed to seed manual tags from annotations during migration', request.error);
+  };
+}
+
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
   if (isPersistenceDisabled) {
     return null;
@@ -127,6 +173,22 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
           if (!db.objectStoreNames.contains('shadowMetadata')) {
             db.createObjectStore('shadowMetadata', { keyPath: 'imageId' });
             console.log('Created shadowMetadata object store (v4)');
+          }
+        }
+
+        // Versão 5: Create manual tag catalog store
+        if (oldVersion < 5) {
+          let manualTagsStore: IDBObjectStore;
+          if (!db.objectStoreNames.contains(MANUAL_TAGS_STORE_NAME)) {
+            manualTagsStore = db.createObjectStore(MANUAL_TAGS_STORE_NAME, { keyPath: 'name' });
+            console.log('Created manualTags object store (v5)');
+          } else {
+            manualTagsStore = request.transaction!.objectStore(MANUAL_TAGS_STORE_NAME);
+          }
+
+          if (oldVersion >= 2 && db.objectStoreNames.contains(STORE_NAME)) {
+            const annotationStore = request.transaction!.objectStore(STORE_NAME);
+            seedManualTagsFromAnnotations(annotationStore, manualTagsStore);
           }
         }
       };
@@ -563,13 +625,276 @@ export async function getImageIdsByTag(tag: string): Promise<string[]> {
   });
 }
 
+export async function ensureManualTagExists(tagName: string): Promise<void> {
+  const normalizedTag = normalizeManualTagName(tagName);
+  if (!normalizedTag) {
+    return;
+  }
+
+  inMemoryManualTags.add(normalizedTag);
+
+  if (isPersistenceDisabled) {
+    return;
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return;
+  }
+
+  const timestamp = Date.now();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(MANUAL_TAGS_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(MANUAL_TAGS_STORE_NAME);
+    const request = store.get(normalizedTag);
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close image annotations storage after ensuring manual tag', error);
+      }
+    };
+
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
+
+    request.onsuccess = () => {
+      const existing = request.result as ManualTagRecord | undefined;
+      const record: ManualTagRecord = existing
+        ? { ...existing, updatedAt: timestamp }
+        : { name: normalizedTag, createdAt: timestamp, updatedAt: timestamp };
+      store.put(record);
+    };
+
+    request.onerror = () => {
+      console.error('Failed to ensure manual tag exists', request.error);
+      reject(request.error);
+    };
+  }).catch((error) => {
+    console.error('IndexedDB ensure manual tag error:', error);
+    disablePersistence(error);
+  });
+}
+
+export async function getAllManualTagNames(): Promise<string[]> {
+  if (isPersistenceDisabled) {
+    return Array.from(inMemoryManualTags).sort((a, b) => a.localeCompare(b));
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return Array.from(inMemoryManualTags).sort((a, b) => a.localeCompare(b));
+  }
+
+  return new Promise((resolve) => {
+    const transaction = db.transaction(MANUAL_TAGS_STORE_NAME, 'readonly');
+    const store = transaction.objectStore(MANUAL_TAGS_STORE_NAME);
+    const request = store.getAllKeys();
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close image annotations storage after loading manual tags', error);
+      }
+    };
+
+    transaction.oncomplete = close;
+    transaction.onabort = close;
+    transaction.onerror = close;
+
+    request.onsuccess = () => {
+      const tagNames = (request.result as IDBValidKey[])
+        .map((value) => String(value))
+        .sort((a, b) => a.localeCompare(b));
+
+      inMemoryManualTags.clear();
+      for (const tagName of tagNames) {
+        inMemoryManualTags.add(tagName);
+      }
+
+      resolve(tagNames);
+    };
+
+    request.onerror = () => {
+      console.error('Failed to load manual tags', request.error);
+      resolve(Array.from(inMemoryManualTags).sort((a, b) => a.localeCompare(b)));
+    };
+  });
+}
+
+export async function renameManualTag(sourceTag: string, targetTag: string): Promise<void> {
+  const normalizedSource = normalizeManualTagName(sourceTag);
+  const normalizedTarget = normalizeManualTagName(targetTag);
+
+  if (!normalizedSource || !normalizedTarget || normalizedSource === normalizedTarget) {
+    return;
+  }
+
+  inMemoryManualTags.delete(normalizedSource);
+  inMemoryManualTags.add(normalizedTarget);
+
+  if (isPersistenceDisabled) {
+    return;
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return;
+  }
+
+  const timestamp = Date.now();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(MANUAL_TAGS_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(MANUAL_TAGS_STORE_NAME);
+    const getSourceRequest = store.get(normalizedSource);
+    const getTargetRequest = store.get(normalizedTarget);
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close image annotations storage after renaming manual tag', error);
+      }
+    };
+
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
+
+    let sourceRecord: ManualTagRecord | undefined;
+    let targetRecord: ManualTagRecord | undefined;
+
+    const finalize = () => {
+      if (getSourceRequest.readyState !== 'done' || getTargetRequest.readyState !== 'done') {
+        return;
+      }
+
+      const recordToSave: ManualTagRecord = targetRecord
+        ? { ...targetRecord, updatedAt: timestamp }
+        : {
+            name: normalizedTarget,
+            createdAt: sourceRecord?.createdAt ?? timestamp,
+            updatedAt: timestamp,
+          };
+
+      store.put(recordToSave);
+      store.delete(normalizedSource);
+    };
+
+    getSourceRequest.onsuccess = () => {
+      sourceRecord = getSourceRequest.result as ManualTagRecord | undefined;
+      finalize();
+    };
+
+    getTargetRequest.onsuccess = () => {
+      targetRecord = getTargetRequest.result as ManualTagRecord | undefined;
+      finalize();
+    };
+
+    getSourceRequest.onerror = () => {
+      console.error('Failed to read source manual tag before rename', getSourceRequest.error);
+      reject(getSourceRequest.error);
+    };
+
+    getTargetRequest.onerror = () => {
+      console.error('Failed to read target manual tag before rename', getTargetRequest.error);
+      reject(getTargetRequest.error);
+    };
+  }).catch((error) => {
+    console.error('IndexedDB rename manual tag error:', error);
+    disablePersistence(error);
+  });
+}
+
+export async function deleteManualTag(tagName: string): Promise<void> {
+  const normalizedTag = normalizeManualTagName(tagName);
+  if (!normalizedTag) {
+    return;
+  }
+
+  inMemoryManualTags.delete(normalizedTag);
+
+  if (isPersistenceDisabled) {
+    return;
+  }
+
+  const db = await openDatabase();
+  if (!db) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(MANUAL_TAGS_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(MANUAL_TAGS_STORE_NAME);
+    const request = store.delete(normalizedTag);
+
+    const close = () => {
+      try {
+        db.close();
+      } catch (error) {
+        console.warn('Failed to close image annotations storage after deleting manual tag', error);
+      }
+    };
+
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
+
+    request.onsuccess = () => {};
+    request.onerror = () => {
+      console.error('Failed to delete manual tag', request.error);
+      reject(request.error);
+    };
+  }).catch((error) => {
+    console.error('IndexedDB delete manual tag error:', error);
+    disablePersistence(error);
+  });
+}
+
 /**
  * Get all tags with their usage counts
  */
 export async function getAllTags(): Promise<TagInfo[]> {
   const annotations = await loadAllAnnotations();
+  const manualTags = await getAllManualTagNames();
 
   const tagCounts = new Map<string, number>();
+
+  for (const tagName of manualTags) {
+    tagCounts.set(tagName, 0);
+  }
 
   for (const annotation of annotations.values()) {
     for (const tag of annotation.tags) {

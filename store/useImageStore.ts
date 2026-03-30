@@ -6,6 +6,9 @@ import {
   saveAnnotation,
   bulkSaveAnnotations,
   getAllTags,
+  ensureManualTagExists,
+  renameManualTag,
+  deleteManualTag,
 } from '../services/imageAnnotationsStorage';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useLicenseStore } from './useLicenseStore';
@@ -72,6 +75,79 @@ const updateRecentTags = (currentTags: string[], tag: string): string[] => {
 
     const next = [normalizedTag, ...currentTags.filter(existing => existing !== normalizedTag)];
     return next.slice(0, MAX_RECENT_TAGS);
+};
+
+const removeRecentTag = (currentTags: string[], tag: string): string[] => {
+    const normalizedTag = tag.trim().toLowerCase();
+    if (!normalizedTag) {
+        return currentTags;
+    }
+
+    return currentTags.filter(existing => existing !== normalizedTag);
+};
+
+const replaceRecentTag = (currentTags: string[], sourceTag: string, targetTag: string): string[] => {
+    const normalizedSource = sourceTag.trim().toLowerCase();
+    const normalizedTarget = targetTag.trim().toLowerCase();
+
+    if (!normalizedSource || !normalizedTarget) {
+        return currentTags;
+    }
+
+    const mapped = currentTags.map(tag => tag === normalizedSource ? normalizedTarget : tag);
+    return Array.from(new Set(mapped));
+};
+
+const normalizeTagName = (tag: string) => tag.trim().toLowerCase();
+
+type ManualTagFilterState = Pick<ImageState, 'selectedTags' | 'excludedTags'>;
+
+const removeTagFromManualFilters = <T extends ManualTagFilterState>(state: T, tag: string): T => {
+    const normalizedTag = normalizeTagName(tag);
+    return {
+        ...state,
+        selectedTags: state.selectedTags.filter(existing => existing !== normalizedTag),
+        excludedTags: state.excludedTags.filter(existing => existing !== normalizedTag),
+    };
+};
+
+const transferManualTagFilters = <T extends ManualTagFilterState>(state: T, sourceTag: string, targetTag: string): T => {
+    const normalizedSource = normalizeTagName(sourceTag);
+    const normalizedTarget = normalizeTagName(targetTag);
+    const sourceMode =
+        state.selectedTags.includes(normalizedSource) ? 'include' :
+        state.excludedTags.includes(normalizedSource) ? 'exclude' :
+        'neutral';
+    const targetAlreadyFiltered =
+        state.selectedTags.includes(normalizedTarget) || state.excludedTags.includes(normalizedTarget);
+
+    const nextState = removeTagFromManualFilters(state, normalizedSource);
+
+    if (sourceMode === 'neutral' || targetAlreadyFiltered) {
+        return nextState;
+    }
+
+    if (sourceMode === 'include') {
+        return {
+            ...nextState,
+            selectedTags: [...nextState.selectedTags, normalizedTarget],
+        };
+    }
+
+    return {
+        ...nextState,
+        excludedTags: [...nextState.excludedTags, normalizedTarget],
+    };
+};
+
+const renameAnnotationTag = (tags: string[], sourceTag: string, targetTag: string): string[] => {
+    const normalizedSource = normalizeTagName(sourceTag);
+    const normalizedTarget = normalizeTagName(targetTag);
+    if (!normalizedSource || !normalizedTarget) {
+        return tags;
+    }
+
+    return Array.from(new Set(tags.map(tag => tag === normalizedSource ? normalizedTarget : tag)));
 };
 
 const normalizePath = (path: string) => {
@@ -358,6 +434,10 @@ interface ImageState {
   removeAutoTagFromImage: (imageId: string, tag: string) => void;
   bulkAddTag: (imageIds: string[], tag: string) => Promise<void>;
   bulkRemoveTag: (imageIds: string[], tag: string) => Promise<void>;
+  renameTag: (sourceTag: string, targetTag: string) => Promise<void>;
+  clearTag: (tag: string) => Promise<void>;
+  deleteTag: (tag: string) => Promise<void>;
+  purgeTag: (tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
   setSelectedAutoTags: (tags: string[]) => void;
@@ -2013,7 +2093,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         addTagToImage: async (imageId, tag) => {
-            const normalizedTag = tag.trim().toLowerCase();
+            const normalizedTag = normalizeTagName(tag);
             if (!normalizedTag) return;
 
             const { annotations } = get();
@@ -2057,10 +2137,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             persistRecentTags(nextRecentTags);
 
             // Persist and refresh tags
-            saveAnnotation(updatedAnnotation).catch(error => {
+            await Promise.all([
+                saveAnnotation(updatedAnnotation),
+                ensureManualTagExists(normalizedTag),
+            ]).catch(error => {
                 console.error('Failed to save annotation:', error);
             });
-            get().refreshAvailableTags();
+            await get().refreshAvailableTags();
         },
 
         removeTagFromImage: async (imageId, tag) => {
@@ -2124,7 +2207,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         bulkAddTag: async (imageIds, tag) => {
-            const normalizedTag = tag.trim().toLowerCase();
+            const normalizedTag = normalizeTagName(tag);
             if (!normalizedTag || imageIds.length === 0) return;
 
             const { annotations } = get();
@@ -2176,10 +2259,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             persistRecentTags(nextRecentTags);
 
             // Persist and refresh tags
-            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            await Promise.all([
+                bulkSaveAnnotations(updatedAnnotations),
+                ensureManualTagExists(normalizedTag),
+            ]).catch(error => {
                 console.error('Failed to bulk save annotations:', error);
             });
-            get().refreshAvailableTags();
+            await get().refreshAvailableTags();
         },
 
         bulkRemoveTag: async (imageIds, tag) => {
@@ -2224,10 +2310,207 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
 
             // Persist and refresh tags
-            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            await bulkSaveAnnotations(updatedAnnotations).catch(error => {
                 console.error('Failed to bulk save annotations:', error);
             });
-            get().refreshAvailableTags();
+            await get().refreshAvailableTags();
+        },
+
+        renameTag: async (sourceTag, targetTag) => {
+            const normalizedSource = normalizeTagName(sourceTag);
+            const normalizedTarget = normalizeTagName(targetTag);
+
+            if (!normalizedSource || !normalizedTarget || normalizedSource === normalizedTarget) {
+                return;
+            }
+
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const annotation of annotations.values()) {
+                if (!annotation.tags.includes(normalizedSource)) {
+                    continue;
+                }
+
+                updatedAnnotations.push({
+                    ...annotation,
+                    tags: renameAnnotationTag(annotation.tags, normalizedSource, normalizedTarget),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            let nextRecentTags = get().recentTags;
+
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                nextRecentTags = updateRecentTags(
+                    replaceRecentTag(state.recentTags, normalizedSource, normalizedTarget),
+                    normalizedTarget,
+                );
+
+                const filteredState = transferManualTagFilters(state, normalizedSource, normalizedTarget);
+                const updatedImages = applyAnnotationsToImages(state.images, newAnnotations);
+                const newState = {
+                    ...state,
+                    ...filteredState,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                    recentTags: nextRecentTags,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            persistRecentTags(nextRecentTags);
+
+            await Promise.all([
+                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
+                renameManualTag(normalizedSource, normalizedTarget),
+            ]).catch(error => {
+                console.error('Failed to rename tag:', error);
+            });
+            await get().refreshAvailableTags();
+        },
+
+        clearTag: async (tag) => {
+            const normalizedTag = normalizeTagName(tag);
+            if (!normalizedTag) {
+                return;
+            }
+
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const annotation of annotations.values()) {
+                if (!annotation.tags.includes(normalizedTag)) {
+                    continue;
+                }
+
+                updatedAnnotations.push({
+                    ...annotation,
+                    tags: annotation.tags.filter(existing => existing !== normalizedTag),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const filteredState = removeTagFromManualFilters(state, normalizedTag);
+                const updatedImages = applyAnnotationsToImages(state.images, newAnnotations);
+                const newState = {
+                    ...state,
+                    ...filteredState,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            await Promise.all([
+                ensureManualTagExists(normalizedTag),
+                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
+            ]).catch(error => {
+                console.error('Failed to clear tag:', error);
+            });
+            await get().refreshAvailableTags();
+        },
+
+        deleteTag: async (tag) => {
+            const normalizedTag = normalizeTagName(tag);
+            if (!normalizedTag) {
+                return;
+            }
+
+            const usageCount = Array.from(get().annotations.values())
+                .filter(annotation => annotation.tags.includes(normalizedTag))
+                .length;
+            if (usageCount > 0) {
+                return;
+            }
+
+            let nextRecentTags = get().recentTags;
+
+            set(state => {
+                nextRecentTags = removeRecentTag(state.recentTags, normalizedTag);
+                const filteredState = removeTagFromManualFilters(state, normalizedTag);
+                const newState = {
+                    ...state,
+                    ...filteredState,
+                    recentTags: nextRecentTags,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            persistRecentTags(nextRecentTags);
+
+            await deleteManualTag(normalizedTag).catch(error => {
+                console.error('Failed to delete tag:', error);
+            });
+            await get().refreshAvailableTags();
+        },
+
+        purgeTag: async (tag) => {
+            const normalizedTag = normalizeTagName(tag);
+            if (!normalizedTag) {
+                return;
+            }
+
+            const { annotations } = get();
+            const updatedAnnotations: ImageAnnotations[] = [];
+
+            for (const annotation of annotations.values()) {
+                if (!annotation.tags.includes(normalizedTag)) {
+                    continue;
+                }
+
+                updatedAnnotations.push({
+                    ...annotation,
+                    tags: annotation.tags.filter(existing => existing !== normalizedTag),
+                    updatedAt: Date.now(),
+                });
+            }
+
+            let nextRecentTags = get().recentTags;
+
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                nextRecentTags = removeRecentTag(state.recentTags, normalizedTag);
+                const filteredState = removeTagFromManualFilters(state, normalizedTag);
+                const updatedImages = applyAnnotationsToImages(state.images, newAnnotations);
+                const newState = {
+                    ...state,
+                    ...filteredState,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                    recentTags: nextRecentTags,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            persistRecentTags(nextRecentTags);
+
+            await Promise.all([
+                updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
+                deleteManualTag(normalizedTag),
+            ]).catch(error => {
+                console.error('Failed to purge tag:', error);
+            });
+            await get().refreshAvailableTags();
         },
 
         setSelectedTags: (tags) => set(state => {
@@ -2300,7 +2583,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 // Normalize and filter out duplicates
                 const newTags = metadataTags
-                    .map(tag => tag.trim().toLowerCase())
+                    .map(tag => normalizeTagName(tag))
                     .filter(tag => tag && !existingTags.includes(tag));
 
                 if (newTags.length === 0) continue;
@@ -2339,13 +2622,20 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return { ...newState, ...filterAndSort(newState) };
             });
 
+            const importedTagNames = Array.from(new Set(
+                updatedAnnotations.flatMap(annotation => annotation.tags)
+            ));
+
             // Persist annotations
-            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+            await Promise.all([
+                bulkSaveAnnotations(updatedAnnotations),
+                ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
+            ]).catch(error => {
                 console.error('Failed to import metadata tags:', error);
             });
 
             // Refresh available tags
-            get().refreshAvailableTags();
+            await get().refreshAvailableTags();
         },
 
         flushPendingImages: () => {
