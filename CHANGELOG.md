@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
 - **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
+- **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
+- **Keyboard Navigation Across Areas**: Folder tree and grid navigation now behave more consistently with keyboard input, including better arrow-key handling, page navigation, and a less fragile dependence on exact DOM focus.
+
+### Fixed
+
+- **Electron Window Restore**: The desktop window now reopens on the last monitor with the previous size and position when that display is still available, while safely falling back to a visible screen when monitor layouts change.
+- **Startup Folder Reconciliation**: Cached folders are now silently reconciled against disk on launch, so files created while the app was closed are indexed automatically instead of requiring a manual folder refresh.
 
 ## [0.13.2] - 2026-03-23
 
