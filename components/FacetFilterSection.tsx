@@ -87,9 +87,6 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {activeCount > 0 ? 'Active values stay pinned at the top.' : 'Use explicit include/exclude actions per value.'}
-            </p>
           </div>
           <div className="ml-3 flex items-center gap-2 py-1">
             <ChevronDown

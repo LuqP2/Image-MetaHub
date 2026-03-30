@@ -362,9 +362,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               <SlidersHorizontal className="h-4 w-4 text-gray-400" />
               <div>
                 <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
-                <p className="text-xs text-gray-500">
-                  Checkpoints, LoRAs, samplers and schedulers with explicit include/exclude actions.
-                </p>
               </div>
             </div>
             <div className="space-y-3">

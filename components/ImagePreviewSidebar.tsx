@@ -153,7 +153,17 @@ type ContextMenuState = {
   selectionText: string;
 };
 
-const ImagePreviewSidebar: React.FC = () => {
+interface ImagePreviewSidebarProps {
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+}
+
+const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
+  width,
+  isResizing,
+  onResizeStart,
+}) => {
   const {
     previewImage,
     setPreviewImage,
@@ -370,9 +380,20 @@ const ImagePreviewSidebar: React.FC = () => {
     <div
       data-area="preview"
       tabIndex={-1}
-      className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl"
+      style={{ width }}
+      className={`fixed right-0 top-0 h-full bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
       onClick={hideContextMenu}
     >
+      <div
+        role="separator"
+        aria-label="Resize preview sidebar"
+        aria-orientation="vertical"
+        onPointerDown={onResizeStart}
+        className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+        title="Drag to resize preview sidebar"
+      >
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Image Preview</h2>
