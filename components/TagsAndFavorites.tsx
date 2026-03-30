@@ -49,6 +49,7 @@ const TagsAndFavorites: React.FC = () => {
     sourceTag: '',
     value: '',
   });
+  const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
 
   // Refresh auto-tags when images change
@@ -61,7 +62,12 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
-    const handleCloseMenu = () => setContextMenu(null);
+    const handleCloseMenu = (event: MouseEvent) => {
+      if (contextMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setContextMenu(null);
+    };
 
     window.addEventListener('click', handleCloseMenu, true);
     window.addEventListener('contextmenu', handleCloseMenu, true);
@@ -226,13 +232,14 @@ const TagsAndFavorites: React.FC = () => {
 
   const handleRenameSubmit = async () => {
     const nextName = renameDialog.value.trim();
+    const sourceTag = renameDialog.sourceTag;
     if (!nextName || nextName.toLowerCase() === renameDialog.sourceTag) {
       closeRenameDialog();
       return;
     }
 
-    await renameTag(renameDialog.sourceTag, nextName);
     closeRenameDialog();
+    await renameTag(sourceTag, nextName);
   };
 
   const handleTagAction = async (action: () => Promise<void>) => {
@@ -532,6 +539,7 @@ const TagsAndFavorites: React.FC = () => {
 
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="fixed z-50 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-lg"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
