@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -38,6 +38,10 @@ function getIconPath() {
 
 const execFileAsync = promisify(execFile);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+const DEFAULT_WINDOW_WIDTH = 1400;
+const DEFAULT_WINDOW_HEIGHT = 900;
+const MIN_WINDOW_WIDTH = 800;
+const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 
 const getMimeTypeFromName = (name) => {
@@ -185,6 +189,7 @@ const settingsTempPath = `${settingsPath}.tmp`;
 const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+let settingsWriteQueue = Promise.resolve();
 
 const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
 
@@ -305,6 +310,23 @@ async function saveSettings(settings) {
     }
     throw error;
   }
+}
+
+function queueSettingsUpdate(updater) {
+  const applyUpdate = async () => {
+    const currentSettings = await readSettings();
+    const nextSettings = await updater(currentSettings ?? {});
+    await saveSettings(nextSettings);
+    return nextSettings;
+  };
+
+  const queuedUpdate = settingsWriteQueue.then(applyUpdate, applyUpdate);
+  settingsWriteQueue = queuedUpdate.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return queuedUpdate;
 }
 
 
@@ -707,13 +729,81 @@ if (autoUpdater) {
   console.log('⚠️ Auto-updater not available, skipping event handlers');
 }
 
-function createWindow(startupDirectory = null) {
+function clampWindowBoundsToDisplay(bounds, display) {
+  const workArea = display?.workArea ?? screen.getPrimaryDisplay().workArea;
+  const width = Math.max(MIN_WINDOW_WIDTH, Math.min(bounds?.width ?? DEFAULT_WINDOW_WIDTH, workArea.width));
+  const height = Math.max(MIN_WINDOW_HEIGHT, Math.min(bounds?.height ?? DEFAULT_WINDOW_HEIGHT, workArea.height));
+
+  let x = typeof bounds?.x === 'number'
+    ? bounds.x
+    : workArea.x + Math.round((workArea.width - width) / 2);
+  let y = typeof bounds?.y === 'number'
+    ? bounds.y
+    : workArea.y + Math.round((workArea.height - height) / 2);
+
+  x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - width);
+  y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - height);
+
+  return { x, y, width, height };
+}
+
+function resolveInitialWindowState(settings) {
+  const savedWindowState = settings?.windowState;
+  const savedBounds = savedWindowState?.bounds;
+  const displays = screen.getAllDisplays();
+
+  const preferredDisplay = typeof savedWindowState?.displayId === 'number'
+    ? displays.find((display) => display.id === savedWindowState.displayId)
+    : null;
+
+  const matchedDisplay = savedBounds
+    ? screen.getDisplayMatching({
+        x: savedBounds.x ?? 0,
+        y: savedBounds.y ?? 0,
+        width: savedBounds.width ?? DEFAULT_WINDOW_WIDTH,
+        height: savedBounds.height ?? DEFAULT_WINDOW_HEIGHT,
+      })
+    : null;
+
+  const targetDisplay = preferredDisplay ?? matchedDisplay ?? screen.getPrimaryDisplay();
+
+  return {
+    bounds: clampWindowBoundsToDisplay(savedBounds, targetDisplay),
+    isMaximized: Boolean(savedWindowState?.isMaximized),
+    isFullScreen: Boolean(savedWindowState?.isFullScreen),
+  };
+}
+
+async function persistWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const bounds = mainWindow.isMaximized() || mainWindow.isFullScreen()
+    ? mainWindow.getNormalBounds()
+    : mainWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+
+  await queueSettingsUpdate((currentSettings) => ({
+    ...currentSettings,
+    windowState: {
+      bounds,
+      displayId: display?.id ?? null,
+      isMaximized: mainWindow.isMaximized(),
+      isFullScreen: mainWindow.isFullScreen(),
+    },
+  }));
+}
+
+async function createWindow(startupDirectory = null) {
+  const settings = await readSettings();
+  const initialWindowState = resolveInitialWindowState(settings);
+
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
+    ...initialWindowState.bounds,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
@@ -758,6 +848,13 @@ function createWindow(startupDirectory = null) {
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
+    if (initialWindowState.isMaximized) {
+      mainWindow.maximize();
+    }
+    if (initialWindowState.isFullScreen) {
+      mainWindow.setFullScreen(true);
+    }
+
     mainWindow.show();
 
     // If a startup directory was provided via CLI, send it to the renderer
@@ -821,6 +918,32 @@ function createWindow(startupDirectory = null) {
   // Handle window closed
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  let persistWindowStateTimer = null;
+  const queueWindowStatePersist = () => {
+    if (persistWindowStateTimer) {
+      clearTimeout(persistWindowStateTimer);
+    }
+
+    persistWindowStateTimer = setTimeout(() => {
+      persistWindowState().catch((error) => {
+        console.error('Failed to persist window state:', error);
+      });
+    }, 200);
+  };
+
+  mainWindow.on('move', queueWindowStatePersist);
+  mainWindow.on('resize', queueWindowStatePersist);
+  mainWindow.on('close', () => {
+    if (persistWindowStateTimer) {
+      clearTimeout(persistWindowStateTimer);
+      persistWindowStateTimer = null;
+    }
+
+    persistWindowState().catch((error) => {
+      console.error('Failed to persist window state during close:', error);
+    });
   });
 
   // Track fullscreen state changes and notify renderer
@@ -899,7 +1022,7 @@ app.whenReady().then(async () => {
   // Setup IPC handlers for file operations BEFORE creating window
   setupFileOperationHandlers();
   
-  createWindow(startupDirectory);
+  await createWindow(startupDirectory);
 });
 
 // Setup IPC handlers for file operations
@@ -1061,9 +1184,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
-      const currentSettings = await readSettings();
-      const mergedSettings = { ...currentSettings, ...newSettings };
-      await saveSettings(mergedSettings);
+      await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
+        ...newSettings,
+      }));
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
@@ -2580,7 +2704,9 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow().catch((error) => {
+      console.error('Failed to recreate main window:', error);
+    });
   }
 });
 
