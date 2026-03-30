@@ -63,6 +63,19 @@ const RIGHT_SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
 const MAIN_CONTENT_MIN_WIDTH = 560;
 
+const sanitizePreferredWidth = (
+  width: number,
+  fallbackWidth: number,
+  minWidth: number,
+  maxWidth: number
+) => {
+  if (!Number.isFinite(width)) {
+    return fallbackWidth;
+  }
+
+  return Math.min(Math.max(width, minWidth), maxWidth);
+};
+
 const clampSidebarWidth = (width: number, viewportWidth: number, reservedRightWidth = 0) => {
   const maxWidthFromViewport = viewportWidth - reservedRightWidth - MAIN_CONTENT_MIN_WIDTH;
   const upperBound = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
@@ -75,6 +88,47 @@ const clampRightSidebarWidth = (width: number, viewportWidth: number, reservedLe
   const upperBound = Math.max(RIGHT_SIDEBAR_MIN_WIDTH, Math.min(RIGHT_SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
 
   return Math.min(Math.max(width, RIGHT_SIDEBAR_MIN_WIDTH), upperBound);
+};
+
+const resolveSidebarWidths = ({
+  hasDirectories,
+  isSidebarCollapsed,
+  hasRightSidebar,
+  viewportWidth,
+  preferredLeftWidth,
+  preferredRightWidth,
+}: {
+  hasDirectories: boolean;
+  isSidebarCollapsed: boolean;
+  hasRightSidebar: boolean;
+  viewportWidth: number;
+  preferredLeftWidth: number;
+  preferredRightWidth: number;
+}) => {
+  let leftWidth = preferredLeftWidth;
+  let rightWidth = preferredRightWidth;
+
+  for (let iteration = 0; iteration < 4; iteration += 1) {
+    const nextLeftWidth =
+      hasDirectories && !isSidebarCollapsed
+        ? clampSidebarWidth(preferredLeftWidth, viewportWidth, hasRightSidebar ? rightWidth : 0)
+        : preferredLeftWidth;
+    const reservedLeftWidth = hasDirectories
+      ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : nextLeftWidth)
+      : 0;
+    const nextRightWidth = hasRightSidebar
+      ? clampRightSidebarWidth(preferredRightWidth, viewportWidth, reservedLeftWidth)
+      : preferredRightWidth;
+
+    if (nextLeftWidth === leftWidth && nextRightWidth === rightWidth) {
+      break;
+    }
+
+    leftWidth = nextLeftWidth;
+    rightWidth = nextRightWidth;
+  }
+
+  return { leftWidth, rightWidth };
 };
 
 export default function App() {
@@ -195,28 +249,39 @@ export default function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
   const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
+  const [viewportWidth, setViewportWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 1440;
+    }
+
+    return window.innerWidth;
+  });
+  const [preferredSidebarWidth, setPreferredSidebarWidth] = useState(() => {
     if (typeof window === 'undefined') {
       return SIDEBAR_DEFAULT_WIDTH;
     }
 
     const storedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
 
-    return clampSidebarWidth(
-      Number.isFinite(storedWidth) ? storedWidth : SIDEBAR_DEFAULT_WIDTH,
-      window.innerWidth
+    return sanitizePreferredWidth(
+      storedWidth,
+      SIDEBAR_DEFAULT_WIDTH,
+      SIDEBAR_MIN_WIDTH,
+      SIDEBAR_MAX_WIDTH
     );
   });
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
+  const [preferredRightSidebarWidth, setPreferredRightSidebarWidth] = useState(() => {
     if (typeof window === 'undefined') {
       return RIGHT_SIDEBAR_DEFAULT_WIDTH;
     }
 
     const storedWidth = Number(window.localStorage.getItem(RIGHT_SIDEBAR_WIDTH_STORAGE_KEY));
 
-    return clampRightSidebarWidth(
-      Number.isFinite(storedWidth) ? storedWidth : RIGHT_SIDEBAR_DEFAULT_WIDTH,
-      window.innerWidth
+    return sanitizePreferredWidth(
+      storedWidth,
+      RIGHT_SIDEBAR_DEFAULT_WIDTH,
+      RIGHT_SIDEBAR_MIN_WIDTH,
+      RIGHT_SIDEBAR_MAX_WIDTH
     );
   });
   const [sidebarResizeState, setSidebarResizeState] = useState<{
@@ -245,6 +310,25 @@ export default function App() {
   );
   const imageMap = useMemo(() => new Map(safeImages.map((image) => [image.id, image])), [safeImages]);
   const hasRightSidebar = Boolean(previewImage || isQueueOpen);
+  const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
+    () =>
+      resolveSidebarWidths({
+        hasDirectories,
+        isSidebarCollapsed,
+        hasRightSidebar,
+        viewportWidth,
+        preferredLeftWidth: preferredSidebarWidth,
+        preferredRightWidth: preferredRightSidebarWidth,
+      }),
+    [
+      hasDirectories,
+      hasRightSidebar,
+      isSidebarCollapsed,
+      preferredRightSidebarWidth,
+      preferredSidebarWidth,
+      viewportWidth,
+    ]
+  );
   const mainContentMarginLeft = hasDirectories
     ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
     : 0;
@@ -255,6 +339,7 @@ export default function App() {
 
   const handleSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
 
     setSidebarResizeState({
       side: 'left',
@@ -265,6 +350,7 @@ export default function App() {
 
   const handleRightSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
 
     setSidebarResizeState({
       side: 'right',
@@ -731,38 +817,39 @@ export default function App() {
       return;
     }
 
-    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(sidebarWidth)));
-  }, [sidebarWidth]);
+    window.localStorage.setItem(
+      SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredSidebarWidth))
+    );
+  }, [preferredSidebarWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    window.localStorage.setItem(RIGHT_SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(rightSidebarWidth)));
-  }, [rightSidebarWidth]);
+    window.localStorage.setItem(
+      RIGHT_SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredRightSidebarWidth))
+    );
+  }, [preferredRightSidebarWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    const clampVisibleSidebars = () => {
-      setSidebarWidth((currentWidth) =>
-        clampSidebarWidth(currentWidth, window.innerWidth, mainContentMarginRight)
-      );
-      setRightSidebarWidth((currentWidth) =>
-        clampRightSidebarWidth(currentWidth, window.innerWidth, mainContentMarginLeft)
-      );
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
     };
 
-    clampVisibleSidebars();
-    window.addEventListener('resize', clampVisibleSidebars);
+    handleResize();
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('resize', clampVisibleSidebars);
+      window.removeEventListener('resize', handleResize);
     };
-  }, [mainContentMarginLeft, mainContentMarginRight]);
+  }, []);
 
   useEffect(() => {
     if (!sidebarResizeState || typeof window === 'undefined') {
@@ -773,12 +860,16 @@ export default function App() {
       const deltaX = event.clientX - sidebarResizeState.startX;
       if (sidebarResizeState.side === 'left') {
         const nextWidth = sidebarResizeState.startWidth + deltaX;
-        setSidebarWidth(clampSidebarWidth(nextWidth, window.innerWidth, mainContentMarginRight));
+        setPreferredSidebarWidth(
+          clampSidebarWidth(nextWidth, viewportWidth, mainContentMarginRight)
+        );
         return;
       }
 
       const nextWidth = sidebarResizeState.startWidth - deltaX;
-      setRightSidebarWidth(clampRightSidebarWidth(nextWidth, window.innerWidth, mainContentMarginLeft));
+      setPreferredRightSidebarWidth(
+        clampRightSidebarWidth(nextWidth, viewportWidth, mainContentMarginLeft)
+      );
     };
 
     const handlePointerUp = () => {
@@ -787,16 +878,20 @@ export default function App() {
 
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [mainContentMarginLeft, mainContentMarginRight, sidebarResizeState]);
+  }, [mainContentMarginLeft, mainContentMarginRight, sidebarResizeState, viewportWidth]);
 
   useEffect(() => {
     if (!selectedImage) {
