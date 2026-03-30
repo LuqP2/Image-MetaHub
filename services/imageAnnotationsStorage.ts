@@ -80,6 +80,40 @@ function normalizeManualTagName(tagName: string): string {
   return tagName.trim().toLowerCase();
 }
 
+function seedManualTagsFromAnnotations(
+  annotationStore: IDBObjectStore,
+  manualTagsStore: IDBObjectStore,
+): void {
+  const request = annotationStore.getAll();
+
+  request.onsuccess = () => {
+    const annotations = request.result as ImageAnnotations[];
+    const timestamp = Date.now();
+    const uniqueTags = new Set<string>();
+
+    for (const annotation of annotations) {
+      for (const tag of annotation.tags) {
+        const normalizedTag = normalizeManualTagName(tag);
+        if (normalizedTag) {
+          uniqueTags.add(normalizedTag);
+        }
+      }
+    }
+
+    for (const tagName of uniqueTags) {
+      manualTagsStore.put({
+        name: tagName,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      } satisfies ManualTagRecord);
+    }
+  };
+
+  request.onerror = () => {
+    console.error('Failed to seed manual tags from annotations during migration', request.error);
+  };
+}
+
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
   if (isPersistenceDisabled) {
     return null;
@@ -144,9 +178,17 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
 
         // Versão 5: Create manual tag catalog store
         if (oldVersion < 5) {
+          let manualTagsStore: IDBObjectStore;
           if (!db.objectStoreNames.contains(MANUAL_TAGS_STORE_NAME)) {
-            db.createObjectStore(MANUAL_TAGS_STORE_NAME, { keyPath: 'name' });
+            manualTagsStore = db.createObjectStore(MANUAL_TAGS_STORE_NAME, { keyPath: 'name' });
             console.log('Created manualTags object store (v5)');
+          } else {
+            manualTagsStore = request.transaction!.objectStore(MANUAL_TAGS_STORE_NAME);
+          }
+
+          if (oldVersion >= 2 && db.objectStoreNames.contains(STORE_NAME)) {
+            const annotationStore = request.transaction!.objectStore(STORE_NAME);
+            seedManualTagsFromAnnotations(annotationStore, manualTagsStore);
           }
         }
       };
@@ -615,9 +657,18 @@ export async function ensureManualTagExists(tagName: string): Promise<void> {
       }
     };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
 
     request.onsuccess = () => {
       const existing = request.result as ManualTagRecord | undefined;
@@ -625,7 +676,6 @@ export async function ensureManualTagExists(tagName: string): Promise<void> {
         ? { ...existing, updatedAt: timestamp }
         : { name: normalizedTag, createdAt: timestamp, updatedAt: timestamp };
       store.put(record);
-      resolve();
     };
 
     request.onerror = () => {
@@ -721,9 +771,18 @@ export async function renameManualTag(sourceTag: string, targetTag: string): Pro
       }
     };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
 
     let sourceRecord: ManualTagRecord | undefined;
     let targetRecord: ManualTagRecord | undefined;
@@ -743,7 +802,6 @@ export async function renameManualTag(sourceTag: string, targetTag: string): Pro
 
       store.put(recordToSave);
       store.delete(normalizedSource);
-      resolve();
     };
 
     getSourceRequest.onsuccess = () => {
@@ -801,11 +859,20 @@ export async function deleteManualTag(tagName: string): Promise<void> {
       }
     };
 
-    transaction.oncomplete = close;
-    transaction.onabort = close;
-    transaction.onerror = close;
+    transaction.oncomplete = () => {
+      close();
+      resolve();
+    };
+    transaction.onabort = () => {
+      close();
+      reject(transaction.error);
+    };
+    transaction.onerror = () => {
+      close();
+      reject(transaction.error);
+    };
 
-    request.onsuccess = () => resolve();
+    request.onsuccess = () => {};
     request.onerror = () => {
       console.error('Failed to delete manual tag', request.error);
       reject(request.error);
