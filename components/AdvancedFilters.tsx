@@ -2,14 +2,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckCircle, ChevronDown, Settings, Star, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ImageRating } from '../types';
+import { getRatingChipClasses, RATING_VALUES } from './RatingStars';
 
 interface AdvancedFiltersProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
   availableDimensions: string[];
-  exactRating: ImageRating | null;
-  onExactRatingChange: (rating: ImageRating | null) => void;
+  selectedRatings: ImageRating[];
+  onSelectedRatingsChange: (ratings: ImageRating[]) => void;
 }
 
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
@@ -17,8 +18,8 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
   availableDimensions,
-  exactRating,
-  onExactRatingChange,
+  selectedRatings,
+  onSelectedRatingsChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localFilters, setLocalFilters] = useState(advancedFilters || {});
@@ -71,7 +72,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLocalFilters((prev: Record<string, any>) => normalizeFilters({ ...prev, [key]: value }));
   };
 
-  const advancedFilterCount = Object.keys(advancedFilters || {}).length + (exactRating !== null ? 1 : 0);
+  const advancedFilterCount = Object.keys(advancedFilters || {}).length + selectedRatings.length;
   const hasActiveFilters = advancedFilterCount > 0;
   const generationSummary = useMemo(() => {
     const parts: string[] = [];
@@ -95,9 +96,9 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const metaHubSummary = localFilters.hasVerifiedTelemetry
     ? 'Only images with verified telemetry.'
     : 'MetaHub-specific metadata filters.';
-  const ratingSummary = exactRating !== null
-    ? `Matching rating ${exactRating}.`
-    : 'Match a specific user rating.';
+  const ratingSummary = selectedRatings.length > 0
+    ? `Matching ratings ${selectedRatings.join(', ')}.`
+    : 'Toggle one or more ratings.';
 
   const renderNumberRange = (
     label: string,
@@ -320,30 +321,48 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{ratingSummary}</p>
                   </div>
-                  {exactRating !== null && (
+                  {selectedRatings.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => onExactRatingChange(null)}
+                      onClick={() => onSelectedRatingsChange([])}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear exact rating"
+                      title="Clear rating filters"
                     >
                       <X size={14} />
                     </button>
                   )}
                 </div>
-                <select
-                  value={exactRating ?? ''}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    onExactRatingChange(value ? Number(value) as ImageRating : null);
-                  }}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
-                >
-                  <option value="">Any rating</option>
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <option key={value} value={value}>Rating {value}</option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelectedRatingsChange([])}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      selectedRatings.length === 0
+                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
+                        : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {RATING_VALUES.map((value) => {
+                    const active = selectedRatings.includes(value);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => onSelectedRatingsChange(
+                          active
+                            ? selectedRatings.filter((rating) => rating !== value)
+                            : [...selectedRatings, value],
+                        )}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, active)}`}
+                        title={`Toggle rating ${value}`}
+                      >
+                        {value}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">

@@ -326,8 +326,7 @@ interface ImageState {
   selectedAutoTags: string[]; // Filter by auto-tags
   excludedAutoTags: string[];
   favoriteFilterMode: InclusionFilterMode;
-  minimumRating: ImageRating | null;
-  exactRating: ImageRating | null;
+  selectedRatings: ImageRating[];
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
@@ -464,8 +463,7 @@ interface ImageState {
   setSelectedAutoTags: (tags: string[]) => void;
   setExcludedAutoTags: (tags: string[]) => void;
   setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
-  setMinimumRating: (rating: ImageRating | null) => void;
-  setExactRating: (rating: ImageRating | null) => void;
+  setSelectedRatings: (ratings: ImageRating[]) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
   refreshAvailableAutoTags: () => void;
@@ -687,8 +685,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     const isFilteringActive = (state: ImageState) => {
         if (state.searchQuery) return true;
         if (state.favoriteFilterMode !== 'neutral') return true;
-        if (state.minimumRating !== null) return true;
-        if (state.exactRating !== null) return true;
+        if (state.selectedRatings?.length) return true;
         if (state.selectedTags?.length) return true;
         if (state.excludedTags?.length) return true;
         if (state.selectedAutoTags?.length) return true;
@@ -892,10 +889,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(img => img.isFavorite !== true);
         }
 
-        if (state.exactRating !== null) {
-            results = results.filter(img => img.rating === state.exactRating);
-        } else if (state.minimumRating !== null) {
-            results = results.filter(img => (img.rating ?? 0) >= state.minimumRating);
+        if (state.selectedRatings && state.selectedRatings.length > 0) {
+            const selectedRatings = new Set(state.selectedRatings);
+            results = results.filter(img => img.rating !== undefined && selectedRatings.has(img.rating));
         }
 
         // Step 3: Sensitive tags filter (safe mode)
@@ -1229,8 +1225,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedAutoTags: [],
         excludedAutoTags: [],
         favoriteFilterMode: 'neutral',
-        minimumRating: null,
-        exactRating: null,
+        selectedRatings: [],
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
@@ -2617,20 +2612,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
-        setMinimumRating: (rating) => set(state => {
+        setSelectedRatings: (ratings) => set(state => {
+            const normalizedRatings = Array.from(new Set(ratings))
+                .filter((rating): rating is ImageRating => [1, 2, 3, 4, 5].includes(rating))
+                .sort((a, b) => a - b);
             const newState = {
                 ...state,
-                minimumRating: rating,
-                exactRating: null,
-            };
-            return { ...newState, ...filterAndSort(newState) };
-        }),
-
-        setExactRating: (rating) => set(state => {
-            const newState = {
-                ...state,
-                exactRating: rating,
-                minimumRating: null,
+                selectedRatings: normalizedRatings,
             };
             return { ...newState, ...filterAndSort(newState) };
         }),
@@ -2863,8 +2851,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedAutoTags: [],
             excludedAutoTags: [],
             favoriteFilterMode: 'neutral',
-            minimumRating: null,
-            exactRating: null,
+            selectedRatings: [],
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),

@@ -207,8 +207,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
-  const minimumRating = useImageStore((state) => state.minimumRating);
-  const exactRating = useImageStore((state) => state.exactRating);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
@@ -227,8 +226,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       excludedAutoTags.length > 0 ||
       !!searchQuery ||
       favoriteFilterMode !== 'neutral' ||
-      minimumRating !== null ||
-      exactRating !== null ||
+      selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (selectedCount === 0 && !hasActiveFilters) {

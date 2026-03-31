@@ -182,14 +182,13 @@ export default function App() {
   const selectedSamplers = useImageStore((state) => state.selectedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
-  const exactRating = useImageStore((state) => state.exactRating);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
-  const setMinimumRating = useImageStore((state) => state.setMinimumRating);
-  const setExactRating = useImageStore((state) => state.setExactRating);
+  const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
 
   // Folder selection selectors
   const selectedFolders = useImageStore((state) => state.selectedFolders);
@@ -1298,19 +1297,18 @@ export default function App() {
             setSelectedAutoTags([]);
             setExcludedAutoTags([]);
             setFavoriteFilterMode('neutral');
-            setMinimumRating(null);
-            setExactRating(null);
+            setSelectedRatings([]);
             setAdvancedFilters({});
           }}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
           onClearAdvancedFilters={() => {
             setAdvancedFilters({});
-            setExactRating(null);
+            setSelectedRatings([]);
           }}
           availableDimensions={availableDimensions}
-          exactRating={exactRating}
-          onExactRatingChange={setExactRating}
+          selectedRatings={selectedRatings}
+          onSelectedRatingsChange={setSelectedRatings}
           onAddFolder={handleSelectFolder}
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
           scanSubfolders={scanSubfolders}

@@ -176,16 +176,16 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
   });
 
-  it('filters by minimum and exact rating with mutual exclusivity', () => {
-    useImageStore.getState().setMinimumRating(3);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
-    expect(useImageStore.getState().exactRating).toBeNull();
+  it('filters by multiple selected ratings with OR logic', () => {
+    useImageStore.getState().setSelectedRatings([1, 3]);
+    expect(useImageStore.getState().selectedRatings).toEqual([1, 3]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
-    useImageStore.getState().setExactRating(1);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['c.png']);
-    expect(useImageStore.getState().minimumRating).toBeNull();
+    useImageStore.getState().setSelectedRatings([3, 3, 1]);
+    expect(useImageStore.getState().selectedRatings).toEqual([1, 3]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
-    useImageStore.getState().setExactRating(null);
+    useImageStore.getState().setSelectedRatings([]);
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
   });
 

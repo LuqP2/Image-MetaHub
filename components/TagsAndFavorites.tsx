@@ -22,10 +22,8 @@ const TagsAndFavorites: React.FC = () => {
   const {
     favoriteFilterMode,
     setFavoriteFilterMode,
-    minimumRating,
-    exactRating,
-    setMinimumRating,
-    setExactRating,
+    selectedRatings,
+    setSelectedRatings,
     availableTags,
     availableAutoTags,
     selectedTags,
@@ -107,9 +105,17 @@ const TagsAndFavorites: React.FC = () => {
   const quickRatingCounts = new Map(
     quickRatingOptions.map((value) => [
       value,
-      images.filter(img => (img.rating ?? 0) >= value).length,
+      images.filter(img => img.rating === value).length,
     ]),
   );
+
+  const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {
+    setSelectedRatings(
+      selectedRatings.includes(value)
+        ? selectedRatings.filter((rating) => rating !== value)
+        : [...selectedRatings, value],
+    );
+  };
 
   // Filter tags by search query
   const filteredTags = tagSearchQuery
@@ -320,8 +326,7 @@ const TagsAndFavorites: React.FC = () => {
     totalFavoriteCount === 0 &&
     availableAutoTags.length === 0 &&
     totalRatedCount === 0 &&
-    minimumRating === null &&
-    exactRating === null
+    selectedRatings.length === 0
   ) {
     return null;
   }
@@ -334,7 +339,7 @@ const TagsAndFavorites: React.FC = () => {
       >
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
-          {(minimumRating !== null || exactRating !== null || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
+          {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
             <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
               active
             </span>
@@ -359,21 +364,16 @@ const TagsAndFavorites: React.FC = () => {
                   <div className="flex items-center space-x-2">
                     <Star className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
-                    {minimumRating !== null && (
+                    {selectedRatings.length > 0 && (
                       <span className="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded border border-amber-700/50">
-                        {minimumRating}+
-                      </span>
-                    )}
-                    {exactRating !== null && (
-                      <span className="text-xs bg-indigo-900/40 text-indigo-300 px-2 py-0.5 rounded border border-indigo-700/50">
-                        exact {exactRating}
+                        {selectedRatings.join(', ')}
                       </span>
                     )}
                   </div>
-                  {(minimumRating !== null || exactRating !== null) && (
+                  {selectedRatings.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setExactRating(null)}
+                      onClick={() => setSelectedRatings([])}
                       className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
                       title="Clear rating filters"
                     >
@@ -382,14 +382,14 @@ const TagsAndFavorites: React.FC = () => {
                   )}
                 </div>
                 <p className="text-[11px] text-gray-500">
-                  Quick filter by minimum rating. Exact matches are available in Advanced Filters.
+                  Toggle one or more ratings. Clicking 1 and 3 shows images rated 1 or 3.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setMinimumRating(null)}
+                    onClick={() => setSelectedRatings([])}
                     className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                      minimumRating === null && exactRating === null
+                      selectedRatings.length === 0
                         ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
                         : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
                     }`}
@@ -400,9 +400,9 @@ const TagsAndFavorites: React.FC = () => {
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setMinimumRating(minimumRating === value ? null : value)}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, minimumRating === value)}`}
-                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${value} or higher`}
+                      onClick={() => toggleSelectedRating(value)}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, selectedRatings.includes(value))}`}
+                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${value}`}
                     >
                       {value}
                     </button>
