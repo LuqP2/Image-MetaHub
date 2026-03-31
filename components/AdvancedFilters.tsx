@@ -1,19 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle, ChevronDown, Settings, X } from 'lucide-react';
+import { Calendar, CheckCircle, ChevronDown, Settings, Star, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { ImageRating } from '../types';
 
 interface AdvancedFiltersProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
   availableDimensions: string[];
+  exactRating: ImageRating | null;
+  onExactRatingChange: (rating: ImageRating | null) => void;
 }
 
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
-  availableDimensions
+  availableDimensions,
+  exactRating,
+  onExactRatingChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localFilters, setLocalFilters] = useState(advancedFilters || {});
@@ -66,7 +71,8 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLocalFilters((prev: Record<string, any>) => normalizeFilters({ ...prev, [key]: value }));
   };
 
-  const hasActiveFilters = Object.keys(advancedFilters || {}).length > 0;
+  const advancedFilterCount = Object.keys(advancedFilters || {}).length + (exactRating !== null ? 1 : 0);
+  const hasActiveFilters = advancedFilterCount > 0;
   const generationSummary = useMemo(() => {
     const parts: string[] = [];
     if (localFilters.steps) {
@@ -89,6 +95,9 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const metaHubSummary = localFilters.hasVerifiedTelemetry
     ? 'Only images with verified telemetry.'
     : 'MetaHub-specific metadata filters.';
+  const ratingSummary = exactRating !== null
+    ? `Matching exactly ${exactRating} star${exactRating === 1 ? '' : 's'}.`
+    : 'Match a specific user rating.';
 
   const renderNumberRange = (
     label: string,
@@ -177,7 +186,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             <span className="text-gray-200 font-medium">Metadata & File Filters</span>
             {hasActiveFilters && (
               <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-                {Object.keys(advancedFilters).length} active
+                {advancedFilterCount} active
               </span>
             )}
           </div>
@@ -300,6 +309,41 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <Star className="h-4 w-4 text-amber-400" />
+                      Rating
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{ratingSummary}</p>
+                  </div>
+                  {exactRating !== null && (
+                    <button
+                      type="button"
+                      onClick={() => onExactRatingChange(null)}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear exact rating"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <select
+                  value={exactRating ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    onExactRatingChange(value ? Number(value) as ImageRating : null);
+                  }}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                >
+                  <option value="">Any rating</option>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <option key={value} value={value}>{value} star{value === 1 ? '' : 's'}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">

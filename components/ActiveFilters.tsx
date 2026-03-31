@@ -17,6 +17,8 @@ const ActiveFilters: React.FC = () => {
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const minimumRating = useImageStore((state) => state.minimumRating);
+  const exactRating = useImageStore((state) => state.exactRating);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
@@ -26,6 +28,8 @@ const ActiveFilters: React.FC = () => {
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const setMinimumRating = useImageStore((state) => state.setMinimumRating);
+  const setExactRating = useImageStore((state) => state.setExactRating);
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
   const hasActiveFilters =
@@ -43,6 +47,8 @@ const ActiveFilters: React.FC = () => {
     excludedAutoTags.length > 0 ||
     !!searchQuery ||
     favoriteFilterMode !== 'neutral' ||
+    minimumRating !== null ||
+    exactRating !== null ||
     (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (!hasActiveFilters) {
@@ -89,6 +95,24 @@ const ActiveFilters: React.FC = () => {
           <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
             <span>Exclude favorites</span>
             <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-rose-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {minimumRating !== null && (
+          <div className={`${chipClass} border-amber-700/50 bg-amber-950/50 text-amber-200`}>
+            <span>Rating {`>= ${minimumRating}`}</span>
+            <button onClick={() => setMinimumRating(null)} className="rounded p-0.5 hover:bg-amber-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {exactRating !== null && (
+          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+            <span>Rating = {exactRating}</span>
+            <button onClick={() => setExactRating(null)} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
           </div>

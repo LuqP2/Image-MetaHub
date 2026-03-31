@@ -16,6 +16,7 @@ import { mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
+import RatingStars from './RatingStars';
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -169,6 +170,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     setPreviewImage,
     directories,
     toggleFavorite,
+    setImageRating,
     addTagToImage,
     removeTagFromImage,
     removeAutoTagFromImage,
@@ -366,6 +368,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     toggleFavorite(activeImage.id);
   };
 
+  const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    if (!activeImage) return;
+    setImageRating(activeImage.id, rating);
+  };
+
   // Filter autocomplete tags
   const autocompleteOptions = tagInput && activeImage
     ? availableTags
@@ -451,18 +458,21 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50 space-y-2">
           {/* Favorite and Tags Row */}
           <div className="flex items-start gap-3">
-            {/* Favorite Star - Discrete */}
-            <button
-              onClick={handleToggleFavorite}
-              className={`p-1.5 rounded transition-all ${
-                activeImage.isFavorite
-                  ? 'text-yellow-400 hover:text-yellow-300'
-                  : 'text-gray-500 hover:text-yellow-400'
-              }`}
-              title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            >
-              <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
+              <button
+                onClick={handleToggleFavorite}
+                className={`p-1 rounded transition-all ${
+                  activeImage.isFavorite
+                    ? 'text-yellow-400 hover:text-yellow-300'
+                    : 'text-gray-500 hover:text-yellow-400'
+                }`}
+                title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
+              </button>
+              <div className="h-5 w-px bg-gray-300/80 dark:bg-gray-700/70" />
+              <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />
+            </div>
 
             {/* Tags Pills */}
             <div className="flex-1 space-y-2">

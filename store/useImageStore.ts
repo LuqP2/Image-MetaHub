@@ -100,6 +100,19 @@ const replaceRecentTag = (currentTags: string[], sourceTag: string, targetTag: s
 
 const normalizeTagName = (tag: string) => tag.trim().toLowerCase();
 
+const buildAnnotationRecord = (
+    imageId: string,
+    currentAnnotation: ImageAnnotations | undefined,
+    overrides: Partial<Pick<ImageAnnotations, 'isFavorite' | 'tags' | 'rating'>>,
+): ImageAnnotations => ({
+    imageId,
+    isFavorite: overrides.isFavorite ?? currentAnnotation?.isFavorite ?? false,
+    tags: overrides.tags ?? currentAnnotation?.tags ?? [],
+    rating: overrides.rating ?? currentAnnotation?.rating,
+    addedAt: currentAnnotation?.addedAt ?? Date.now(),
+    updatedAt: Date.now(),
+});
+
 type ManualTagFilterState = Pick<ImageState, 'selectedTags' | 'excludedTags'>;
 
 const removeTagFromManualFilters = <T extends ManualTagFilterState>(state: T, tag: string): T => {
@@ -668,6 +681,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     const isFilteringActive = (state: ImageState) => {
         if (state.searchQuery) return true;
         if (state.favoriteFilterMode !== 'neutral') return true;
+        if (state.minimumRating !== null) return true;
+        if (state.exactRating !== null) return true;
         if (state.selectedTags?.length) return true;
         if (state.excludedTags?.length) return true;
         if (state.selectedAutoTags?.length) return true;
@@ -750,13 +765,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 // Check if annotation values are different from current image values
                 const isFavoriteChanged = img.isFavorite !== annotation.isFavorite;
                 const tagsChanged = JSON.stringify(img.tags || []) !== JSON.stringify(annotation.tags);
+                const ratingChanged = img.rating !== annotation.rating;
 
-                if (isFavoriteChanged || tagsChanged) {
+                if (isFavoriteChanged || tagsChanged || ratingChanged) {
                     hasChanges = true;
                     return {
                         ...img,
                         isFavorite: annotation.isFavorite,
                         tags: annotation.tags,
+                        rating: annotation.rating,
                     };
                 }
             }
@@ -867,6 +884,12 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(img => img.isFavorite === true);
         } else if (state.favoriteFilterMode === 'exclude') {
             results = results.filter(img => img.isFavorite !== true);
+        }
+
+        if (state.exactRating !== null) {
+            results = results.filter(img => img.rating === state.exactRating);
+        } else if (state.minimumRating !== null) {
+            results = results.filter(img => (img.rating ?? 0) >= state.minimumRating);
         }
 
         // Step 3: Sensitive tags filter (safe mode)
@@ -1200,6 +1223,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedAutoTags: [],
         excludedAutoTags: [],
         favoriteFilterMode: 'neutral',
+        minimumRating: null,
+        exactRating: null,
         isAnnotationsLoaded: false,
         activeWatchers: new Set(),
         refreshingDirectories: new Set(),
@@ -2016,18 +2041,14 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         toggleFavorite: async (imageId) => {
-            const { annotations, images } = get();
+            const { annotations } = get();
 
             const currentAnnotation = annotations.get(imageId);
             const newIsFavorite = !(currentAnnotation?.isFavorite ?? false);
 
-            const updatedAnnotation: ImageAnnotations = {
-                imageId,
+            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
                 isFavorite: newIsFavorite,
-                tags: currentAnnotation?.tags ?? [],
-                addedAt: currentAnnotation?.addedAt ?? Date.now(),
-                updatedAt: Date.now(),
-            };
+            });
 
             // Update in-memory state
             set(state => {
@@ -2035,7 +2056,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 newAnnotations.set(imageId, updatedAnnotation);
 
                 const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, isFavorite: newIsFavorite } : img
+                    img.id === imageId ? { ...img, isFavorite: newIsFavorite, rating: updatedAnnotation.rating } : img
                 );
 
                 const newState = {
@@ -2059,13 +2080,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             for (const imageId of imageIds) {
                 const current = annotations.get(imageId);
-                updatedAnnotations.push({
-                    imageId,
+                updatedAnnotations.push(buildAnnotationRecord(imageId, current, {
                     isFavorite,
-                    tags: current?.tags ?? [],
-                    addedAt: current?.addedAt ?? Date.now(),
-                    updatedAt: Date.now(),
-                });
+                }));
             }
 
             // Update state
@@ -2078,7 +2095,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const updatedImages = state.images.map(img => {
                     const annotation = newAnnotations.get(img.id);
                     if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, isFavorite: annotation.isFavorite };
+                        return { ...img, isFavorite: annotation.isFavorite, rating: annotation.rating };
                     }
                     return img;
                 });
@@ -2098,6 +2115,74 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
         },
 
+        setImageRating: async (imageId, rating) => {
+            const { annotations } = get();
+            const currentAnnotation = annotations.get(imageId);
+            const normalizedRating = rating ?? undefined;
+            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
+                rating: normalizedRating,
+            });
+
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                newAnnotations.set(imageId, updatedAnnotation);
+
+                const updatedImages = state.images.map(img =>
+                    img.id === imageId ? { ...img, rating: normalizedRating } : img
+                );
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            saveAnnotation(updatedAnnotation).catch(error => {
+                console.error('Failed to save image rating:', error);
+            });
+        },
+
+        bulkSetImageRating: async (imageIds, rating) => {
+            if (imageIds.length === 0) {
+                return;
+            }
+
+            const { annotations } = get();
+            const normalizedRating = rating ?? undefined;
+            const updatedAnnotations = imageIds.map(imageId =>
+                buildAnnotationRecord(imageId, annotations.get(imageId), {
+                    rating: normalizedRating,
+                })
+            );
+
+            set(state => {
+                const newAnnotations = new Map(state.annotations);
+                for (const annotation of updatedAnnotations) {
+                    newAnnotations.set(annotation.imageId, annotation);
+                }
+
+                const imageIdsSet = new Set(imageIds);
+                const updatedImages = state.images.map(img =>
+                    imageIdsSet.has(img.id) ? { ...img, rating: normalizedRating } : img
+                );
+
+                const newState = {
+                    ...state,
+                    annotations: newAnnotations,
+                    images: updatedImages,
+                };
+
+                return { ...newState, ...filterAndSort(newState) };
+            });
+
+            bulkSaveAnnotations(updatedAnnotations).catch(error => {
+                console.error('Failed to bulk save image ratings:', error);
+            });
+        },
+
         addTagToImage: async (imageId, tag) => {
             const normalizedTag = normalizeTagName(tag);
             if (!normalizedTag) return;
@@ -2110,13 +2195,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const updatedAnnotation: ImageAnnotations = {
-                imageId,
-                isFavorite: currentAnnotation?.isFavorite ?? false,
+            const updatedAnnotation = buildAnnotationRecord(imageId, currentAnnotation, {
                 tags: [...(currentAnnotation?.tags ?? []), normalizedTag],
-                addedAt: currentAnnotation?.addedAt ?? Date.now(),
-                updatedAt: Date.now(),
-            };
+            });
 
             let nextRecentTags = get().recentTags;
 
@@ -2126,7 +2207,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 newAnnotations.set(imageId, updatedAnnotation);
 
                 const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags } : img
+                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags, rating: updatedAnnotation.rating } : img
                 );
 
                 nextRecentTags = updateRecentTags(state.recentTags, normalizedTag);
@@ -2172,7 +2253,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 newAnnotations.set(imageId, updatedAnnotation);
 
                 const updatedImages = state.images.map(img =>
-                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags } : img
+                    img.id === imageId ? { ...img, tags: updatedAnnotation.tags, rating: updatedAnnotation.rating } : img
                 );
 
                 const newState = {
@@ -2225,13 +2306,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     continue; // Skip if already tagged
                 }
 
-                updatedAnnotations.push({
-                    imageId,
-                    isFavorite: current?.isFavorite ?? false,
+                updatedAnnotations.push(buildAnnotationRecord(imageId, current, {
                     tags: [...(current?.tags ?? []), normalizedTag],
-                    addedAt: current?.addedAt ?? Date.now(),
-                    updatedAt: Date.now(),
-                });
+                }));
             }
 
             let nextRecentTags = get().recentTags;
@@ -2246,7 +2323,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const updatedImages = state.images.map(img => {
                     const annotation = newAnnotations.get(img.id);
                     if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, tags: annotation.tags };
+                        return { ...img, tags: annotation.tags, rating: annotation.rating };
                     }
                     return img;
                 });
@@ -2301,7 +2378,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const updatedImages = state.images.map(img => {
                     const annotation = newAnnotations.get(img.id);
                     if (annotation && imageIds.includes(img.id)) {
-                        return { ...img, tags: annotation.tags };
+                        return { ...img, tags: annotation.tags, rating: annotation.rating };
                     }
                     return img;
                 });
@@ -2534,6 +2611,24 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
+        setMinimumRating: (rating) => set(state => {
+            const newState = {
+                ...state,
+                minimumRating: rating,
+                exactRating: null,
+            };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
+        setExactRating: (rating) => set(state => {
+            const newState = {
+                ...state,
+                exactRating: rating,
+                minimumRating: null,
+            };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
         getImageAnnotations: (imageId) => {
             return get().annotations.get(imageId) || null;
         },
@@ -2594,13 +2689,9 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 if (newTags.length === 0) continue;
 
-                const updatedAnnotation: ImageAnnotations = {
-                    imageId: image.id,
-                    isFavorite: currentAnnotation?.isFavorite ?? false,
+                const updatedAnnotation = buildAnnotationRecord(image.id, currentAnnotation, {
                     tags: [...existingTags, ...newTags],
-                    addedAt: currentAnnotation?.addedAt ?? Date.now(),
-                    updatedAt: Date.now(),
-                };
+                });
 
                 updatedAnnotations.push(updatedAnnotation);
             }
@@ -2616,7 +2707,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 const updatedImages = state.images.map(img => {
                     const annotation = newAnnotations.get(img.id);
-                    return annotation ? { ...img, tags: annotation.tags } : img;
+                    return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
                 });
 
                 const newState = {
@@ -2766,6 +2857,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedAutoTags: [],
             excludedAutoTags: [],
             favoriteFilterMode: 'neutral',
+            minimumRating: null,
+            exactRating: null,
             isAnnotationsLoaded: false,
             activeWatchers: new Set(),
             refreshingDirectories: new Set(),
