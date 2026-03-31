@@ -18,8 +18,10 @@ export interface TimelineData {
 export interface TopItemStats {
   name: string;
   total: number;
-  favorites: number; // TODO: Add 'favorite' field to IndexedImage metadata
+  favorites: number;
   keeperRate: number; // percentage of favorites
+  averageRating: number;
+  ratingCount: number;
 }
 
 export interface CreationHabits {
@@ -263,18 +265,22 @@ export function calculateTopItems(
   field: 'models' | 'loras' | 'scheduler',
   limit: number = 10
 ): TopItemStats[] {
-  const itemStats = new Map<string, { total: number; favorites: number }>();
+  const itemStats = new Map<string, { total: number; favorites: number; ratingTotal: number; ratingCount: number }>();
 
   images.forEach((img) => {
-    // TODO: Check if image has 'favorite' flag in metadata
-    const isFavorite = false; // Placeholder - implement when favorite system exists
+    const isFavorite = img.isFavorite === true;
+    const rating = img.rating;
 
     if (field === 'scheduler') {
       const scheduler = normalizeItemName(img.scheduler);
       if (scheduler) {
-        const stats = itemStats.get(scheduler) || { total: 0, favorites: 0 };
+        const stats = itemStats.get(scheduler) || { total: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
         stats.total++;
         if (isFavorite) stats.favorites++;
+        if (typeof rating === 'number') {
+          stats.ratingTotal += rating;
+          stats.ratingCount++;
+        }
         itemStats.set(scheduler, stats);
       }
     } else {
@@ -282,9 +288,13 @@ export function calculateTopItems(
       items.forEach((item) => {
         const normalizedItem = normalizeItemName(item);
         if (normalizedItem) {
-          const stats = itemStats.get(normalizedItem) || { total: 0, favorites: 0 };
+          const stats = itemStats.get(normalizedItem) || { total: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
           stats.total++;
           if (isFavorite) stats.favorites++;
+          if (typeof rating === 'number') {
+            stats.ratingTotal += rating;
+            stats.ratingCount++;
+          }
           itemStats.set(normalizedItem, stats);
         }
       });
@@ -297,6 +307,8 @@ export function calculateTopItems(
       total: stats.total,
       favorites: stats.favorites,
       keeperRate: stats.total > 0 ? (stats.favorites / stats.total) * 100 : 0,
+      averageRating: stats.ratingCount > 0 ? stats.ratingTotal / stats.ratingCount : 0,
+      ratingCount: stats.ratingCount,
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, limit);
@@ -757,3 +769,474 @@ export function formatVRAM(vramMb: number, gpuDevice?: string | null): string {
 
   return `${vramGb.toFixed(1)} GB`;
 }
+
+export type AnalyticsScopeMode = 'context' | 'library';
+export type AnalyticsCompareDimension = 'generator' | 'model' | 'lora' | 'sampler' | 'scheduler' | 'gpu' | 'rating' | 'telemetry';
+
+export interface AnalyticsFacetItem {
+  key: string;
+  label: string;
+  count: number;
+  share: number;
+  favorites: number;
+  keeperRate: number;
+  averageRating: number;
+  ratingCount: number;
+}
+
+export interface AnalyticsTimelinePoint {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface AnalyticsSession {
+  id: string;
+  label: string;
+  start: number;
+  end: number;
+  count: number;
+  imageIds: string[];
+  dominantModel?: string;
+}
+
+export interface AnalyticsNumericBucket {
+  key: string;
+  label: string;
+  count: number;
+  min?: number;
+  max?: number;
+}
+
+export interface AnalyticsCompareConfig {
+  dimension: AnalyticsCompareDimension;
+  leftKey: string;
+  rightKey: string;
+}
+
+export interface AnalyticsCompareCohort {
+  key: string;
+  label: string;
+  count: number;
+  favoriteRate: number;
+  averageRating: number;
+  telemetryCoverage: number;
+  dominantModel?: string;
+}
+
+export interface AnalyticsExplorerData {
+  scopeMode: AnalyticsScopeMode;
+  totalImages: number;
+  allImagesCount: number;
+  dominantModel?: string;
+  dominantGenerator?: string;
+  telemetryCoverage: number;
+  periodStats: PeriodStats;
+  insights: AutoInsight[];
+  samples: IndexedImage[];
+  resources: {
+    generators: AnalyticsFacetItem[];
+    models: AnalyticsFacetItem[];
+    loras: AnalyticsFacetItem[];
+    samplers: AnalyticsFacetItem[];
+    schedulers: AnalyticsFacetItem[];
+  };
+  time: {
+    timeline: AnalyticsTimelinePoint[];
+    weekday: { key: string; label: string; count: number }[];
+    hourly: { key: string; label: string; count: number }[];
+    sessions: AnalyticsSession[];
+  };
+  performance: {
+    averages: PerformanceAverages;
+    byGPU: GPUPerformanceStats[];
+    generationTime: AnalyticsNumericBucket[];
+    speed: AnalyticsNumericBucket[];
+    vram: AnalyticsNumericBucket[];
+  };
+  curation: {
+    favoritesCount: number;
+    favoriteRate: number;
+    unratedCount: number;
+    ratingDistribution: AnalyticsFacetItem[];
+    keeperModels: AnalyticsFacetItem[];
+    keeperLoras: AnalyticsFacetItem[];
+  };
+  compare?: {
+    dimension: AnalyticsCompareDimension;
+    left: AnalyticsCompareCohort;
+    right: AnalyticsCompareCohort;
+  };
+}
+
+const SESSION_GAP_MS = 60 * 60 * 1000;
+
+const getImageAnalytics = (image: IndexedImage) =>
+  image.metadata?.normalizedMetadata?.analytics ||
+  (image.metadata?.normalizedMetadata as { _analytics?: Record<string, unknown> } | undefined)?._analytics;
+
+export const getImageGenerator = (image: IndexedImage): string => {
+  const generator = image.metadata?.normalizedMetadata?.generator;
+  return typeof generator === 'string' && generator.trim().length > 0 ? generator : 'Unknown';
+};
+
+export const getImageGpuDevice = (image: IndexedImage): string | null => {
+  const gpuDevice = getImageAnalytics(image)?.gpu_device;
+  return typeof gpuDevice === 'string' && gpuDevice.trim().length > 0 ? gpuDevice : null;
+};
+
+const getImageLoraNames = (image: IndexedImage): string[] =>
+  (image.loras || [])
+    .map((lora) => (typeof lora === 'string' ? lora : lora?.name))
+    .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+
+const getImageRatingKey = (image: IndexedImage): string[] =>
+  typeof image.rating === 'number' ? [String(image.rating)] : [];
+
+const getImageTelemetryKey = (image: IndexedImage): string[] =>
+  hasTelemetry(image) ? ['verified'] : [];
+
+const hasTelemetry = (image: IndexedImage): boolean => {
+  const analytics = getImageAnalytics(image);
+  return Boolean(
+    analytics &&
+    (
+      typeof analytics.generation_time_ms === 'number' ||
+      typeof analytics.steps_per_second === 'number' ||
+      typeof analytics.vram_peak_mb === 'number' ||
+      typeof analytics.gpu_device === 'string'
+    )
+  );
+};
+
+const collectFacetItems = (
+  images: IndexedImage[],
+  getKeys: (image: IndexedImage) => string[],
+  limit = 12
+): AnalyticsFacetItem[] => {
+  const stats = new Map<string, { count: number; favorites: number; ratingTotal: number; ratingCount: number }>();
+
+  images.forEach((image) => {
+    const uniqueKeys = new Set(
+      getKeys(image)
+        .map((key) => normalizeItemName(key))
+        .filter((key): key is string => Boolean(key))
+    );
+
+    uniqueKeys.forEach((key) => {
+      const entry = stats.get(key) || { count: 0, favorites: 0, ratingTotal: 0, ratingCount: 0 };
+      entry.count += 1;
+      if (image.isFavorite) {
+        entry.favorites += 1;
+      }
+      if (typeof image.rating === 'number') {
+        entry.ratingTotal += image.rating;
+        entry.ratingCount += 1;
+      }
+      stats.set(key, entry);
+    });
+  });
+
+  const totalImages = images.length || 1;
+
+  return Array.from(stats.entries())
+    .map(([key, value]) => ({
+      key,
+      label: key,
+      count: value.count,
+      share: value.count / totalImages,
+      favorites: value.favorites,
+      keeperRate: value.count > 0 ? value.favorites / value.count : 0,
+      averageRating: value.ratingCount > 0 ? value.ratingTotal / value.ratingCount : 0,
+      ratingCount: value.ratingCount,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+};
+
+const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] => {
+  const counts = new Map<string, number>();
+
+  images.forEach((image) => {
+    const date = new Date(image.lastModified);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, count]) => ({ key, label: key, count }));
+};
+
+const buildSessions = (images: IndexedImage[], limit = 8): AnalyticsSession[] => {
+  if (images.length === 0) {
+    return [];
+  }
+
+  const sorted = [...images].sort((a, b) => a.lastModified - b.lastModified);
+  const sessions: IndexedImage[][] = [];
+  let currentSession: IndexedImage[] = [sorted[0]];
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const currentImage = sorted[index];
+    const previousImage = sorted[index - 1];
+
+    if (currentImage.lastModified - previousImage.lastModified > SESSION_GAP_MS) {
+      sessions.push(currentSession);
+      currentSession = [currentImage];
+      continue;
+    }
+
+    currentSession.push(currentImage);
+  }
+
+  sessions.push(currentSession);
+
+  return sessions
+    .map((session, index) => {
+      const start = session[0].lastModified;
+      const end = session[session.length - 1].lastModified;
+      const dominantModel = collectFacetItems(session, (image) => image.models || [], 1)[0]?.label;
+
+      return {
+        id: `session-${index}-${start}`,
+        label: `${new Date(start).toLocaleDateString()} ${new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        start,
+        end,
+        count: session.length,
+        imageIds: session.map((image) => image.id),
+        dominantModel,
+      };
+    })
+    .sort((a, b) => b.start - a.start)
+    .slice(0, limit);
+};
+
+const buildNumericBuckets = (
+  images: IndexedImage[],
+  labelFactory: (entry: { min?: number; max?: number }) => string,
+  selector: (image: IndexedImage) => number | null,
+  ranges: Array<{ key: string; min?: number; max?: number }>
+): AnalyticsNumericBucket[] => ranges
+  .map((range) => ({
+    key: range.key,
+    label: labelFactory(range),
+    count: images.filter((image) => {
+      const value = selector(image);
+      if (value === null) {
+        return false;
+      }
+      if (range.min !== undefined && value < range.min) {
+        return false;
+      }
+      if (range.max !== undefined && value >= range.max) {
+        return false;
+      }
+      return true;
+    }).length,
+    min: range.min,
+    max: range.max,
+  }))
+  .filter((bucket) => bucket.count > 0);
+
+const buildCompareCohort = (
+  images: IndexedImage[],
+  dimension: AnalyticsCompareDimension,
+  key: string
+): AnalyticsCompareCohort => {
+  const cohortImages = images.filter((image) => {
+    switch (dimension) {
+      case 'generator':
+        return getImageGenerator(image) === key;
+      case 'model':
+        return image.models.includes(key);
+      case 'lora':
+        return getImageLoraNames(image).includes(key);
+      case 'sampler':
+        return image.sampler === key;
+      case 'scheduler':
+        return image.scheduler === key;
+      case 'gpu':
+        return getImageGpuDevice(image) === key;
+      case 'rating':
+        return String(image.rating ?? '') === key;
+      case 'telemetry':
+        return key === 'verified' ? hasTelemetry(image) : !hasTelemetry(image);
+      default:
+        return false;
+    }
+  });
+
+  const favoriteCount = cohortImages.filter((image) => image.isFavorite).length;
+  const ratedImages = cohortImages.filter((image) => typeof image.rating === 'number');
+  const dominantModel = collectFacetItems(cohortImages, (image) => image.models || [], 1)[0]?.label;
+  const telemetryCount = cohortImages.filter((image) => hasTelemetry(image)).length;
+
+  return {
+    key,
+    label: key === 'verified' ? 'Verified telemetry' : key,
+    count: cohortImages.length,
+    favoriteRate: cohortImages.length > 0 ? favoriteCount / cohortImages.length : 0,
+    averageRating: ratedImages.length > 0
+      ? ratedImages.reduce((sum, image) => sum + (image.rating || 0), 0) / ratedImages.length
+      : 0,
+    telemetryCoverage: cohortImages.length > 0 ? telemetryCount / cohortImages.length : 0,
+    dominantModel,
+  };
+};
+
+export const getCompareDimensionOptions = (
+  data: Pick<AnalyticsExplorerData, 'resources' | 'performance' | 'curation'>
+): Record<AnalyticsCompareDimension, string[]> => ({
+  generator: data.resources.generators.map((item) => item.key),
+  model: data.resources.models.map((item) => item.key),
+  lora: data.resources.loras.map((item) => item.key),
+  sampler: data.resources.samplers.map((item) => item.key),
+  scheduler: data.resources.schedulers.map((item) => item.key),
+  gpu: data.performance.byGPU.map((item) => item.name),
+  rating: data.curation.ratingDistribution.map((item) => item.key).filter((key) => key !== 'unrated'),
+  telemetry: ['verified', 'missing'],
+});
+
+export const buildAnalyticsExplorerData = ({
+  scopeImages,
+  allImages,
+  scopeMode,
+  compare,
+}: {
+  scopeImages: IndexedImage[];
+  allImages: IndexedImage[];
+  scopeMode: AnalyticsScopeMode;
+  compare?: AnalyticsCompareConfig | null;
+}): AnalyticsExplorerData => {
+  const totalImages = scopeImages.length;
+  const averages = calculatePerformanceAverages(scopeImages);
+  const dominantModel = collectFacetItems(scopeImages, (image) => image.models || [], 1)[0]?.label;
+  const dominantGenerator = collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 1)[0]?.label;
+  const favoritesCount = scopeImages.filter((image) => image.isFavorite).length;
+  const ratedImages = scopeImages.filter((image) => typeof image.rating === 'number');
+  const unratedCount = scopeImages.filter((image) => typeof image.rating !== 'number').length;
+  const ratingDistribution = [
+    ...RATING_VALUES.map((rating) => {
+      const count = scopeImages.filter((image) => image.rating === rating).length;
+      const matchingImages = scopeImages.filter((image) => image.rating === rating);
+      const favorites = matchingImages.filter((image) => image.isFavorite).length;
+      return {
+        key: String(rating),
+        label: `${rating}★`,
+        count,
+        share: totalImages > 0 ? count / totalImages : 0,
+        favorites,
+        keeperRate: count > 0 ? favorites / count : 0,
+        averageRating: count > 0 ? rating : 0,
+        ratingCount: count,
+      };
+    }),
+    {
+      key: 'unrated',
+      label: 'Unrated',
+      count: unratedCount,
+      share: totalImages > 0 ? unratedCount / totalImages : 0,
+      favorites: scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length,
+      keeperRate: unratedCount > 0
+        ? scopeImages.filter((image) => typeof image.rating !== 'number' && image.isFavorite).length / unratedCount
+        : 0,
+      averageRating: 0,
+      ratingCount: 0,
+    },
+  ].filter((item) => item.count > 0);
+
+  const explorerData: AnalyticsExplorerData = {
+    scopeMode,
+    totalImages,
+    allImagesCount: allImages.length,
+    dominantModel,
+    dominantGenerator,
+    telemetryCoverage: averages.telemetryPercentage / 100,
+    periodStats: calculatePeriodStats(allImages, 30),
+    insights: generateInsights(allImages, calculatePeriodStats(allImages, 30), calculateTopItems(scopeImages, 'models', 5), undefined, scopeMode === 'context' ? 'current scope' : 'library', totalImages),
+    samples: [...scopeImages].sort((a, b) => b.lastModified - a.lastModified).slice(0, 8),
+    resources: {
+      generators: collectFacetItems(scopeImages, (image) => [getImageGenerator(image)], 10),
+      models: collectFacetItems(scopeImages, (image) => image.models || [], 12),
+      loras: collectFacetItems(scopeImages, getImageLoraNames, 12),
+      samplers: collectFacetItems(scopeImages, (image) => image.sampler ? [image.sampler] : [], 12),
+      schedulers: collectFacetItems(scopeImages, (image) => image.scheduler ? [image.scheduler] : [], 12),
+    },
+    time: {
+      timeline: buildTimelinePoints(scopeImages),
+      weekday: analyzeCreationHabits(scopeImages).weekdayDistribution.map((entry) => ({ key: entry.day, label: entry.day, count: entry.count })),
+      hourly: analyzeCreationHabits(scopeImages).hourlyDistribution.map((entry) => ({ key: String(entry.hour), label: `${entry.hour}:00`, count: entry.count })),
+      sessions: buildSessions(scopeImages),
+    },
+    performance: {
+      averages,
+      byGPU: calculatePerformanceByGPU(scopeImages),
+      generationTime: buildNumericBuckets(
+        scopeImages,
+        ({ min, max }) => min === undefined ? `< ${max}ms` : max === undefined ? `>= ${min}ms` : `${min}-${max}ms`,
+        (image) => {
+          const value = getImageAnalytics(image)?.generation_time_ms;
+          return typeof value === 'number' ? value : null;
+        },
+        [
+          { key: 'lt1000', max: 1000 },
+          { key: '1k-5k', min: 1000, max: 5000 },
+          { key: '5k-15k', min: 5000, max: 15000 },
+          { key: '15k-60k', min: 15000, max: 60000 },
+          { key: 'gte60k', min: 60000 },
+        ]
+      ),
+      speed: buildNumericBuckets(
+        scopeImages,
+        ({ min, max }) => min === undefined ? `< ${max} it/s` : max === undefined ? `>= ${min} it/s` : `${min}-${max} it/s`,
+        (image) => {
+          const value = getImageAnalytics(image)?.steps_per_second;
+          return typeof value === 'number' ? value : null;
+        },
+        [
+          { key: 'lt2', max: 2 },
+          { key: '2-5', min: 2, max: 5 },
+          { key: '5-10', min: 5, max: 10 },
+          { key: '10-20', min: 10, max: 20 },
+          { key: 'gte20', min: 20 },
+        ]
+      ),
+      vram: buildNumericBuckets(
+        scopeImages,
+        ({ min, max }) => min === undefined ? `< ${max} MB` : max === undefined ? `>= ${min} MB` : `${min}-${max} MB`,
+        (image) => {
+          const value = getImageAnalytics(image)?.vram_peak_mb;
+          return typeof value === 'number' ? value : null;
+        },
+        [
+          { key: 'lt2048', max: 2048 },
+          { key: '2048-4096', min: 2048, max: 4096 },
+          { key: '4096-8192', min: 4096, max: 8192 },
+          { key: '8192-12288', min: 8192, max: 12288 },
+          { key: 'gte12288', min: 12288 },
+        ]
+      ),
+    },
+    curation: {
+      favoritesCount,
+      favoriteRate: totalImages > 0 ? favoritesCount / totalImages : 0,
+      unratedCount,
+      ratingDistribution,
+      keeperModels: collectFacetItems(scopeImages, (image) => image.models || [], 8),
+      keeperLoras: collectFacetItems(scopeImages, getImageLoraNames, 8),
+    },
+  };
+
+  if (compare) {
+    explorerData.compare = {
+      dimension: compare.dimension,
+      left: buildCompareCohort(scopeImages, compare.dimension, compare.leftKey),
+      right: buildCompareCohort(scopeImages, compare.dimension, compare.rightKey),
+    };
+  }
+
+  return explorerData;
+};
+
+const RATING_VALUES = [1, 2, 3, 4, 5] as const;

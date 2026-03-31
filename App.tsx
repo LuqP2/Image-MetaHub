@@ -31,6 +31,7 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import GridToolbar from './components/GridToolbar';
+import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
@@ -1418,6 +1419,13 @@ export default function App() {
 
           {hasDirectories && (
             <>
+                {libraryView === 'library' && (
+                  <AnalyticsSummaryStrip
+                    images={safeFilteredImages}
+                    allImages={safeImages}
+                    onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+                  />
+                )}
                 <GridToolbar
                   selectedImages={safeSelectedImages}
                   images={paginatedImages}

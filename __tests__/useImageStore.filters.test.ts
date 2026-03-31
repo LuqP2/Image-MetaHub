@@ -30,6 +30,7 @@ const imageA = createImage({
   name: 'a.png',
   isFavorite: true,
   rating: 5,
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090', generation_time_ms: 4200, steps_per_second: 12.5, vram_peak_mb: 6144 } } } as any,
   tags: ['portrait', 'warm'],
   autoTags: ['cinematic'],
   models: ['modelA'],
@@ -44,6 +45,7 @@ const imageB = createImage({
   name: 'b.png',
   isFavorite: false,
   rating: 3,
+  metadata: { normalizedMetadata: { generator: 'InvokeAI', _analytics: { gpu_device: 'RTX 3060', generation_time_ms: 8200, steps_per_second: 6.1, vram_peak_mb: 4096 } } } as any,
   tags: ['portrait'],
   autoTags: ['studio'],
   models: ['modelB'],
@@ -58,6 +60,7 @@ const imageC = createImage({
   name: 'c.png',
   isFavorite: true,
   rating: 1,
+  metadata: { normalizedMetadata: { generator: 'ComfyUI' } } as any,
   tags: ['landscape'],
   autoTags: ['cinematic', 'nature'],
   models: ['modelA'],
@@ -174,6 +177,40 @@ describe('useImageStore tri-state filters', () => {
       cfg: { min: null, max: 7 },
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('supports generator and GPU include/exclude filters', () => {
+    useImageStore.getState().setSelectedFilters({
+      generators: ['ComfyUI'],
+      excludedGpuDevices: ['RTX 4090'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['c.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      generators: [],
+      excludedGpuDevices: [],
+      gpuDevices: ['RTX 3060'],
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png']);
+  });
+
+  it('supports telemetry numeric ranges from analytics explorer buckets', () => {
+    useImageStore.getState().setAdvancedFilters({
+      generationTimeMs: { min: 4000, max: 7000 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      stepsPerSecond: { min: 10, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      vramPeakMb: { min: 4000, max: 5000 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png']);
   });
 
   it('filters by multiple selected ratings with OR logic', () => {
