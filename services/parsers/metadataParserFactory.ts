@@ -12,6 +12,7 @@ import { parseDreamStudioMetadata } from './dreamStudioParser';
 import { parseDrawThingsMetadata } from './drawThingsParser';
 import { parseFooocusMetadata } from './fooocusParser';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './comfyUIParser';
+import { isBrowserMetaHubPayload, parseBrowserMetaHubMetadata } from './browserMetaHubParser';
 import { parseVideoMetaHubMetadata } from './videoMetaHubParser';
 
 function sanitizeJson(jsonString: string): string {
@@ -45,6 +46,16 @@ interface ParserModule {
 }
 
 export function getMetadataParser(metadata: ImageMetadata): ParserModule | null {
+    if (isBrowserMetaHubPayload(metadata)) {
+        const parsed = parseBrowserMetaHubMetadata(metadata);
+        if (parsed) {
+            return {
+                parse: () => parsed,
+                generator: parsed.generator || 'Browser'
+            };
+        }
+    }
+
     // Check for DALL-E C2PA/EXIF metadata first (most specific)
     if ('c2pa_manifest' in metadata || 
         ('exif_data' in metadata && typeof metadata.exif_data === 'object') ||
@@ -85,7 +96,25 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
 
     // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)
     // Check for imagemetahub_data chunk (iTXt format from MetaHub Save Node)
+    if ('imh_browser_data' in metadata) {
+        const parsed = parseBrowserMetaHubMetadata(metadata as any);
+        if (parsed) {
+            return {
+                parse: () => parsed,
+                generator: parsed.generator || 'Browser'
+            };
+        }
+    }
+
     if ('imagemetahub_data' in metadata) {
+        const parsedBrowser = parseBrowserMetaHubMetadata(metadata as any);
+        if (parsedBrowser) {
+            return {
+                parse: () => parsedBrowser,
+                generator: parsedBrowser.generator || 'Browser'
+            };
+        }
+
         console.log('🎯 Selected parser: ComfyUI (MetaHub Save Node)');
         return {
             parse: async (data: ComfyUIMetadata) => {

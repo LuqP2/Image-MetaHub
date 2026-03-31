@@ -5,6 +5,7 @@ import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager'
 import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
+import { parseBrowserMetaHubMetadata } from './parsers/browserMetaHubParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
@@ -369,7 +370,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   
   // OPTIMIZATION: Stop early if we found all needed chunks
   let foundChunks = 0;
-  const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
+  const maxChunks = 6; // invokeai_metadata, parameters, workflow, prompt, Description, browser/metahub chunks
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     if (offset + 8 > view.byteLength) {
@@ -389,7 +390,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
         shouldTryExif = true;
       }
       
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imh_browser_data'].includes(keyword) && text) {
         chunks[keyword.toLowerCase()] = text;
         foundChunks++;
       }
@@ -405,7 +406,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
         shouldTryExif = true;
       }
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword)) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data', 'imh_browser_data'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
@@ -436,7 +437,17 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
     offset += 12 + length;
   }
 
-  // PRIORITY 0: MetaHub Save Node chunk (highest priority)
+  // PRIORITY 0: Browser extension chunk
+  if (chunks.imh_browser_data) {
+    try {
+      const browserData = JSON.parse(chunks.imh_browser_data);
+      return { imh_browser_data: browserData };
+    } catch (e) {
+      console.warn('[PNG Parser] Failed to parse imh_browser_data chunk:', e);
+    }
+  }
+
+  // PRIORITY 0.1: MetaHub Save Node chunk (highest priority for ComfyUI payloads)
   if (chunks.imagemetahub_data) {
     try {
       const metahubData = JSON.parse(chunks.imagemetahub_data);
@@ -1114,6 +1125,15 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
+  const browserResult = parseBrowserMetaHubMetadata(metaHubData);
+  if (browserResult) {
+    return {
+      ...browserResult,
+      width: browserResult.width || fallbackDims?.width || 0,
+      height: browserResult.height || fallbackDims?.height || 0,
+    };
+  }
+
   const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: metaHubData });
   const width = fallbackDims?.width ?? 0;
   const height = fallbackDims?.height ?? 0;
@@ -1227,9 +1247,20 @@ async function processSingleFileOptimized(
 let normalizedMetadata: BaseMetadata | undefined;
 if (rawMetadata) {
 
-  // Priority 0: Check for MetaHub Save Node chunk (iTXt imagemetahub_data)
-  // This has highest priority as it contains pre-extracted, validated metadata
-  if ('imagemetahub_data' in rawMetadata) {
+  // Priority 0: Browser extension chunk / MetaHub chunks
+  if ('imh_browser_data' in rawMetadata) {
+    try {
+      const metaHubData = (rawMetadata as { imh_browser_data: unknown }).imh_browser_data;
+      normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData);
+    } catch (e) {
+      console.error('[FileIndexer] Failed to parse browser metadata chunk:', e);
+      // Fall through to other parsers
+    }
+  }
+
+  // Priority 0.1: Check for MetaHub Save Node chunk (iTXt imagemetahub_data)
+  // This has highest priority for ComfyUI companion payloads as it contains pre-extracted metadata
+  if (!normalizedMetadata && 'imagemetahub_data' in rawMetadata) {
     try {
       const metaHubData = (rawMetadata as { imagemetahub_data: unknown }).imagemetahub_data;
       normalizedMetadata = await buildNormalizedMetadataFromMetaHubChunk(metaHubData);
