@@ -104,14 +104,20 @@ const buildAnnotationRecord = (
     imageId: string,
     currentAnnotation: ImageAnnotations | undefined,
     overrides: Partial<Pick<ImageAnnotations, 'isFavorite' | 'tags' | 'rating'>>,
-): ImageAnnotations => ({
-    imageId,
-    isFavorite: overrides.isFavorite ?? currentAnnotation?.isFavorite ?? false,
-    tags: overrides.tags ?? currentAnnotation?.tags ?? [],
-    rating: overrides.rating ?? currentAnnotation?.rating,
-    addedAt: currentAnnotation?.addedAt ?? Date.now(),
-    updatedAt: Date.now(),
-});
+): ImageAnnotations => {
+    const hasFavoriteOverride = Object.prototype.hasOwnProperty.call(overrides, 'isFavorite');
+    const hasTagsOverride = Object.prototype.hasOwnProperty.call(overrides, 'tags');
+    const hasRatingOverride = Object.prototype.hasOwnProperty.call(overrides, 'rating');
+
+    return {
+        imageId,
+        isFavorite: hasFavoriteOverride ? overrides.isFavorite ?? false : currentAnnotation?.isFavorite ?? false,
+        tags: hasTagsOverride ? overrides.tags ?? [] : currentAnnotation?.tags ?? [],
+        rating: hasRatingOverride ? overrides.rating : currentAnnotation?.rating,
+        addedAt: currentAnnotation?.addedAt ?? Date.now(),
+        updatedAt: Date.now(),
+    };
+};
 
 type ManualTagFilterState = Pick<ImageState, 'selectedTags' | 'excludedTags'>;
 

@@ -20,6 +20,8 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
   const setExcludedTags = vi.fn();
   const setSelectedAutoTags = vi.fn();
   const setExcludedAutoTags = vi.fn();
+  const setMinimumRating = vi.fn();
+  const setExactRating = vi.fn();
   const refreshAvailableAutoTags = vi.fn();
 
   useImageStore.getState().resetState();
@@ -33,6 +35,8 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     selectedAutoTags: [],
     excludedAutoTags: [],
     favoriteFilterMode: 'neutral',
+    minimumRating: null,
+    exactRating: null,
     renameTag,
     clearTag,
     deleteTag,
@@ -41,6 +45,8 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     setExcludedTags,
     setSelectedAutoTags,
     setExcludedAutoTags,
+    setMinimumRating,
+    setExactRating,
     refreshAvailableAutoTags,
     ...overrides,
   });
@@ -52,6 +58,8 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     purgeTag,
     setSelectedTags,
     setExcludedTags,
+    setMinimumRating,
+    setExactRating,
     refreshAvailableAutoTags,
   };
 };
@@ -111,6 +119,31 @@ describe('TagsAndFavorites manual tag browser', () => {
 
     expect(setSelectedTags).toHaveBeenCalledWith(['ghost-tag']);
     expect(setExcludedTags).toHaveBeenCalledWith([]);
+  });
+
+  it('uses the quick rating chips to set a minimum rating filter', () => {
+    const { setMinimumRating } = seedSidebarState({
+      images: [{ id: 'img-1', rating: 4 } as any],
+      filteredImages: [{ id: 'img-1', rating: 4 } as any],
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.click(screen.getByText('3+'));
+
+    expect(setMinimumRating).toHaveBeenCalledWith(3);
+  });
+
+  it('clears an exact rating filter from the rating section', () => {
+    const { setExactRating } = seedSidebarState({
+      images: [{ id: 'img-1', rating: 4 } as any],
+      filteredImages: [{ id: 'img-1', rating: 4 } as any],
+      exactRating: 4,
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.click(screen.getByTitle('Clear rating filters'));
+
+    expect(setExactRating).toHaveBeenCalledWith(null);
   });
 
   it('opens the rename dialog and submits the new tag name', async () => {

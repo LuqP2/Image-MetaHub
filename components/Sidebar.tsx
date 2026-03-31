@@ -7,6 +7,7 @@ import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
+import type { ImageRating } from '../types';
 
 interface SidebarProps {
   searchQuery: string;
@@ -28,6 +29,8 @@ interface SidebarProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
+  exactRating: ImageRating | null;
+  onExactRatingChange: (rating: ImageRating | null) => void;
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -61,6 +64,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
+  exactRating,
+  onExactRatingChange,
   children,
   isCollapsed,
   onToggleCollapse,
@@ -82,6 +87,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const minimumRating = useImageStore((state) => state.minimumRating);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
@@ -200,6 +206,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedAutoTags.length > 0 ||
     excludedAutoTags.length > 0 ||
     favoriteFilterMode !== 'neutral' ||
+    minimumRating !== null ||
+    exactRating !== null ||
     Object.keys(advancedFilters || {}).length > 0;
 
   if (isCollapsed) {
@@ -231,6 +239,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             excludedAutoTags.length > 0 ||
             searchQuery ||
             favoriteFilterMode !== 'neutral' ||
+            minimumRating !== null ||
+            exactRating !== null ||
             Object.keys(advancedFilters || {}).length > 0) && (
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
@@ -387,6 +397,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           onAdvancedFiltersChange={onAdvancedFiltersChange}
           onClearAdvancedFilters={onClearAdvancedFilters}
           availableDimensions={availableDimensions}
+          exactRating={exactRating}
+          onExactRatingChange={onExactRatingChange}
         />
       </div>
 

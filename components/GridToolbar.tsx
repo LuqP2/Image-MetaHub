@@ -53,9 +53,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
+  const [ratingDropdownOpen, setRatingDropdownOpen] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const ratingDropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
 
 
@@ -72,6 +75,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setGenerateDropdownOpen(false);
+      }
+      if (ratingDropdownRef.current && !ratingDropdownRef.current.contains(event.target as Node)) {
+        setRatingDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -180,6 +186,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setIsTagModalOpen(true);
   };
 
+  const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const imageIds = selectedImagesList.map((image) => image.id);
+    bulkSetImageRating(imageIds, rating);
+    setRatingDropdownOpen(false);
+  };
+
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
@@ -194,6 +206,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const minimumRating = useImageStore((state) => state.minimumRating);
+  const exactRating = useImageStore((state) => state.exactRating);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
@@ -212,6 +226,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       excludedAutoTags.length > 0 ||
       !!searchQuery ||
       favoriteFilterMode !== 'neutral' ||
+      minimumRating !== null ||
+      exactRating !== null ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (selectedCount === 0 && !hasActiveFilters) {
@@ -269,6 +285,37 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 >
                   <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
                 </button>
+
+                <div className="relative" ref={ratingDropdownRef}>
+                  <button
+                    onClick={() => setRatingDropdownOpen((open) => !open)}
+                    className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                    title="Set Rating"
+                  >
+                    <Star className="w-4 h-4" />
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  {ratingDropdownOpen && selectedCount > 0 && (
+                    <div className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[150px] z-50">
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <button
+                          key={value}
+                          onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                          className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors"
+                        >
+                          {'★'.repeat(value)} {value}
+                        </button>
+                      ))}
+                      <div className="border-t border-gray-700 my-1" />
+                      <button
+                        onClick={() => handleSetRating(null)}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                      >
+                        Clear rating
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {/* Divider */}
                 <div className="w-px h-4 bg-gray-700 mx-1" />

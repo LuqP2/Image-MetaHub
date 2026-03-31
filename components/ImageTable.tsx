@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play, Star } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -63,6 +63,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
+  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
 
   const {
@@ -102,6 +103,17 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+
+    bulkSetImageRating(targetImages.map((image) => image.id), rating);
+    hideContextMenu();
+  }, [bulkSetImageRating, getContextTargetImages, hideContextMenu]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -397,6 +409,29 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
 
           <div className="border-t border-gray-600 my-1"></div>
 
+          <div className="px-4 py-2">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                  className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-200 transition-colors hover:border-amber-500/60 hover:text-amber-200"
+                >
+                  ★{value}
+                </button>
+              ))}
+              <button
+                onClick={() => handleSetRating(null)}
+                className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-600 my-1"></div>
+
           <button
               onClick={copyRawMetadata}
               className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
@@ -552,6 +587,11 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
+              {image.rating && (
+                <div className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
+                  ★{image.rating}
+                </div>
+              )}
               {isVideo && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="rounded-full bg-black/50 p-1.5">
@@ -628,6 +668,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.thumbnailUrl === nextProps.image.thumbnailUrl &&
     prevProps.image.thumbnailStatus === nextProps.image.thumbnailStatus &&
+    prevProps.image.rating === nextProps.image.rating &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.gridTemplateColumns === nextProps.gridTemplateColumns
   );

@@ -642,6 +642,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
   const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
+  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
   // Drag-to-select states
   const [isSelecting, setIsSelecting] = useState(false);
@@ -773,6 +774,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    bulkSetImageRating(targetImages.map((image) => image.id), rating);
+    hideContextMenu();
+  }, [bulkSetImageRating, getContextTargetImages, hideContextMenu]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -1185,6 +1197,27 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <span className="flex-1">Add/Remove Tags</span>
             {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
+
+          <div className="px-4 py-2">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                  className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-200 transition-colors hover:border-amber-500/60 hover:text-amber-200"
+                >
+                  ★{value}
+                </button>
+              ))}
+              <button
+                onClick={() => handleSetRating(null)}
+                className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
 
           <div className="border-t border-gray-600 my-1"></div>
 
