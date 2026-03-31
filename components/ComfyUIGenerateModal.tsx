@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, Maximize2, Minimize2, SlidersHorizontal, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, SlidersHorizontal, X } from 'lucide-react';
 import { BaseMetadata, IndexedImage } from '../types';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useComfyUIModels } from '../hooks/useComfyUIModels';
@@ -25,6 +25,7 @@ import {
 } from '../services/comfyUIWorkflowBuilder';
 import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
 import ComfyUIWorkflowVisualEditor from './ComfyUIWorkflowVisualEditor';
+import FloatingModalFrame from './FloatingModalFrame';
 
 interface ComfyUIGenerateModalProps {
   isOpen: boolean;
@@ -210,7 +211,6 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   const [selectedVisualNodeId, setSelectedVisualNodeId] = useState<string | null>(null);
   const [workingPromptGraph, setWorkingPromptGraph] = useState<ComfyUIPromptGraph | null>(null);
   const [workingWorkflowUi, setWorkingWorkflowUi] = useState(embeddedWorkflow.workflow);
-  const [isExpandedModal, setIsExpandedModal] = useState(false);
 
   const visualPromptAnalysis = useMemo(() => {
     if (!workingPromptGraph) {
@@ -392,7 +392,6 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     setLoraSearch('');
     setActiveTab('parameters');
     setSelectedVisualNodeId(null);
-    setIsExpandedModal(false);
   }, [
     embeddedWorkflow.prompt,
     embeddedWorkflow.workflow,
@@ -481,7 +480,7 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     || visualPromptAnalysis.generationType === 'outpaint';
   const requiresMaskInput = isTransformation && visualPromptAnalysis.maskTargets.length > 0;
   const visualTabDisabled = params.workflowMode !== 'original' || !workflowAnalysis.originalAvailable || !workingPromptGraph;
-  const visualViewportHeight = isExpandedModal ? 720 : 560;
+  const visualViewportHeight = 560;
 
   const syncParamsFromVisualField = (
     currentParams: GenerationParams,
@@ -691,59 +690,60 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
 
   if (!normalizedMetadata) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-        <div className="w-full max-w-md rounded-lg bg-gray-800 p-6 text-gray-100" onClick={(event) => event.stopPropagation()}>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-red-400">No Metadata Available</h2>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
-              <X size={20} />
-            </button>
-          </div>
+      <FloatingModalFrame
+        title="No Metadata Available"
+        onClose={onClose}
+        minWidth={420}
+        minHeight={220}
+        initialWidth={460}
+        initialHeight={240}
+        maxWidth={520}
+        maxHeight={320}
+        allowMaximize={false}
+        bodyClassName="p-6"
+      >
           <p className="text-sm text-gray-300">This image does not have enough metadata for ComfyUI generation.</p>
-        </div>
-      </div>
+      </FloatingModalFrame>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="flex flex-col rounded-lg bg-gray-800 p-6 text-gray-100 shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-        style={{
-          width: isExpandedModal ? 'min(96vw, 1680px)' : 'min(92vw, 1320px)',
-          height: isExpandedModal ? '92vh' : '88vh',
-          maxHeight: '92vh',
-          minHeight: '720px',
-          resize: 'both',
-          overflow: 'hidden',
-        }}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Generate with ComfyUI</h2>
-            <p className="text-sm text-gray-400">
-              {workflowAnalysis.originalAvailable
-                ? 'Original workflow is available for this image.'
-                : 'Original workflow is unavailable. Generation will use simple rebuild.'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+    <FloatingModalFrame
+      title="Generate with ComfyUI"
+      subtitle={
+        workflowAnalysis.originalAvailable
+          ? 'Original workflow is available for this image.'
+          : 'Original workflow is unavailable. Generation will use simple rebuild.'
+      }
+      onClose={onClose}
+      minWidth={900}
+      minHeight={720}
+      initialWidth={1320}
+      initialHeight={920}
+      maxWidth={1760}
+      maxHeight={1280}
+      bodyClassName="space-y-4 pr-1"
+      footer={
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm text-red-400">{validationError}</div>
+          <div className="flex items-center gap-3">
             <button
-              type="button"
-              onClick={() => setIsExpandedModal((current) => !current)}
-              className="rounded-full p-2 text-gray-300 hover:bg-gray-700"
-              title={isExpandedModal ? 'Restore modal size' : 'Expand modal'}
+              onClick={onClose}
+              className="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
             >
-              {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+              Cancel
             </button>
-            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
-              <X size={24} />
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isGenerating ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+      }
+    >
           <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
             <h3 className="mb-3 text-sm font-semibold text-gray-300">Workflow Mode</h3>
             <div className="grid gap-3 md:grid-cols-2">
@@ -1163,27 +1163,6 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
               )}
             </div>
           )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <div className="text-sm text-red-400">{validationError}</div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onClose}
-              className="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isGenerating ? 'Generating...' : 'Generate'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </FloatingModalFrame>
   );
 };

@@ -5,6 +5,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useA1111Models } from '../hooks/useA1111Models';
 import hotkeyManager from '../services/hotkeyManager';
 import { cleanLoraName, extractLoRAsWithWeights } from '../utils/promptCleaner';
+import FloatingModalFrame from './FloatingModalFrame';
 
 interface A1111GenerateModalProps {
   isOpen: boolean;
@@ -256,62 +257,72 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
   // Check if metadata is available
   if (!image.metadata?.normalizedMetadata) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
-        <div
-          className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 max-w-md"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-red-400">No Metadata Available</h2>
-            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700">
-              <X size={20} />
-            </button>
-          </div>
+      <FloatingModalFrame
+        title="No Metadata Available"
+        onClose={handleClose}
+        minWidth={420}
+        minHeight={220}
+        initialWidth={460}
+        initialHeight={240}
+        maxWidth={520}
+        maxHeight={320}
+        allowMaximize={false}
+        bodyClassName="p-6"
+      >
           <p className="text-gray-300">This image doesn't have metadata available for generation.</p>
-          <button
-            onClick={handleClose}
-            className="mt-4 w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium"
-          >
-            Close
-          </button>
-        </div>
-      </div>
+      </FloatingModalFrame>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
-      <div
-        className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Generate with A1111</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleLoadFromImage}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Load parameters from image metadata"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Load from Image
-            </button>
-            <button
-              onClick={handleClose}
-              className="p-1 rounded-full hover:bg-gray-700 transition-colors"
-            >
-              <X size={24} />
-            </button>
-          </div>
+    <FloatingModalFrame
+      title="Generate with A1111"
+      subtitle="Adjust prompts, sampler and model before sending the job."
+      onClose={handleClose}
+      minWidth={760}
+      minHeight={560}
+      initialWidth={980}
+      initialHeight={820}
+      maxWidth={1320}
+      maxHeight={1080}
+      headerActions={
+        <button
+          type="button"
+          onClick={handleLoadFromImage}
+          className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:border-gray-600 hover:bg-gray-700"
+          title="Load parameters from image metadata"
+        >
+          Load from Image
+        </button>
+      }
+      bodyClassName="space-y-4"
+      footer={
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={handleClose}
+            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleGenerate}
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            {isGenerating ? (
+              <>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Generating...</span>
+              </>
+            ) : (
+              <span>Generate</span>
+            )}
+          </button>
         </div>
-
-        {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto space-y-4">
+      }
+    >
           {/* Prompt */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-300">
@@ -609,34 +620,6 @@ export const A1111GenerateModal: React.FC<A1111GenerateModalProps> = ({
               {validationError}
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
-          <button
-            onClick={handleClose}
-            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleGenerate}
-            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            {isGenerating ? (
-              <>
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Generating...</span>
-              </>
-            ) : (
-              <span>Generate</span>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
+    </FloatingModalFrame>
   );
 };
