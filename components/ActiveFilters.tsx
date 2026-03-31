@@ -17,6 +17,7 @@ const ActiveFilters: React.FC = () => {
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
@@ -26,6 +27,7 @@ const ActiveFilters: React.FC = () => {
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
 
   const hasActiveFilters =
@@ -43,6 +45,7 @@ const ActiveFilters: React.FC = () => {
     excludedAutoTags.length > 0 ||
     !!searchQuery ||
     favoriteFilterMode !== 'neutral' ||
+    selectedRatings.length > 0 ||
     (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (!hasActiveFilters) {
@@ -93,6 +96,15 @@ const ActiveFilters: React.FC = () => {
             </button>
           </div>
         )}
+
+        {selectedRatings.map((rating) => (
+          <div key={`rating-${rating}`} className={`${chipClass} border-amber-700/50 bg-amber-950/50 text-amber-200`}>
+            <span>Rating {rating}</span>
+            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-amber-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        ))}
 
         {advancedFilters?.hasVerifiedTelemetry && (
           <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>

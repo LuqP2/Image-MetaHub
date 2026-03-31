@@ -25,6 +25,7 @@ import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal } from './MetadataEditorModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
+import RatingStars from './RatingStars';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -575,6 +576,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const setImageRating = useImageStore((state) => state.setImageRating);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
@@ -604,6 +606,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentTags = imageFromStore?.tags || image.tags || [];
   const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
   const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
+  const currentRating = imageFromStore?.rating ?? image.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
@@ -1344,6 +1347,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
     toggleFavorite(image.id);
   }, [image.id, toggleFavorite]);
 
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    setImageRating(image.id, rating);
+  }, [image.id, setImageRating]);
+
   const focusTagInput = useCallback(async () => {
     const focusInput = () => {
       tagInputRef.current?.focus();
@@ -1861,18 +1868,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite and Tags Row */}
             <div className="flex items-start gap-3">
-              {/* Favorite Star - Discrete */}
-              <button
-                onClick={handleToggleFavorite}
-                className={`p-1.5 rounded transition-all ${
-                  currentIsFavorite
-                    ? 'text-yellow-400 hover:text-yellow-300'
-                    : 'text-gray-500 hover:text-yellow-400'
-                }`}
-                title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
+                <button
+                  onClick={handleToggleFavorite}
+                  className={`p-1 rounded transition-all ${
+                    currentIsFavorite
+                      ? 'text-yellow-400 hover:text-yellow-300'
+                      : 'text-gray-500 hover:text-yellow-400'
+                  }`}
+                  title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
+                </button>
+                <div className="h-5 w-px bg-gray-700/70" />
+                <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
+              </div>
 
               {/* Tags Pills */}
               <div className="flex-1 space-y-2">
@@ -2659,6 +2669,7 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.image.id === nextProps.image.id &&
     prevProps.image.name === nextProps.image.name &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
+    prevProps.image.rating === nextProps.image.rating &&
     tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
     prevProps.currentIndex === nextProps.currentIndex &&
     prevProps.totalImages === nextProps.totalImages &&

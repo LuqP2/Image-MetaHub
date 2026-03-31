@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
+import { getRatingChipClasses } from './RatingStars';
 
 type TagContextMenuState = {
   x: number;
@@ -21,6 +22,8 @@ const TagsAndFavorites: React.FC = () => {
   const {
     favoriteFilterMode,
     setFavoriteFilterMode,
+    selectedRatings,
+    setSelectedRatings,
     availableTags,
     availableAutoTags,
     selectedTags,
@@ -97,6 +100,22 @@ const TagsAndFavorites: React.FC = () => {
   // Count favorites in filtered set (for display)
   const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
   const favoriteBadgeCount = favoriteFilterMode === 'include' ? favoriteCount : totalFavoriteCount;
+  const totalRatedCount = images.filter(img => (img.rating ?? 0) > 0).length;
+  const quickRatingOptions = [1, 2, 3, 4, 5] as const;
+  const quickRatingCounts = new Map(
+    quickRatingOptions.map((value) => [
+      value,
+      images.filter(img => img.rating === value).length,
+    ]),
+  );
+
+  const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {
+    setSelectedRatings(
+      selectedRatings.includes(value)
+        ? selectedRatings.filter((rating) => rating !== value)
+        : [...selectedRatings, value],
+    );
+  };
 
   // Filter tags by search query
   const filteredTags = tagSearchQuery
@@ -301,8 +320,14 @@ const TagsAndFavorites: React.FC = () => {
     await handleTagAction(() => purgeTag(contextMenu.tag.name));
   };
 
-  // Don't render if no favorites, tags, or auto-tags exist
-  if (availableTags.length === 0 && totalFavoriteCount === 0 && availableAutoTags.length === 0) {
+  // Don't render if no filters are available and no rating filter is active
+  if (
+    availableTags.length === 0 &&
+    totalFavoriteCount === 0 &&
+    availableAutoTags.length === 0 &&
+    totalRatedCount === 0 &&
+    selectedRatings.length === 0
+  ) {
     return null;
   }
 
@@ -313,8 +338,8 @@ const TagsAndFavorites: React.FC = () => {
         className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
       >
         <div className="flex items-center space-x-2">
-          <span className="text-gray-300 font-medium">Favorites & Tags</span>
-          {(favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
+          <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
+          {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
             <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
               active
             </span>
@@ -334,6 +359,57 @@ const TagsAndFavorites: React.FC = () => {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 space-y-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Star className="w-4 h-4 text-amber-400" />
+                    <span className="text-sm text-gray-400 font-medium">Rating</span>
+                    {selectedRatings.length > 0 && (
+                      <span className="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded border border-amber-700/50">
+                        {selectedRatings.join(', ')}
+                      </span>
+                    )}
+                  </div>
+                  {selectedRatings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRatings([])}
+                      className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
+                      title="Clear rating filters"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Toggle one or more ratings. Clicking 1 and 3 shows images rated 1 or 3.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRatings([])}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      selectedRatings.length === 0
+                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
+                        : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {quickRatingOptions.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleSelectedRating(value)}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, selectedRatings.includes(value))}`}
+                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${value}`}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Favorites Toggle */}
               {totalFavoriteCount > 0 && (
                 <div className="flex items-center space-x-2 group py-1 px-2 rounded hover:bg-gray-700/50">

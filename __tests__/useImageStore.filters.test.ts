@@ -29,6 +29,7 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
 const imageA = createImage({
   name: 'a.png',
   isFavorite: true,
+  rating: 5,
   tags: ['portrait', 'warm'],
   autoTags: ['cinematic'],
   models: ['modelA'],
@@ -42,6 +43,7 @@ const imageA = createImage({
 const imageB = createImage({
   name: 'b.png',
   isFavorite: false,
+  rating: 3,
   tags: ['portrait'],
   autoTags: ['studio'],
   models: ['modelB'],
@@ -55,6 +57,7 @@ const imageB = createImage({
 const imageC = createImage({
   name: 'c.png',
   isFavorite: true,
+  rating: 1,
   tags: ['landscape'],
   autoTags: ['cinematic', 'nature'],
   models: ['modelA'],
@@ -171,5 +174,33 @@ describe('useImageStore tri-state filters', () => {
       cfg: { min: null, max: 7 },
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('filters by multiple selected ratings with OR logic', () => {
+    useImageStore.getState().setSelectedRatings([1, 3]);
+    expect(useImageStore.getState().selectedRatings).toEqual([1, 3]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
+
+    useImageStore.getState().setSelectedRatings([3, 3, 1]);
+    expect(useImageStore.getState().selectedRatings).toEqual([1, 3]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
+
+    useImageStore.getState().setSelectedRatings([]);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+  });
+
+  it('sets and bulk updates ratings without affecting favorites or tags', async () => {
+    await useImageStore.getState().setImageRating(imageD.id, 4);
+
+    const updatedD = useImageStore.getState().images.find((image) => image.id === imageD.id);
+    expect(updatedD?.rating).toBe(4);
+    expect(useImageStore.getState().annotations.get(imageD.id)?.rating).toBe(4);
+    expect(updatedD?.isFavorite).toBeFalsy();
+
+    await useImageStore.getState().bulkSetImageRating([imageB.id, imageD.id], 2);
+
+    const updatedImages = useImageStore.getState().images.filter((image) => [imageB.id, imageD.id].includes(image.id));
+    expect(updatedImages.map((image) => image.rating)).toEqual([2, 2]);
+    expect(useImageStore.getState().images.find((image) => image.id === imageB.id)?.tags).toEqual(['portrait']);
   });
 });

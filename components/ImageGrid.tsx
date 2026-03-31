@@ -23,6 +23,7 @@ import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
+import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
@@ -30,6 +31,7 @@ import TagManagerModal from './TagManagerModal';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
+import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -642,6 +644,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
   const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
+  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
   // Drag-to-select states
   const [isSelecting, setIsSelecting] = useState(false);
@@ -773,6 +776,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (targetImageIds.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    bulkSetImageRating(targetImageIds, rating);
+    hideContextMenu();
+  }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -1185,6 +1199,27 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             <span className="flex-1">Add/Remove Tags</span>
             {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
+
+          <div className="px-4 py-2">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="flex flex-wrap gap-1.5">
+              {RATING_VALUES.map((value) => (
+                <button
+                  key={value}
+                  onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                >
+                  {value}
+                </button>
+              ))}
+              <button
+                onClick={() => handleSetRating(null)}
+                className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
 
           <div className="border-t border-gray-600 my-1"></div>
 

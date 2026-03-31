@@ -3,7 +3,7 @@
 import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
 
 const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 5; // Increment from 4 to 5 (Manual Tag Catalog)
+const DB_VERSION = 6; // v6: rating field supported in annotation payloads
 const STORE_NAME = 'imageAnnotations';
 const MANUAL_TAGS_STORE_NAME = 'manualTags';
 
@@ -190,6 +190,13 @@ async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}
             const annotationStore = request.transaction!.objectStore(STORE_NAME);
             seedManualTagsFromAnnotations(annotationStore, manualTagsStore);
           }
+        }
+
+        // Versão 6: Annotation payloads may include optional rating field.
+        // IndexedDB object stores are schema-less for values, so no structural
+        // migration is required beyond acknowledging the new payload shape.
+        if (oldVersion < 6) {
+          console.log('Image annotations storage upgraded to v6 (rating support)');
         }
       };
 

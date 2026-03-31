@@ -7,6 +7,7 @@ import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
+import type { ImageRating } from '../types';
 
 interface SidebarProps {
   searchQuery: string;
@@ -28,6 +29,8 @@ interface SidebarProps {
   advancedFilters: any;
   onAdvancedFiltersChange: (filters: any) => void;
   onClearAdvancedFilters: () => void;
+  selectedRatings: ImageRating[];
+  onSelectedRatingsChange: (ratings: ImageRating[]) => void;
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -61,6 +64,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
+  selectedRatings,
+  onSelectedRatingsChange,
   children,
   isCollapsed,
   onToggleCollapse,
@@ -200,6 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     selectedAutoTags.length > 0 ||
     excludedAutoTags.length > 0 ||
     favoriteFilterMode !== 'neutral' ||
+    selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
 
   if (isCollapsed) {
@@ -231,6 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             excludedAutoTags.length > 0 ||
             searchQuery ||
             favoriteFilterMode !== 'neutral' ||
+            selectedRatings.length > 0 ||
             Object.keys(advancedFilters || {}).length > 0) && (
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
@@ -387,6 +394,8 @@ const Sidebar: React.FC<SidebarProps> = ({
           onAdvancedFiltersChange={onAdvancedFiltersChange}
           onClearAdvancedFilters={onClearAdvancedFilters}
           availableDimensions={availableDimensions}
+          selectedRatings={selectedRatings}
+          onSelectedRatingsChange={onSelectedRatingsChange}
         />
       </div>
 

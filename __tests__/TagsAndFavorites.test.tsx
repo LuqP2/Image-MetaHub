@@ -20,6 +20,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
   const setExcludedTags = vi.fn();
   const setSelectedAutoTags = vi.fn();
   const setExcludedAutoTags = vi.fn();
+  const setSelectedRatings = vi.fn();
   const refreshAvailableAutoTags = vi.fn();
 
   useImageStore.getState().resetState();
@@ -33,6 +34,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     selectedAutoTags: [],
     excludedAutoTags: [],
     favoriteFilterMode: 'neutral',
+    selectedRatings: [],
     renameTag,
     clearTag,
     deleteTag,
@@ -41,6 +43,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     setExcludedTags,
     setSelectedAutoTags,
     setExcludedAutoTags,
+    setSelectedRatings,
     refreshAvailableAutoTags,
     ...overrides,
   });
@@ -52,6 +55,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     purgeTag,
     setSelectedTags,
     setExcludedTags,
+    setSelectedRatings,
     refreshAvailableAutoTags,
   };
 };
@@ -111,6 +115,32 @@ describe('TagsAndFavorites manual tag browser', () => {
 
     expect(setSelectedTags).toHaveBeenCalledWith(['ghost-tag']);
     expect(setExcludedTags).toHaveBeenCalledWith([]);
+  });
+
+  it('toggles rating chips with multi-select OR behavior', () => {
+    const { setSelectedRatings } = seedSidebarState({
+      images: [{ id: 'img-1', rating: 4 } as any],
+      filteredImages: [{ id: 'img-1', rating: 4 } as any],
+      selectedRatings: [1],
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.click(screen.getByText('3'));
+
+    expect(setSelectedRatings).toHaveBeenCalledWith([1, 3]);
+  });
+
+  it('clears selected rating filters from the rating section', () => {
+    const { setSelectedRatings } = seedSidebarState({
+      images: [{ id: 'img-1', rating: 4 } as any],
+      filteredImages: [{ id: 'img-1', rating: 4 } as any],
+      selectedRatings: [4],
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.click(screen.getByTitle('Clear rating filters'));
+
+    expect(setSelectedRatings).toHaveBeenCalledWith([]);
   });
 
   it('opens the rename dialog and submits the new tag name', async () => {
