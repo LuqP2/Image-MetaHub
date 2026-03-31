@@ -117,8 +117,22 @@ const MIN_MODAL_WIDTH = 760;
 const MIN_MODAL_HEIGHT = 520;
 const DEFAULT_MODAL_MAX_WIDTH = 1600;
 const DEFAULT_MODAL_MAX_HEIGHT = 1080;
+const DETAILS_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-modal-details-width';
+const DETAILS_SIDEBAR_HEIGHT_STORAGE_KEY = 'image-metahub-modal-details-height';
+const DEFAULT_DETAILS_SIDEBAR_WIDTH = 340;
+const MIN_DETAILS_SIDEBAR_WIDTH = 280;
+const DEFAULT_DETAILS_SIDEBAR_HEIGHT = 320;
+const MIN_DETAILS_SIDEBAR_HEIGHT = 240;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const sanitizeDetailsPanelSize = (value: number, fallback: number, min: number) => {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.max(value, min);
+};
 
 const getModalViewportMetrics = () => {
   if (typeof window === 'undefined') {
@@ -534,6 +548,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
+  const [detailsSidebarWidth, setDetailsSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_DETAILS_SIDEBAR_WIDTH;
+    }
+
+    return sanitizeDetailsPanelSize(
+      Number(window.localStorage.getItem(DETAILS_SIDEBAR_WIDTH_STORAGE_KEY)),
+      DEFAULT_DETAILS_SIDEBAR_WIDTH,
+      MIN_DETAILS_SIDEBAR_WIDTH
+    );
+  });
+  const [detailsSidebarHeight, setDetailsSidebarHeight] = useState(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_DETAILS_SIDEBAR_HEIGHT;
+    }
+
+    return sanitizeDetailsPanelSize(
+      Number(window.localStorage.getItem(DETAILS_SIDEBAR_HEIGHT_STORAGE_KEY)),
+      DEFAULT_DETAILS_SIDEBAR_HEIGHT,
+      MIN_DETAILS_SIDEBAR_HEIGHT
+    );
+  });
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -617,6 +653,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
+  const [detailsResizeAxis, setDetailsResizeAxis] = useState<'x' | 'y' | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
@@ -624,6 +661,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
   const imageFullPath = `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
+  const maxDetailsSidebarWidth = Math.max(
+    MIN_DETAILS_SIDEBAR_WIDTH,
+    Math.floor(modalWindow.width * 0.55)
+  );
+  const clampedDetailsSidebarWidth = clamp(
+    detailsSidebarWidth,
+    MIN_DETAILS_SIDEBAR_WIDTH,
+    maxDetailsSidebarWidth
+  );
+  const maxDetailsSidebarHeight = Math.max(
+    MIN_DETAILS_SIDEBAR_HEIGHT,
+    Math.floor(modalWindow.height * 0.6)
+  );
+  const clampedDetailsSidebarHeight = clamp(
+    detailsSidebarHeight,
+    MIN_DETAILS_SIDEBAR_HEIGHT,
+    maxDetailsSidebarHeight
+  );
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
     if (isFullscreen || !modalShellRef.current) {
@@ -738,6 +793,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      DETAILS_SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(clampedDetailsSidebarWidth))
+    );
+  }, [clampedDetailsSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      DETAILS_SIDEBAR_HEIGHT_STORAGE_KEY,
+      String(Math.round(clampedDetailsSidebarHeight))
+    );
+  }, [clampedDetailsSidebarHeight]);
 
   useEffect(() => {
     if (isFullscreen) {
@@ -874,6 +951,52 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
+  useEffect(() => {
+    if (isFullscreen || detailsResizeAxis === null) {
+      return;
+    }
+
+    const resizeAxis = detailsResizeAxis;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault();
+
+      if (resizeAxis === 'x') {
+        const nextWidth = modalWindowRef.current.width - event.clientX + modalWindowRef.current.x;
+        setDetailsSidebarWidth(
+          clamp(nextWidth, MIN_DETAILS_SIDEBAR_WIDTH, Math.max(MIN_DETAILS_SIDEBAR_WIDTH, Math.floor(modalWindowRef.current.width * 0.55)))
+        );
+        return;
+      }
+
+      const nextHeight = modalWindowRef.current.height - event.clientY + modalWindowRef.current.y;
+      setDetailsSidebarHeight(
+        clamp(nextHeight, MIN_DETAILS_SIDEBAR_HEIGHT, Math.max(MIN_DETAILS_SIDEBAR_HEIGHT, Math.floor(modalWindowRef.current.height * 0.6)))
+      );
+    };
+
+    const handlePointerUp = () => {
+      setDetailsResizeAxis(null);
+    };
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = resizeAxis === 'x' ? 'col-resize' : 'row-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [clampedDetailsSidebarHeight, clampedDetailsSidebarWidth, detailsResizeAxis, isFullscreen]);
+
    // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
   const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
@@ -979,6 +1102,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialY: currentWindow.y,
     });
   }, [isFullscreen, isWindowMaximized]);
+
+  const beginDetailsSidebarResize = useCallback((axis: 'x' | 'y') => (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isFullscreen || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setDetailsResizeAxis(axis);
+  }, [isFullscreen]);
 
   const resetModalWindow = useCallback(() => {
     setIsWindowMaximized(false);
@@ -1607,24 +1740,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullscreen && (
           <div
-            className="flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur-sm cursor-move"
+            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 backdrop-blur-sm cursor-move"
             onPointerDown={handleWindowSurfacePointerDown}
             onDoubleClick={toggleWindowMaximize}
           >
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+              <div className="truncate text-[13px] font-semibold leading-tight text-gray-100" title={image.name}>
                 {image.name}
               </div>
-              <div className="truncate text-xs text-gray-500" title={imageFullPath}>
+              <div className="truncate text-[11px] leading-tight text-gray-500" title={imageFullPath}>
                 {imageFullPath}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={onMinimize}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Minimize window"
               >
                 <Minus className="w-4 h-4" />
@@ -1632,7 +1765,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={toggleWindowMaximize}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
               >
                 {isWindowMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -1640,7 +1773,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={onClose}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 aria-label="Close image"
                 title="Close (Esc)"
               >
@@ -1810,15 +1943,48 @@ const ImageModal: React.FC<ImageModalProps> = ({
           </div>
         </div>
 
+        {showSidebar && !isFullscreen && (
+          <div
+            data-no-window-drag="true"
+            role="separator"
+            aria-orientation={showSidebarOnRight ? 'vertical' : 'horizontal'}
+            aria-label={showSidebarOnRight ? 'Resize image details sidebar' : 'Resize image details panel'}
+            onPointerDown={beginDetailsSidebarResize(showSidebarOnRight ? 'x' : 'y')}
+            className={`relative z-10 flex flex-shrink-0 items-center justify-center bg-transparent ${
+              showSidebarOnRight
+                ? 'h-full w-3 cursor-col-resize'
+                : 'h-3 w-full cursor-row-resize'
+            }`}
+            title={showSidebarOnRight ? 'Drag to resize details sidebar' : 'Drag to resize details panel'}
+          >
+            <div
+              className={`rounded-full transition-colors duration-150 ${
+                showSidebarOnRight
+                  ? 'h-16 w-1'
+                  : 'h-1 w-16'
+              } ${
+                detailsResizeAxis === (showSidebarOnRight ? 'x' : 'y')
+                  ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]'
+                  : 'bg-gray-600/70 hover:bg-blue-400/80'
+              }`}
+            />
+          </div>
+        )}
+
         {/* Metadata Panel */}
         {showSidebar && (
         <div
           data-window-drag-region="details"
-          className={`w-full ${
+          className={`overflow-y-auto space-y-4 ${
             showSidebarOnBottom
-              ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
-              : 'h-full w-[340px] max-w-[42%] min-w-[300px] border-l border-gray-800/80'
-          } p-6 overflow-y-auto space-y-4`}
+              ? 'w-full border-t border-gray-800/80 p-6'
+              : 'h-full min-w-0 border-l border-gray-800/80 p-6'
+          }`}
+          style={
+            showSidebarOnBottom
+              ? { height: `${clampedDetailsSidebarHeight}px`, minHeight: `${MIN_DETAILS_SIDEBAR_HEIGHT}px` }
+              : { width: `${clampedDetailsSidebarWidth}px`, minWidth: `${MIN_DETAILS_SIDEBAR_WIDTH}px`, maxWidth: `${maxDetailsSidebarWidth}px` }
+          }
           onContextMenu={handleSelectionContextMenu}
         >
           <div>
