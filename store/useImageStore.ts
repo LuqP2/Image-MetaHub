@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -307,6 +307,8 @@ interface ImageState {
   selectedAutoTags: string[]; // Filter by auto-tags
   excludedAutoTags: string[];
   favoriteFilterMode: InclusionFilterMode;
+  minimumRating: ImageRating | null;
+  exactRating: ImageRating | null;
   isAnnotationsLoaded: boolean;
   activeWatchers: Set<string>; // IDs das pastas sendo monitoradas
   refreshingDirectories: Set<string>;
@@ -443,12 +445,16 @@ interface ImageState {
   setSelectedAutoTags: (tags: string[]) => void;
   setExcludedAutoTags: (tags: string[]) => void;
   setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
+  setMinimumRating: (rating: ImageRating | null) => void;
+  setExactRating: (rating: ImageRating | null) => void;
   getImageAnnotations: (imageId: string) => ImageAnnotations | null;
   refreshAvailableTags: () => Promise<void>;
   refreshAvailableAutoTags: () => void;
   importMetadataTags: (images: IndexedImage[]) => Promise<void>;
   flushPendingImages: () => void;
   setDirectoryRefreshing: (directoryId: string, isRefreshing: boolean) => void;
+  setImageRating: (imageId: string, rating: ImageRating | null) => Promise<void>;
+  bulkSetImageRating: (imageIds: string[], rating: ImageRating | null) => Promise<void>;
 
   // Navigation Actions
   handleNavigateNext: () => void;
