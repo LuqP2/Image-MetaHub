@@ -673,6 +673,42 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
 export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
 export type ImageRating = 1 | 2 | 3 | 4 | 5;
 
+export interface NumericRangeFilter {
+  min?: number | null;
+  max?: number | null;
+}
+
+export interface DateRangeFilter {
+  from?: string;
+  to?: string;
+}
+
+export interface AdvancedFilters {
+  dimension?: string;
+  steps?: NumericRangeFilter;
+  cfg?: NumericRangeFilter;
+  date?: DateRangeFilter;
+  hasVerifiedTelemetry?: boolean;
+  generationTimeMs?: NumericRangeFilter;
+  stepsPerSecond?: NumericRangeFilter;
+  vramPeakMb?: NumericRangeFilter;
+}
+
+export interface SelectedFiltersUpdate {
+  models?: string[];
+  excludedModels?: string[];
+  loras?: string[];
+  excludedLoras?: string[];
+  samplers?: string[];
+  excludedSamplers?: string[];
+  schedulers?: string[];
+  excludedSchedulers?: string[];
+  generators?: string[];
+  excludedGenerators?: string[];
+  gpuDevices?: string[];
+  excludedGpuDevices?: string[];
+}
+
 export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
   name: string;
@@ -749,7 +785,10 @@ export interface FilterOptions {
   models: string[];
   loras: string[];
   samplers: string[];
-  schedulers:string[];
+  schedulers: string[];
+  generators: string[];
+  gpuDevices: string[];
+  dimensions: string[];
   selectedModel: string;
   selectedLora: string;
   selectedSampler: string;

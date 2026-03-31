@@ -289,6 +289,8 @@ export function useImageLoader() {
         const loras = new Set<string>();
         const samplers = new Set<string>();
         const schedulers = new Set<string>();
+        const generators = new Set<string>();
+        const gpuDevices = new Set<string>();
 
         for (const image of allImages) {
             if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
@@ -303,6 +305,13 @@ export function useImageLoader() {
             }
             if (image.sampler) samplers.add(image.sampler);
             if (image.scheduler) schedulers.add(image.scheduler);
+            const generator = image.metadata?.normalizedMetadata?.generator;
+            generators.add(typeof generator === 'string' && generator.trim().length > 0 ? generator : 'Unknown');
+            const analytics = image.metadata?.normalizedMetadata?.analytics ||
+                (image.metadata?.normalizedMetadata as { _analytics?: { gpu_device?: string | null } } | undefined)?._analytics;
+            if (analytics?.gpu_device) {
+                gpuDevices.add(analytics.gpu_device);
+            }
         }
 
         setFilterOptions({
@@ -310,6 +319,8 @@ export function useImageLoader() {
             loras: Array.from(loras).sort(),
             samplers: Array.from(samplers).sort(),
             schedulers: Array.from(schedulers).sort(),
+            generators: Array.from(generators).sort(),
+            gpuDevices: Array.from(gpuDevices).sort(),
             dimensions: [] as string[],
         });
     }, [setFilterOptions]);

@@ -1291,6 +1291,10 @@ export default function App() {
               excludedSamplers: [],
               schedulers: [],
               excludedSchedulers: [],
+              generators: [],
+              excludedGenerators: [],
+              gpuDevices: [],
+              excludedGpuDevices: [],
             });
             setSelectedTags([]);
             setExcludedTags([]);
