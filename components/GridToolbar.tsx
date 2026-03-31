@@ -18,6 +18,7 @@ import { type IndexedImage } from '../types';
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
+import { getBulkRatingTargetIds } from '../utils/ratingSelection';
 
 interface GridToolbarProps {
 
@@ -188,7 +189,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const imageIds = selectedImagesList.map((image) => image.id);
+    const imageIds = getBulkRatingTargetIds(selectedImages);
     bulkSetImageRating(imageIds, rating);
     setRatingDropdownOpen(false);
   };

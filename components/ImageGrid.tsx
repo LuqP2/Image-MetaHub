@@ -31,6 +31,7 @@ import TagManagerModal from './TagManagerModal';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
+import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -777,15 +778,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }, [contextMenu.image, images, selectedImages]);
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const targetImages = getContextTargetImages();
-    if (targetImages.length === 0) {
+    const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (targetImageIds.length === 0) {
       hideContextMenu();
       return;
     }
 
-    bulkSetImageRating(targetImages.map((image) => image.id), rating);
+    bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
-  }, [bulkSetImageRating, getContextTargetImages, hideContextMenu]);
+  }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();

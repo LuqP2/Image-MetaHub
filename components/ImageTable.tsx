@@ -13,6 +13,7 @@ import ProBadge from './ProBadge';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, getRatingBadgeClasses, getRatingChipClasses } from './RatingStars';
+import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -106,15 +107,15 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   }, [contextMenu.image, images, selectedImages]);
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const targetImages = getContextTargetImages();
-    if (!targetImages.length) {
+    const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (!targetImageIds.length) {
       hideContextMenu();
       return;
     }
 
-    bulkSetImageRating(targetImages.map((image) => image.id), rating);
+    bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
-  }, [bulkSetImageRating, getContextTargetImages, hideContextMenu]);
+  }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
