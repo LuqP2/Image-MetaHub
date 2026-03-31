@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, X } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { type ExportBatchProgress, type IndexedImage } from '../types';
+import FloatingModalFrame from './FloatingModalFrame';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -209,26 +210,37 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
-        <div className="flex items-center justify-between p-5 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg">
-              <Download className="w-5 h-5 text-blue-300" />
-            </div>
-            <h2 className="text-lg font-semibold text-white">Batch Export</h2>
-          </div>
+    <FloatingModalFrame
+      title="Batch Export"
+      subtitle={`Ready to export ${exportCount} image${exportCount === 1 ? '' : 's'}`}
+      onClose={onClose}
+      minWidth={640}
+      minHeight={500}
+      initialWidth={760}
+      initialHeight={700}
+      maxWidth={1100}
+      maxHeight={920}
+      bodyClassName="space-y-5"
+      footer={
+        <div className="flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Close"
+            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
             disabled={isExporting}
           >
-            <X className="w-4 h-4 text-gray-400" />
+            Cancel
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={isExporting || exportCount === 0}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+          >
+            <Download className="w-4 h-4" />
+            {isExporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
-
-        <div className="p-5 space-y-5">
+      }
+    >
           <div className="space-y-2">
             <p className="text-sm text-gray-400">Source</p>
             <div className="flex gap-2">
@@ -339,27 +351,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               )}
             </div>
           )}
-        </div>
-
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700">
-          <button
-            onClick={onClose}
-            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            disabled={isExporting}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={isExporting || exportCount === 0}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
-          >
-            <Download className="w-4 h-4" />
-            {isExporting ? 'Exporting...' : 'Export'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </FloatingModalFrame>
   );
 };
 
