@@ -96,7 +96,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     ? 'Only images with verified telemetry.'
     : 'MetaHub-specific metadata filters.';
   const ratingSummary = exactRating !== null
-    ? `Matching exactly ${exactRating} star${exactRating === 1 ? '' : 's'}.`
+    ? `Matching rating ${exactRating}.`
     : 'Match a specific user rating.';
 
   const renderNumberRange = (
@@ -341,7 +341,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 >
                   <option value="">Any rating</option>
                   {[1, 2, 3, 4, 5].map((value) => (
-                    <option key={value} value={value}>{value} star{value === 1 ? '' : 's'}</option>
+                    <option key={value} value={value}>Rating {value}</option>
                   ))}
                 </select>
               </div>

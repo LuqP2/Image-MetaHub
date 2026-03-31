@@ -17,6 +17,7 @@ import { type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
+import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
 
 interface GridToolbarProps {
 
@@ -289,30 +290,34 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="relative" ref={ratingDropdownRef}>
                   <button
                     onClick={() => setRatingDropdownOpen((open) => !open)}
-                    className="p-1.5 text-gray-400 hover:text-amber-400 hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                    className="rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition-colors hover:border-sky-400/50 hover:bg-sky-500/20"
                     title="Set Rating"
                   >
-                    <Star className="w-4 h-4" />
-                    <ChevronDown className="w-3 h-3" />
+                    1-5
                   </button>
                   {ratingDropdownOpen && selectedCount > 0 && (
                     <div className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[150px] z-50">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <button
-                          key={value}
-                          onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                          className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors"
-                        >
-                          {'★'.repeat(value)} {value}
-                        </button>
-                      ))}
-                      <div className="border-t border-gray-700 my-1" />
-                      <button
-                        onClick={() => handleSetRating(null)}
-                        className="w-full text-left px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                      >
-                        Clear rating
-                      </button>
+                      <div className="px-3 py-2">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {RATING_VALUES.map((value) => (
+                            <button
+                              key={value}
+                              onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                              className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                            >
+                              {value}
+                            </button>
+                          ))}
+                          
+                          <button
+                            onClick={() => handleSetRating(null)}
+                            className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

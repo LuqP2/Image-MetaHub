@@ -8,7 +8,7 @@ describe('RatingStars', () => {
     const onChange = vi.fn();
 
     render(<RatingStars rating={null} onChange={onChange} />);
-    fireEvent.click(screen.getByLabelText('Set 4-star rating'));
+    fireEvent.click(screen.getByLabelText('Set rating 4'));
 
     expect(onChange).toHaveBeenCalledWith(4);
   });
@@ -17,7 +17,7 @@ describe('RatingStars', () => {
     const onChange = vi.fn();
 
     render(<RatingStars rating={3} onChange={onChange} />);
-    fireEvent.click(screen.getByLabelText('Clear 3-star rating'));
+    fireEvent.click(screen.getByLabelText('Clear rating 3'));
 
     expect(onChange).toHaveBeenCalledWith(null);
   });

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
+import { getRatingChipClasses } from './RatingStars';
 
 type TagContextMenuState = {
   x: number;
@@ -400,14 +401,10 @@ const TagsAndFavorites: React.FC = () => {
                       key={value}
                       type="button"
                       onClick={() => setMinimumRating(minimumRating === value ? null : value)}
-                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                        minimumRating === value
-                          ? 'border-amber-600/60 bg-amber-900/40 text-amber-200'
-                          : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
-                      }`}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, minimumRating === value)}`}
                       title={`${quickRatingCounts.get(value) ?? 0} images rated ${value} or higher`}
                     >
-                      {value}+
+                      {value}
                     </button>
                   ))}
                 </div>

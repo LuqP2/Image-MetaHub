@@ -12,6 +12,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
+import { RATING_VALUES, getRatingBadgeClasses, getRatingChipClasses } from './RatingStars';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -412,13 +413,13 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
           <div className="px-4 py-2">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
             <div className="flex flex-wrap gap-1.5">
-              {[1, 2, 3, 4, 5].map((value) => (
+              {RATING_VALUES.map((value) => (
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                  className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-200 transition-colors hover:border-amber-500/60 hover:text-amber-200"
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
                 >
-                  ★{value}
+                  {value}
                 </button>
               ))}
               <button
@@ -588,8 +589,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 loading="lazy"
               />
               {image.rating && (
-                <div className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
-                  ★{image.rating}
+                <div className={`absolute right-1 top-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${getRatingBadgeClasses(image.rating)}`}>
+                  {image.rating}
                 </div>
               )}
               {isVideo && (

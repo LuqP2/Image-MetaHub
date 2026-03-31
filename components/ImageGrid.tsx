@@ -23,6 +23,7 @@ import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
+import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
@@ -1201,13 +1202,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           <div className="px-4 py-2">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
             <div className="flex flex-wrap gap-1.5">
-              {[1, 2, 3, 4, 5].map((value) => (
+              {RATING_VALUES.map((value) => (
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                  className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-200 transition-colors hover:border-amber-500/60 hover:text-amber-200"
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
                 >
-                  ★{value}
+                  {value}
                 </button>
               ))}
               <button
