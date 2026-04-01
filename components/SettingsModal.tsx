@@ -4,15 +4,14 @@ import { useLicenseStore } from '../store/useLicenseStore';
 import { X, Wrench, Keyboard, Palette, Check, Crown, Eye } from 'lucide-react';
 import { resetAllCaches } from '../utils/cacheReset';
 import { HotkeySettings } from './HotkeySettings';
+import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './settings/types';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'hotkeys' | 'themes' | 'privacy';
-  focusSection?: 'license' | null;
+  initialTab?: SettingsTabInput;
+  focusSection?: SettingsFocusSection;
 }
-
-type Tab = 'general' | 'hotkeys' | 'themes' | 'privacy';
 
 const themeOptions = [
   { id: 'system', name: 'System Default', colors: ['#525252', '#a3a3a3'] },
@@ -49,8 +48,8 @@ const startupVerificationModeDetails: Record<'off' | 'idle' | 'strict', {
   },
 };
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general', focusSection = null }) => {
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'library', focusSection = null }) => {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => resolveSettingsTab(initialTab));
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const cachePath = useSettingsStore((state) => state.cachePath);
@@ -134,8 +133,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   }, [sensitiveTags]);
 
   useEffect(() => {
+    if (isOpen) {
+      setActiveTab(resolveSettingsTab(initialTab));
+    }
+  }, [initialTab, isOpen]);
+
+  useEffect(() => {
     if (isOpen && focusSection === 'license') {
-      setActiveTab('general');
+      setActiveTab('license');
       requestAnimationFrame(() => {
         licenseSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -290,25 +295,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
 
         <div className="flex border-b border-gray-700 mb-6">
             <button
-              onClick={() => setActiveTab('general')}
-              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'general' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
+              onClick={() => setActiveTab('library')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'library' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
             >
               <Wrench size={16} />
-              <span>General</span>
+              <span>Library</span>
             </button>
             <button
-              onClick={() => setActiveTab('themes')}
-              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'themes' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
+              onClick={() => setActiveTab('appearance')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'appearance' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
             >
               <Palette size={16} />
-              <span>Themes</span>
+              <span>Appearance</span>
             </button>
             <button
-              onClick={() => setActiveTab('hotkeys')}
-              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'hotkeys' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
+              onClick={() => setActiveTab('shortcuts')}
+              className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium ${activeTab === 'shortcuts' ? 'border-b-2 border-blue-500 text-gray-100' : 'text-gray-400 hover:text-gray-50'}`}
             >
               <Keyboard size={16} />
-              <span>Keyboard Shortcuts</span>
+              <span>Shortcuts</span>
             </button>
             <button
               onClick={() => setActiveTab('privacy')}
@@ -319,7 +324,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
             </button>
         </div>
 
-        {activeTab === 'themes' && (
+        {activeTab === 'appearance' && (
           <div className="grid grid-cols-2 gap-4">
             {themeOptions.map((option) => (
               <button
@@ -349,7 +354,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
           </div>
         )}
 
-        {activeTab === 'general' && (
+        {(activeTab === 'library' || activeTab === 'license') && (
           <div className="space-y-6">
             {/* Cache Location Setting */}
             <div>
@@ -806,7 +811,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
         </div>
         )}
 
-        {activeTab === 'hotkeys' && (
+        {activeTab === 'shortcuts' && (
           <HotkeySettings />
         )}
 
