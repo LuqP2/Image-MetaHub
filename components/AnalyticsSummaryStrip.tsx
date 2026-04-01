@@ -104,7 +104,7 @@ const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
           </span>
           <span className="inline-flex items-center gap-1">
             <CheckCircle2 size={11} />
-            {(summary.telemetryCoverage * 100).toFixed(0)}% telemetry
+            {(summary.telemetryCoverage * 100).toFixed(0)}% with metrics
           </span>
         </div>
       </div>

@@ -129,7 +129,7 @@ const ActiveFilters: React.FC = () => {
         {advancedFilters?.hasVerifiedTelemetry && (
           <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <CheckCircle size={12} />
-            <span>Verified telemetry</span>
+            <span>Verified metrics</span>
             <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-emerald-900/70">
               <X size={12} />
             </button>

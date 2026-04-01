@@ -106,7 +106,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     : 'Filter by file date range.';
 
   const metaHubSummary = localFilters.hasVerifiedTelemetry
-    ? 'Only images with verified telemetry.'
+    ? 'Only images with verified metrics.'
     : 'MetaHub-specific metadata filters.';
   const ratingSummary = selectedRatings.length > 0
     ? `Matching ratings ${selectedRatings.join(', ')}.`

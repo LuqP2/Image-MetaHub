@@ -1069,7 +1069,7 @@ const buildCompareCohort = (
 
   return {
     key,
-    label: key === 'verified' ? 'Verified telemetry' : key,
+    label: key === 'verified' ? 'Verified metrics' : key,
     count: cohortImages.length,
     favoriteRate: cohortImages.length > 0 ? favoriteCount / cohortImages.length : 0,
     averageRating: ratedImages.length > 0
