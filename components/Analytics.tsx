@@ -27,6 +27,16 @@ type NumericFacetKind = 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb';
 const TABS: ExplorerTab[] = ['overview', 'resources', 'time', 'performance', 'curation'];
 const ALL_RATINGS = [1, 2, 3, 4, 5] as const;
 const card = 'rounded-2xl border border-gray-700/70 bg-gray-900/75 backdrop-blur-sm';
+const EMPTY_COMPARE_OPTIONS: Record<AnalyticsCompareDimension, string[]> = {
+  generator: [],
+  model: [],
+  lora: [],
+  sampler: [],
+  scheduler: [],
+  gpu: [],
+  rating: [],
+  telemetry: [],
+};
 
 const percent = (value: number) => `${(value * 100).toFixed(0)}%`;
 const compact = (value: number) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -162,17 +172,28 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
 
   const scopeImages = scopeMode === 'library' ? allImages : filteredImages;
   const compare = compareLeftKey && compareRightKey && compareLeftKey !== compareRightKey ? { dimension: compareDimension, leftKey: compareLeftKey, rightKey: compareRightKey } as AnalyticsCompareConfig : null;
-  const analytics = useMemo(() => buildAnalyticsExplorerData({ scopeImages, allImages, scopeMode, compare }), [allImages, compare, scopeImages, scopeMode]);
-  const compareOptions = useMemo(() => getCompareDimensionOptions(analytics), [analytics]);
+  const analytics = useMemo(() => {
+    if (!isOpen || !canUseAnalytics) {
+      return null;
+    }
+    return buildAnalyticsExplorerData({ scopeImages, allImages, scopeMode, compare });
+  }, [allImages, canUseAnalytics, compare, isOpen, scopeImages, scopeMode]);
+  const compareOptions = useMemo(
+    () => analytics ? getCompareDimensionOptions(analytics) : EMPTY_COMPARE_OPTIONS,
+    [analytics]
+  );
 
   useEffect(() => {
+    if (!analytics) {
+      return;
+    }
     const options = compareOptions[compareDimension] || [];
     if (!options.includes(compareLeftKey)) setCompareLeftKey(options[0] || '');
     const fallbackRight = options.find((value) => value !== (options[0] || '')) || '';
     if (!options.includes(compareRightKey) || compareRightKey === compareLeftKey) setCompareRightKey(fallbackRight);
-  }, [compareDimension, compareLeftKey, compareOptions, compareRightKey]);
+  }, [analytics, compareDimension, compareLeftKey, compareOptions, compareRightKey]);
 
-  if (!isOpen || !canUseAnalytics) return null;
+  if (!isOpen || !canUseAnalytics || !analytics) return null;
 
   const activeFilterCount = Object.values(filterState).reduce((count, value) => {
     if (Array.isArray(value)) return count + value.length;
