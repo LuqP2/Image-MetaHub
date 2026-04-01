@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -11,6 +11,7 @@ import {
   deleteManualTag,
 } from '../services/imageAnnotationsStorage';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
@@ -318,6 +319,8 @@ interface ImageState {
   availableLoras: string[];
   availableSamplers: string[];
   availableSchedulers: string[];
+  availableGenerators: string[];
+  availableGpuDevices: string[];
   availableDimensions: string[];
   selectedModels: string[];
   excludedModels: string[];
@@ -327,9 +330,13 @@ interface ImageState {
   excludedSamplers: string[];
   selectedSchedulers: string[];
   excludedSchedulers: string[];
+  selectedGenerators: string[];
+  excludedGenerators: string[];
+  selectedGpuDevices: string[];
+  excludedGpuDevices: string[];
   sortOrder: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random';
   randomSeed: number;
-  advancedFilters: any;
+  advancedFilters: AdvancedFilters;
 
   // Annotations State
   annotations: Map<string, ImageAnnotations>;
@@ -407,20 +414,11 @@ interface ImageState {
 
   // Filter & Sort Actions
   setSearchQuery: (query: string) => void;
-  setFilterOptions: (options: { models: string[]; loras: string[]; samplers: string[]; schedulers: string[]; dimensions: string[] }) => void;
-  setSelectedFilters: (filters: {
-    models?: string[];
-    excludedModels?: string[];
-    loras?: string[];
-    excludedLoras?: string[];
-    samplers?: string[];
-    excludedSamplers?: string[];
-    schedulers?: string[];
-    excludedSchedulers?: string[];
-  }) => void;
+  setFilterOptions: (options: Pick<FilterOptions, 'models' | 'loras' | 'samplers' | 'schedulers' | 'generators' | 'gpuDevices' | 'dimensions'>) => void;
+  setSelectedFilters: (filters: SelectedFiltersUpdate) => void;
   setSortOrder: (order: 'asc' | 'desc' | 'date-asc' | 'date-desc' | 'random') => void;
   reshuffle: () => void;
-  setAdvancedFilters: (filters: any) => void;
+  setAdvancedFilters: (filters: AdvancedFilters) => void;
   filterAndSortImages: () => void;
 
   // Selection Actions
@@ -639,6 +637,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                     const loras = new Set(state.availableLoras);
                     const samplers = new Set(state.availableSamplers);
                     const schedulers = new Set(state.availableSchedulers);
+                    const generators = new Set(state.availableGenerators);
+                    const gpuDevices = new Set(state.availableGpuDevices);
                     const dimensions = new Set(state.availableDimensions);
 
                     for (const img of updates.values()) {
@@ -656,6 +656,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                         if (img.scheduler) {
                             schedulers.add(img.scheduler);
                         }
+                        generators.add(getImageGenerator(img));
+                        const gpuDevice = getImageGpuDevice(img);
+                        if (gpuDevice) {
+                            gpuDevices.add(gpuDevice);
+                        }
                         if (img.dimensions) {
                             dimensions.add(img.dimensions);
                         }
@@ -666,6 +671,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                         availableLoras: Array.from(loras),
                         availableSamplers: Array.from(samplers),
                         availableSchedulers: Array.from(schedulers),
+                        availableGenerators: Array.from(generators),
+                        availableGpuDevices: Array.from(gpuDevices),
                         availableDimensions: Array.from(dimensions),
                     };
                 } else {
@@ -714,6 +721,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedLoras?.length || state.excludedLoras?.length) return true;
         if (state.selectedSamplers?.length || state.excludedSamplers?.length) return true;
         if (state.selectedSchedulers?.length || state.excludedSchedulers?.length) return true;
+        if (state.selectedGenerators?.length || state.excludedGenerators?.length) return true;
+        if (state.selectedGpuDevices?.length || state.excludedGpuDevices?.length) return true;
         if (state.advancedFilters && Object.keys(state.advancedFilters).length > 0) return true;
         if (state.selectedFolders && state.selectedFolders.size > 0) return true;
         if (state.directories.some(dir => dir.visible === false)) return true;
@@ -744,6 +753,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         const loras = new Set<string>();
         const samplers = new Set<string>();
         const schedulers = new Set<string>();
+        const generators = new Set<string>();
+        const gpuDevices = new Set<string>();
         const dimensions = new Set<string>();
 
         for (const image of visibleImages) {
@@ -757,6 +768,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
             if (image.sampler) samplers.add(image.sampler);
             if (image.scheduler) schedulers.add(image.scheduler);
+            generators.add(getImageGenerator(image));
+            const gpuDevice = getImageGpuDevice(image);
+            if (gpuDevice) gpuDevices.add(gpuDevice);
             if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
         }
 
@@ -770,6 +784,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableLoras: Array.from(loras).sort(caseInsensitiveSort),
             availableSamplers: Array.from(samplers).sort(caseInsensitiveSort),
             availableSchedulers: Array.from(schedulers).sort(caseInsensitiveSort),
+            availableGenerators: Array.from(generators).sort(caseInsensitiveSort),
+            availableGpuDevices: Array.from(gpuDevices).sort(caseInsensitiveSort),
             availableDimensions: Array.from(dimensions).sort((a, b) => {
                 // Sort dimensions by total pixels (width * height)
                 const [aWidth, aHeight] = a.split('x').map(Number);
@@ -838,7 +854,22 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
-        const { images, searchQuery, selectedModels, selectedLoras, selectedSamplers, selectedSchedulers, sortOrder, advancedFilters, directories, selectedFolders, excludedFolders, includeSubfolders } = state;
+        const {
+            images,
+            searchQuery,
+            selectedModels,
+            selectedLoras,
+            selectedSamplers,
+            selectedSchedulers,
+            selectedGenerators,
+            selectedGpuDevices,
+            sortOrder,
+            advancedFilters,
+            directories,
+            selectedFolders,
+            excludedFolders,
+            includeSubfolders,
+        } = state;
 
         const visibleDirectoryIds = new Set(
             directories.filter(dir => dir.visible ?? true).map(dir => dir.id)
@@ -1045,6 +1076,32 @@ export const useImageStore = create<ImageState>((set, get) => {
             );
         }
 
+        if (selectedGenerators.length > 0) {
+            results = results.filter(image =>
+                selectedGenerators.includes(getImageGenerator(image))
+            );
+        }
+
+        if (state.excludedGenerators.length > 0) {
+            results = results.filter(image =>
+                !state.excludedGenerators.includes(getImageGenerator(image))
+            );
+        }
+
+        if (selectedGpuDevices.length > 0) {
+            results = results.filter(image => {
+                const gpuDevice = getImageGpuDevice(image);
+                return gpuDevice !== null && selectedGpuDevices.includes(gpuDevice);
+            });
+        }
+
+        if (state.excludedGpuDevices.length > 0) {
+            results = results.filter(image => {
+                const gpuDevice = getImageGpuDevice(image);
+                return gpuDevice === null || !state.excludedGpuDevices.includes(gpuDevice);
+            });
+        }
+
         if (advancedFilters) {
             if (advancedFilters.dimension) {
                 results = results.filter(image => {
@@ -1104,6 +1161,51 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             if (advancedFilters.hasVerifiedTelemetry === true) {
                 results = results.filter(image => hasVerifiedTelemetry(image));
+            }
+            if (advancedFilters.generationTimeMs) {
+                 results = results.filter(image => {
+                    const generationTimeMs =
+                        image.metadata?.normalizedMetadata?.analytics?.generation_time_ms ??
+                        (image.metadata?.normalizedMetadata as { _analytics?: { generation_time_ms?: number } } | undefined)?._analytics?.generation_time_ms;
+                    if (typeof generationTimeMs === 'number') {
+                        const hasMin = advancedFilters.generationTimeMs?.min !== null && advancedFilters.generationTimeMs?.min !== undefined;
+                        const hasMax = advancedFilters.generationTimeMs?.max !== null && advancedFilters.generationTimeMs?.max !== undefined;
+                        if (hasMin && generationTimeMs < advancedFilters.generationTimeMs!.min!) return false;
+                        if (hasMax && generationTimeMs > advancedFilters.generationTimeMs!.max!) return false;
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            if (advancedFilters.stepsPerSecond) {
+                 results = results.filter(image => {
+                    const stepsPerSecond =
+                        image.metadata?.normalizedMetadata?.analytics?.steps_per_second ??
+                        (image.metadata?.normalizedMetadata as { _analytics?: { steps_per_second?: number } } | undefined)?._analytics?.steps_per_second;
+                    if (typeof stepsPerSecond === 'number') {
+                        const hasMin = advancedFilters.stepsPerSecond?.min !== null && advancedFilters.stepsPerSecond?.min !== undefined;
+                        const hasMax = advancedFilters.stepsPerSecond?.max !== null && advancedFilters.stepsPerSecond?.max !== undefined;
+                        if (hasMin && stepsPerSecond < advancedFilters.stepsPerSecond!.min!) return false;
+                        if (hasMax && stepsPerSecond > advancedFilters.stepsPerSecond!.max!) return false;
+                        return true;
+                    }
+                    return false;
+                });
+            }
+            if (advancedFilters.vramPeakMb) {
+                 results = results.filter(image => {
+                    const vramPeakMb =
+                        image.metadata?.normalizedMetadata?.analytics?.vram_peak_mb ??
+                        (image.metadata?.normalizedMetadata as { _analytics?: { vram_peak_mb?: number } } | undefined)?._analytics?.vram_peak_mb;
+                    if (typeof vramPeakMb === 'number') {
+                        const hasMin = advancedFilters.vramPeakMb?.min !== null && advancedFilters.vramPeakMb?.min !== undefined;
+                        const hasMax = advancedFilters.vramPeakMb?.max !== null && advancedFilters.vramPeakMb?.max !== undefined;
+                        if (hasMin && vramPeakMb < advancedFilters.vramPeakMb!.min!) return false;
+                        if (hasMax && vramPeakMb > advancedFilters.vramPeakMb!.max!) return false;
+                        return true;
+                    }
+                    return false;
+                });
             }
         }
 
@@ -1217,6 +1319,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         availableLoras: [],
         availableSamplers: [],
         availableSchedulers: [],
+        availableGenerators: [],
+        availableGpuDevices: [],
         availableDimensions: [],
         selectedModels: [],
         excludedModels: [],
@@ -1226,6 +1330,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         excludedSamplers: [],
         selectedSchedulers: [],
         excludedSchedulers: [],
+        selectedGenerators: [],
+        excludedGenerators: [],
+        selectedGpuDevices: [],
+        excludedGpuDevices: [],
         sortOrder: 'date-desc',
         randomSeed: Date.now(),
         advancedFilters: {},
@@ -1740,6 +1848,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableLoras: options.loras,
             availableSamplers: options.samplers,
             availableSchedulers: options.schedulers,
+            availableGenerators: options.generators,
+            availableGpuDevices: options.gpuDevices,
             availableDimensions: options.dimensions,
         }),
 
@@ -1754,6 +1864,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 excludedSamplers: filters.excludedSamplers ?? state.excludedSamplers,
                 selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
                 excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
+                selectedGenerators: filters.generators ?? state.selectedGenerators,
+                excludedGenerators: filters.excludedGenerators ?? state.excludedGenerators,
+                selectedGpuDevices: filters.gpuDevices ?? state.selectedGpuDevices,
+                excludedGpuDevices: filters.excludedGpuDevices ?? state.excludedGpuDevices,
             }),
             selectedModels: filters.models ?? state.selectedModels,
             excludedModels: filters.excludedModels ?? state.excludedModels,
@@ -1763,6 +1877,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             excludedSamplers: filters.excludedSamplers ?? state.excludedSamplers,
             selectedSchedulers: filters.schedulers ?? state.selectedSchedulers,
             excludedSchedulers: filters.excludedSchedulers ?? state.excludedSchedulers,
+            selectedGenerators: filters.generators ?? state.selectedGenerators,
+            excludedGenerators: filters.excludedGenerators ?? state.excludedGenerators,
+            selectedGpuDevices: filters.gpuDevices ?? state.selectedGpuDevices,
+            excludedGpuDevices: filters.excludedGpuDevices ?? state.excludedGpuDevices,
         })),
 
         setAdvancedFilters: (filters) => set(state => ({
@@ -2875,6 +2993,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             availableLoras: [],
             availableSamplers: [],
             availableSchedulers: [],
+            availableGenerators: [],
+            availableGpuDevices: [],
             availableDimensions: [],
             selectedModels: [],
             excludedModels: [],
@@ -2884,6 +3004,10 @@ export const useImageStore = create<ImageState>((set, get) => {
             excludedSamplers: [],
             selectedSchedulers: [],
             excludedSchedulers: [],
+            selectedGenerators: [],
+            excludedGenerators: [],
+            selectedGpuDevices: [],
+            excludedGpuDevices: [],
             advancedFilters: {},
             indexingState: 'idle',
             previewImage: null,

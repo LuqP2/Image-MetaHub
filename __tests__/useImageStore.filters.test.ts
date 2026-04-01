@@ -73,6 +73,16 @@ const imageD = createImage({
   isFavorite: false,
 });
 
+const imageE = createImage({
+  name: 'e.png',
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090', generation_time_ms: 4200, steps_per_second: 9.5, vram_peak_mb: 6144 } } } as any,
+});
+
+const imageF = createImage({
+  name: 'f.png',
+  metadata: { normalizedMetadata: { generator: 'InvokeAI', _analytics: { gpu_device: 'RTX 3060', generation_time_ms: 900, steps_per_second: 3.2, vram_peak_mb: 3072 } } } as any,
+});
+
 const seedStore = () => {
   useSettingsStore.setState({
     enableSafeMode: false,
@@ -83,8 +93,8 @@ const seedStore = () => {
   useImageStore.getState().resetState();
   useImageStore.setState({
     directories: [directory],
-    images: [imageA, imageB, imageC, imageD],
-    filteredImages: [imageA, imageB, imageC, imageD],
+    images: [imageA, imageB, imageC, imageD, imageE, imageF],
+    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF],
     sortOrder: 'asc',
   });
   useImageStore.getState().filterAndSortImages();
@@ -100,7 +110,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
 
     useImageStore.getState().setFavoriteFilterMode('exclude');
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png']);
   });
 
   it('supports include and exclude for tags and auto-tags', () => {
@@ -151,7 +161,7 @@ describe('useImageStore tri-state filters', () => {
       excludedSamplers: ['dpmpp_2m'],
     });
 
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png']);
   });
 
   it('supports open-ended advanced ranges for steps and cfg', () => {
@@ -186,7 +196,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
     useImageStore.getState().setSelectedRatings([]);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png']);
   });
 
   it('sets and bulk updates ratings without affecting favorites or tags', async () => {
@@ -202,5 +212,32 @@ describe('useImageStore tri-state filters', () => {
     const updatedImages = useImageStore.getState().images.filter((image) => [imageB.id, imageD.id].includes(image.id));
     expect(updatedImages.map((image) => image.rating)).toEqual([2, 2]);
     expect(useImageStore.getState().images.find((image) => image.id === imageB.id)?.tags).toEqual(['portrait']);
+  });
+
+  it('filters by generator, gpu, and analytics numeric ranges', () => {
+    useImageStore.getState().setSelectedFilters({
+      generators: ['ComfyUI'],
+      gpuDevices: ['RTX 4090'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      generators: [],
+      gpuDevices: [],
+    });
+    useImageStore.getState().setAdvancedFilters({
+      generationTimeMs: { min: 1000, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      stepsPerSecond: { min: 3, max: 4 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['f.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      vramPeakMb: { min: 5000, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
   });
 });

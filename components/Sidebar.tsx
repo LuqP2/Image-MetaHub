@@ -7,7 +7,7 @@ import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
-import type { ImageRating } from '../types';
+import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 
 interface SidebarProps {
   searchQuery: string;
@@ -26,8 +26,8 @@ interface SidebarProps {
   onSamplerChange: (samplers: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: AdvancedFilterState;
+  onAdvancedFiltersChange: (filters: AdvancedFilterState) => void;
   onClearAdvancedFilters: () => void;
   selectedRatings: ImageRating[];
   onSelectedRatingsChange: (ratings: ImageRating[]) => void;
@@ -92,6 +92,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedLoras = useImageStore((state) => state.excludedLoras);
   const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const countFacetValues = useMemo(() => {
     const modelCounts = new Map<string, number>();
@@ -200,6 +204,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     excludedSamplers.length > 0 ||
     selectedSchedulers.length > 0 ||
     excludedSchedulers.length > 0 ||
+    selectedGenerators.length > 0 ||
+    excludedGenerators.length > 0 ||
+    selectedGpuDevices.length > 0 ||
+    excludedGpuDevices.length > 0 ||
     selectedTags.length > 0 ||
     excludedTags.length > 0 ||
     selectedAutoTags.length > 0 ||
@@ -231,6 +239,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             excludedSamplers.length > 0 ||
             selectedSchedulers.length > 0 ||
             excludedSchedulers.length > 0 ||
+            selectedGenerators.length > 0 ||
+            excludedGenerators.length > 0 ||
+            selectedGpuDevices.length > 0 ||
+            excludedGpuDevices.length > 0 ||
             selectedTags.length > 0 ||
             excludedTags.length > 0 ||
             selectedAutoTags.length > 0 ||

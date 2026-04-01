@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckCircle, ChevronDown, Settings, Star, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ImageRating } from '../types';
+import type { AdvancedFilters, ImageRating } from '../types';
 import { getRatingChipClasses, RATING_VALUES } from './RatingStars';
 
 interface AdvancedFiltersProps {
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: AdvancedFilters;
+  onAdvancedFiltersChange: (filters: AdvancedFilters) => void;
   onClearAdvancedFilters: () => void;
   availableDimensions: string[];
   selectedRatings: ImageRating[];
@@ -22,16 +22,26 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   onSelectedRatingsChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [localFilters, setLocalFilters] = useState(advancedFilters || {});
+  const [localFilters, setLocalFilters] = useState<AdvancedFilters>(advancedFilters || {});
 
   useEffect(() => {
     setLocalFilters(advancedFilters || {});
   }, [advancedFilters]);
 
-  const normalizeFilters = (filters: Record<string, any>) => {
+  const isNumericRangeKey = (
+    key: keyof AdvancedFilters
+  ): key is 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb' => (
+    key === 'steps' ||
+    key === 'cfg' ||
+    key === 'generationTimeMs' ||
+    key === 'stepsPerSecond' ||
+    key === 'vramPeakMb'
+  );
+
+  const normalizeFilters = (filters: AdvancedFilters): AdvancedFilters => {
     const nextFilters = { ...filters };
 
-    Object.keys(nextFilters).forEach((key) => {
+    (Object.keys(nextFilters) as Array<keyof AdvancedFilters>).forEach((key) => {
       const value = nextFilters[key];
       if (value === null || value === undefined || value === '') {
         delete nextFilters[key];
@@ -39,15 +49,17 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       }
 
       if (key === 'date' && typeof value === 'object') {
-        if ((!value.from || value.from === '') && (!value.to || value.to === '')) {
+        const dateValue = value as NonNullable<AdvancedFilters['date']>;
+        if ((!dateValue.from || dateValue.from === '') && (!dateValue.to || dateValue.to === '')) {
           delete nextFilters[key];
         }
         return;
       }
 
-      if ((key === 'steps' || key === 'cfg') && typeof value === 'object') {
-        const minMissing = value.min === null || value.min === undefined || value.min === '';
-        const maxMissing = value.max === null || value.max === undefined || value.max === '';
+      if (isNumericRangeKey(key) && typeof value === 'object') {
+        const rangeValue = value as NonNullable<AdvancedFilters[typeof key]>;
+        const minMissing = rangeValue.min === null || rangeValue.min === undefined;
+        const maxMissing = rangeValue.max === null || rangeValue.max === undefined;
         if (minMissing && maxMissing) {
           delete nextFilters[key];
         }
@@ -68,8 +80,8 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     return () => clearTimeout(timeoutId);
   }, [advancedFilters, localFilters, onAdvancedFiltersChange]);
 
-  const updateFilter = (key: string, value: any) => {
-    setLocalFilters((prev: Record<string, any>) => normalizeFilters({ ...prev, [key]: value }));
+  const updateFilter = <K extends keyof AdvancedFilters>(key: K, value: AdvancedFilters[K]) => {
+    setLocalFilters((prev) => normalizeFilters({ ...prev, [key]: value }));
   };
 
   const advancedFilterCount = Object.keys(advancedFilters || {}).length + selectedRatings.length;
@@ -102,7 +114,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
   const renderNumberRange = (
     label: string,
-    key: 'steps' | 'cfg',
+    key: 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb',
     options: { minPlaceholder: string; maxPlaceholder: string; step?: string; max?: string }
   ) => (
     <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
@@ -227,7 +239,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   {(localFilters.steps || localFilters.cfg) && (
                     <button
                       type="button"
-                      onClick={() => setLocalFilters((prev: Record<string, any>) => normalizeFilters({ ...prev, steps: null, cfg: null }))}
+                      onClick={() => setLocalFilters((prev) => normalizeFilters({ ...prev, steps: undefined, cfg: undefined }))}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
                       title="Clear generation filters"
                     >
@@ -353,7 +365,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                         onClick={() => onSelectedRatingsChange(
                           active
                             ? selectedRatings.filter((rating) => rating !== value)
-                            : [...selectedRatings, value],
+                            : [...selectedRatings, value]
                         )}
                         className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, active)}`}
                         title={`Toggle rating ${value}`}
@@ -374,10 +386,16 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{metaHubSummary}</p>
                   </div>
-                  {localFilters.hasVerifiedTelemetry && (
+                  {(localFilters.hasVerifiedTelemetry || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
                     <button
                       type="button"
-                      onClick={() => updateFilter('hasVerifiedTelemetry', null)}
+                      onClick={() => setLocalFilters((prev) => normalizeFilters({
+                        ...prev,
+                        hasVerifiedTelemetry: undefined,
+                        generationTimeMs: undefined,
+                        stepsPerSecond: undefined,
+                        vramPeakMb: undefined,
+                      }))}
                       className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
                       title="Clear MetaHub filters"
                     >
@@ -399,6 +417,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     </p>
                   </div>
                 </label>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {renderNumberRange('Generation Time (ms)', 'generationTimeMs', { minPlaceholder: 'Min ms', maxPlaceholder: 'Max ms', step: '50' })}
+                  {renderNumberRange('Speed (it/s)', 'stepsPerSecond', { minPlaceholder: 'Min', maxPlaceholder: 'Max', step: '0.1' })}
+                  {renderNumberRange('VRAM Peak (MB)', 'vramPeakMb', { minPlaceholder: 'Min MB', maxPlaceholder: 'Max MB', step: '1' })}
+                </div>
               </div>
             </div>
           </motion.div>
