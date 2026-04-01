@@ -39,6 +39,7 @@ interface CatalogFileEntry {
   handle: FileSystemFileHandle;
   path: string;
   lastModified: number;
+  contentModifiedMs?: number;
   size?: number;
   type?: string;
   birthtimeMs?: number;
@@ -1453,6 +1454,7 @@ if (rawMetadata) {
       metadata: normalizedMetadata ? { ...(rawMetadata ?? {}), normalizedMetadata } : rawMetadata || {},
       metadataString: (rawMetadata && Object.keys(rawMetadata).length > 0) ? JSON.stringify(rawMetadata) : '', // OPTIMIZED: Skip stringify if no metadata or empty object
       lastModified: sortDate, // Use the determined sort date
+      contentModifiedMs: fileEntry.contentModifiedMs ?? fileEntry.lastModified,
       models: normalizedMetadata?.models || [],
       loras: normalizedMetadata?.loras || [],
       sampler: normalizedMetadata?.sampler || '',
@@ -1538,6 +1540,7 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     metadataString: image.metadataString,
     metadata: image.metadata,
     lastModified: image.lastModified,
+    contentModifiedMs: image.contentModifiedMs,
     models: image.models,
     loras: image.loras,
     sampler: image.sampler,
@@ -1860,6 +1863,7 @@ export async function processFiles(
       metadata: catalogMetadata,
       metadataString,
       lastModified: sortDate,
+      contentModifiedMs: entry.contentModifiedMs ?? entry.lastModified,
       models: [],
       loras: [],
       sampler: '',
@@ -1946,6 +1950,7 @@ export async function processFiles(
       metadata: enriched.metadata,
       metadataString: enriched.metadataString,
       lastModified: enriched.lastModified,
+      contentModifiedMs: enriched.contentModifiedMs,
       models: enriched.models,
       loras: enriched.loras,
       sampler: enriched.sampler,
@@ -2325,6 +2330,7 @@ export async function processFiles(
         steps: normalizedMetadata.steps || null,
         seed: normalizedMetadata.seed || null,
         dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+        contentModifiedMs: image.contentModifiedMs,
       } as IndexedImage;
     };
 

@@ -205,6 +205,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
         name: path.basename(filePath),
         path: filePath,
         lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+        contentModifiedMs: stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1),
         forceReindex: pendingInfo.forceReindex === true

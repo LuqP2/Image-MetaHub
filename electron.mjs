@@ -24,7 +24,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 4; // v4: Added Eff. Loader SDXL, DF_Text_Box, and Unpack SDXL Tuple nodes for better SDXL workflow support
+const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
 
 // Get platform-specific icon
 function getIconPath() {
@@ -1063,7 +1063,8 @@ async function statMediaEntries(directory, entries, baseDirectory) {
     const stats = await fs.stat(fullPath);
     return {
       name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-      lastModified: stats.birthtimeMs,
+      lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+      contentModifiedMs: stats.mtimeMs,
       size: stats.size,
       type: getMimeTypeFromName(lowerName),
       birthtimeMs: stats.birthtimeMs,

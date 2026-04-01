@@ -41,6 +41,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setDoubleClickToOpen = useSettingsStore((state) => state.setDoubleClickToOpen);
   const globalAutoWatch = useSettingsStore((state) => state.globalAutoWatch);
   const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
+  const startupVerificationMode = useSettingsStore((state) => state.startupVerificationMode);
+  const setStartupVerificationMode = useSettingsStore((state) => state.setStartupVerificationMode);
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const setSensitiveTags = useSettingsStore((state) => state.setSensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -398,6 +400,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Startup Verification</h3>
+            <div className="bg-gray-900 p-3 rounded-md space-y-3">
+              <div>
+                <p className="text-sm">Verify saved folders when the app opens</p>
+                <p className="text-xs text-gray-400">
+                  Controls how aggressively Image MetaHub reconciles cached folders against disk at startup.
+                </p>
+              </div>
+              <select
+                value={startupVerificationMode}
+                onChange={(event) => setStartupVerificationMode(event.target.value as 'off' | 'idle' | 'strict')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="off">Off - load only from cache</option>
+                <option value="idle">Background - verify after startup</option>
+                <option value="strict">Strict - verify during startup</option>
+              </select>
+              <p className="text-xs text-gray-500">
+                Recommended: Background. It preserves fast startup while still reconciling changes after the app is ready.
+              </p>
             </div>
           </div>
 
