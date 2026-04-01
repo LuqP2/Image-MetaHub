@@ -384,6 +384,7 @@ export default function App() {
     isExpired,
     isFree,
     isPro,
+    canUseAnalytics,
     canUseBatchExport,
     showProModal,
     startTrial,
@@ -1445,7 +1446,13 @@ export default function App() {
                   <AnalyticsSummaryStrip
                     images={safeFilteredImages}
                     allImages={safeImages}
-                    onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+                    onOpenAnalytics={() => {
+                      if (canUseAnalytics) {
+                        setIsAnalyticsOpen(true);
+                        return;
+                      }
+                      showProModal('analytics');
+                    }}
                   />
                 )}
                 <GridToolbar
