@@ -619,6 +619,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const gridRef = useRef<HTMLDivElement>(null);
   const gridKeyboardActiveRef = useRef(false);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
 
@@ -1163,13 +1164,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // Memoized cardRef callback factory
   const createCardRef = useCallback((imageId: string) => {
-    return (el: HTMLDivElement | null) => {
+    const existing = cardRefCallbacksRef.current.get(imageId);
+    if (existing) {
+      return existing;
+    }
+
+    const callback = (el: HTMLDivElement | null) => {
       if (el) {
         imageCardsRef.current.set(imageId, el);
       } else {
         imageCardsRef.current.delete(imageId);
       }
     };
+
+    cardRefCallbacksRef.current.set(imageId, callback);
+    return callback;
   }, []);
 
 

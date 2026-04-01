@@ -4,7 +4,7 @@ import { type IndexedImage } from '../types';
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 4; // v4: Persist sampler separately from scheduler for faceted filtering
+export const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
@@ -13,6 +13,7 @@ export interface CacheImageMetadata {
   metadataString: string;
   metadata: any;
   lastModified: number;
+  contentModifiedMs?: number;
   models: string[];
   loras: string[] | (string | { name: string; model_name?: string; weight?: number; model_weight?: number; clip_weight?: number })[]; // Support both formats for backward compatibility
   sampler?: string;
@@ -48,7 +49,7 @@ export interface CacheEntry {
 }
 
 export interface CacheDiff {
-  newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[];
+  newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[];
   deletedFileIds: string[];
   cachedImages: IndexedImage[];
   needsFullRefresh: boolean;
@@ -63,6 +64,7 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     metadataString: img.metadataString,
     metadata: img.metadata,
     lastModified: img.lastModified,
+    contentModifiedMs: img.contentModifiedMs,
     models: img.models,
     loras: img.loras,
     sampler: img.sampler,
@@ -512,7 +514,7 @@ class CacheManager {
   async validateCacheAndGetDiff(
     directoryPath: string,
     directoryName: string,
-    currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[],
+    currentFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[],
     scanSubfolders: boolean,
     scopePath?: string
   ): Promise<CacheDiff> {
@@ -529,7 +531,7 @@ class CacheManager {
     }
     
     const cachedMetadataMap = new Map(cached.metadata.map(m => [m.name, m]));
-    const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[] = [];
+    const newAndModifiedFiles: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[] = [];
     const cachedImages: IndexedImage[] = [];
     const currentFileNames = new Set<string>();
 
@@ -549,15 +551,17 @@ class CacheManager {
           size: file.size,
           type: file.type,
           birthtimeMs: file.birthtimeMs,
+          contentModifiedMs: file.contentModifiedMs,
         });
       // File has been modified since last scan
-      } else if (cachedFile.lastModified < file.lastModified) {
+      } else if ((cachedFile.contentModifiedMs ?? cachedFile.lastModified) < (file.contentModifiedMs ?? file.lastModified)) {
         newAndModifiedFiles.push({
           name: file.name,
           lastModified: file.lastModified,
           size: file.size,
           type: file.type,
           birthtimeMs: file.birthtimeMs,
+          contentModifiedMs: file.contentModifiedMs,
         });
       // CRITICAL FIX: If file is in 'catalog' state (incomplete), force re-indexing
       } else if (cachedFile.enrichmentState === 'catalog') {
@@ -567,6 +571,7 @@ class CacheManager {
           size: file.size,
           type: file.type,
           birthtimeMs: file.birthtimeMs,
+          contentModifiedMs: file.contentModifiedMs,
         });
       // File is unchanged, add it to the list of images to be loaded from cache
       } else {

@@ -1,11 +1,18 @@
 /// <reference lib="dom" />
 
-import type { ImageAnnotations, TagInfo, ClusterPreference, SmartCollection } from '../types';
+import type { ClusterPreference, ImageAnnotations, ShadowMetadata, SmartCollection, TagInfo } from '../types';
+import {
+  getIndexedDbErrorName,
+  openPreferencesDatabase,
+  resetPreferencesDatabase,
+  PREFERENCES_STORE_NAMES,
+} from './preferencesDb';
 
-const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 6; // v6: rating field supported in annotation payloads
-const STORE_NAME = 'imageAnnotations';
-const MANUAL_TAGS_STORE_NAME = 'manualTags';
+const STORE_NAME = PREFERENCES_STORE_NAMES.imageAnnotations;
+const MANUAL_TAGS_STORE_NAME = PREFERENCES_STORE_NAMES.manualTags;
+const CLUSTER_PREFERENCES_STORE_NAME = PREFERENCES_STORE_NAMES.clusterPreferences;
+const SMART_COLLECTIONS_STORE_NAME = PREFERENCES_STORE_NAMES.smartCollections;
+const SHADOW_METADATA_STORE_NAME = PREFERENCES_STORE_NAMES.shadowMetadata;
 
 type ManualTagRecord = {
   name: string;
@@ -17,17 +24,6 @@ const inMemoryAnnotations: Map<string, ImageAnnotations> = new Map();
 const inMemoryManualTags: Set<string> = new Set();
 let isPersistenceDisabled = false;
 let hasResetAttempted = false;
-
-const getIndexedDB = () => {
-  if (typeof indexedDB === 'undefined') {
-    if (!isPersistenceDisabled) {
-      console.warn('IndexedDB is not available in this environment. Image annotations persistence is disabled.');
-      isPersistenceDisabled = true;
-    }
-    return null;
-  }
-  return indexedDB;
-};
 
 function disablePersistence(error?: unknown) {
   if (isPersistenceDisabled) {
@@ -41,198 +37,22 @@ function disablePersistence(error?: unknown) {
   isPersistenceDisabled = true;
 }
 
-async function deleteDatabase(): Promise<boolean> {
-  const idb = getIndexedDB();
-  if (!idb) {
-    return false;
-  }
-
-  const deleteResult = await new Promise<boolean>((resolve) => {
-    const request = idb.deleteDatabase(DB_NAME);
-
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => {
-      console.error('Failed to reset image annotations storage', request.error);
-      resolve(false);
-    };
-    request.onblocked = () => {
-      console.warn('Image annotations storage reset is blocked by an open connection.');
-      resolve(false);
-    };
-  });
-
-  return deleteResult;
-}
-
-function getErrorName(error: unknown): string | undefined {
-  if (error instanceof DOMException) {
-    return error.name;
-  }
-
-  if (typeof error === 'object' && error && 'name' in error) {
-    return String((error as { name: unknown }).name);
-  }
-
-  return undefined;
-}
-
 function normalizeManualTagName(tagName: string): string {
   return tagName.trim().toLowerCase();
 }
 
-function seedManualTagsFromAnnotations(
-  annotationStore: IDBObjectStore,
-  manualTagsStore: IDBObjectStore,
-): void {
-  const request = annotationStore.getAll();
-
-  request.onsuccess = () => {
-    const annotations = request.result as ImageAnnotations[];
-    const timestamp = Date.now();
-    const uniqueTags = new Set<string>();
-
-    for (const annotation of annotations) {
-      for (const tag of annotation.tags) {
-        const normalizedTag = normalizeManualTagName(tag);
-        if (normalizedTag) {
-          uniqueTags.add(normalizedTag);
-        }
-      }
-    }
-
-    for (const tagName of uniqueTags) {
-      manualTagsStore.put({
-        name: tagName,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      } satisfies ManualTagRecord);
-    }
-  };
-
-  request.onerror = () => {
-    console.error('Failed to seed manual tags from annotations during migration', request.error);
-  };
-}
-
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
-  if (isPersistenceDisabled) {
-    return null;
+  const db = await openPreferencesDatabase({
+    context: 'image annotations storage',
+    disablePersistence,
+    allowReset,
+  });
+
+  if (db) {
+    hasResetAttempted = false;
   }
 
-  const idb = getIndexedDB();
-  if (!idb) {
-    return null;
-  }
-
-  try {
-    return await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = idb.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = request.result;
-        const oldVersion = event.oldVersion;
-
-        // Versão 1: Create folderSelection store (existing)
-        if (oldVersion < 1) {
-          if (!db.objectStoreNames.contains('folderSelection')) {
-            db.createObjectStore('folderSelection', { keyPath: 'id' });
-          }
-        }
-
-        // Versão 2: Create imageAnnotations store (existing)
-        if (oldVersion < 2) {
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            const store = db.createObjectStore(STORE_NAME, { keyPath: 'imageId' });
-
-            // Index para buscar favoritas rapidamente
-            store.createIndex('isFavorite', 'isFavorite', { unique: false });
-
-            // Index para buscar por tag (multiEntry: true permite busca em array)
-            store.createIndex('tags', 'tags', { unique: false, multiEntry: true });
-          }
-        }
-
-        // Versão 3: Create Smart Clustering stores (Phase 1)
-        if (oldVersion < 3) {
-          // Cluster preferences store
-          if (!db.objectStoreNames.contains('clusterPreferences')) {
-            db.createObjectStore('clusterPreferences', { keyPath: 'clusterId' });
-            console.log('Created clusterPreferences object store (v3)');
-          }
-
-          // Smart collections store
-          if (!db.objectStoreNames.contains('smartCollections')) {
-            const collectionsStore = db.createObjectStore('smartCollections', { keyPath: 'id' });
-            collectionsStore.createIndex('type', 'type', { unique: false });
-            console.log('Created smartCollections object store (v3)');
-          }
-        }
-
-        // Versão 4: Create Shadow Metadata store
-        if (oldVersion < 4) {
-          if (!db.objectStoreNames.contains('shadowMetadata')) {
-            db.createObjectStore('shadowMetadata', { keyPath: 'imageId' });
-            console.log('Created shadowMetadata object store (v4)');
-          }
-        }
-
-        // Versão 5: Create manual tag catalog store
-        if (oldVersion < 5) {
-          let manualTagsStore: IDBObjectStore;
-          if (!db.objectStoreNames.contains(MANUAL_TAGS_STORE_NAME)) {
-            manualTagsStore = db.createObjectStore(MANUAL_TAGS_STORE_NAME, { keyPath: 'name' });
-            console.log('Created manualTags object store (v5)');
-          } else {
-            manualTagsStore = request.transaction!.objectStore(MANUAL_TAGS_STORE_NAME);
-          }
-
-          if (oldVersion >= 2 && db.objectStoreNames.contains(STORE_NAME)) {
-            const annotationStore = request.transaction!.objectStore(STORE_NAME);
-            seedManualTagsFromAnnotations(annotationStore, manualTagsStore);
-          }
-        }
-
-        // Versão 6: Annotation payloads may include optional rating field.
-        // IndexedDB object stores are schema-less for values, so no structural
-        // migration is required beyond acknowledging the new payload shape.
-        if (oldVersion < 6) {
-          console.log('Image annotations storage upgraded to v6 (rating support)');
-        }
-      };
-
-      request.onsuccess = () => {
-        const db = request.result;
-        db.onversionchange = () => {
-          try {
-            db.close();
-          } catch (closeError) {
-            console.warn('Failed to close image annotations storage during version change', closeError);
-          }
-        };
-        hasResetAttempted = false;
-        resolve(db);
-      };
-
-      request.onerror = () => {
-        console.warn('Failed to open image annotations storage', request.error);
-        reject(request.error);
-      };
-    });
-  } catch (error) {
-    const errorName = getErrorName(error);
-
-    if (allowReset && !hasResetAttempted && (errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
-      console.warn('Resetting image annotations storage due to IndexedDB error:', error);
-      hasResetAttempted = true;
-      const resetSuccessful = await deleteDatabase();
-      if (resetSuccessful) {
-        return openDatabase({ allowReset: false });
-      }
-    }
-
-    disablePersistence(error);
-    return null;
-  }
+  return db;
 }
 
 /**
@@ -281,7 +101,7 @@ export async function loadAllAnnotations(): Promise<Map<string, ImageAnnotations
       };
     });
   } catch (error) {
-    const errorName = getErrorName(error);
+    const errorName = getIndexedDbErrorName(error);
 
     // If the object store doesn't exist, reset the database and retry once
     if (errorName === 'NotFoundError' && !hasResetAttempted) {
@@ -293,7 +113,7 @@ export async function loadAllAnnotations(): Promise<Map<string, ImageAnnotations
       }
 
       hasResetAttempted = true;
-      const resetSuccessful = await deleteDatabase();
+      const resetSuccessful = await resetPreferencesDatabase('image annotations storage', disablePersistence);
       if (resetSuccessful) {
         return loadAllAnnotations();
       }
@@ -973,8 +793,8 @@ export async function getClusterPreference(clusterId: string): Promise<ClusterPr
   if (!db) return null;
 
   return new Promise((resolve) => {
-    const transaction = db.transaction(['clusterPreferences'], 'readonly');
-    const store = transaction.objectStore('clusterPreferences');
+    const transaction = db.transaction([CLUSTER_PREFERENCES_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(CLUSTER_PREFERENCES_STORE_NAME);
     const request = store.get(clusterId);
 
     request.onsuccess = () => resolve(request.result || null);
@@ -995,8 +815,8 @@ export async function saveClusterPreference(preference: ClusterPreference): Prom
   preference.updatedAt = Date.now();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['clusterPreferences'], 'readwrite');
-    const store = transaction.objectStore('clusterPreferences');
+    const transaction = db.transaction([CLUSTER_PREFERENCES_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(CLUSTER_PREFERENCES_STORE_NAME);
     const request = store.put(preference);
 
     request.onsuccess = () => resolve();
@@ -1015,8 +835,8 @@ export async function deleteClusterPreference(clusterId: string): Promise<void> 
   if (!db) return;
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['clusterPreferences'], 'readwrite');
-    const store = transaction.objectStore('clusterPreferences');
+    const transaction = db.transaction([CLUSTER_PREFERENCES_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(CLUSTER_PREFERENCES_STORE_NAME);
     const request = store.delete(clusterId);
 
     request.onsuccess = () => resolve();
@@ -1035,8 +855,8 @@ export async function getAllClusterPreferences(): Promise<ClusterPreference[]> {
   if (!db) return [];
 
   return new Promise((resolve) => {
-    const transaction = db.transaction(['clusterPreferences'], 'readonly');
-    const store = transaction.objectStore('clusterPreferences');
+    const transaction = db.transaction([CLUSTER_PREFERENCES_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(CLUSTER_PREFERENCES_STORE_NAME);
     const request = store.getAll();
 
     request.onsuccess = () => resolve(request.result || []);
@@ -1105,8 +925,8 @@ export async function getSmartCollection(id: string): Promise<SmartCollection | 
   if (!db) return null;
 
   return new Promise((resolve) => {
-    const transaction = db.transaction(['smartCollections'], 'readonly');
-    const store = transaction.objectStore('smartCollections');
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.get(id);
 
     request.onsuccess = () => resolve(request.result || null);
@@ -1127,8 +947,8 @@ export async function saveSmartCollection(collection: SmartCollection): Promise<
   collection.updatedAt = Date.now();
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['smartCollections'], 'readwrite');
-    const store = transaction.objectStore('smartCollections');
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.put(collection);
 
     request.onsuccess = () => resolve();
@@ -1147,8 +967,8 @@ export async function deleteSmartCollection(id: string): Promise<void> {
   if (!db) return;
 
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['smartCollections'], 'readwrite');
-    const store = transaction.objectStore('smartCollections');
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.delete(id);
 
     request.onsuccess = () => resolve();
@@ -1167,8 +987,8 @@ export async function getAllSmartCollections(): Promise<SmartCollection[]> {
   if (!db) return [];
 
   return new Promise((resolve) => {
-    const transaction = db.transaction(['smartCollections'], 'readonly');
-    const store = transaction.objectStore('smartCollections');
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.getAll();
 
     request.onsuccess = () => resolve(request.result || []);
@@ -1187,8 +1007,8 @@ export async function getSmartCollectionsByType(type: SmartCollection['type']): 
   if (!db) return [];
 
   return new Promise((resolve) => {
-    const transaction = db.transaction(['smartCollections'], 'readonly');
-    const store = transaction.objectStore('smartCollections');
+    const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const index = store.index('type');
     const request = index.getAll(type);
 
@@ -1202,8 +1022,6 @@ export async function getSmartCollectionsByType(type: SmartCollection['type']): 
 
 // ===== Shadow Metadata Functions =====
 
-import type { ShadowMetadata } from '../types';
-
 /**
  * Get shadow metadata for an image
  */
@@ -1213,13 +1031,13 @@ export async function getShadowMetadata(imageId: string): Promise<ShadowMetadata
 
   return new Promise((resolve) => {
     // Check if store exists first (safety check for old versions or partial migrations)
-    if (!db.objectStoreNames.contains('shadowMetadata')) {
+    if (!db.objectStoreNames.contains(SHADOW_METADATA_STORE_NAME)) {
       resolve(null);
       return;
     }
 
-    const transaction = db.transaction(['shadowMetadata'], 'readonly');
-    const store = transaction.objectStore('shadowMetadata');
+    const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
     const request = store.get(imageId);
 
     request.onsuccess = () => resolve(request.result || null);
@@ -1241,13 +1059,13 @@ export async function saveShadowMetadata(metadata: ShadowMetadata): Promise<void
 
   return new Promise((resolve, reject) => {
      // Check if store exists
-    if (!db.objectStoreNames.contains('shadowMetadata')) {
+    if (!db.objectStoreNames.contains(SHADOW_METADATA_STORE_NAME)) {
       reject(new Error('Shadow metadata store not found'));
       return;
     }
 
-    const transaction = db.transaction(['shadowMetadata'], 'readwrite');
-    const store = transaction.objectStore('shadowMetadata');
+    const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
     const request = store.put(metadata);
 
     request.onsuccess = () => resolve();
@@ -1267,13 +1085,13 @@ export async function deleteShadowMetadata(imageId: string): Promise<void> {
 
   return new Promise((resolve, reject) => {
      // Check if store exists
-    if (!db.objectStoreNames.contains('shadowMetadata')) {
+    if (!db.objectStoreNames.contains(SHADOW_METADATA_STORE_NAME)) {
       resolve(); // Treat as success if store doesn't exist
       return;
     }
 
-    const transaction = db.transaction(['shadowMetadata'], 'readwrite');
-    const store = transaction.objectStore('shadowMetadata');
+    const transaction = db.transaction([SHADOW_METADATA_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
     const request = store.delete(imageId);
 
     request.onsuccess = () => resolve();

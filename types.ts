@@ -45,7 +45,7 @@ export interface ElectronAPI {
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
-    files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[];
+    files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
@@ -684,6 +684,7 @@ export interface IndexedImage {
   metadata: ImageMetadata;
   metadataString: string; // For faster searching
   lastModified: number; // File's last modified date
+  contentModifiedMs?: number; // Real file content modification timestamp for cache diffing
   models: string[]; // Extracted models from metadata
   loras: (string | LoRAInfo)[]; // Extracted LoRAs from metadata
   sampler?: string; // Extracted sampler from metadata

@@ -23,6 +23,32 @@ const themeOptions = [
   { id: 'ocean', name: 'Ocean', colors: ['#0f172a', '#38bdf8', '#e2e8f0'] },
 ];
 
+const startupVerificationModeDetails: Record<'off' | 'idle' | 'strict', {
+  label: string;
+  title: string;
+  description: string;
+  impact: string;
+}> = {
+  off: {
+    label: 'Off - trust cache only',
+    title: 'Off',
+    description: 'Opens using the saved cache only. It does not scan folders during startup.',
+    impact: 'Fastest startup. If files changed while the app was closed, they will only appear after auto-watch detects them later or after a manual refresh.',
+  },
+  idle: {
+    label: 'Background - verify after opening',
+    title: 'Background',
+    description: 'Opens from cache immediately, then checks folders a few seconds later in the background.',
+    impact: 'Best balance. Startup stays fast, and changes made while the app was closed are reconciled after the UI is already usable.',
+  },
+  strict: {
+    label: 'Strict - verify before finishing startup',
+    title: 'Strict',
+    description: 'Checks saved folders against disk during startup before finishing the initial load.',
+    impact: 'Most up-to-date on open, but also the slowest option for large libraries.',
+  },
+};
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialTab = 'general', focusSection = null }) => {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const theme = useSettingsStore((state) => state.theme);
@@ -41,6 +67,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const setDoubleClickToOpen = useSettingsStore((state) => state.setDoubleClickToOpen);
   const globalAutoWatch = useSettingsStore((state) => state.globalAutoWatch);
   const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
+  const startupVerificationMode = useSettingsStore((state) => state.startupVerificationMode);
+  const setStartupVerificationMode = useSettingsStore((state) => state.setStartupVerificationMode);
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const setSensitiveTags = useSettingsStore((state) => state.setSensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -85,6 +113,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
   const [licenseMessage, setLicenseMessage] = useState<string | null>(null);
   const licenseSectionRef = useRef<HTMLDivElement | null>(null);
   const [sensitiveTagsInput, setSensitiveTagsInput] = useState('');
+  const selectedStartupVerificationMode = startupVerificationModeDetails[startupVerificationMode];
 
   useEffect(() => {
     if (isOpen) {
@@ -398,6 +427,38 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, initialT
                 />
                 <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-800 peer-checked:after:translate-x-full peer-checked:after:border-gray-50 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-50 after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Startup Verification</h3>
+            <div className="bg-gray-900 p-3 rounded-md space-y-3">
+              <div>
+                <p className="text-sm">Verify saved folders when the app opens</p>
+                <p className="text-xs text-gray-400">
+                  Controls how aggressively Image MetaHub reconciles cached folders against disk at startup.
+                </p>
+              </div>
+              <select
+                value={startupVerificationMode}
+                onChange={(event) => setStartupVerificationMode(event.target.value as 'off' | 'idle' | 'strict')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="off">{startupVerificationModeDetails.off.label}</option>
+                <option value="idle">{startupVerificationModeDetails.idle.label}</option>
+                <option value="strict">{startupVerificationModeDetails.strict.label}</option>
+              </select>
+              <div className="rounded-md border border-gray-800 bg-gray-950/60 p-3 space-y-1">
+                <p className="text-sm font-medium text-gray-100">
+                  Selected: {selectedStartupVerificationMode.title}
+                </p>
+                <p className="text-xs text-gray-300">
+                  {selectedStartupVerificationMode.description}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {selectedStartupVerificationMode.impact}
+                </p>
+              </div>
             </div>
           </div>
 

@@ -772,17 +772,6 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         // Extract notes from imh_pro.notes
         const userNotes = metahubData.imh_pro?.notes || '';
 
-        const workflowGraph = metahubData.workflow && typeof metahubData.workflow === 'object'
-          ? metahubData.workflow
-          : undefined;
-        const promptGraph = metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
-          ? metahubData.prompt_api
-          : metahubData.prompt && typeof metahubData.prompt === 'object'
-            ? metahubData.prompt
-            : undefined;
-        const graph = workflowGraph || promptGraph
-          ? createNodeMap(workflowGraph, promptGraph)
-          : null;
         const explicitGenerationType = typeof metahubData.generation_type === 'string'
           ? metahubData.generation_type as Exclude<GenerationType, 'txt2img'>
           : undefined;
@@ -792,6 +781,18 @@ function extractFromMetaHubChunk(rawData: any): Record<string, any> | null {
         const explicitSourceImage = metahubData.source_image && typeof metahubData.source_image === 'object'
           ? metahubData.source_image as SourceImageReference
           : undefined;
+        const hasExplicitLineage = Boolean(explicitGenerationType && (explicitParentImage || explicitSourceImage));
+        const workflowGraph = !hasExplicitLineage && metahubData.workflow && typeof metahubData.workflow === 'object'
+          ? metahubData.workflow
+          : undefined;
+        const promptGraph = !hasExplicitLineage && metahubData.prompt_api && typeof metahubData.prompt_api === 'object'
+          ? metahubData.prompt_api
+          : !hasExplicitLineage && metahubData.prompt && typeof metahubData.prompt === 'object'
+            ? metahubData.prompt
+            : undefined;
+        const graph = workflowGraph || promptGraph
+          ? createNodeMap(workflowGraph, promptGraph)
+          : null;
         const inferredLineage = graph
           ? detectComfyLineageFromGraph(graph, findTerminalNode(graph), metahubData.denoise)
           : {};

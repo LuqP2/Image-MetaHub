@@ -99,6 +99,21 @@ const replaceRecentTag = (currentTags: string[], sourceTag: string, targetTag: s
 };
 
 const normalizeTagName = (tag: string) => tag.trim().toLowerCase();
+const pendingMetadataTagImportMap = new Map<string, IndexedImage>();
+
+const queueMetadataTagImports = (images: IndexedImage[]) => {
+    for (const image of images) {
+        if (image?.id) {
+            pendingMetadataTagImportMap.set(image.id, image);
+        }
+    }
+};
+
+const drainPendingMetadataTagImports = (): IndexedImage[] => {
+    const images = Array.from(pendingMetadataTagImportMap.values());
+    pendingMetadataTagImportMap.clear();
+    return images;
+};
 
 const buildAnnotationRecord = (
     imageId: string,
@@ -373,6 +388,7 @@ interface ImageState {
   setTransferProgress: (progress: IndexedImageTransferProgress | null) => void;
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
+  appendImagesSilently: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
   mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
@@ -555,9 +571,13 @@ export const useImageStore = create<ImageState>((set, get) => {
             return _updateState(state, allImages);
         });
 
-        // Import tags from metadata after images are added to store
+        // Import tags from metadata only after annotations are available.
         if (addedImages.length > 0) {
-            get().importMetadataTags(addedImages);
+            if (get().isAnnotationsLoaded) {
+                void get().importMetadataTags(addedImages);
+            } else {
+                queueMetadataTagImports(addedImages);
+            }
         }
     };
 
@@ -1495,6 +1515,31 @@ export const useImageStore = create<ImageState>((set, get) => {
             scheduleFlush();
         },
 
+        appendImagesSilently: (newImages) => {
+            if (!newImages || newImages.length === 0) {
+                return;
+            }
+
+            set(state => {
+                const deduped = new Map<string, IndexedImage>();
+                for (const img of newImages) {
+                    if (img?.id && !deduped.has(img.id)) {
+                        deduped.set(img.id, img);
+                    }
+                }
+
+                const queuedUnique = Array.from(deduped.values());
+                const existingIds = new Set(state.images.map(img => img.id));
+                const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
+                if (uniqueNewImages.length === 0) {
+                    return state;
+                }
+
+                const allImages = [...state.images, ...uniqueNewImages];
+                return _updateState(state, allImages);
+            });
+        },
+
         replaceDirectoryImages: (directoryId, newImages) => {
             clearPendingQueue();
             set(state => {
@@ -2024,6 +2069,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         loadAnnotations: async () => {
             const annotationsMap = await loadAllAnnotations();
             const tags = await getAllTags();
+            const queuedMetadataImports = drainPendingMetadataTagImports();
 
             set(state => {
                 // Denormalize annotations into images array using helper
@@ -2039,6 +2085,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 return { ...newState, ...filterAndSort(newState) };
             });
+
+            if (queuedMetadataImports.length > 0) {
+                await get().importMetadataTags(queuedMetadataImports);
+            }
         },
 
         toggleFavorite: async (imageId) => {
@@ -2801,7 +2851,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
-        resetState: () => set({
+        resetState: () => {
+            pendingMetadataTagImportMap.clear();
+            set({
             images: [],
             filteredImages: [],
             thumbnailEntries: {},
@@ -2864,7 +2916,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             autoTaggingProgress: null,
             autoTaggingWorker: null,
             isAutoTagging: false,
-        }),
+        });
+        },
 
         cleanupInvalidImages: () => {
             const state = get();

@@ -47,6 +47,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
+  navigationSource: 'filtered' | 'cluster';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -911,6 +912,8 @@ export default function App() {
         ? clusterNavigationContext
         : safeFilteredImages;
     const navigationImageIds = navigationSource.map((image) => image.id);
+    const navigationSourceType: OpenImageModalState['navigationSource'] =
+      clusterNavigationContext && clusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
 
     setOpenImageModals((current) => {
       const nextZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) + 1 : 60;
@@ -932,6 +935,7 @@ export default function App() {
           modalId,
           imageId: selectedImage.id,
           navigationImageIds,
+          navigationSource: navigationSourceType,
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
@@ -939,6 +943,20 @@ export default function App() {
       ];
     });
   }, [clusterNavigationContext, safeFilteredImages, selectedImage]);
+
+  const filteredNavigationImageIds = useMemo(
+    () => safeFilteredImages.map((image) => image.id),
+    [safeFilteredImages]
+  );
+
+  const resolveModalNavigationImageIds = useCallback((modal: OpenImageModalState) => {
+    const sourceIds =
+      modal.navigationSource === 'filtered'
+        ? filteredNavigationImageIds
+        : modal.navigationImageIds;
+
+    return sourceIds.filter((imageId) => imageMap.has(imageId));
+  }, [filteredNavigationImageIds, imageMap]);
 
   useEffect(() => {
     setOpenImageModals((current) => {
@@ -952,7 +970,11 @@ export default function App() {
           return [];
         }
 
-        const navigationImageIds = modal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+        if (modal.navigationSource === 'filtered') {
+          return [modal];
+        }
+
+        const navigationImageIds = resolveModalNavigationImageIds(modal);
         if (navigationImageIds.length !== modal.navigationImageIds.length) {
           changed = true;
           return [{ ...modal, navigationImageIds }];
@@ -963,7 +985,7 @@ export default function App() {
 
       return changed ? next : current;
     });
-  }, [imageMap, safeDirectories]);
+  }, [imageMap, resolveModalNavigationImageIds, safeDirectories]);
 
   useEffect(() => {
     const currentActiveModal =
@@ -1082,7 +1104,7 @@ export default function App() {
       return;
     }
 
-    const availableImageIds = targetModal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+    const availableImageIds = resolveModalNavigationImageIds(targetModal);
     const currentIndex = availableImageIds.findIndex((imageId) => imageId === targetModal.imageId);
 
     if (currentIndex === -1) {
@@ -1108,7 +1130,7 @@ export default function App() {
     if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
       setSelectedImage(nextImage);
     }
-  }, [imageMap, openImageModals, setSelectedImage]);
+  }, [imageMap, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
 
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {
@@ -1139,7 +1161,7 @@ export default function App() {
           return null;
         }
 
-        const navigationImageIds = modal.navigationImageIds.filter((imageId) => imageMap.has(imageId));
+        const navigationImageIds = resolveModalNavigationImageIds(modal);
         const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
         const directoryPath = safeDirectories.find((directory) => directory.id === image.directoryId)?.path;
         if (!directoryPath) {
@@ -1160,7 +1182,7 @@ export default function App() {
         currentIndex: number;
         totalImages: number;
       }>;
-  }, [imageMap, openImageModals, safeDirectories]);
+  }, [imageMap, openImageModals, resolveModalNavigationImageIds, safeDirectories]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
