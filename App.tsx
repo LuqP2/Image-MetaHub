@@ -42,6 +42,7 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
+import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 
 interface OpenImageModalState {
   modalId: string;
@@ -249,8 +250,8 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
-  const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
+  const [settingsSection, setSettingsSection] = useState<SettingsFocusSection>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => {
     if (typeof window === 'undefined') {
@@ -388,19 +389,19 @@ export default function App() {
     startTrial,
   } = useFeatureAccess();
 
-  const handleOpenSettings = (tab: 'general' | 'hotkeys' | 'themes' = 'general', section: 'license' | null = null) => {
-    setSettingsTab(tab);
+  const handleOpenSettings = (tab: SettingsTabInput = 'library', section: SettingsFocusSection = null) => {
+    setSettingsTab(resolveSettingsTab(tab));
     setSettingsSection(section);
     setIsSettingsModalOpen(true);
   };
 
   const handleOpenHotkeySettings = () => {
     setIsHotkeyHelpOpen(false);
-    handleOpenSettings('hotkeys');
+    handleOpenSettings('shortcuts');
   };
 
   const handleOpenLicenseSettings = () => {
-    handleOpenSettings('general', 'license');
+    handleOpenSettings('license', 'license');
   };
 
   // Create a dummy image for generation from scratch (no base image)
