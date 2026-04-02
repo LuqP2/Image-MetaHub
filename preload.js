@@ -147,7 +147,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
-  getFileUrl: (filePath) => ipcRenderer.invoke('get-file-url', filePath),
   joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
