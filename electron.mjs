@@ -7,7 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
@@ -2266,6 +2266,27 @@ function setupFileOperationHandlers() {
       return { success: true, path: joinedPath };
     } catch (error) {
       console.error('Error joining paths:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-file-url', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      if (!isPathAllowed(filePath)) {
+        console.error('SECURITY VIOLATION: Attempted to resolve file URL outside of allowed directories.');
+        console.error('  [get-file-url] Requested path:', filePath);
+        console.error('  [get-file-url] Normalized path:', path.normalize(filePath));
+        console.error('  [get-file-url] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      return { success: true, url: pathToFileURL(filePath).href };
+    } catch (error) {
+      console.error('Error resolving file URL:', filePath, error);
       return { success: false, error: error.message };
     }
   });

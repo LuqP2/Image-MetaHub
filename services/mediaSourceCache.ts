@@ -134,6 +134,19 @@ class MediaSourceCache {
     image: IndexedImage,
     directoryPath?: string
   ): Promise<{ url: string; revoke: boolean }> {
+    if (window.electronAPI && directoryPath) {
+      const relativeImagePath = getRelativeImagePath(image);
+      const pathResult = await window.electronAPI.joinPaths(directoryPath, relativeImagePath);
+      if (!pathResult.success || !pathResult.path) {
+        throw new Error(pathResult.error || 'Failed to construct image path.');
+      }
+
+      const fileUrlResult = await window.electronAPI.getFileUrl(pathResult.path);
+      if (fileUrlResult.success && fileUrlResult.url) {
+        return { url: fileUrlResult.url, revoke: false };
+      }
+    }
+
     const primaryHandle = image.handle;
     const fallbackHandle = image.thumbnailHandle;
     const fileHandle =
@@ -159,7 +172,6 @@ class MediaSourceCache {
       if (!fileResult.success || !fileResult.data) {
         throw new Error(fileResult.error || 'Failed to read file via Electron API.');
       }
-
       return createImageUrlFromFileData(fileResult.data, image.name);
     }
 

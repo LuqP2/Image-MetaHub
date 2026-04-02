@@ -74,6 +74,7 @@ export interface ElectronAPI {
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
+  getFileUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string }>;
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
