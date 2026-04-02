@@ -2292,7 +2292,12 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
-        setClusterNavigationContext: (images) => set({ clusterNavigationContext: images }),
+        setClusterNavigationContext: (images) => set((state) => {
+            if (state.clusterNavigationContext === images) {
+                return state;
+            }
+            return { clusterNavigationContext: images };
+        }),
 
         handleClusterImageDeletion: (deletedImageIds: string[]) => {
             const { clusters } = get();

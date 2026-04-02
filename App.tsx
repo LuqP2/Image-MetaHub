@@ -1030,7 +1030,7 @@ export default function App() {
       if (selectedImageId !== null) {
         setSelectedImage(null);
       }
-      if (openImageModals.length === 0) {
+      if (openImageModals.length === 0 && useImageStore.getState().clusterNavigationContext !== null) {
         setClusterNavigationContext(null);
       }
     }
