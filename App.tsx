@@ -146,7 +146,6 @@ export default function App() {
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
   const filteredImages = useImageStore((state) => state.filteredImages);
-  const images = useImageStore((state) => state.images);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const directories = useImageStore((state) => state.directories);
@@ -229,7 +228,6 @@ export default function App() {
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
 
-  const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
@@ -312,7 +310,6 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
-  const imageMap = useMemo(() => new Map(safeImages.map((image) => [image.id, image])), [safeImages]);
   const hasRightSidebar = Boolean(previewImage || isQueueOpen);
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
@@ -964,20 +961,30 @@ export default function App() {
     [safeFilteredImages]
   );
 
+  const getImageByIdFromStore = useCallback((imageId: string) => {
+    if (!imageId) {
+      return undefined;
+    }
+
+    const state = useImageStore.getState();
+    return state.images.find((image) => image.id === imageId)
+      ?? state.filteredImages.find((image) => image.id === imageId);
+  }, []);
+
   const resolveModalNavigationImageIds = useCallback((modal: OpenImageModalState) => {
     const sourceIds =
       modal.navigationSource === 'filtered'
         ? filteredNavigationImageIds
         : modal.navigationImageIds;
 
-    return sourceIds.filter((imageId) => imageMap.has(imageId));
-  }, [filteredNavigationImageIds, imageMap]);
+    return sourceIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+  }, [filteredNavigationImageIds, getImageByIdFromStore]);
 
   useEffect(() => {
     setOpenImageModals((current) => {
       let changed = false;
       const next = current.flatMap((modal) => {
-        const image = imageMap.get(modal.imageId);
+        const image = getImageByIdFromStore(modal.imageId);
         const directoryExists = image ? safeDirectories.some((directory) => directory.id === image.directoryId) : false;
 
         if (!image || !directoryExists) {
@@ -1000,7 +1007,7 @@ export default function App() {
 
       return changed ? next : current;
     });
-  }, [imageMap, resolveModalNavigationImageIds, safeDirectories]);
+  }, [getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
 
   useEffect(() => {
     const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
@@ -1015,7 +1022,7 @@ export default function App() {
     }
 
     if (nextActiveModal) {
-      const nextActiveImage = imageMap.get(nextActiveModal.imageId);
+      const nextActiveImage = getImageByIdFromStore(nextActiveModal.imageId);
       if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
         setSelectedImage(nextActiveImage);
       }
@@ -1027,7 +1034,7 @@ export default function App() {
         setClusterNavigationContext(null);
       }
     }
-  }, [activeImageModalId, imageMap, openImageModals, setClusterNavigationContext, setSelectedImage]);
+  }, [activeImageModalId, getImageByIdFromStore, openImageModals, setClusterNavigationContext, setSelectedImage]);
 
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
@@ -1064,11 +1071,11 @@ export default function App() {
     });
     setActiveImageModalId(modalId);
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
-    const targetImage = targetModal ? imageMap.get(targetModal.imageId) : null;
+    const targetImage = targetModal ? getImageByIdFromStore(targetModal.imageId) ?? null : null;
     if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
       setSelectedImage(targetImage);
     }
-  }, [imageMap, openImageModals, setSelectedImage]);
+  }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
 
   const handleMinimizeImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) =>
@@ -1135,11 +1142,11 @@ export default function App() {
       )
     );
 
-    const nextImage = imageMap.get(nextImageId);
+    const nextImage = getImageByIdFromStore(nextImageId);
     if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
       setSelectedImage(nextImage);
     }
-  }, [imageMap, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
+  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
 
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {
@@ -1165,7 +1172,7 @@ export default function App() {
   const openImageModalEntries = useMemo(() => {
     return openImageModals
       .map((modal) => {
-        const image = imageMap.get(modal.imageId);
+        const image = getImageByIdFromStore(modal.imageId);
         if (!image) {
           return null;
         }
@@ -1191,12 +1198,12 @@ export default function App() {
         currentIndex: number;
         totalImages: number;
       }>;
-  }, [imageMap, openImageModals, resolveModalNavigationImageIds, safeDirectories]);
+  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, safeDirectories]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals
       .map((modal) => {
-        const image = imageMap.get(modal.imageId);
+        const image = getImageByIdFromStore(modal.imageId);
         if (!image) {
           return null;
         }
@@ -1214,7 +1221,7 @@ export default function App() {
         isActive: boolean;
         isMinimized: boolean;
       }>;
-  }, [activeImageModalId, imageMap, openImageModals]);
+  }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
   const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
 
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
