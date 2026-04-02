@@ -337,6 +337,20 @@ async function getCacheRootPath() {
   }
   return app.getPath('userData');
 }
+
+function logRendererCrash(details = {}) {
+  try {
+    const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...details,
+    };
+
+    fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
+  } catch (error) {
+    console.error('Failed to write renderer crash log:', error);
+  }
+}
 // --- End Settings Management ---
 
 // --- Application Menu ---
@@ -972,6 +986,22 @@ async function createWindow(startupDirectory = null) {
         mainWindow.webContents.send('fullscreen-state-check', { isFullscreen: currentFullscreenState });
       }
     }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    logRendererCrash({
+      kind: 'render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+    });
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('Renderer became unresponsive');
+    logRendererCrash({
+      kind: 'unresponsive',
+    });
   });
 }
 
