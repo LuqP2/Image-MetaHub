@@ -64,6 +64,8 @@ const RIGHT_SIDEBAR_MIN_WIDTH = 320;
 const RIGHT_SIDEBAR_MAX_WIDTH = 640;
 const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
 const MAIN_CONTENT_MIN_WIDTH = 560;
+const GRID_PAGE_WARMUP_AHEAD = 4;
+const GRID_PAGE_WARMUP_LIMIT = 600;
 
 const sanitizePreferredWidth = (
   width: number,
@@ -1166,6 +1168,15 @@ export default function App() {
     },
     [safeFilteredImages, currentPage, itemsPerPage]
   );
+  const upcomingPaginatedImages = useMemo(() => {
+    if (itemsPerPage === -1 || itemsPerPage <= 0) {
+      return [];
+    }
+
+    const startIndex = currentPage * itemsPerPage;
+    const aheadCount = Math.max(itemsPerPage * GRID_PAGE_WARMUP_AHEAD, GRID_PAGE_WARMUP_LIMIT);
+    return safeFilteredImages.slice(startIndex, startIndex + aheadCount);
+  }, [currentPage, itemsPerPage, safeFilteredImages]);
   const totalPages = itemsPerPage === -1
     ? 1
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
@@ -1481,6 +1492,7 @@ export default function App() {
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
+                          aheadImages={upcomingPaginatedImages}
                           onImageClick={handleImageSelection}
                           selectedImages={safeSelectedImages}
                           currentPage={currentPage}
