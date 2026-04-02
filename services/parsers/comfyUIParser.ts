@@ -357,7 +357,9 @@ function extractComfyVersion(workflow: any, prompt: any): string | null {
   }
   
   // Try regex on combined text
-  const text = JSON.stringify(workflow) + JSON.stringify(prompt);
+  const workflowText = JSON.stringify(workflow) ?? '';
+  const promptText = JSON.stringify(prompt) ?? '';
+  const text = `${workflowText}${promptText}`;
   const versionMatch = text.match(/"version"\s*:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/);
   if (versionMatch) {
     return versionMatch[1];

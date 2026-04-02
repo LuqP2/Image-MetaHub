@@ -917,18 +917,32 @@ export default function App() {
       clusterNavigationContext && clusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
 
     setOpenImageModals((current) => {
-      const nextZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) + 1 : 60;
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
       const existingModal = current.find((modal) => modal.imageId === selectedImage.id);
 
       if (existingModal) {
-        setActiveImageModalId(existingModal.modalId);
-        return current.map((modal) =>
-          modal.modalId === existingModal.modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
-        );
+        const nextZIndex = current.length > 1 ? highestZIndex + 1 : existingModal.zIndex;
+        const shouldUpdate =
+          existingModal.isMinimized || existingModal.zIndex !== nextZIndex;
+
+        if (!shouldUpdate) {
+          return current;
+        }
+
+        return current.map((modal) => {
+          if (modal.modalId !== existingModal.modalId) {
+            return modal;
+          }
+
+          return {
+            ...modal,
+            zIndex: nextZIndex,
+            isMinimized: false,
+          };
+        });
       }
 
       const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
-      setActiveImageModalId(modalId);
 
       return [
         ...current,
@@ -937,7 +951,7 @@ export default function App() {
           imageId: selectedImage.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
-          zIndex: nextZIndex,
+          zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
         },
@@ -989,32 +1003,26 @@ export default function App() {
   }, [imageMap, resolveModalNavigationImageIds, safeDirectories]);
 
   useEffect(() => {
-    const currentActiveModal =
-      activeImageModalId
-        ? openImageModals.find((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
-        : null;
-
-    if (currentActiveModal) {
-      const activeImage = imageMap.get(currentActiveModal.imageId);
-      if (activeImage && useImageStore.getState().selectedImage?.id !== activeImage.id) {
-        setSelectedImage(activeImage);
-      }
-      return;
-    }
-
+    const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
     const nextActiveModal = [...openImageModals]
       .filter((modal) => !modal.isMinimized)
       .sort((left, right) => right.zIndex - left.zIndex)[0];
+    const nextActiveModalId = nextActiveModal?.modalId ?? null;
 
-    setActiveImageModalId(nextActiveModal?.modalId ?? null);
+    if (nextActiveModalId !== activeImageModalId) {
+      setActiveImageModalId(nextActiveModalId);
+      return;
+    }
 
     if (nextActiveModal) {
       const nextActiveImage = imageMap.get(nextActiveModal.imageId);
-      if (nextActiveImage && useImageStore.getState().selectedImage?.id !== nextActiveImage.id) {
+      if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
         setSelectedImage(nextActiveImage);
       }
     } else {
-      setSelectedImage(null);
+      if (selectedImageId !== null) {
+        setSelectedImage(null);
+      }
       if (openImageModals.length === 0) {
         setClusterNavigationContext(null);
       }
