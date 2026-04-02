@@ -142,7 +142,7 @@ export const useSettingsStore = create<SettingsState>()(
       showFilenames: false,
       showFullFilePath: false,
       globalAutoWatch: true,
-      startupVerificationMode: 'idle',
+        startupVerificationMode: 'off',
       doubleClickToOpen: false,
       sensitiveTags: ['nsfw', 'private', 'hidden'],
       blurSensitiveImages: true,
@@ -232,7 +232,7 @@ export const useSettingsStore = create<SettingsState>()(
         showFilenames: false,
         showFullFilePath: false,
         globalAutoWatch: true,
-        startupVerificationMode: 'idle',
+      startupVerificationMode: 'off',
         doubleClickToOpen: false,
         sensitiveTags: ['nsfw', 'private', 'hidden'],
         blurSensitiveImages: true,
@@ -285,7 +285,7 @@ export const useSettingsStore = create<SettingsState>()(
           state.startupVerificationMode !== 'idle' &&
           state.startupVerificationMode !== 'strict'
         ) {
-          state.startupVerificationMode = 'idle';
+          state.startupVerificationMode = 'off';
         }
 
         if (state && !Array.isArray(state.sensitiveTags)) {
