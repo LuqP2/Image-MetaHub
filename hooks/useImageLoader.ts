@@ -5,6 +5,7 @@ import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { normalizeFacetValue } from '../utils/facetNormalization';
 
 // Configure logging level
 const DEBUG = false;
@@ -303,18 +304,26 @@ export function useImageLoader() {
         const schedulers = new Set<string>();
 
         for (const image of allImages) {
-            if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-            if (image.loras && image.loras.length > 0) {
-                image.loras.forEach(lora => {
-                    if (typeof lora === 'string') {
-                        loras.add(lora);
-                    } else if (lora && typeof lora === 'object' && lora.name) {
-                        loras.add(lora.name);
+            if (image.models && image.models.length > 0) {
+                image.models.forEach(model => {
+                    const normalized = normalizeFacetValue(model);
+                    if (normalized) {
+                        models.add(normalized);
                     }
                 });
             }
-            if (image.sampler) samplers.add(image.sampler);
-            if (image.scheduler) schedulers.add(image.scheduler);
+            if (image.loras && image.loras.length > 0) {
+                image.loras.forEach(lora => {
+                    const normalized = normalizeFacetValue(lora);
+                    if (normalized) {
+                        loras.add(normalized);
+                    }
+                });
+            }
+            const sampler = normalizeFacetValue(image.sampler);
+            if (sampler) samplers.add(sampler);
+            const scheduler = normalizeFacetValue(image.scheduler);
+            if (scheduler) schedulers.add(scheduler);
         }
 
         setFilterOptions({

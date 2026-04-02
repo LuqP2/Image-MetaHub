@@ -154,6 +154,37 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png']);
   });
 
+  it('sanitizes malformed facet values during silent append', () => {
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [],
+      filteredImages: [],
+      sortOrder: 'asc',
+    });
+
+    const malformed = createImage({
+      name: 'broken-cache.png',
+      models: ['modelA', { name: 'modelB' } as any] as any,
+      loras: [{ model_name: 'detailer' } as any, 'style-pack'] as any,
+      sampler: { name: 'euler_a' } as any,
+      scheduler: { name: 'karras' } as any,
+      dimensions: { name: '1024x1024' } as any,
+    });
+
+    expect(() => useImageStore.getState().appendImagesSilently([malformed])).not.toThrow();
+
+    const stored = useImageStore.getState().images[0];
+    expect(stored.models).toEqual(['modelA', 'modelB']);
+    expect(stored.loras).toEqual([{ model_name: 'detailer', name: 'detailer' }, 'style-pack']);
+    expect(stored.sampler).toBe('euler_a');
+    expect(stored.scheduler).toBe('karras');
+    expect(stored.dimensions).toBe('1024x1024');
+    expect(useImageStore.getState().availableSamplers).toEqual(['euler_a']);
+    expect(useImageStore.getState().availableSchedulers).toEqual(['karras']);
+    expect(useImageStore.getState().availableDimensions).toEqual(['1024x1024']);
+  });
+
   it('supports open-ended advanced ranges for steps and cfg', () => {
     useImageStore.getState().setAdvancedFilters({
       steps: { min: 30, max: null },

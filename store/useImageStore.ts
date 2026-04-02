@@ -10,6 +10,7 @@ import {
   renameManualTag,
   deleteManualTag,
 } from '../services/imageAnnotationsStorage';
+import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -243,35 +244,40 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
 
     const segments: string[] = [];
     if (image.metadataString) {
-        segments.push(image.metadataString.toLowerCase());
+        segments.push(String(image.metadataString).toLowerCase());
     }
     if (image.prompt) {
-        segments.push(image.prompt.toLowerCase());
+        segments.push(String(image.prompt).toLowerCase());
     }
     if (image.negativePrompt) {
-        segments.push(image.negativePrompt.toLowerCase());
+        segments.push(String(image.negativePrompt).toLowerCase());
     }
     if (image.models?.length) {
-        segments.push(image.models.filter(model => typeof model === 'string').map(model => model.toLowerCase()).join(' '));
+        segments.push(
+            image.models
+                .map(model => normalizeFacetValue(model))
+                .filter((model): model is string => Boolean(model))
+                .map(model => model.toLowerCase())
+                .join(' ')
+        );
     }
     if (image.loras?.length) {
         const loraNames = image.loras.map(lora => {
-            if (typeof lora === 'string') {
-                return lora.toLowerCase();
-            } else if (lora && typeof lora === 'object' && lora.name) {
-                return lora.name.toLowerCase();
-            }
-            return '';
+            const normalized = normalizeFacetValue(lora);
+            return normalized ? normalized.toLowerCase() : '';
         }).filter(Boolean);
         if (loraNames.length > 0) {
             segments.push(loraNames.join(' '));
         }
     }
     if (image.scheduler) {
-        segments.push(image.scheduler.toLowerCase());
+        const normalized = normalizeFacetValue(image.scheduler);
+        if (normalized) {
+            segments.push(normalized.toLowerCase());
+        }
     }
     if (image.board) {
-        segments.push(image.board.toLowerCase());
+        segments.push(String(image.board).toLowerCase());
     }
 
     return segments.join(' ');
@@ -747,22 +753,29 @@ export const useImageStore = create<ImageState>((set, get) => {
         const dimensions = new Set<string>();
 
         for (const image of visibleImages) {
-            image.models?.forEach(model => { if(typeof model === 'string' && model) models.add(model) });
-            image.loras?.forEach(lora => {
-                if (typeof lora === 'string' && lora) {
-                    loras.add(lora);
-                } else if (lora && typeof lora === 'object' && lora.name) {
-                    loras.add(lora.name);
+            image.models?.forEach(model => {
+                const normalized = normalizeFacetValue(model);
+                if (normalized) {
+                    models.add(normalized);
                 }
             });
-            if (image.sampler) samplers.add(image.sampler);
-            if (image.scheduler) schedulers.add(image.scheduler);
-            if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
+            image.loras?.forEach(lora => {
+                const normalized = normalizeFacetValue(lora);
+                if (normalized) {
+                    loras.add(normalized);
+                }
+            });
+            const sampler = normalizeFacetValue(image.sampler);
+            if (sampler) samplers.add(sampler);
+            const scheduler = normalizeFacetValue(image.scheduler);
+            if (scheduler) schedulers.add(scheduler);
+            const dimension = normalizeFacetValue(image.dimensions);
+            if (dimension && dimension !== '0x0') dimensions.add(dimension);
         }
 
         // Case-insensitive alphabetical comparator
         const caseInsensitiveSort = (a: string, b: string) => {
-            return a.toLowerCase().localeCompare(b.toLowerCase());
+            return a.localeCompare(b, undefined, { sensitivity: 'accent' });
         };
 
         return {
@@ -809,8 +822,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        const sanitizedImages = newImages.map(sanitizeIndexedImageFacets);
+
         // Apply annotations to new images
-        const imagesWithAnnotations = applyAnnotationsToImages(newImages, currentState.annotations);
+        const imagesWithAnnotations = applyAnnotationsToImages(sanitizedImages, currentState.annotations);
 
         // Early return if images didn't change (prevents unnecessary recalculations)
         if (imagesWithAnnotations === currentState.images) {
