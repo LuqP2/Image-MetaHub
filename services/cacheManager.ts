@@ -263,6 +263,7 @@ class IncrementalCacheWriter {
       lastScan: Date.now(),
       imageCount: this.totalImages,
       chunkCount: this.chunkIndex,
+      parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
 
     const result = await window.electronAPI?.finalizeCacheWrite?.({ cacheId: this.cacheId, record });
@@ -328,9 +329,39 @@ class CacheManager {
       imageCount: summary.imageCount,
       metadata,
       chunkCount: summary.chunkCount,
+      parserVersion: summary.parserVersion,
     };
 
     return cacheEntry;
+  }
+
+  async getCacheSummary(
+    directoryPath: string,
+    scanSubfolders: boolean,
+  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion'> | null> {
+    if (!this.isElectron) return null;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const result = await summaryFn(cacheId);
+
+    if (!result.success || !result.data) {
+      if (!result.success) {
+        console.error('Failed to get cache summary:', result.error);
+      }
+      return null;
+    }
+
+    const summary = result.data;
+    return {
+      id: summary.id,
+      directoryPath: summary.directoryPath,
+      directoryName: summary.directoryName,
+      lastScan: summary.lastScan,
+      imageCount: summary.imageCount,
+      chunkCount: summary.chunkCount,
+      parserVersion: summary.parserVersion,
+    };
   }
 
   // (No-op) - This functionality is now implicit in getCachedData
@@ -389,6 +420,7 @@ class CacheManager {
       lastScan: Date.now(),
       imageCount: images.length,
       metadata: metadata,
+      parserVersion: PARSER_VERSION,
     };
     
     const result = await window.electronAPI.cacheData({ cacheId, data: cacheEntry });
@@ -442,6 +474,7 @@ class CacheManager {
       lastScan: Date.now(),
       imageCount: (summary.imageCount ?? 0) + images.length,
       chunkCount: chunkIndex,
+      parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
 
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({ cacheId, record });
