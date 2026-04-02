@@ -1291,6 +1291,29 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('get-json-cache-data', async (event, cacheId) => {
+    const filePath = await getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-json-cache-data', async (event, { cacheId, data }) => {
+    try {
+      const filePath = await getCacheFilePath(cacheId);
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
