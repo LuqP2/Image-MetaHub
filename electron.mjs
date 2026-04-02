@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, net } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -18,20 +18,6 @@ import archiver from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const MEDIA_PROTOCOL_SCHEME = 'imh-media';
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: MEDIA_PROTOCOL_SCHEME,
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      stream: true,
-      corsEnabled: true,
-    },
-  },
-]);
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
@@ -1156,41 +1142,6 @@ function setupFileOperationHandlers() {
     return normalized === userDataPath || normalized.startsWith(userDataPath + path.sep);
   };
   const isAllowedOrInternal = (filePath) => isPathAllowed(filePath) || isInternalPath(filePath);
-  let mediaProtocolRegistered = false;
-
-  const ensureMediaProtocolRegistered = () => {
-    if (mediaProtocolRegistered) {
-      return;
-    }
-
-    protocol.handle(MEDIA_PROTOCOL_SCHEME, (request) => {
-      try {
-        const requestUrl = new URL(request.url);
-        const filePath = requestUrl.searchParams.get('path');
-
-        if (!filePath) {
-          return new Response('Missing file path.', { status: 400 });
-        }
-
-        if (!isPathAllowed(filePath)) {
-          console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
-          console.error('  [imh-media] Requested path:', filePath);
-          console.error('  [imh-media] Normalized path:', path.normalize(filePath));
-          console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
-          return new Response('Access denied.', { status: 403 });
-        }
-
-        return net.fetch(pathToFileURL(filePath).href);
-      } catch (error) {
-        console.error('Error serving media protocol request:', error);
-        return new Response('Failed to load media.', { status: 500 });
-      }
-    });
-
-    mediaProtocolRegistered = true;
-  };
-
-  ensureMediaProtocolRegistered();
   const normalizeNameKey = (name) => name.toLowerCase();
   const getUniqueName = (name, usedNames) => {
     const parsed = path.parse(name);
@@ -1311,29 +1262,6 @@ function setupFileOperationHandlers() {
   });
 
   const CHUNK_SIZE = 5000; // Store 5000 images per chunk file
-
-  ipcMain.handle('get-json-cache-data', async (event, cacheId) => {
-    const filePath = await getCacheFilePath(cacheId);
-    try {
-      const data = await fs.readFile(filePath, 'utf-8');
-      return { success: true, data: JSON.parse(data) };
-    } catch (error) {
-      if (error.code === 'ENOENT') {
-        return { success: true, data: null };
-      }
-      return { success: false, error: error.message };
-    }
-  });
-
-  ipcMain.handle('write-json-cache-data', async (event, { cacheId, data }) => {
-    try {
-      const filePath = await getCacheFilePath(cacheId);
-      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  });
 
   ipcMain.handle('cache-data', async (event, { cacheId, data }) => {
     const safeCacheId = cacheId.replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -2356,10 +2284,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
-      return {
-        success: true,
-        url: `${MEDIA_PROTOCOL_SCHEME}://local-media/?path=${encodeURIComponent(filePath)}`,
-      };
+      return { success: true, url: pathToFileURL(filePath).href };
     } catch (error) {
       console.error('Error resolving file URL:', filePath, error);
       return { success: false, error: error.message };

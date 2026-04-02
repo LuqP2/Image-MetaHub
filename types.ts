@@ -81,11 +81,9 @@ export interface ElectronAPI {
   
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
-  getJsonCacheData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   getCacheChunk: (args: { cacheId: string; chunkIndex: number }) => Promise<{ success: boolean; data?: any; error?: string }>;
   getCacheSummary: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   cacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
-  writeJsonCacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
   prepareCacheWrite: (args: { cacheId: string }) => Promise<{ success: boolean; error?: string }>;
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
   finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;

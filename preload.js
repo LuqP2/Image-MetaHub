@@ -155,10 +155,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // --- Caching ---
   copyImageToClipboard: (filePath) => ipcRenderer.invoke('copy-image-to-clipboard', filePath),
   getCachedData: (cacheId) => ipcRenderer.invoke('get-cached-data', cacheId),
-  getJsonCacheData: (cacheId) => ipcRenderer.invoke('get-json-cache-data', cacheId),
   getCacheSummary: (cacheId) => ipcRenderer.invoke('get-cache-summary', cacheId),
   cacheData: (args) => ipcRenderer.invoke('cache-data', args),
-  writeJsonCacheData: (args) => ipcRenderer.invoke('write-json-cache-data', args),
   prepareCacheWrite: (args) => ipcRenderer.invoke('prepare-cache-write', args),
   writeCacheChunk: (args) => ipcRenderer.invoke('write-cache-chunk', args),
   finalizeCacheWrite: (args) => ipcRenderer.invoke('finalize-cache-write', args),

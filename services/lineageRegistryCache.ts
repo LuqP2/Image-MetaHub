@@ -22,7 +22,7 @@ const buildCacheId = (directoryPaths: string[], scanSubfolders: boolean): string
 };
 
 const canUseElectronCache = (): boolean =>
-  typeof window !== 'undefined' && !!window.electronAPI?.writeJsonCacheData && !!window.electronAPI?.getJsonCacheData;
+  typeof window !== 'undefined' && !!window.electronAPI?.cacheData && !!window.electronAPI?.getCachedData;
 
 export const loadLineageRegistrySnapshot = async (
   directoryPaths: string[],
@@ -34,7 +34,7 @@ export const loadLineageRegistrySnapshot = async (
   }
 
   const cacheId = buildCacheId(directoryPaths, scanSubfolders);
-  const result = await window.electronAPI!.getJsonCacheData(cacheId);
+  const result = await window.electronAPI!.getCachedData(cacheId);
 
   if (!result.success || !result.data) {
     return null;
@@ -62,7 +62,7 @@ export const saveLineageRegistrySnapshot = async (
   }
 
   const cacheId = buildCacheId(directoryPaths, scanSubfolders);
-  const result = await window.electronAPI!.writeJsonCacheData({
+  const result = await window.electronAPI!.cacheData({
     cacheId,
     data: snapshot,
   });
