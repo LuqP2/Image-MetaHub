@@ -585,7 +585,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
 // --- ImageGrid Component ---
 interface ImageGridProps {
   images: IndexedImage[];
-  aheadImages?: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
   currentPage: number;
@@ -602,11 +601,7 @@ const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<H
   <div ref={ref} {...props} data-grid-background="true" />
 ));
 
-const PAGE_WARMUP_LIMIT = 600;
-const PAGE_WARMUP_BATCH_SIZE = 24;
-const PAGE_WARMUP_DELAY_MS = 90;
-
-const ImageGrid: React.FC<ImageGridProps> = ({ images, aheadImages = [], onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
+const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -1509,17 +1504,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, aheadImages = [], onImage
     thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
     thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
   }, [isInfinite, itemsToRender]);
-
-  useEffect(() => {
-    if (isInfinite || aheadImages.length === 0) {
-      return;
-    }
-
-    thumbnailManager.scheduleWarmup(`page:${currentPage}:ahead`, aheadImages.slice(0, PAGE_WARMUP_LIMIT), {
-      batchSize: PAGE_WARMUP_BATCH_SIZE,
-      delayMs: PAGE_WARMUP_DELAY_MS,
-    });
-  }, [aheadImages, currentPage, isInfinite]);
 
   // Use itemsToRender for calculations
   // const isInfinite = itemsPerPage === -1; // Moved to top
