@@ -592,13 +592,17 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
     };
 
-    const flushPendingImages = () => {
+    const flushPendingImages = (drainAll: boolean = false) => {
         if (pendingImagesQueue.length === 0) {
             return;
         }
 
-        const imagesToAdd = pendingImagesQueue.slice(0, MAX_PENDING_IMAGES_PER_FLUSH);
-        pendingImagesQueue = pendingImagesQueue.slice(imagesToAdd.length);
+        const imagesToAdd = drainAll
+            ? pendingImagesQueue
+            : pendingImagesQueue.slice(0, MAX_PENDING_IMAGES_PER_FLUSH);
+        pendingImagesQueue = drainAll
+            ? []
+            : pendingImagesQueue.slice(imagesToAdd.length);
         if (pendingFlushTimer) {
             clearTimeout(pendingFlushTimer);
             pendingFlushTimer = null;
@@ -2021,7 +2025,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            flushPendingImages();
+            flushPendingImages(true);
             flushPendingMerges();
             set(state => {
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
@@ -2048,7 +2052,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         removeImages: (imageIds) => {
             const idsToRemove = new Set(imageIds);
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
@@ -2057,7 +2061,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImage: (imageId) => {
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);
                 return _updateState(state, remainingImages);

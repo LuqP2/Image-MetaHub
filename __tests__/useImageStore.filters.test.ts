@@ -185,6 +185,37 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().availableDimensions).toEqual(['1024x1024']);
   });
 
+  it('drains pending image batches before applying merge updates', () => {
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [],
+      filteredImages: [],
+      sortOrder: 'asc',
+    });
+
+    const queuedImages = Array.from({ length: 1405 }, (_, index) =>
+      createImage({
+        name: `queued-${index}.png`,
+        id: `dir-1::queued-${index}.png`,
+        lastModified: index + 1,
+      })
+    );
+    const targetImage = queuedImages[queuedImages.length - 1];
+
+    useImageStore.getState().addImages(queuedImages);
+    useImageStore.getState().mergeImages([
+      {
+        ...targetImage,
+        rating: 4,
+      },
+    ]);
+
+    const storedTarget = useImageStore.getState().images.find((image) => image.id === targetImage.id);
+    expect(useImageStore.getState().images).toHaveLength(queuedImages.length);
+    expect(storedTarget?.rating).toBe(4);
+  });
+
   it('supports open-ended advanced ranges for steps and cfg', () => {
     useImageStore.getState().setAdvancedFilters({
       steps: { min: 30, max: null },
