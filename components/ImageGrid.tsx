@@ -673,11 +673,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
 
-  useEffect(() => {
-    if (!contextMenu.visible && isCopySubmenuOpen) {
-      setIsCopySubmenuOpen(false);
-    }
-  }, [contextMenu.visible, isCopySubmenuOpen]);
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   const {
@@ -695,6 +690,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyRawMetadata,
     addTag
   } = useContextMenu();
+
+  useEffect(() => {
+    if (!contextMenu.visible && isCopySubmenuOpen) {
+      setIsCopySubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isCopySubmenuOpen]);
 
   const handleAddTag = useCallback(() => {
     // Calculate effective target count
