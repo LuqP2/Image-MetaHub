@@ -79,11 +79,8 @@ export const extractWorkflowNodeTypes = (source: {
   prompt?: unknown;
 }): string[] => {
   const promptNodeTypes = extractPromptNodeTypes(source.prompt);
-  if (promptNodeTypes.length > 0) {
-    return promptNodeTypes;
-  }
-
-  return extractWorkflowUiNodeTypes(source.workflow);
+  const workflowNodeTypes = extractWorkflowUiNodeTypes(source.workflow);
+  return uniqueNodeTypes([...promptNodeTypes, ...workflowNodeTypes]);
 };
 
 export const extractWorkflowNodeTypesFromMetadata = (metadata: unknown): string[] => {

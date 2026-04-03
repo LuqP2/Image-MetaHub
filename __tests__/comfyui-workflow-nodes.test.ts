@@ -49,7 +49,23 @@ describe('comfyUIWorkflowNodes', () => {
     ).toEqual(['LoadImage', 'KSampler']);
   });
 
-  it('extracts nodes from imagemetahub metadata prompt_api first', () => {
+  it('unions prompt graph and workflow ui node types when both are present', () => {
+    expect(
+      extractWorkflowNodeTypes({
+        prompt: {
+          '1': { class_type: 'KSampler' },
+        },
+        workflow: {
+          nodes: [
+            { type: 'KSampler' },
+            { type: 'MutedCustomNode' },
+          ],
+        },
+      })
+    ).toEqual(['KSampler', 'MutedCustomNode']);
+  });
+
+  it('extracts nodes from imagemetahub metadata by combining prompt_api and workflow nodes', () => {
     expect(
       extractWorkflowNodeTypesFromMetadata({
         imagemetahub_data: {
@@ -62,7 +78,7 @@ describe('comfyUIWorkflowNodes', () => {
           },
         },
       })
-    ).toEqual(['ControlNetApplyAdvanced', 'KSampler']);
+    ).toEqual(['ControlNetApplyAdvanced', 'KSampler', 'IgnoredWorkflowNode']);
   });
 
   it('returns an empty list for non-comfy metadata', () => {
