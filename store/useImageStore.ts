@@ -1374,6 +1374,23 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return true;
                 });
             }
+            if (Array.isArray(advancedFilters.generationModes) && advancedFilters.generationModes.length > 0) {
+                results = results.filter(image => {
+                    const generationType = image.metadata?.normalizedMetadata?.generationType;
+                    return typeof generationType === 'string' && advancedFilters.generationModes.includes(generationType);
+                });
+            }
+            if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
+                results = results.filter(image => {
+                    const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+                    const fileType = image.fileType ?? '';
+                    const resolvedMediaType =
+                        metadataMediaType === 'video' || fileType.startsWith('video/')
+                            ? 'video'
+                            : 'image';
+                    return advancedFilters.mediaTypes.includes(resolvedMediaType);
+                });
+            }
             if (advancedFilters.hasVerifiedTelemetry === true) {
                 results = results.filter(image => hasVerifiedTelemetry(image));
             }
