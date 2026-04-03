@@ -238,7 +238,8 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, appendImagesSilently, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        setFilterOptions, removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        recomputeDerivedState,
         setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
 
@@ -751,7 +752,7 @@ export function useImageLoader() {
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
+            const cachedData = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.imageCount > 0) {
                 setLineageDirectorySignature(directory.id, {
@@ -778,10 +779,10 @@ export function useImageLoader() {
                     const batch = hydratedImagesBuffer.splice(0, hydratedImagesBuffer.length);
 
                     if (!hasHydratedDirectory) {
-                        replaceDirectoryImages(directory.id, batch);
+                        replaceDirectoryImagesRaw(directory.id, batch);
                         hasHydratedDirectory = true;
                     } else {
-                        appendImagesSilently(batch);
+                        appendImagesRaw(batch);
                     }
 
                     if (!cacheWarmupScheduled) {
@@ -891,7 +892,7 @@ export function useImageLoader() {
             setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [appendImagesSilently, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setLineageDirectorySignature, setProgress]);
+    }, [appendImagesRaw, replaceDirectoryImagesRaw, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setLineageDirectorySignature, setProgress]);
 
     const loadDirectory = useCallback(async (
         directory: Directory,
@@ -1326,6 +1327,7 @@ export function useImageLoader() {
 
                         for (const dir of directoriesToLoad) {
                             await loadDirectoryFromCache(dir);
+                            recomputeDerivedState();
                         }
 
                         const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
@@ -1366,7 +1368,7 @@ export function useImageLoader() {
             setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();

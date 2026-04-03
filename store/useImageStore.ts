@@ -431,7 +431,9 @@ interface ImageState {
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   appendImagesSilently: (newImages: IndexedImage[]) => void;
+  appendImagesRaw: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
+  replaceDirectoryImagesRaw: (directoryId: string, newImages: IndexedImage[]) => void;
   mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
@@ -464,6 +466,7 @@ interface ImageState {
   reshuffle: () => void;
   setAdvancedFilters: (filters: any) => void;
   filterAndSortImages: () => void;
+  recomputeDerivedState: () => void;
 
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
@@ -563,6 +566,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     let pendingImagesQueue: IndexedImage[] = [];
     let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const FLUSH_INTERVAL_MS = 100;
+    const MAX_PENDING_IMAGES_PER_FLUSH = 1200;
+    const FORCE_FLUSH_PENDING_IMAGES_THRESHOLD = 2400;
     let pendingMergeQueue: IndexedImage[] = [];
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -589,13 +594,17 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
     };
 
-    const flushPendingImages = () => {
+    const flushPendingImages = (drainAll: boolean = false) => {
         if (pendingImagesQueue.length === 0) {
             return;
         }
 
-        const imagesToAdd = pendingImagesQueue;
-        pendingImagesQueue = [];
+        const imagesToAdd = drainAll
+            ? pendingImagesQueue
+            : pendingImagesQueue.slice(0, MAX_PENDING_IMAGES_PER_FLUSH);
+        pendingImagesQueue = drainAll
+            ? []
+            : pendingImagesQueue.slice(imagesToAdd.length);
         if (pendingFlushTimer) {
             clearTimeout(pendingFlushTimer);
             pendingFlushTimer = null;
@@ -628,6 +637,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 queueMetadataTagImports(addedImages);
             }
             maybeQueueLineageBuild(700);
+        }
+
+        if (pendingImagesQueue.length > 0) {
+            scheduleFlush();
         }
     };
 
@@ -1376,6 +1389,32 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return true;
                 });
             }
+            if (Array.isArray(advancedFilters.generationModes) && advancedFilters.generationModes.length > 0) {
+                results = results.filter(image => {
+                    const normalizedMetadata = image.metadata?.normalizedMetadata;
+                    const explicitGenerationType = normalizedMetadata?.generationType;
+                    if (typeof explicitGenerationType === 'string') {
+                        return advancedFilters.generationModes.includes(explicitGenerationType);
+                    }
+
+                    const isVideo =
+                        normalizedMetadata?.media_type === 'video' ||
+                        (image.fileType ?? '').startsWith('video/');
+
+                    return !isVideo && advancedFilters.generationModes.includes('txt2img');
+                });
+            }
+            if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
+                results = results.filter(image => {
+                    const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+                    const fileType = image.fileType ?? '';
+                    const resolvedMediaType =
+                        metadataMediaType === 'video' || fileType.startsWith('video/')
+                            ? 'video'
+                            : 'image';
+                    return advancedFilters.mediaTypes.includes(resolvedMediaType);
+                });
+            }
             if (advancedFilters.hasVerifiedTelemetry === true) {
                 results = results.filter(image => hasVerifiedTelemetry(image));
             }
@@ -1775,7 +1814,21 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             return { directoryProgress: nextDirectoryProgress };
         }),
-        setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
+        setEnrichmentProgress: (progress) => set((state) => {
+            const current = state.enrichmentProgress;
+            if (current === progress) {
+                return state;
+            }
+
+            if (
+                current?.processed === progress?.processed &&
+                current?.total === progress?.total
+            ) {
+                return state;
+            }
+
+            return { enrichmentProgress: progress };
+        }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
                 flushPendingMerges(true);
@@ -1876,6 +1929,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         filterAndSortImages: () => set(state => filterAndSort(state)),
+        recomputeDerivedState: () => set(state => _updateState(state, state.images)),
 
         setImages: (images) => {
             clearPendingQueue();
@@ -1888,6 +1942,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
             pendingImagesQueue.push(...newImages);
+            if (pendingImagesQueue.length >= FORCE_FLUSH_PENDING_IMAGES_THRESHOLD) {
+                flushPendingImages();
+                return;
+            }
             scheduleFlush();
         },
 
@@ -1918,6 +1976,32 @@ export const useImageStore = create<ImageState>((set, get) => {
             maybeQueueLineageBuild(700);
         },
 
+        appendImagesRaw: (newImages) => {
+            if (!newImages || newImages.length === 0) {
+                return;
+            }
+
+            set(state => {
+                const deduped = new Map<string, IndexedImage>();
+                for (const img of newImages) {
+                    if (img?.id && !deduped.has(img.id)) {
+                        deduped.set(img.id, img);
+                    }
+                }
+
+                const queuedUnique = Array.from(deduped.values());
+                const existingIds = new Set(state.images.map(img => img.id));
+                const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
+                if (uniqueNewImages.length === 0) {
+                    return state;
+                }
+
+                return {
+                    images: [...state.images, ...uniqueNewImages],
+                };
+            });
+        },
+
         replaceDirectoryImages: (directoryId, newImages) => {
             clearPendingQueue();
             set(state => {
@@ -1929,6 +2013,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
 
             maybeQueueLineageBuild(700);
+        },
+
+        replaceDirectoryImagesRaw: (directoryId, newImages) => {
+            clearPendingQueue();
+            set(state => {
+                const otherImages = state.images.filter(img => img.directoryId !== directoryId);
+                return {
+                    images: [...otherImages, ...newImages],
+                };
+            });
         },
 
         mergeImages: (updatedImages) => {
@@ -1943,7 +2037,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            flushPendingImages();
+            flushPendingImages(true);
             flushPendingMerges();
             set(state => {
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
@@ -1970,7 +2064,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         removeImages: (imageIds) => {
             const idsToRemove = new Set(imageIds);
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
@@ -1979,7 +2073,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         removeImage: (imageId) => {
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);
                 return _updateState(state, remainingImages);
@@ -2302,9 +2396,32 @@ export const useImageStore = create<ImageState>((set, get) => {
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
         setClusterNavigationContext: (images) => set((state) => {
-            if (state.clusterNavigationContext === images) {
+            const current = state.clusterNavigationContext;
+            if (current === images) {
                 return state;
             }
+
+            if (current === null || images === null) {
+                if (current === images) {
+                    return state;
+                }
+                return { clusterNavigationContext: images };
+            }
+
+            if (current.length === images.length) {
+                let isSame = true;
+                for (let index = 0; index < current.length; index += 1) {
+                    if (current[index]?.id !== images[index]?.id) {
+                        isSame = false;
+                        break;
+                    }
+                }
+
+                if (isSame) {
+                    return state;
+                }
+            }
+
             return { clusterNavigationContext: images };
         }),
 

@@ -1610,7 +1610,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullscreen && (
           <div
-            className="flex items-center justify-between gap-4 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur-sm cursor-move"
+            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 backdrop-blur-sm cursor-move"
             onPointerDown={handleWindowSurfacePointerDown}
             onDoubleClick={toggleWindowMaximize}
           >
@@ -1618,7 +1618,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
                 {image.name}
               </div>
-              <div className="truncate text-xs text-gray-500" title={imageFullPath}>
+              <div className="truncate text-[11px] text-gray-500" title={imageFullPath}>
                 {imageFullPath}
               </div>
             </div>
@@ -1627,27 +1627,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={onMinimize}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Minimize window"
               >
-                <Minus className="w-4 h-4" />
+                <Minus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={toggleWindowMaximize}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
               >
-                {isWindowMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </button>
               <button
                 onClick={onClose}
                 onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-lg border border-gray-700 bg-gray-800 p-2 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 aria-label="Close image"
                 title="Close (Esc)"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

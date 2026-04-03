@@ -349,7 +349,7 @@ const TagsAndFavorites: React.FC = () => {
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
           {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
-            <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+            <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
               active
             </span>
           )}
@@ -374,7 +374,7 @@ const TagsAndFavorites: React.FC = () => {
                     <Star className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
                     {selectedRatings.length > 0 && (
-                      <span className="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded border border-amber-700/50">
+                      <span className="rounded border border-amber-700/50 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
                         {selectedRatings.join(', ')}
                       </span>
                     )}
@@ -390,9 +390,6 @@ const TagsAndFavorites: React.FC = () => {
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-500">
-                  Toggle one or more ratings. Clicking 1 and 3 shows images rated 1 or 3.
-                </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -457,12 +454,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Tags</span>
                       {selectedTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
                           {selectedTags.length} include
                         </span>
                       )}
                       {excludedTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
                           {excludedTags.length} exclude
                         </span>
                       )}
@@ -489,10 +486,6 @@ const TagsAndFavorites: React.FC = () => {
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click a tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
@@ -539,12 +532,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Auto Tags</span>
                       {selectedAutoTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
                           {selectedAutoTags.length} include
                         </span>
                       )}
                       {excludedAutoTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
                           {excludedAutoTags.length} exclude
                         </span>
                       )}
@@ -570,10 +563,6 @@ const TagsAndFavorites: React.FC = () => {
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 placeholder-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click an auto-tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Auto-Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">

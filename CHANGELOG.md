@@ -18,10 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Startup Verification Modes**: Added configurable startup verification modes for saved folders, so the app can now open from cache only, reconcile in the background, or verify folders strictly before startup completes.
 - **MetaHub Save Node Lineage Metadata**: Extended the companion ComfyUI MetaHub Save Node to persist explicit `generation_type` and `source_image` metadata, creating a stronger base for future multi-step transformation chains.
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
+- **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
+- **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
 
 ### Improved
 
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
+- **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
+- **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
+- **Generation Parameter Filtering**: Generation facets now preserve the full option list while filtering, making it possible to combine multiple checkpoints, LoRAs, samplers, or schedulers without options disappearing mid-selection.
+- **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
 - **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, and generation queue can now be resized by dragging their edges, with widths preserved between sessions for a more adaptable workspace.
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Manual Metadata Recovery**: Added always-available `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
