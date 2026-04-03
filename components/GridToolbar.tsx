@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Copy,
   Folder,
@@ -18,7 +18,6 @@ import { type IndexedImage } from '../types';
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
-import { getBulkRatingTargetIds } from '../utils/ratingSelection';
 
 interface GridToolbarProps {
 
@@ -67,7 +66,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   // ... (rest of the file)
 
   const selectedCount = selectedImages.size;
-  const selectedImagesList = images.filter(img => selectedImages.has(img.id));
+  const selectedImagesList = useMemo(() => {
+    if (selectedImages.size === 0) {
+      return [];
+    }
+
+    const pageLookup = new Map(images.map((image) => [image.id, image]));
+    const storeImages = useImageStore.getState().images;
+
+    return Array.from(selectedImages)
+      .map((imageId) => pageLookup.get(imageId) ?? storeImages.find((image) => image.id === imageId))
+      .filter((image): image is IndexedImage => Boolean(image));
+  }, [images, selectedImages]);
   const firstSelectedImage = selectedImagesList[0];
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
@@ -188,10 +198,17 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setIsTagModalOpen(true);
   };
 
-  const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const imageIds = getBulkRatingTargetIds(selectedImages);
-    bulkSetImageRating(imageIds, rating);
+  const handleSetRating = async (rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const imageIds = selectedImagesList.map((image) => image.id);
+    if (imageIds.length === 0) {
+      setRatingDropdownOpen(false);
+      showNotification('Select at least one image first.', 'error');
+      return;
+    }
+
+    await bulkSetImageRating(imageIds, rating);
     setRatingDropdownOpen(false);
+    showNotification(rating === null ? 'Rating cleared.' : `Rating ${rating} applied.`);
   };
 
   const selectedModels = useImageStore((state) => state.selectedModels);

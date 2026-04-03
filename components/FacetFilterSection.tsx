@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown, Minus, Plus, Search, X } from 'lucide-react';
 
 interface FacetFilterSectionProps {
   title: string;
@@ -114,7 +114,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
       {isExpanded && (
         <div className="border-t border-gray-800/80 px-4 pb-4 pt-3">
           {showSearch && (
-            <label className="mb-3 flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2">
+            <label className="mb-3 flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2 transition-colors focus-within:border-blue-500/40">
               <Search className="h-4 w-4 text-gray-500" />
               <input
                 value={query}
@@ -138,44 +138,64 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 return (
                   <div
                     key={item}
-                    className="rounded-lg border border-gray-800/80 bg-gray-950/30 px-3 py-2"
+                    className={`rounded-lg border px-3 py-2 transition-colors ${
+                      isIncluded
+                        ? 'border-emerald-500/30 bg-emerald-500/10'
+                        : isExcluded
+                          ? 'border-rose-500/30 bg-rose-500/8'
+                          : 'border-gray-800/80 bg-gray-950/30'
+                    }`}
                   >
-                    <div className="min-w-0">
-                      <div
-                        className="text-sm leading-5 text-gray-200 whitespace-normal break-all"
-                        title={item}
-                      >
-                        {item}
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-sm leading-5 text-gray-200 whitespace-normal break-all"
+                          title={item}
+                        >
+                          {item}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                          <span>{counts?.get(item) ?? 0} results</span>
+                          {isIncluded && (
+                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-emerald-300">
+                              IN
+                            </span>
+                          )}
+                          {isExcluded && (
+                            <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-rose-300">
+                              OUT
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
-                        <span>{counts?.get(item) ?? 0} results</span>
-                        {isIncluded && <span className="text-emerald-400">Included</span>}
-                        {isExcluded && <span className="text-rose-400">Excluded</span>}
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onIncludeToggle(item)}
+                          className={`rounded-md border p-1.5 transition-colors ${
+                            isIncluded
+                              ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
+                              : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-emerald-500/40 hover:text-emerald-200'
+                          }`}
+                          title={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
+                          aria-label={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onExcludeToggle(item)}
+                          className={`rounded-md border p-1.5 transition-colors ${
+                            isExcluded
+                              ? 'border-rose-500/60 bg-rose-500/15 text-rose-200'
+                              : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-rose-500/40 hover:text-rose-200'
+                          }`}
+                          title={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
+                          aria-label={isExcluded ? `Remove ${item} from excluded filters` : `Exclude ${item}`}
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onIncludeToggle(item)}
-                        className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                          isIncluded
-                            ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
-                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-emerald-500/40 hover:text-emerald-200'
-                        }`}
-                      >
-                        Include
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onExcludeToggle(item)}
-                        className={`rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                          isExcluded
-                            ? 'border-rose-500/60 bg-rose-500/15 text-rose-200'
-                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-rose-500/40 hover:text-rose-200'
-                        }`}
-                      >
-                        Exclude
-                      </button>
                     </div>
                   </div>
                 );

@@ -197,6 +197,43 @@ class ThumbnailManager {
     };
   }
 
+  cancelQueuedJobs(options: { queue?: 'high' | 'low' | 'all'; keepImageIds?: Set<string> } = {}): void {
+    const queue = options.queue ?? 'all';
+    const keepImageIds = options.keepImageIds;
+
+    const shouldKeep = (job: ThumbnailJob) => keepImageIds?.has(job.image.id) ?? false;
+    const releaseJob = (job: ThumbnailJob) => {
+      if (!shouldKeep(job) && !this.isStale(job.image.id, job.token)) {
+        this.inflight.delete(job.image.id);
+      }
+      job.resolve();
+    };
+
+    if (queue === 'all' || queue === 'high') {
+      const nextHigh: ThumbnailJob[] = [];
+      for (const job of this.highPriorityQueue) {
+        if (shouldKeep(job)) {
+          nextHigh.push(job);
+        } else {
+          releaseJob(job);
+        }
+      }
+      this.highPriorityQueue = nextHigh;
+    }
+
+    if (queue === 'all' || queue === 'low') {
+      const nextLow: ThumbnailJob[] = [];
+      for (const job of this.backgroundQueue) {
+        if (shouldKeep(job)) {
+          nextLow.push(job);
+        } else {
+          releaseJob(job);
+        }
+      }
+      this.backgroundQueue = nextLow;
+    }
+  }
+
   scheduleWarmup(
     scopeKey: string,
     images: IndexedImage[],

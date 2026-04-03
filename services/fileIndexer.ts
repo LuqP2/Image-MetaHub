@@ -10,24 +10,64 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
+type ThrottledFunction<T extends (...args: any[]) => any> = T & {
+  cancel: () => void;
+  flush: () => void;
+};
+
 // Simple throttle utility to avoid excessive progress updates
-function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): ThrottledFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastCall = 0;
+  let pendingArgs: Parameters<T> | null = null;
 
-  return ((...args: any[]) => {
+  const invoke = (args: Parameters<T>) => {
+    lastCall = Date.now();
+    pendingArgs = null;
+    func(...args);
+  };
+
+  const throttled = ((...args: Parameters<T>) => {
     const now = Date.now();
+    pendingArgs = args;
     if (now - lastCall >= delay) {
-      lastCall = now;
-      func(...args);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      invoke(args);
     } else {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        func(...args);
+        timeoutId = null;
+        if (pendingArgs) {
+          invoke(pendingArgs);
+        }
       }, delay - (now - lastCall));
     }
-  }) as T;
+  }) as ThrottledFunction<T>;
+
+  throttled.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    pendingArgs = null;
+  };
+
+  throttled.flush = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (pendingArgs) {
+      invoke(pendingArgs);
+    }
+  };
+
+  return throttled;
 }
 
 // Extended FileSystemFileHandle interface for Electron compatibility
@@ -1635,19 +1675,30 @@ export async function processFiles(
   const enrichmentQueue: CatalogEntryState[] = [];
   const chunkBuffer: IndexedImage[] = [];
   const uiBatch: IndexedImage[] = [];
-  const BATCH_SIZE = 50;
-  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
-  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   const totalPhaseAFiles = (options.preloadedImages?.length ?? 0) + fileEntries.length;
   const totalNewFiles = fileEntries.length;
+  const PHASE_A_UI_BATCH_SIZE =
+    totalPhaseAFiles >= 50_000
+      ? 240
+      : totalPhaseAFiles >= 20_000
+        ? 120
+        : 50;
+  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
+  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   let processedNew = 0;
   let nextPhaseALog = 5000;
+  const throttledPhaseAProgress = throttle(
+    (progress: { current: number; total: number }) => {
+      setProgress(progress);
+    },
+    250
+  );
 
   const pushUiBatch = async (force = false) => {
     if (uiBatch.length === 0) {
       return;
     }
-    if (!force && uiBatch.length < BATCH_SIZE) {
+    if (!force && uiBatch.length < PHASE_A_UI_BATCH_SIZE) {
       return;
     }
     onBatchProcessed([...uiBatch]);
@@ -1821,7 +1872,7 @@ export async function processFiles(
 
     if (countTowardsProgress) {
       processedNew += 1;
-      setProgress({ current: processedNew, total: totalNewFiles });
+      throttledPhaseAProgress({ current: processedNew, total: totalNewFiles });
     }
 
     if (emitToUi) {
@@ -2012,6 +2063,7 @@ export async function processFiles(
     detail: { elapsedMs: performance.now() - phaseAStats.startTime, files: phaseAStats.processed }
   });
 
+  throttledPhaseAProgress.cancel();
   if (totalNewFiles > 0) {
     setProgress({ current: totalNewFiles, total: totalNewFiles });
   }

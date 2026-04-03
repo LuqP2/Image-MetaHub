@@ -185,6 +185,37 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().availableDimensions).toEqual(['1024x1024']);
   });
 
+  it('drains pending image batches before applying merge updates', () => {
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [],
+      filteredImages: [],
+      sortOrder: 'asc',
+    });
+
+    const queuedImages = Array.from({ length: 1405 }, (_, index) =>
+      createImage({
+        name: `queued-${index}.png`,
+        id: `dir-1::queued-${index}.png`,
+        lastModified: index + 1,
+      })
+    );
+    const targetImage = queuedImages[queuedImages.length - 1];
+
+    useImageStore.getState().addImages(queuedImages);
+    useImageStore.getState().mergeImages([
+      {
+        ...targetImage,
+        rating: 4,
+      },
+    ]);
+
+    const storedTarget = useImageStore.getState().images.find((image) => image.id === targetImage.id);
+    expect(useImageStore.getState().images).toHaveLength(queuedImages.length);
+    expect(storedTarget?.rating).toBe(4);
+  });
+
   it('supports open-ended advanced ranges for steps and cfg', () => {
     useImageStore.getState().setAdvancedFilters({
       steps: { min: 30, max: null },
@@ -205,6 +236,53 @@ describe('useImageStore tri-state filters', () => {
       cfg: { min: null, max: 7 },
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it('treats missing generation type as txt2img for images only', () => {
+    const txt2imgImage = createImage({
+      name: 'txt2img.png',
+      id: 'dir-1::txt2img.png',
+      metadata: {
+        normalizedMetadata: {},
+      } as any,
+    });
+    const img2imgImage = createImage({
+      name: 'img2img.png',
+      id: 'dir-1::img2img.png',
+      metadata: {
+        normalizedMetadata: {
+          generationType: 'img2img',
+        },
+      } as any,
+    });
+    const videoImage = createImage({
+      name: 'clip.mp4',
+      id: 'dir-1::clip.mp4',
+      fileType: 'video/mp4',
+      metadata: {
+        normalizedMetadata: {
+          media_type: 'video',
+        },
+      } as any,
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [txt2imgImage, img2imgImage, videoImage],
+      filteredImages: [txt2imgImage, img2imgImage, videoImage],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: ['txt2img'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['txt2img.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: ['img2img'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['img2img.png']);
   });
 
   it('filters by multiple selected ratings with OR logic', () => {
