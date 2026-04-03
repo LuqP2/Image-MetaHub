@@ -1389,8 +1389,17 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             if (Array.isArray(advancedFilters.generationModes) && advancedFilters.generationModes.length > 0) {
                 results = results.filter(image => {
-                    const generationType = image.metadata?.normalizedMetadata?.generationType;
-                    return typeof generationType === 'string' && advancedFilters.generationModes.includes(generationType);
+                    const normalizedMetadata = image.metadata?.normalizedMetadata;
+                    const explicitGenerationType = normalizedMetadata?.generationType;
+                    if (typeof explicitGenerationType === 'string') {
+                        return advancedFilters.generationModes.includes(explicitGenerationType);
+                    }
+
+                    const isVideo =
+                        normalizedMetadata?.media_type === 'video' ||
+                        (image.fileType ?? '').startsWith('video/');
+
+                    return !isVideo && advancedFilters.generationModes.includes('txt2img');
                 });
             }
             if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {

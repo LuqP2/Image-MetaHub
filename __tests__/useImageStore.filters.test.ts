@@ -238,6 +238,53 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
   });
 
+  it('treats missing generation type as txt2img for images only', () => {
+    const txt2imgImage = createImage({
+      name: 'txt2img.png',
+      id: 'dir-1::txt2img.png',
+      metadata: {
+        normalizedMetadata: {},
+      } as any,
+    });
+    const img2imgImage = createImage({
+      name: 'img2img.png',
+      id: 'dir-1::img2img.png',
+      metadata: {
+        normalizedMetadata: {
+          generationType: 'img2img',
+        },
+      } as any,
+    });
+    const videoImage = createImage({
+      name: 'clip.mp4',
+      id: 'dir-1::clip.mp4',
+      fileType: 'video/mp4',
+      metadata: {
+        normalizedMetadata: {
+          media_type: 'video',
+        },
+      } as any,
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [txt2imgImage, img2imgImage, videoImage],
+      filteredImages: [txt2imgImage, img2imgImage, videoImage],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: ['txt2img'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['txt2img.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: ['img2img'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['img2img.png']);
+  });
+
   it('filters by multiple selected ratings with OR logic', () => {
     useImageStore.getState().setSelectedRatings([1, 3]);
     expect(useImageStore.getState().selectedRatings).toEqual([1, 3]);
