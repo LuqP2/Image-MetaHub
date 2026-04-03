@@ -87,6 +87,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const allImages = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
@@ -130,6 +131,39 @@ const Sidebar: React.FC<SidebarProps> = ({
     return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
   }, [filteredImages, isIndexing]);
 
+  const facetUniverse = useMemo(() => {
+    const models = new Set<string>();
+    const loras = new Set<string>();
+    const samplers = new Set<string>();
+    const schedulers = new Set<string>();
+
+    for (const image of allImages) {
+      image.models?.forEach((value) => {
+        if (value) models.add(value);
+      });
+
+      image.loras?.forEach((value) => {
+        const label = typeof value === 'string' ? value : value?.name;
+        if (label) loras.add(label);
+      });
+
+      if (image.sampler) {
+        samplers.add(image.sampler);
+      }
+
+      if (image.scheduler) {
+        schedulers.add(image.scheduler);
+      }
+    }
+
+    return {
+      models: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      loras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      samplers: Array.from(samplers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      schedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    };
+  }, [allImages]);
+
   const toggleExplicitFacet = (
     value: string,
     selectedValues: string[],
@@ -157,7 +191,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const generationFacets = [
     {
       title: 'Checkpoints',
-      items: availableModels,
+      items: facetUniverse.models,
       selectedValues: selectedModels,
       excludedValues: excludedModels,
       counts: countFacetValues.modelCounts,
@@ -167,7 +201,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'LoRAs',
-      items: availableLoras,
+      items: facetUniverse.loras,
       selectedValues: selectedLoras,
       excludedValues: excludedLoras,
       counts: countFacetValues.loraCounts,
@@ -177,7 +211,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'Samplers',
-      items: availableSamplers,
+      items: facetUniverse.samplers,
       selectedValues: selectedSamplers,
       excludedValues: excludedSamplers,
       counts: countFacetValues.samplerCounts,
@@ -187,7 +221,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'Schedulers',
-      items: availableSchedulers,
+      items: facetUniverse.schedulers,
       selectedValues: selectedSchedulers,
       excludedValues: excludedSchedulers,
       counts: countFacetValues.schedulerCounts,
