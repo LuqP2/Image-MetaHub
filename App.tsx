@@ -1011,6 +1011,10 @@ export default function App() {
   }, [filteredNavigationImageIds, imageLookup]);
 
   useEffect(() => {
+    if (openImageModals.length === 0) {
+      return;
+    }
+
     setOpenImageModals((current) => {
       let changed = false;
       const next = current.flatMap((modal) => {

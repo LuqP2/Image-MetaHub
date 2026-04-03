@@ -1798,7 +1798,21 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             return { directoryProgress: nextDirectoryProgress };
         }),
-        setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
+        setEnrichmentProgress: (progress) => set((state) => {
+            const current = state.enrichmentProgress;
+            if (current === progress) {
+                return state;
+            }
+
+            if (
+                current?.processed === progress?.processed &&
+                current?.total === progress?.total
+            ) {
+                return state;
+            }
+
+            return { enrichmentProgress: progress };
+        }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
                 flushPendingMerges(true);
@@ -2360,9 +2374,32 @@ export const useImageStore = create<ImageState>((set, get) => {
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
         setClusterNavigationContext: (images) => set((state) => {
-            if (state.clusterNavigationContext === images) {
+            const current = state.clusterNavigationContext;
+            if (current === images) {
                 return state;
             }
+
+            if (current === null || images === null) {
+                if (current === images) {
+                    return state;
+                }
+                return { clusterNavigationContext: images };
+            }
+
+            if (current.length === images.length) {
+                let isSame = true;
+                for (let index = 0; index < current.length; index += 1) {
+                    if (current[index]?.id !== images[index]?.id) {
+                        isSame = false;
+                        break;
+                    }
+                }
+
+                if (isSame) {
+                    return state;
+                }
+            }
+
             return { clusterNavigationContext: images };
         }),
 

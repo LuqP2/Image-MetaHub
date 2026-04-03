@@ -1635,19 +1635,30 @@ export async function processFiles(
   const enrichmentQueue: CatalogEntryState[] = [];
   const chunkBuffer: IndexedImage[] = [];
   const uiBatch: IndexedImage[] = [];
-  const BATCH_SIZE = 50;
-  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
-  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   const totalPhaseAFiles = (options.preloadedImages?.length ?? 0) + fileEntries.length;
   const totalNewFiles = fileEntries.length;
+  const PHASE_A_UI_BATCH_SIZE =
+    totalPhaseAFiles >= 50_000
+      ? 240
+      : totalPhaseAFiles >= 20_000
+        ? 120
+        : 50;
+  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
+  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   let processedNew = 0;
   let nextPhaseALog = 5000;
+  const throttledPhaseAProgress = throttle(
+    (progress: { current: number; total: number }) => {
+      setProgress(progress);
+    },
+    250
+  );
 
   const pushUiBatch = async (force = false) => {
     if (uiBatch.length === 0) {
       return;
     }
-    if (!force && uiBatch.length < BATCH_SIZE) {
+    if (!force && uiBatch.length < PHASE_A_UI_BATCH_SIZE) {
       return;
     }
     onBatchProcessed([...uiBatch]);
@@ -1821,7 +1832,7 @@ export async function processFiles(
 
     if (countTowardsProgress) {
       processedNew += 1;
-      setProgress({ current: processedNew, total: totalNewFiles });
+      throttledPhaseAProgress({ current: processedNew, total: totalNewFiles });
     }
 
     if (emitToUi) {

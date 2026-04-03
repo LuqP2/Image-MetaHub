@@ -1105,6 +1105,24 @@ async function statMediaEntries(directory, entries, baseDirectory) {
   return fileRecords.filter(Boolean);
 }
 
+const IGNORED_SCAN_DIRECTORY_NAMES = new Set([
+  'thumbnails',
+  '.thumbnails',
+  '.cache',
+  'node_modules',
+  '.git',
+]);
+
+function shouldIgnoreScanDirectory(fullPath, baseDirectory) {
+  const relativePath = path.relative(baseDirectory, fullPath).replace(/\\/g, '/');
+  if (!relativePath || relativePath === '.') {
+    return false;
+  }
+
+  const segments = relativePath.split('/').filter(Boolean);
+  return segments.some((segment) => IGNORED_SCAN_DIRECTORY_NAMES.has(segment.toLowerCase()));
+}
+
 async function getFilesRecursively(directory, baseDirectory) {
   const files = [];
   const directoriesToVisit = [directory];
@@ -1115,11 +1133,18 @@ async function getFilesRecursively(directory, baseDirectory) {
       continue;
     }
 
+    if (shouldIgnoreScanDirectory(currentDirectory, baseDirectory)) {
+      continue;
+    }
+
     try {
       const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          directoriesToVisit.push(path.join(currentDirectory, entry.name));
+          const nextDirectory = path.join(currentDirectory, entry.name);
+          if (!shouldIgnoreScanDirectory(nextDirectory, baseDirectory)) {
+            directoriesToVisit.push(nextDirectory);
+          }
         }
       }
 
