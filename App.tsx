@@ -30,6 +30,7 @@ import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
+import NodeView from './components/NodeView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -317,7 +318,8 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node'>('library');
+  const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -1482,25 +1484,27 @@ export default function App() {
 
           {hasDirectories && (
             <>
-                <GridToolbar
-                  selectedImages={safeSelectedImages}
-                  images={paginatedImages}
-                  directories={safeDirectories}
-                  onDeleteSelected={handleDeleteSelectedImages}
-                  onGenerateA1111={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsA1111GenerateModalOpen(true);
-                  }}
-                  onGenerateComfyUI={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsComfyUIGenerateModalOpen(true);
-                  }}
-                  onCompare={(images) => {
-                    setComparisonImages(images);
-                    openComparisonModal();
-                  }}
-                  onBatchExport={handleOpenBatchExport}
-                />
+                {(libraryView === 'library' || libraryView === 'node') && (
+                  <GridToolbar
+                    selectedImages={safeSelectedImages}
+                    images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
+                    directories={safeDirectories}
+                    onDeleteSelected={handleDeleteSelectedImages}
+                    onGenerateA1111={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsA1111GenerateModalOpen(true);
+                    }}
+                    onGenerateComfyUI={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsComfyUIGenerateModalOpen(true);
+                    }}
+                    onCompare={(images) => {
+                      setComparisonImages(images);
+                      openComparisonModal();
+                    }}
+                    onBatchExport={handleOpenBatchExport}
+                  />
+                )}
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
@@ -1534,6 +1538,16 @@ export default function App() {
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
+                  />
+                ) : libraryView === 'node' ? (
+                  <NodeView
+                    images={safeFilteredImages}
+                    selectedImages={safeSelectedImages}
+                    onImageClick={handleImageSelection}
+                    onBatchExport={handleOpenBatchExport}
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onVisibleImagesChange={setNodeViewVisibleImages}
                   />
                 ) : (
                   <SmartLibrary

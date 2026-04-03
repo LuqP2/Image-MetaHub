@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown, Layers, Layers2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown, Layers, Layers2, Eye, EyeOff, ArrowLeft, Boxes } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -10,8 +10,8 @@ interface HeaderProps {
     onOpenLicense: () => void;
     onOpenA1111Generate?: () => void;
     onOpenComfyUIGenerate?: () => void;
-    libraryView?: 'library' | 'smart' | 'model';
-    onLibraryViewChange?: (view: 'library' | 'smart' | 'model') => void;
+    libraryView?: 'library' | 'smart' | 'model' | 'node';
+    onLibraryViewChange?: (view: 'library' | 'smart' | 'model' | 'node') => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -161,6 +161,17 @@ const Header: React.FC<HeaderProps> = ({
                     >
                         Model View
                     </button>
+                    <button
+                        onClick={() => onLibraryViewChange('node')}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 flex items-center gap-1.5 ${
+                            libraryView === 'node'
+                            ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/20'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Boxes className="h-3.5 w-3.5" />
+                        Node View
+                    </button>
                 </div>
 
             </div>
@@ -171,7 +182,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
             
                    {/* Stacking Toggle - Only relevant for Library view */}
-                   {libraryView === 'library' && (
+                   {(libraryView === 'library' || libraryView === 'node') && (
                      <>
                         <button
                           onClick={() => setStackingEnabled(!isStackingEnabled)}
