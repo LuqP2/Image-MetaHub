@@ -349,7 +349,7 @@ const TagsAndFavorites: React.FC = () => {
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
           {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
-            <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+            <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
               active
             </span>
           )}
@@ -371,10 +371,10 @@ const TagsAndFavorites: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-400" />
+                    <Star className="w-4 h-4 text-gray-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
                     {selectedRatings.length > 0 && (
-                      <span className="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded border border-amber-700/50">
+                      <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
                         {selectedRatings.join(', ')}
                       </span>
                     )}
@@ -390,16 +390,13 @@ const TagsAndFavorites: React.FC = () => {
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-500">
-                  Toggle one or more ratings. Clicking 1 and 3 shows images rated 1 or 3.
-                </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedRatings([])}
                     className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                       selectedRatings.length === 0
-                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
+                        ? 'border-gray-600 bg-gray-800 text-gray-100'
                         : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
                     }`}
                   >
@@ -457,12 +454,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Tags</span>
                       {selectedTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
                           {selectedTags.length} include
                         </span>
                       )}
                       {excludedTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
                           {excludedTags.length} exclude
                         </span>
                       )}
@@ -486,13 +483,9 @@ const TagsAndFavorites: React.FC = () => {
                       placeholder="Filter tags..."
                       value={tagSearchQuery}
                       onChange={(e) => setTagSearchQuery(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                      className="w-full rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500 bg-gray-900 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click a tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
@@ -539,12 +532,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Auto Tags</span>
                       {selectedAutoTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
                           {selectedAutoTags.length} include
                         </span>
                       )}
                       {excludedAutoTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
                           {excludedAutoTags.length} exclude
                         </span>
                       )}
@@ -567,13 +560,9 @@ const TagsAndFavorites: React.FC = () => {
                       placeholder="Filter auto-tags..."
                       value={autoTagSearchQuery}
                       onChange={(e) => setAutoTagSearchQuery(e.target.value)}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 placeholder-gray-500"
+                      className="w-full rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-500 bg-gray-900 border border-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click an auto-tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Auto-Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
@@ -745,7 +734,7 @@ const TagsAndFavorites: React.FC = () => {
                   closeRenameDialog();
                 }
               }}
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500 focus:ring-1 focus:ring-gray-500"
               placeholder="Tag name"
             />
 
@@ -759,7 +748,7 @@ const TagsAndFavorites: React.FC = () => {
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+                className="rounded-lg bg-gray-200 px-3 py-2 text-sm font-medium text-gray-950 transition-colors hover:bg-white"
                 onClick={() => void handleRenameSubmit()}
               >
                 Rename

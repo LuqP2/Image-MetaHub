@@ -77,12 +77,12 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 {mergedItems.length}
               </span>
               {selectedValues.length > 0 && (
-                <span className="rounded border border-emerald-700/60 bg-emerald-950/60 px-2 py-0.5 text-[11px] text-emerald-300">
+                <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-[11px] text-gray-300">
                   {selectedValues.length} include
                 </span>
               )}
               {excludedValues.length > 0 && (
-                <span className="rounded border border-rose-700/60 bg-rose-950/60 px-2 py-0.5 text-[11px] text-rose-300">
+                <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-[11px] text-gray-300">
                   {excludedValues.length} exclude
                 </span>
               )}
@@ -140,7 +140,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                     key={item}
                     className={`rounded-lg border px-3 py-2 transition-colors ${
                       isIncluded
-                        ? 'border-emerald-500/30 bg-emerald-500/8'
+                        ? 'border-gray-700 bg-gray-900/70'
                         : isExcluded
                           ? 'border-rose-500/30 bg-rose-500/8'
                           : 'border-gray-800/80 bg-gray-950/30'
@@ -157,7 +157,7 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
                           <span>{counts?.get(item) ?? 0} results</span>
                           {isIncluded && (
-                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-emerald-300">
+                            <span className="rounded-full border border-gray-600 bg-gray-800 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-gray-300">
                               IN
                             </span>
                           )}
@@ -174,8 +174,8 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                           onClick={() => onIncludeToggle(item)}
                           className={`rounded-md border p-1.5 transition-colors ${
                             isIncluded
-                              ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
-                              : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-emerald-500/40 hover:text-emerald-200'
+                              ? 'border-gray-500 bg-gray-700 text-gray-100'
+                              : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-500 hover:text-white'
                           }`}
                           title={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}
                           aria-label={isIncluded ? `Remove ${item} from included filters` : `Include ${item}`}

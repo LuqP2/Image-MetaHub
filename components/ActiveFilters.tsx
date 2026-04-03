@@ -53,7 +53,7 @@ const ActiveFilters: React.FC = () => {
   }
 
   const chipClass =
-    'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium';
+    'inline-flex items-center gap-1 rounded-md border border-gray-700 bg-gray-900/80 px-2 py-1 text-[11px] font-medium text-gray-200';
 
   const removeAdvancedFilter = (key: string) => {
     const nextFilters = { ...advancedFilters };
@@ -70,7 +70,7 @@ const ActiveFilters: React.FC = () => {
       </div>
       <div className="flex flex-wrap gap-2">
         {searchQuery && (
-          <div className={`${chipClass} border-gray-700 bg-gray-800/70 text-gray-200`}>
+          <div className={chipClass}>
             <span className="opacity-70">Search</span>
             <span className="max-w-[180px] truncate">"{searchQuery}"</span>
             <button onClick={() => setSearchQuery('')} className="rounded p-0.5 hover:bg-gray-700 hover:text-white">
@@ -80,77 +80,77 @@ const ActiveFilters: React.FC = () => {
         )}
 
         {favoriteFilterMode === 'include' && (
-          <div className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
+          <div className={chipClass}>
             <span>Favorites only</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-yellow-900/70">
+            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {favoriteFilterMode === 'exclude' && (
-          <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
+          <div className={chipClass}>
             <span>Exclude favorites</span>
-            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-rose-900/70">
+            <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {selectedRatings.map((rating) => (
-          <div key={`rating-${rating}`} className={`${chipClass} border-amber-700/50 bg-amber-950/50 text-amber-200`}>
+          <div key={`rating-${rating}`} className={chipClass}>
             <span>Rating {rating}</span>
-            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-amber-900/70">
+            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         ))}
 
         {advancedFilters?.hasVerifiedTelemetry && (
-          <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
+          <div className={chipClass}>
             <CheckCircle size={12} />
             <span>Verified telemetry</span>
-            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-emerald-900/70">
+            <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {advancedFilters?.dimension && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <div className={chipClass}>
             <Settings size={12} />
             <span>{advancedFilters.dimension}</span>
-            <button onClick={() => removeAdvancedFilter('dimension')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('dimension')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {advancedFilters?.steps && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <div className={chipClass}>
             <Settings size={12} />
             <span>Steps {advancedFilters.steps.min}-{advancedFilters.steps.max}</span>
-            <button onClick={() => removeAdvancedFilter('steps')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('steps')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {advancedFilters?.cfg && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <div className={chipClass}>
             <Settings size={12} />
             <span>CFG {advancedFilters.cfg.min}-{advancedFilters.cfg.max}</span>
-            <button onClick={() => removeAdvancedFilter('cfg')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('cfg')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
         )}
 
         {advancedFilters?.date && (
-          <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
+          <div className={chipClass}>
             <Calendar size={12} />
             <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
-            <button onClick={() => removeAdvancedFilter('date')} className="rounded p-0.5 hover:bg-indigo-900/70">
+            <button onClick={() => removeAdvancedFilter('date')} className="rounded p-0.5 hover:bg-gray-700">
               <X size={12} />
             </button>
           </div>
@@ -210,13 +210,13 @@ interface FacetChipProps {
 }
 
 const toneClasses: Record<FacetChipProps['tone'], string> = {
-  blue: 'border-blue-700/50 bg-blue-950/50 text-blue-200',
-  violet: 'border-violet-700/50 bg-violet-950/50 text-violet-200',
-  amber: 'border-amber-700/50 bg-amber-950/50 text-amber-200',
-  teal: 'border-teal-700/50 bg-teal-950/50 text-teal-200',
-  gray: 'border-gray-700/50 bg-gray-800/70 text-gray-200',
-  sky: 'border-sky-700/50 bg-sky-950/50 text-sky-200',
-  rose: 'border-rose-700/50 bg-rose-950/50 text-rose-200',
+  blue: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  violet: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  amber: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  teal: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  gray: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  sky: 'border-gray-700 bg-gray-900/80 text-gray-200',
+  rose: 'border-gray-700 bg-gray-900/80 text-gray-200',
 };
 
 const FacetChip: React.FC<FacetChipProps> = ({ label, value, tone, onRemove }) => (

@@ -239,7 +239,7 @@ export default function DirectoryList({
           <div
             className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
-                ? 'bg-blue-600/30 hover:bg-blue-600/40'
+                ? 'bg-gray-800 hover:bg-gray-700/70'
                 : 'hover:bg-gray-700/50'
             }`}
             onClick={(e) => handleFolderClick(child.path, e)}
@@ -276,7 +276,7 @@ export default function DirectoryList({
                         }}
                         disabled={isIndexing}
                         className={`p-1 rounded hover:bg-gray-600 transition-colors ${
-                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-blue-400'
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-100'
                         }`}
                         title="Include folder"
                     >
@@ -564,7 +564,7 @@ export default function DirectoryList({
               }}
               className={`p-1.5 rounded-md border transition-all ${
                 includeSubfolders
-                  ? 'bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600/30'
+                  ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
                   : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
               }`}
               title={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
@@ -614,17 +614,17 @@ export default function DirectoryList({
                   <div
                     className={`relative overflow-hidden flex items-center justify-between p-2 rounded-md transition-colors ${
                       isRootSelected
-                        ? 'bg-blue-600/30 hover:bg-blue-600/40'
+                        ? 'bg-gray-800 hover:bg-gray-700/70'
                         : 'bg-gray-800 hover:bg-gray-700/50'
                     }`}
                   >
                     {progressEntry && (
                       <div className="absolute inset-0 pointer-events-none">
                         {isScanning ? (
-                          <div className="absolute inset-0 bg-blue-500/10 animate-pulse" />
+                          <div className="absolute inset-0 bg-gray-200/5 animate-pulse" />
                         ) : (
                           <div
-                            className="absolute inset-y-0 left-0 bg-blue-500/20 transition-[width] duration-300 ease-out"
+                            className="absolute inset-y-0 left-0 bg-gray-200/10 transition-[width] duration-300 ease-out"
                             style={{ width: `${progressPercent}%` }}
                           />
                         )}
@@ -661,7 +661,7 @@ export default function DirectoryList({
                     <div className="relative z-10 flex items-center space-x-2 flex-shrink-0">
                       {progressEntry && (
                         <span
-                          className="text-[10px] font-medium text-blue-300 tabular-nums"
+                          className="text-[10px] font-medium text-gray-300 tabular-nums"
                           title={isScanning ? 'Scanning folder...' : `${progressEntry.current} / ${progressEntry.total} items loaded`}
                         >
                           {isScanning ? 'Scanning...' : `${Math.round(progressPercent)}%`}
@@ -681,7 +681,7 @@ export default function DirectoryList({
                         disabled={isIndexing || isRefreshing}
                         className={`transition-colors ${
                           isRefreshing
-                            ? 'text-blue-400'
+                            ? 'text-gray-200'
                             : isIndexing
                               ? 'text-gray-600 cursor-not-allowed'
                               : 'text-gray-400 hover:text-gray-50'
