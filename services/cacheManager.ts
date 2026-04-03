@@ -512,45 +512,40 @@ class CacheManager {
   ): Promise<void> {
     if (!this.isElectron || !images || images.length === 0) return;
 
-    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
-    const existing = await this.getCachedData(directoryPath, scanSubfolders);
-    if (!existing) {
-      return;
-    }
-
     const updates = new Map(
       sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true }).map((image) => [image.id, image])
     );
 
-    let didChange = false;
-    const metadata = existing.metadata.map((entry) => {
-      const next = updates.get(entry.id);
-      if (!next) {
-        return entry;
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    for (const mode of candidateModes) {
+      const existing = await this.getCachedData(directoryPath, mode);
+      if (!existing) {
+        continue;
       }
-      didChange = true;
-      return next;
-    });
 
-    if (!didChange) {
-      return;
-    }
+      const metadata = existing.metadata.map((entry) => updates.get(entry.id) ?? entry);
+      const didChange = metadata.some((entry, index) => entry !== existing.metadata[index]);
+      if (!didChange) {
+        continue;
+      }
 
-    const result = await window.electronAPI.cacheData({
-      cacheId,
-      data: {
-        id: existing.id,
-        directoryPath,
-        directoryName,
-        lastScan: Date.now(),
-        imageCount: metadata.length,
-        metadata,
-        parserVersion: PARSER_VERSION,
-      },
-    });
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: existing.id,
+          directoryPath,
+          directoryName: existing.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
 
-    if (!result.success) {
-      console.error('Failed to update cached images:', result.error);
+      if (!result.success) {
+        console.error('Failed to update cached images:', result.error);
+      }
     }
   }
 

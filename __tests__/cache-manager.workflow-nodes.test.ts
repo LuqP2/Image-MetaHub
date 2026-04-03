@@ -58,30 +58,36 @@ describe('cacheManager workflowNodes hydration', () => {
   it('updates cached metadata entries for reparsed images', async () => {
     const cacheData = vi.fn().mockResolvedValue({ success: true });
     window.electronAPI = {
-      getCacheSummary: vi.fn().mockResolvedValue({
-        success: true,
-        data: {
-          id: 'D:/library-flat',
-          directoryPath: 'D:/library',
-          directoryName: 'Library',
-          lastScan: 1,
-          imageCount: 1,
-          parserVersion: 6,
-          metadata: [
-            {
-              id: 'dir-1::a.png',
-              name: 'a.png',
-              metadataString: '{"workflow":true}',
-              metadata: {},
-              lastModified: 1,
-              models: [],
-              loras: [],
-              scheduler: '',
-              workflowNodes: ['OldNode'],
-              enrichmentState: 'enriched',
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) => {
+        if (cacheId === 'D:/library-flat') {
+          return {
+            success: true,
+            data: {
+              id: 'D:/library-flat',
+              directoryPath: 'D:/library',
+              directoryName: 'Library',
+              lastScan: 1,
+              imageCount: 1,
+              parserVersion: 6,
+              metadata: [
+                {
+                  id: 'dir-1::a.png',
+                  name: 'a.png',
+                  metadataString: '{"workflow":true}',
+                  metadata: {},
+                  lastModified: 1,
+                  models: [],
+                  loras: [],
+                  scheduler: '',
+                  workflowNodes: ['OldNode'],
+                  enrichmentState: 'enriched',
+                },
+              ],
             },
-          ],
-        },
+          };
+        }
+
+        return { success: true, data: null };
       }),
       cacheData,
     };
@@ -108,6 +114,69 @@ describe('cacheManager workflowNodes hydration', () => {
     );
 
     expect(cacheData).toHaveBeenCalledTimes(1);
+    expect(cacheData.mock.calls[0][0].data.metadata[0].workflowNodes).toEqual(['KSampler', 'LoadImage']);
+  });
+
+  it('updates existing cache variants even when scanSubfolders no longer matches the loaded cache', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) => {
+        if (cacheId === 'D:/library-recursive') {
+          return {
+            success: true,
+            data: {
+              id: 'D:/library-recursive',
+              directoryPath: 'D:/library',
+              directoryName: 'Library',
+              lastScan: 1,
+              imageCount: 1,
+              parserVersion: 6,
+              metadata: [
+                {
+                  id: 'dir-1::a.png',
+                  name: 'a.png',
+                  metadataString: '{"workflow":true}',
+                  metadata: {},
+                  lastModified: 1,
+                  models: [],
+                  loras: [],
+                  scheduler: '',
+                  workflowNodes: ['OldNode'],
+                  enrichmentState: 'enriched',
+                },
+              ],
+            },
+          };
+        }
+
+        return { success: true, data: null };
+      }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.updateCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::a.png',
+          name: 'a.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '{"workflow":true}',
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+          workflowNodes: ['KSampler', 'LoadImage'],
+        } as any,
+      ],
+      false
+    );
+
+    expect(cacheData).toHaveBeenCalledTimes(1);
+    expect(cacheData.mock.calls[0][0].cacheId).toBe('D:/library-recursive');
     expect(cacheData.mock.calls[0][0].data.metadata[0].workflowNodes).toEqual(['KSampler', 'LoadImage']);
   });
 });
