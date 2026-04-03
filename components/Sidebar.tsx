@@ -294,7 +294,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       data-area="sidebar"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed left-0 top-0 h-full bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      className={`fixed left-0 top-0 h-full bg-gray-950/92 backdrop-blur-md border-r border-slate-800/80 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
       <div
         role="separator"
         aria-label="Resize filters sidebar"
@@ -306,23 +306,23 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
       </div>
       {/* Header with collapse button */}
-      <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
+      <div className="flex flex-col border-b border-slate-800/70 bg-gradient-to-b from-slate-950 via-slate-900/95 to-slate-900/75">
         <div className="flex items-center gap-3 p-4 pb-2">
             <div className="relative flex-shrink-0">
-                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
+                <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-xl opacity-60" />
                 <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
             </div>
             <div className="flex flex-col overflow-hidden">
                 <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
-                <span className="text-[10px] font-mono font-normal text-gray-500">v0.14.0</span>
+                <span className="text-[10px] font-mono font-normal text-slate-500">v0.14.0</span>
             </div>
         </div>
 
         <div className="flex items-center justify-between px-4 pb-3 pt-1">
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Faceted Filters</h2>
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-[0.18em]">Library Controls</h2>
           <button
             onClick={onToggleCollapse}
-            className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
+            className="rounded-lg border border-slate-700/70 bg-slate-900/70 p-1.5 text-slate-400 transition-all duration-200 hover:border-cyan-500/30 hover:bg-slate-800/80 hover:text-white"
             title="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -331,56 +331,64 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Search Bar */}
-      <div className="p-4 border-b border-gray-700">
-        <SearchBar
-          value={searchQuery}
-          onChange={onSearchChange}
-        />
+      <div className="border-b border-slate-800/80 px-4 py-4">
+        <div className="rounded-2xl border border-cyan-500/10 bg-slate-950/70 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300/70">Search</div>
+          <SearchBar
+            value={searchQuery}
+            onChange={onSearchChange}
+          />
+        </div>
       </div>
 
       {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
-        <div className="border-b border-gray-800/80">
-          <ActiveFilters />
+        <div className="border-b border-slate-800/80 bg-slate-950/35 px-4 py-3">
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/45 p-3">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Active Filters</div>
+            <ActiveFilters />
+          </div>
         </div>
 
-        <div className="px-4 py-3 border-b border-gray-700">
-          <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
-          <div className="flex items-center">
-          <select
-            id="sidebar-sort"
-            value={sortOrder}
-            onChange={(e) => onSortOrderChange(e.target.value)}
-            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="date-desc">Newest First</option>
-            <option value="date-asc">Oldest First</option>
-            <option value="asc">A-Z</option>
-            <option value="desc">Z-A</option>
-            <option value="random">Random</option>
-          </select>
-          {sortOrder === 'random' && onReshuffle && (
-            <button
-                onClick={onReshuffle}
-                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
-                title="Reshuffle Random Order"
+        <div className="border-b border-slate-800/80 px-4 py-3">
+          <div className="rounded-2xl border border-violet-500/10 bg-slate-950/60 p-3">
+            <label htmlFor="sidebar-sort" className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-300/70">Sort & View</label>
+            <div className="flex items-center">
+            <select
+              id="sidebar-sort"
+              value={sortOrder}
+              onChange={(e) => onSortOrderChange(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 text-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
             >
-                <RefreshCw className="h-5 w-5" />
-            </button>
-          )}
+              <option value="date-desc">Newest First</option>
+              <option value="date-asc">Oldest First</option>
+              <option value="asc">A-Z</option>
+              <option value="desc">Z-A</option>
+              <option value="random">Random</option>
+            </select>
+            {sortOrder === 'random' && onReshuffle && (
+              <button
+                  onClick={onReshuffle}
+                  className="ml-2 rounded-lg border border-slate-700 bg-slate-900 p-2 text-slate-400 transition-colors hover:border-cyan-500/30 hover:text-white"
+                  title="Reshuffle Random Order"
+              >
+                  <RefreshCw className="h-5 w-5" />
+              </button>
+            )}
+            </div>
           </div>
         </div>
 
         {/* Add Folder Button - Subtle and discrete */}
         {onAddFolder && (
-          <div className="px-3 py-2 border-b border-gray-700">
+          <div className="border-b border-slate-800/80 px-4 py-3">
             <button
               onClick={onAddFolder}
               disabled={isIndexing}
-              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+              className={`w-full flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all duration-200 ${
                 isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+                  ? 'border-slate-800 bg-slate-900/60 text-slate-600 cursor-not-allowed' 
+                  : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/35 hover:bg-emerald-500/15 hover:text-white'
               }`}
               title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
             >
@@ -407,11 +415,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TagsAndFavorites />
 
         {generationFacets.length > 0 && (
-          <section className="border-y border-gray-800/80 bg-gray-950/20 px-4 py-4">
+          <section className="border-y border-slate-800/80 bg-slate-950/25 px-4 py-4">
             <div className="mb-4 flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-gray-400" />
+              <SlidersHorizontal className="h-4 w-4 text-cyan-300/70" />
               <div>
-                <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
+                <h3 className="text-sm font-semibold text-gray-100">Generation Facets</h3>
+                <p className="text-xs text-slate-500">Build include/exclude combinations without losing the full option list.</p>
               </div>
             </div>
             <div className="space-y-3">
