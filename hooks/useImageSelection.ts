@@ -14,21 +14,22 @@ export function useImageSelection() {
     } = useImageStore();
 
     const handleImageSelection = useCallback((image: IndexedImage, event: React.MouseEvent) => {
-        const { filteredImages, selectedImage, selectedImages } = useImageStore.getState();
+        const { activeImageScope, filteredImages, selectedImage, selectedImages } = useImageStore.getState();
+        const selectionScope = activeImageScope ?? filteredImages;
 
         // Update focused index
-        const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
+        const clickedIndex = selectionScope.findIndex(img => img.id === image.id);
         if (clickedIndex !== -1) {
             setFocusedImageIndex(clickedIndex);
         }
 
         if (event.shiftKey && selectedImage) {
-            const lastSelectedIndex = filteredImages.findIndex(img => img.id === selectedImage.id);
-            const clickedIndex = filteredImages.findIndex(img => img.id === image.id);
+            const lastSelectedIndex = selectionScope.findIndex(img => img.id === selectedImage.id);
+            const clickedIndex = selectionScope.findIndex(img => img.id === image.id);
             if (lastSelectedIndex !== -1 && clickedIndex !== -1) {
                 const start = Math.min(lastSelectedIndex, clickedIndex);
                 const end = Math.max(lastSelectedIndex, clickedIndex);
-                const rangeIds = filteredImages.slice(start, end + 1).map(img => img.id);
+                const rangeIds = selectionScope.slice(start, end + 1).map(img => img.id);
                 const newSelection = new Set(selectedImages);
                 rangeIds.forEach(id => newSelection.add(id));
                 useImageStore.setState({ selectedImages: newSelection });

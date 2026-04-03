@@ -698,6 +698,7 @@ export interface IndexedImage {
   steps?: number; // Extracted steps from metadata
   seed?: number; // Extracted seed from metadata
   dimensions?: string; // Extracted dimensions (width x height) from metadata
+  workflowNodes?: string[]; // Extracted ComfyUI workflow node types
   directoryName?: string; // Name of the selected directory for context
   directoryId?: string; // Unique ID for the parent directory
   enrichmentState?: 'catalog' | 'enriched';

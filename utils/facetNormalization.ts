@@ -46,6 +46,32 @@ const normalizeModels = (models: unknown): string[] => {
     .filter((value): value is string => Boolean(value));
 };
 
+const normalizeStringList = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    const item = normalizeFacetValue(value);
+    if (!item) {
+      continue;
+    }
+
+    const key = item.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push(item);
+  }
+
+  return normalized;
+};
+
 const normalizeLoras = (loras: unknown): Array<string | LoRAInfo> => {
   if (!Array.isArray(loras)) {
     return [];
@@ -105,6 +131,7 @@ export const sanitizeIndexedImageFacets = (image: IndexedImage): IndexedImage =>
   const prompt = normalizeSearchText(image.prompt);
   const negativePrompt = normalizeSearchText(image.negativePrompt);
   const metadataString = normalizeSearchText(image.metadataString);
+  const workflowNodes = normalizeStringList(image.workflowNodes);
 
   const modelsChanged =
     !Array.isArray(image.models) ||
@@ -132,7 +159,9 @@ export const sanitizeIndexedImageFacets = (image: IndexedImage): IndexedImage =>
     board === (image.board ?? '') &&
     prompt === (image.prompt ?? '') &&
     negativePrompt === (image.negativePrompt ?? '') &&
-    metadataString === image.metadataString
+    metadataString === image.metadataString &&
+    workflowNodes.length === (image.workflowNodes?.length ?? 0) &&
+    workflowNodes.every((value, index) => value === image.workflowNodes?.[index])
   ) {
     return image;
   }
@@ -148,5 +177,6 @@ export const sanitizeIndexedImageFacets = (image: IndexedImage): IndexedImage =>
     prompt,
     negativePrompt,
     metadataString,
+    workflowNodes,
   };
 };

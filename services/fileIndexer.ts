@@ -94,6 +94,7 @@ import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
 import { parseSDNextMetadata } from './parsers/sdNextParser';
+import { extractWorkflowNodeTypes, extractWorkflowNodeTypesFromMetadata } from './comfyUIWorkflowNodes';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -1427,8 +1428,6 @@ if (rawMetadata) {
   if (!normalizedMetadata) {
     // Unknown metadata format, no parser applied
   }
-}
-
   if (!normalizedMetadata && isVideo && videoInfo) {
     normalizedMetadata = {
       prompt: '',
@@ -1452,6 +1451,7 @@ if (rawMetadata) {
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
+}
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
@@ -1476,6 +1476,8 @@ if (rawMetadata) {
     if (profile) {
       profile.dimensionsMs = performance.now() - dimensionsStart;
     }
+
+    const workflowNodes = extractWorkflowNodeTypesFromMetadata(rawMetadata);
 
     // Determine the best date for sorting (generation date vs file date)
     const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
@@ -1506,6 +1508,7 @@ if (rawMetadata) {
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
     } as IndexedImage;
@@ -1513,6 +1516,56 @@ if (rawMetadata) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
     return null;
   }
+}
+
+export async function reparseIndexedImage(
+  image: IndexedImage,
+  directoryPath: string
+): Promise<IndexedImage | null> {
+  if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
+    throw new Error('Metadata reparsing is only available in the desktop app.');
+  }
+
+  const [, relativePath = image.name] = image.id.split('::');
+  const joined = await window.electronAPI.joinPaths(directoryPath, relativePath);
+  if (!joined.success || !joined.path) {
+    throw new Error(joined.error || 'Failed to resolve the image path.');
+  }
+
+  const absolutePath = joined.path;
+  const readResult = await window.electronAPI.readFile(absolutePath);
+  if (!readResult.success || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read the image file.');
+  }
+
+  const statsResult = window.electronAPI.getFileStats
+    ? await window.electronAPI.getFileStats(absolutePath)
+    : { success: false } as { success: boolean; stats?: any; error?: string };
+  const stats = statsResult.success ? statsResult.stats : undefined;
+  const bytes = new Uint8Array(readResult.data);
+  const fileData = bytes.slice().buffer;
+
+  const fileEntry: CatalogFileEntry = {
+    handle: {
+      name: image.name,
+      kind: 'file',
+      _filePath: absolutePath,
+    } as ElectronFileHandle,
+    path: relativePath,
+    lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : image.lastModified,
+    contentModifiedMs: typeof stats?.mtimeMs === 'number'
+      ? stats.mtimeMs
+      : (image.contentModifiedMs ?? image.lastModified),
+    size: typeof stats?.size === 'number' ? stats.size : image.fileSize,
+    type: image.fileType ?? inferMimeTypeFromName(image.name),
+    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+  };
+
+  return processSingleFileOptimized(
+    fileEntry,
+    image.directoryId || image.id.split('::')[0] || '',
+    fileData
+  );
 }
 
 /**
@@ -1592,6 +1645,7 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     steps: image.steps,
     seed: image.seed,
     dimensions: image.dimensions,
+    workflowNodes: image.workflowNodes,
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
@@ -1926,6 +1980,7 @@ export async function processFiles(
       steps: undefined,
       seed: undefined,
       dimensions: undefined,
+      workflowNodes: [],
       enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
       fileSize,
       fileType: inferredType,
@@ -2013,6 +2068,7 @@ export async function processFiles(
       steps: enriched.steps,
       seed: enriched.seed,
       dimensions: enriched.dimensions,
+      workflowNodes: enriched.workflowNodes,
       enrichmentState: 'enriched',
     };
 
@@ -2382,6 +2438,10 @@ export async function processFiles(
         steps: normalizedMetadata.steps || null,
         seed: normalizedMetadata.seed || null,
         dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+        workflowNodes: extractWorkflowNodeTypes({
+          workflow: (metaHubData as Record<string, unknown>)?.workflow,
+          prompt: (metaHubData as Record<string, unknown>)?.prompt_api ?? (metaHubData as Record<string, unknown>)?.prompt,
+        }),
         contentModifiedMs: image.contentModifiedMs,
       } as IndexedImage;
     };

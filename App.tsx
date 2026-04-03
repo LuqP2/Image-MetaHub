@@ -30,6 +30,7 @@ import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
+import NodeView from './components/NodeView';
 import GridToolbar from './components/GridToolbar';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
@@ -48,7 +49,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster';
+  navigationSource: 'filtered' | 'cluster' | 'scope';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -154,6 +155,7 @@ export default function App() {
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -218,6 +220,7 @@ export default function App() {
   const setError = useImageStore((state) => state.setError);
   const setTransferProgress = useImageStore((state) => state.setTransferProgress);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
+  const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
@@ -230,6 +233,7 @@ export default function App() {
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
+  const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
@@ -317,7 +321,8 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node'>('library');
+  const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -330,6 +335,12 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  useEffect(() => {
+    if (libraryView !== 'node' && activeImageScope !== null) {
+      setActiveImageScope(null);
+    }
+  }, [activeImageScope, libraryView, setActiveImageScope]);
   const hasRightSidebar = Boolean(previewImage || isQueueOpen);
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
@@ -928,10 +939,14 @@ export default function App() {
     const navigationSource =
       clusterNavigationContext && clusterNavigationContext.length > 0
         ? clusterNavigationContext
-        : safeFilteredImages;
+        : safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((image) => image.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
-      clusterNavigationContext && clusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+      clusterNavigationContext && clusterNavigationContext.length > 0
+        ? 'cluster'
+        : safeActiveImageScope
+          ? 'scope'
+          : 'filtered';
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -962,10 +977,14 @@ export default function App() {
       const navigationSource =
         safeClusterNavigationContext.length > 0
           ? safeClusterNavigationContext
-          : safeFilteredImages;
+          : safeActiveImageScope ?? safeFilteredImages;
       const navigationImageIds = navigationSource.map((image) => image.id);
       const navigationSourceType: OpenImageModalState['navigationSource'] =
-        safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered';
 
       const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
 
@@ -982,11 +1001,16 @@ export default function App() {
         },
       ];
     });
-  }, [safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
     [safeFilteredImages]
+  );
+
+  const activeScopeNavigationImageIds = useMemo(
+    () => safeActiveImageScope?.map((image) => image.id) ?? null,
+    [safeActiveImageScope]
   );
 
   const getImageByIdFromStore = useCallback((imageId: string) => {
@@ -1007,8 +1031,12 @@ export default function App() {
       return filteredNavigationImageIds;
     }
 
+    if (modal.navigationSource === 'scope') {
+      return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [filteredNavigationImageIds, imageLookup]);
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, imageLookup]);
 
   useEffect(() => {
     if (openImageModals.length === 0) {
@@ -1030,6 +1058,10 @@ export default function App() {
           return [modal];
         }
 
+        if (modal.navigationSource === 'scope' && activeScopeNavigationImageIds === null) {
+          return [modal];
+        }
+
         const navigationImageIds = resolveModalNavigationImageIds(modal);
         if (navigationImageIds.length !== modal.navigationImageIds.length) {
           changed = true;
@@ -1041,7 +1073,7 @@ export default function App() {
 
       return changed ? next : current;
     });
-  }, [getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
+  }, [activeScopeNavigationImageIds, getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
 
   useEffect(() => {
     const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
@@ -1541,25 +1573,27 @@ export default function App() {
 
           {hasDirectories && (
             <>
-                <GridToolbar
-                  selectedImages={safeSelectedImages}
-                  images={paginatedImages}
-                  directories={safeDirectories}
-                  onDeleteSelected={handleDeleteSelectedImages}
-                  onGenerateA1111={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsA1111GenerateModalOpen(true);
-                  }}
-                  onGenerateComfyUI={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsComfyUIGenerateModalOpen(true);
-                  }}
-                  onCompare={(images) => {
-                    setComparisonImages(images);
-                    openComparisonModal();
-                  }}
-                  onBatchExport={handleOpenBatchExport}
-                />
+                {(libraryView === 'library' || libraryView === 'node') && (
+                  <GridToolbar
+                    selectedImages={safeSelectedImages}
+                    images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
+                    directories={safeDirectories}
+                    onDeleteSelected={handleDeleteSelectedImages}
+                    onGenerateA1111={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsA1111GenerateModalOpen(true);
+                    }}
+                    onGenerateComfyUI={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsComfyUIGenerateModalOpen(true);
+                    }}
+                    onCompare={(images) => {
+                      setComparisonImages(images);
+                      openComparisonModal();
+                    }}
+                    onBatchExport={handleOpenBatchExport}
+                  />
+                )}
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
@@ -1593,6 +1627,17 @@ export default function App() {
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
+                  />
+                ) : libraryView === 'node' ? (
+                  <NodeView
+                    images={safeFilteredImages}
+                    selectedImages={safeSelectedImages}
+                    onImageClick={handleImageSelection}
+                    onBatchExport={handleOpenBatchExport}
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onVisibleImagesChange={setNodeViewVisibleImages}
+                    onResultImagesChange={setActiveImageScope}
                   />
                 ) : (
                   <SmartLibrary
