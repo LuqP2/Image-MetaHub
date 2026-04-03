@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronDown, Star, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
@@ -19,29 +19,28 @@ type RenameDialogState = {
 };
 
 const TagsAndFavorites: React.FC = () => {
-  const {
-    favoriteFilterMode,
-    setFavoriteFilterMode,
-    selectedRatings,
-    setSelectedRatings,
-    availableTags,
-    availableAutoTags,
-    selectedTags,
-    excludedTags,
-    selectedAutoTags,
-    excludedAutoTags,
-    setSelectedTags,
-    setExcludedTags,
-    setSelectedAutoTags,
-    setExcludedAutoTags,
-    renameTag,
-    clearTag,
-    deleteTag,
-    purgeTag,
-    refreshAvailableAutoTags,
-    filteredImages,
-    images, // All images in current folder(s)
-  } = useImageStore();
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
+  const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
+  const availableTags = useImageStore((state) => state.availableTags);
+  const availableAutoTags = useImageStore((state) => state.availableAutoTags);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const setSelectedTags = useImageStore((state) => state.setSelectedTags);
+  const setExcludedTags = useImageStore((state) => state.setExcludedTags);
+  const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+  const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
+  const renameTag = useImageStore((state) => state.renameTag);
+  const clearTag = useImageStore((state) => state.clearTag);
+  const deleteTag = useImageStore((state) => state.deleteTag);
+  const purgeTag = useImageStore((state) => state.purgeTag);
+  const refreshAvailableAutoTags = useImageStore((state) => state.refreshAvailableAutoTags);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const images = useImageStore((state) => state.images);
+  const indexingState = useImageStore((state) => state.indexingState);
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -94,19 +93,29 @@ const TagsAndFavorites: React.FC = () => {
     return () => window.clearTimeout(timeout);
   }, [renameDialog.isOpen]);
 
-  // Count favorites in ALL current images (not just filtered)
-  const totalFavoriteCount = images.filter(img => img.isFavorite).length;
-
-  // Count favorites in filtered set (for display)
-  const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
+  const isIndexing = indexingState === 'indexing';
+  const totalFavoriteCount = useMemo(
+    () => (isIndexing ? 0 : images.filter((img) => img.isFavorite).length),
+    [images, isIndexing]
+  );
+  const favoriteCount = useMemo(
+    () => (isIndexing ? 0 : filteredImages.filter((img) => img.isFavorite).length),
+    [filteredImages, isIndexing]
+  );
   const favoriteBadgeCount = favoriteFilterMode === 'include' ? favoriteCount : totalFavoriteCount;
-  const totalRatedCount = images.filter(img => (img.rating ?? 0) > 0).length;
+  const totalRatedCount = useMemo(
+    () => (isIndexing ? 0 : images.filter((img) => (img.rating ?? 0) > 0).length),
+    [images, isIndexing]
+  );
   const quickRatingOptions = [1, 2, 3, 4, 5] as const;
-  const quickRatingCounts = new Map(
-    quickRatingOptions.map((value) => [
-      value,
-      images.filter(img => img.rating === value).length,
-    ]),
+  const quickRatingCounts = useMemo(
+    () => new Map(
+      quickRatingOptions.map((value) => [
+        value,
+        isIndexing ? 0 : images.filter((img) => img.rating === value).length,
+      ]),
+    ),
+    [images, isIndexing]
   );
 
   const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {

@@ -337,6 +337,20 @@ async function getCacheRootPath() {
   }
   return app.getPath('userData');
 }
+
+function logRendererCrash(details = {}) {
+  try {
+    const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...details,
+    };
+
+    fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
+  } catch (error) {
+    console.error('Failed to write renderer crash log:', error);
+  }
+}
 // --- End Settings Management ---
 
 // --- Application Menu ---
@@ -973,6 +987,22 @@ async function createWindow(startupDirectory = null) {
       }
     }
   });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    logRendererCrash({
+      kind: 'render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+    });
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('Renderer became unresponsive');
+    logRendererCrash({
+      kind: 'unresponsive',
+    });
+  });
 }
 
 // App event handlers
@@ -1257,6 +1287,29 @@ function setupFileOperationHandlers() {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
       }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-json-cache-data', async (event, cacheId) => {
+    const filePath = await getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-json-cache-data', async (event, { cacheId, data }) => {
+    try {
+      const filePath = await getCacheFilePath(cacheId);
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+      return { success: true };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });

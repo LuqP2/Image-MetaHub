@@ -238,7 +238,8 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, appendImagesSilently, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress
+        setFilterOptions, removeImages, addImages, appendImagesSilently, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -505,6 +506,7 @@ export function useImageLoader() {
         }
 
         scheduleGlobalFilterRefresh(true);
+        await refreshLineageDirectorySignature(directory);
         if (!suppressSuccessMessage) {
             setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
         }
@@ -532,7 +534,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
+    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
 
     const CACHE_HYDRATE_FLUSH_SIZE = 2048;
     const DIRECTORY_THUMBNAIL_WARMUP_LIMIT = 384;
@@ -552,6 +554,27 @@ export function useImageLoader() {
             delayMs: 16,
         });
     }, []);
+
+    async function refreshLineageDirectorySignature(directory: Directory) {
+        if (!getIsElectron()) {
+            return;
+        }
+
+        const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+        const summary = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
+        if (!summary) {
+            setLineageDirectorySignature(directory.id, null);
+            return;
+        }
+
+        setLineageDirectorySignature(directory.id, {
+            directoryId: directory.id,
+            path: directory.path,
+            lastScan: summary.lastScan,
+            imageCount: summary.imageCount,
+            parserVersion: summary.parserVersion ?? 0,
+        });
+    }
 
     const clearIdleReconcileTimer = useCallback(() => {
         if (idleReconcileTimerRef.current) {
@@ -664,6 +687,8 @@ export function useImageLoader() {
 
             await phaseB;
             scheduleGlobalFilterRefresh(true);
+            await refreshLineageDirectorySignature(activeDirectory);
+            scheduleLineageRebuild(800);
             return true;
         } catch (reconcileError) {
             console.error(`[startup-reconcile] Failed for ${activeDirectory.path}:`, reconcileError);
@@ -673,7 +698,7 @@ export function useImageLoader() {
             setEnrichmentProgress(null);
             setProgress(null);
         }
-    }, [addImages, mergeImages, removeImages, scheduleGlobalFilterRefresh, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
+    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleGlobalFilterRefresh, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
 
     const runIdleReconcileQueue = useCallback(async () => {
         if (idleReconcileRunningRef.current) {
@@ -729,6 +754,13 @@ export function useImageLoader() {
             const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.imageCount > 0) {
+                setLineageDirectorySignature(directory.id, {
+                    directoryId: directory.id,
+                    path: directory.path,
+                    lastScan: cachedData.lastScan,
+                    imageCount: cachedData.imageCount,
+                    parserVersion: cachedData.parserVersion ?? 0,
+                });
                 const isElectron = getIsElectron();
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
@@ -850,14 +882,16 @@ export function useImageLoader() {
                 }
                 setDirectoryProgress(directory.id, null);
             } else {
+                setLineageDirectorySignature(directory.id, null);
                 setDirectoryProgress(directory.id, null);
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
+            setLineageDirectorySignature(directory.id, null);
             setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [appendImagesSilently, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
+    }, [appendImagesSilently, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setLineageDirectorySignature, setProgress]);
 
     const loadDirectory = useCallback(async (
         directory: Directory,
@@ -1259,8 +1293,10 @@ export function useImageLoader() {
             const storedPaths = localStorage.getItem('image-metahub-directories');
             if (storedPaths) {
                 try {
+                    setLineageRebuildSuspended(true);
                     const paths = JSON.parse(storedPaths);
                     if (paths.length === 0) {
+                        setLineageRebuildSuspended(false);
                         setLoading(false);
                         return;
                     }
@@ -1298,6 +1334,12 @@ export function useImageLoader() {
 
                     await hydrateInBackground();
 
+                    setLineageRebuildSuspended(false);
+                    const hydratedLineageSnapshot = await hydratePersistedLineageSnapshot();
+                    if (!hydratedLineageSnapshot) {
+                        scheduleLineageRebuild(1200);
+                    }
+
                     if (startupVerificationMode === 'strict') {
                         for (const dir of directoriesToLoad) {
                             await reconcileCachedDirectory(dir);
@@ -1311,17 +1353,20 @@ export function useImageLoader() {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");
                 } finally {
+                    setLineageRebuildSuspended(false);
                     setProgress(null);
                     setLoading(false);
                 }
             } else {
+                 setLineageRebuildSuspended(false);
                  setLoading(false);
             }
         } else {
             console.warn('Loading from storage is only supported in Electron.');
+            setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, loadDirectoryFromCache, reconcileCachedDirectory, scheduleIdleReconcile, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();

@@ -94,6 +94,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const countFacetValues = useMemo(() => {
+    if (isIndexing) {
+      return {
+        modelCounts: new Map<string, number>(),
+        loraCounts: new Map<string, number>(),
+        samplerCounts: new Map<string, number>(),
+        schedulerCounts: new Map<string, number>(),
+      };
+    }
+
     const modelCounts = new Map<string, number>();
     const loraCounts = new Map<string, number>();
     const samplerCounts = new Map<string, number>();
@@ -119,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
-  }, [filteredImages]);
+  }, [filteredImages, isIndexing]);
 
   const toggleExplicitFacet = (
     value: string,
