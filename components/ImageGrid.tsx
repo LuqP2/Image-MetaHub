@@ -38,6 +38,7 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  enableAuxClickOpen?: boolean;
   isSelected: boolean;
   isFocused?: boolean;
   onImageLoad: (id: string, aspectRatio: number) => void;
@@ -124,7 +125,7 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const thumbnail = useResolvedThumbnail(image);
 
@@ -267,6 +268,19 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         }}
         onDoubleClick={(e) => {
           if (doubleClickToOpen) {
+            onImageClick(image, e);
+          }
+        }}
+        onMouseDown={(e) => {
+          if (enableAuxClickOpen && e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        onAuxClick={(e) => {
+          if (enableAuxClickOpen && e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
             onImageClick(image, e);
           }
         }}
@@ -522,6 +536,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
                   e.stopPropagation();
                   onStackClick(item);
               }}
+              enableAuxClickOpen={false}
               isSelected={selectedImages.has(item.coverImage.id)}
               isFocused={false}
               onImageLoad={handleImageLoad}
@@ -1721,6 +1736,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                             <ImageCard
                                 image={item.coverImage}
                                 onImageClick={() => handleStackClick(item)}
+                                enableAuxClickOpen={false}
                                 isSelected={selectedImages.has(item.coverImage.id)}
                                 isFocused={false}
                                 onImageLoad={handleImageLoad}

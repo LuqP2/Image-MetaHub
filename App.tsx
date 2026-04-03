@@ -1178,6 +1178,61 @@ export default function App() {
     }
   }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
 
+  const handleOpenImageModalInBackground = useCallback((image: IndexedImage) => {
+    const navigationSource =
+      safeClusterNavigationContext.length > 0
+        ? safeClusterNavigationContext
+        : safeFilteredImages;
+    const navigationImageIds = navigationSource.map((entry) => entry.id);
+    const navigationSourceType: OpenImageModalState['navigationSource'] =
+      safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) => {
+          if (modal.modalId !== existingModal.modalId) {
+            return modal;
+          }
+
+          return {
+            ...modal,
+            navigationImageIds,
+            navigationSource: navigationSourceType,
+            zIndex: nextZIndex,
+            isMinimized: true,
+          };
+        });
+      }
+
+      return [
+        ...current,
+        {
+          modalId: `image-modal-${Date.now()}-${image.id}`,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: navigationSourceType,
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: true,
+        },
+      ];
+    });
+  }, [safeClusterNavigationContext, safeFilteredImages]);
+
+  const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+    if (event.button === 1) {
+      event.preventDefault();
+      handleOpenImageModalInBackground(image);
+      return;
+    }
+
+    handleImageSelection(image, event);
+  }, [handleImageSelection, handleOpenImageModalInBackground]);
+
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {
       showProModal('batch_export');
@@ -1511,7 +1566,7 @@ export default function App() {
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
-                          onImageClick={handleImageSelection}
+                          onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           currentPage={currentPage}
                           totalPages={totalPages}
