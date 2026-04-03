@@ -24,7 +24,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
+const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
 
 // Get platform-specific icon
 function getIconPath() {

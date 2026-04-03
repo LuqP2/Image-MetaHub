@@ -54,6 +54,7 @@ import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
 import { parseSDNextMetadata } from './parsers/sdNextParser';
+import { extractWorkflowNodeTypes, extractWorkflowNodeTypesFromMetadata } from './comfyUIWorkflowNodes';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -1437,6 +1438,8 @@ if (rawMetadata) {
       profile.dimensionsMs = performance.now() - dimensionsStart;
     }
 
+    const workflowNodes = extractWorkflowNodeTypesFromMetadata(rawMetadata);
+
     // Determine the best date for sorting (generation date vs file date)
     const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
 
@@ -1466,6 +1469,7 @@ if (rawMetadata) {
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
     } as IndexedImage;
@@ -1552,6 +1556,7 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     steps: image.steps,
     seed: image.seed,
     dimensions: image.dimensions,
+    workflowNodes: image.workflowNodes,
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
@@ -1875,6 +1880,7 @@ export async function processFiles(
       steps: undefined,
       seed: undefined,
       dimensions: undefined,
+      workflowNodes: [],
       enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
       fileSize,
       fileType: inferredType,
@@ -1962,6 +1968,7 @@ export async function processFiles(
       steps: enriched.steps,
       seed: enriched.seed,
       dimensions: enriched.dimensions,
+      workflowNodes: enriched.workflowNodes,
       enrichmentState: 'enriched',
     };
 
@@ -2330,6 +2337,10 @@ export async function processFiles(
         steps: normalizedMetadata.steps || null,
         seed: normalizedMetadata.seed || null,
         dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+        workflowNodes: extractWorkflowNodeTypes({
+          workflow: (metaHubData as Record<string, unknown>)?.workflow,
+          prompt: (metaHubData as Record<string, unknown>)?.prompt_api ?? (metaHubData as Record<string, unknown>)?.prompt,
+        }),
         contentModifiedMs: image.contentModifiedMs,
       } as IndexedImage;
     };

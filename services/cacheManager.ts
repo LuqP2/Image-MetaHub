@@ -4,7 +4,7 @@ import { type IndexedImage } from '../types';
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
+export const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
@@ -25,6 +25,7 @@ export interface CacheImageMetadata {
   steps?: number;
   seed?: number;
   dimensions?: string;
+  workflowNodes?: string[];
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
@@ -76,6 +77,7 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     steps: img.steps,
     seed: img.seed,
     dimensions: img.dimensions,
+    workflowNodes: img.workflowNodes,
     enrichmentState: img.enrichmentState,
     fileSize: img.fileSize,
     fileType: img.fileType,
