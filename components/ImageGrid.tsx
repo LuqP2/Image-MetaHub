@@ -13,13 +13,15 @@ import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Sq
   EyeOff,
   Package,
   Play,
-  Tag
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
@@ -671,6 +673,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
     contextMenu,
@@ -788,6 +791,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
   }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
+
+  const handleReparseMetadata = useCallback(async () => {
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+    await reparseImages(targetImages);
+  }, [getContextTargetImages, hideContextMenu, reparseImages]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -1289,6 +1303,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               <Copy className="w-4 h-4" />
               Copy Raw Metadata
             </button>
+
+          <button
+            onClick={handleReparseMetadata}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={isReparsing}
+          >
+            <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+            {getContextTargetImages().length > 1 ? `Reparse Selected (${getContextTargetImages().length})` : 'Reparse Metadata'}
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
