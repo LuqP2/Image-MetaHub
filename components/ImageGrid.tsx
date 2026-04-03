@@ -8,6 +8,7 @@ import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,
   Archive,
+  ChevronRight,
   CheckSquare,
   Crown,
   EyeOff,
@@ -656,6 +657,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
@@ -670,6 +672,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
+
+  useEffect(() => {
+    if (!contextMenu.visible && isCopySubmenuOpen) {
+      setIsCopySubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isCopySubmenuOpen]);
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
 
   const {
@@ -1232,38 +1240,53 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={copyPrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
+          <div
+            className="relative"
+            onMouseEnter={() => setIsCopySubmenuOpen(true)}
+            onMouseLeave={() => setIsCopySubmenuOpen(false)}
           >
-            <Copy className="w-4 h-4" />
-            Copy Prompt
-          </button>
-          <button
-            onClick={copyNegativePrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Negative Prompt
-          </button>
-          <button
-            onClick={copySeed}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Seed
-          </button>
-          <button
-            onClick={copyModel}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Model
-          </button>
+            <button
+              onClick={() => setIsCopySubmenuOpen((open) => !open)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="flex-1">Copy</span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isCopySubmenuOpen && (
+              <div className="absolute left-full top-0 ml-1 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                <button
+                  onClick={copyPrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
+                >
+                  Prompt
+                </button>
+                <button
+                  onClick={copyNegativePrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
+                >
+                  Negative Prompt
+                </button>
+                <button
+                  onClick={copySeed}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
+                >
+                  Seed
+                </button>
+                <button
+                  onClick={copyModel}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
+                >
+                  Checkpoint
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="border-t border-gray-600 my-1"></div>
 
