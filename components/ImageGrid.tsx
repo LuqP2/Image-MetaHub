@@ -128,6 +128,8 @@ const collectWarmupImages = (
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const thumbnail = useResolvedThumbnail(image);
+  const suppressNextClickRef = useRef(false);
+  const dragResetTimeoutRef = useRef<number | null>(null);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -194,6 +196,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     setImageUrl(null);
   }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
+  useEffect(() => {
+    return () => {
+      if (dragResetTimeoutRef.current !== null) {
+        window.clearTimeout(dragResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setPreviewImage(image);
@@ -232,11 +242,23 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     const [, relativeFromId] = image.id.split('::');
     const relativePath = relativeFromId || image.name;
 
+    suppressNextClickRef.current = true;
     e.preventDefault();
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'copy';
     }
     window.electronAPI?.startFileDrag({ directoryPath, relativePath });
+  };
+
+  const handleDragEnd = () => {
+    if (dragResetTimeoutRef.current !== null) {
+      window.clearTimeout(dragResetTimeoutRef.current);
+    }
+
+    dragResetTimeoutRef.current = window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+      dragResetTimeoutRef.current = null;
+    }, 0);
   };
 
   return (
@@ -253,6 +275,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         }`}
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
         onClick={(e) => {
+          if (suppressNextClickRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            suppressNextClickRef.current = false;
+            return;
+          }
+
           if (doubleClickToOpen) {
             if (e.ctrlKey || e.metaKey) {
               toggleImageSelection(image.id);
@@ -287,6 +316,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         draggable={canDragExternally}
       >
         {/* Checkbox for selection - always visible on hover or when selected */}
