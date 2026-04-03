@@ -167,7 +167,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               max: currentMax === null || currentMax === undefined ? null : Math.max(parsed, currentMax),
             });
           }}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500"
+          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
         />
         <input
           type="number"
@@ -190,7 +190,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               max: parsed,
             });
           }}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500"
+          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
         />
       </div>
     </div>
@@ -206,7 +206,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <div className="flex items-center space-x-2">
             <span className="text-gray-200 font-medium">Metadata & File Filters</span>
             {hasActiveFilters && (
-              <span className="rounded border border-gray-700 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
+              <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
                 {advancedFilterCount} active
               </span>
             )}
@@ -281,7 +281,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <select
                   value={localFilters.dimension || ''}
                   onChange={(event) => updateFilter('dimension', event.target.value || null)}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500"
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                 >
                   <option value="">All dimensions</option>
                   {availableDimensions.map((dimension) => (
@@ -294,7 +294,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <Calendar className="h-4 w-4 text-blue-400" />
                       File
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{fileSummary}</p>
@@ -318,7 +318,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       from: event.target.value || '',
                       to: localFilters.date?.to || '',
                     })}
-                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500"
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                   />
                   <input
                     type="date"
@@ -327,7 +327,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       from: localFilters.date?.from || '',
                       to: event.target.value || '',
                     })}
-                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-gray-500"
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -371,7 +371,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                             type="checkbox"
                             checked={generationModes.includes(value)}
                             onChange={() => toggleMultiSelectFilter('generationModes', value)}
-                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-gray-300 focus:ring-gray-500 focus:ring-offset-gray-800"
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
                           />
                           <div className="text-sm text-gray-200">{label}</div>
                         </label>
@@ -392,7 +392,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                             type="checkbox"
                             checked={mediaTypes.includes(value)}
                             onChange={() => toggleMultiSelectFilter('mediaTypes', value)}
-                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-gray-300 focus:ring-gray-500 focus:ring-offset-gray-800"
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
                           />
                           <div className="text-sm text-gray-200">{label}</div>
                         </label>
@@ -406,7 +406,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <Star className="h-4 w-4 text-gray-400" />
+                      <Star className="h-4 w-4 text-amber-400" />
                       Rating
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{ratingSummary}</p>
@@ -428,7 +428,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     onClick={() => onSelectedRatingsChange([])}
                     className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
                       selectedRatings.length === 0
-                        ? 'border-gray-600 bg-gray-800 text-gray-100'
+                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
                         : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
                     }`}
                   >
@@ -459,7 +459,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <CheckCircle className="h-4 w-4 text-gray-400" />
+                      <CheckCircle className="h-4 w-4 text-emerald-400" />
                       MetaHub
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{metaHubSummary}</p>
@@ -480,7 +480,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     type="checkbox"
                     checked={localFilters.hasVerifiedTelemetry === true}
                     onChange={(event) => updateFilter('hasVerifiedTelemetry', event.target.checked ? true : null)}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-gray-300 focus:ring-gray-500 focus:ring-offset-gray-800"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
                   />
                   <div>
                     <div className="text-sm text-gray-200">MetaHub Save Node only</div>

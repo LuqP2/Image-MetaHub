@@ -279,7 +279,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           className="mt-4 mb-6 relative group"
           title="Expand sidebar"
         >
-           <div className="absolute inset-0 bg-white/8 blur-md rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+           <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
            <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
         </button>
         <div className="flex flex-col space-y-3">
@@ -299,7 +299,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             favoriteFilterMode !== 'neutral' ||
             selectedRatings.length > 0 ||
             Object.keys(advancedFilters || {}).length > 0) && (
-            <div className="w-2 h-2 bg-gray-300 rounded-full shadow-[0_0_8px_rgba(229,231,235,0.3)] animate-pulse" title="Active filters"></div>
+            <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
       </div>
@@ -311,7 +311,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       data-area="sidebar"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed left-0 top-0 h-full bg-gray-950/96 backdrop-blur-md border-r border-gray-800/80 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      className={`fixed left-0 top-0 h-full bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
       <div
         role="separator"
         aria-label="Resize filters sidebar"
@@ -320,12 +320,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="absolute right-0 top-0 z-50 flex h-full w-3 translate-x-1/2 cursor-col-resize items-center justify-center"
         title="Drag to resize filters sidebar"
       >
-        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-gray-400/90 shadow-[0_0_16px_rgba(156,163,175,0.22)]' : 'bg-gray-700/70 hover:bg-gray-500/80'}`} />
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
       </div>
       {/* Header with collapse button */}
-      <div className="flex flex-col border-b border-gray-800/80 bg-gray-950/95">
+      <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
         <div className="flex items-center gap-3 p-4 pb-2">
             <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full opacity-50" />
                 <img src="logo1.png" alt="Image MetaHub" className="h-10 w-10 rounded-xl shadow-2xl relative z-10" />
             </div>
             <div className="flex flex-col overflow-hidden">
@@ -336,7 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between px-4 pb-3 pt-1">
           <button
             onClick={onToggleCollapse}
-            className="ml-auto rounded-lg border border-gray-800 bg-gray-900 p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+            className="ml-auto rounded-lg border border-gray-700 bg-gray-800/40 p-1.5 text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-white hover:shadow-lg hover:shadow-blue-500/20"
             title="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -358,14 +359,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           <ActiveFilters />
         </div>
 
-        <div className="px-4 py-3 border-b border-gray-800/80">
+        <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
           <div className="flex items-center">
           <select
             id="sidebar-sort"
             value={sortOrder}
             onChange={(e) => onSortOrderChange(e.target.value)}
-            className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="date-desc">Newest First</option>
             <option value="date-asc">Oldest First</option>
@@ -376,7 +377,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           {sortOrder === 'random' && onReshuffle && (
             <button
                 onClick={onReshuffle}
-                className="ml-2 rounded-lg border border-gray-700 bg-gray-900 p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
                 title="Reshuffle Random Order"
             >
                 <RefreshCw className="h-5 w-5" />
@@ -387,14 +388,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Add Folder Button - Subtle and discrete */}
         {onAddFolder && (
-          <div className="border-b border-gray-800/80 px-4 py-3">
+          <div className="px-3 py-2 border-b border-gray-700">
             <button
               onClick={onAddFolder}
               disabled={isIndexing}
-              className={`w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
                 isIndexing
-                  ? 'border-gray-800 bg-gray-900/60 text-gray-600 cursor-not-allowed'
-                  : 'border-gray-700 bg-gray-900 text-gray-200 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
               }`}
               title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
             >
@@ -421,11 +422,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TagsAndFavorites />
 
         {generationFacets.length > 0 && (
-          <section className="border-y border-gray-800/80">
+          <section className="border-y border-gray-800/80 bg-gray-950/20">
             <button
               type="button"
               onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
-              className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-900/50"
+              className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
             >
               <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
               <ChevronDown

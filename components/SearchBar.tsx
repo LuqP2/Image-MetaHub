@@ -35,10 +35,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Search by prompt, model, etc..."
-        className="w-full rounded-xl border border-gray-700 bg-gray-900/80 py-3 pl-10 pr-10 text-gray-200 placeholder-gray-400 transition-colors duration-200 hover:bg-gray-900 focus:outline-none focus:border-gray-500 focus:ring-2 focus:ring-gray-500/20"
+        className="w-full bg-gray-800/50 backdrop-blur-sm text-gray-200 placeholder-gray-400 py-3 pl-10 pr-10 rounded-xl border border-gray-700/50 focus:outline-none focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 shadow-sm hover:bg-gray-800/70"
         data-testid="search-input"
       />
-      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-200 group-focus-within:text-gray-300">
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors duration-300 group-focus-within:text-blue-500">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>

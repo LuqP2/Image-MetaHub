@@ -28,9 +28,9 @@ const TriStateToggle: React.FC<TriStateToggleProps> = ({ mode, onClick, title })
     aria-label={title}
     className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
       mode === 'include'
-        ? 'border-gray-500 bg-gray-800 text-gray-100'
+        ? 'border-blue-500 bg-blue-500/20 text-blue-300'
         : mode === 'exclude'
-          ? 'border-rose-500/70 bg-rose-950/40 text-rose-200'
+          ? 'border-red-500 bg-red-500/20 text-red-300'
           : 'border-gray-600 bg-gray-700 text-transparent hover:border-gray-500 hover:bg-gray-700/80'
     }`}
   >
