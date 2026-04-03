@@ -49,7 +49,7 @@ interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster';
+  navigationSource: 'filtered' | 'cluster' | 'scope';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
@@ -155,6 +155,7 @@ export default function App() {
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -219,6 +220,7 @@ export default function App() {
   const setError = useImageStore((state) => state.setError);
   const setTransferProgress = useImageStore((state) => state.setTransferProgress);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
+  const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
@@ -231,6 +233,7 @@ export default function App() {
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
+  const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
@@ -332,6 +335,12 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  useEffect(() => {
+    if (libraryView !== 'node' && activeImageScope !== null) {
+      setActiveImageScope(null);
+    }
+  }, [activeImageScope, libraryView, setActiveImageScope]);
   const hasRightSidebar = Boolean(previewImage || isQueueOpen);
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
@@ -930,10 +939,14 @@ export default function App() {
     const navigationSource =
       clusterNavigationContext && clusterNavigationContext.length > 0
         ? clusterNavigationContext
-        : safeFilteredImages;
+        : safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((image) => image.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
-      clusterNavigationContext && clusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+      clusterNavigationContext && clusterNavigationContext.length > 0
+        ? 'cluster'
+        : safeActiveImageScope
+          ? 'scope'
+          : 'filtered';
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -964,10 +977,14 @@ export default function App() {
       const navigationSource =
         safeClusterNavigationContext.length > 0
           ? safeClusterNavigationContext
-          : safeFilteredImages;
+          : safeActiveImageScope ?? safeFilteredImages;
       const navigationImageIds = navigationSource.map((image) => image.id);
       const navigationSourceType: OpenImageModalState['navigationSource'] =
-        safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered';
 
       const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
 
@@ -984,11 +1001,16 @@ export default function App() {
         },
       ];
     });
-  }, [safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
     [safeFilteredImages]
+  );
+
+  const activeScopeNavigationImageIds = useMemo(
+    () => safeActiveImageScope?.map((image) => image.id) ?? null,
+    [safeActiveImageScope]
   );
 
   const getImageByIdFromStore = useCallback((imageId: string) => {
@@ -1009,8 +1031,12 @@ export default function App() {
       return filteredNavigationImageIds;
     }
 
+    if (modal.navigationSource === 'scope') {
+      return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [filteredNavigationImageIds, imageLookup]);
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, imageLookup]);
 
   useEffect(() => {
     setOpenImageModals((current) => {
@@ -1028,6 +1054,10 @@ export default function App() {
           return [modal];
         }
 
+        if (modal.navigationSource === 'scope' && activeScopeNavigationImageIds === null) {
+          return [modal];
+        }
+
         const navigationImageIds = resolveModalNavigationImageIds(modal);
         if (navigationImageIds.length !== modal.navigationImageIds.length) {
           changed = true;
@@ -1039,7 +1069,7 @@ export default function App() {
 
       return changed ? next : current;
     });
-  }, [getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
+  }, [activeScopeNavigationImageIds, getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
 
   useEffect(() => {
     const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
@@ -1548,6 +1578,7 @@ export default function App() {
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onVisibleImagesChange={setNodeViewVisibleImages}
+                    onResultImagesChange={setActiveImageScope}
                   />
                 ) : (
                   <SmartLibrary

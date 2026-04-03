@@ -18,6 +18,7 @@ interface NodeViewProps {
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
   onVisibleImagesChange?: (images: IndexedImage[]) => void;
+  onResultImagesChange?: (images: IndexedImage[]) => void;
 }
 
 const caseInsensitiveIncludes = (value: string, query: string) =>
@@ -31,6 +32,7 @@ export const NodeView: React.FC<NodeViewProps> = ({
   isQueueOpen = false,
   onToggleQueue,
   onVisibleImagesChange,
+  onResultImagesChange,
 }) => {
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -93,6 +95,10 @@ export const NodeView: React.FC<NodeViewProps> = ({
   useEffect(() => {
     onVisibleImagesChange?.(paginatedImages);
   }, [onVisibleImagesChange, paginatedImages]);
+
+  useEffect(() => {
+    onResultImagesChange?.(resultImages);
+  }, [onResultImagesChange, resultImages]);
 
   const toggleNode = (nodeName: string) => {
     setSelectedNodes((current) =>

@@ -105,4 +105,39 @@ describe('NodeView', () => {
     expect(screen.getByTestId('node-grid').textContent).not.toContain('lora.png');
     expect(screen.getByTestId('node-footer').textContent).toContain('Showing 2 images across 2 selected nodes');
   });
+
+  it('publishes the full filtered scope separately from the current page', () => {
+    const onVisibleImagesChange = vi.fn();
+    const onResultImagesChange = vi.fn();
+
+    useSettingsStore.setState({
+      itemsPerPage: 1,
+      viewMode: 'grid',
+      setItemsPerPage: vi.fn(),
+      toggleViewMode: vi.fn(),
+    } as any);
+
+    render(
+      <NodeView
+        images={[
+          createImage({ id: '1', name: 'ksampler.png', workflowNodes: ['KSampler'] }),
+          createImage({ id: '2', name: 'load.png', workflowNodes: ['LoadImage'] }),
+          createImage({ id: '3', name: 'plain.png', workflowNodes: [] }),
+        ]}
+        selectedImages={new Set<string>()}
+        onImageClick={vi.fn()}
+        onBatchExport={vi.fn()}
+        onVisibleImagesChange={onVisibleImagesChange}
+        onResultImagesChange={onResultImagesChange}
+      />
+    );
+
+    expect(onVisibleImagesChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: '1' }),
+    ]);
+    expect(onResultImagesChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: '1' }),
+      expect.objectContaining({ id: '2' }),
+    ]);
+  });
 });

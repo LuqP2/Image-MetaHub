@@ -340,6 +340,7 @@ interface ImageState {
   transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
+  activeImageScope: IndexedImage[] | null;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
   isStackingEnabled: boolean;
@@ -467,6 +468,7 @@ interface ImageState {
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
+  setActiveImageScope: (images: IndexedImage[] | null) => void;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -1486,6 +1488,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
+        activeImageScope: null,
         focusedImageIndex: null,
         isStackingEnabled: false,
         searchQuery: '',
@@ -2173,6 +2176,12 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
+        setActiveImageScope: (images) => set((state) => {
+            if (state.activeImageScope === images) {
+                return state;
+            }
+            return { activeImageScope: images };
+        }),
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
@@ -3204,7 +3213,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         selectAllImages: () => set(state => {
-            const allImageIds = new Set(state.filteredImages.map(img => img.id));
+            const selectionScope = state.activeImageScope ?? state.filteredImages;
+            const allImageIds = new Set(selectionScope.map(img => img.id));
             return { selectedImages: allImageIds };
         }),
 
@@ -3223,8 +3233,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            // Use cluster context if available, otherwise use filtered images
-            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex < imagesToNavigate.length - 1) {
@@ -3237,8 +3246,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            // Use cluster context if available, otherwise use filtered images
-            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex > 0) {
@@ -3273,6 +3281,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             success: null,
             selectedImage: null,
             selectedImages: new Set(),
+            activeImageScope: null,
             searchQuery: '',
             availableModels: [],
             availableLoras: [],
