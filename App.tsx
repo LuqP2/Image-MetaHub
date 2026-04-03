@@ -229,9 +229,33 @@ export default function App() {
   const reshuffle = useImageStore((state) => state.reshuffle);
 
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
+  const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
+  const directoryPathById = useMemo(
+    () => new Map(safeDirectories.map((directory) => [directory.id, directory.path])),
+    [safeDirectories]
+  );
+  const imageLookup = useMemo(() => {
+    const lookup = new Map<string, IndexedImage>();
+
+    for (const image of safeFilteredImages) {
+      lookup.set(image.id, image);
+    }
+
+    for (const image of safeClusterNavigationContext) {
+      if (!lookup.has(image.id)) {
+        lookup.set(image.id, image);
+      }
+    }
+
+    if (selectedImage && !lookup.has(selectedImage.id)) {
+      lookup.set(selectedImage.id, selectedImage);
+    }
+
+    return lookup;
+  }, [safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   // --- Settings Store State ---
   const {
@@ -939,6 +963,14 @@ export default function App() {
         });
       }
 
+      const navigationSource =
+        safeClusterNavigationContext.length > 0
+          ? safeClusterNavigationContext
+          : safeFilteredImages;
+      const navigationImageIds = navigationSource.map((image) => image.id);
+      const navigationSourceType: OpenImageModalState['navigationSource'] =
+        safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+
       const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
 
       return [
@@ -954,7 +986,7 @@ export default function App() {
         },
       ];
     });
-  }, [clusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -966,19 +998,16 @@ export default function App() {
       return undefined;
     }
 
-    const state = useImageStore.getState();
-    return state.images.find((image) => image.id === imageId)
-      ?? state.filteredImages.find((image) => image.id === imageId);
-  }, []);
+    return imageLookup.get(imageId);
+  }, [imageLookup]);
 
   const resolveModalNavigationImageIds = useCallback((modal: OpenImageModalState) => {
-    const sourceIds =
-      modal.navigationSource === 'filtered'
-        ? filteredNavigationImageIds
-        : modal.navigationImageIds;
+    if (modal.navigationSource === 'filtered') {
+      return filteredNavigationImageIds;
+    }
 
-    return sourceIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
-  }, [filteredNavigationImageIds, getImageByIdFromStore]);
+    return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+  }, [filteredNavigationImageIds, imageLookup]);
 
   useEffect(() => {
     setOpenImageModals((current) => {
@@ -1179,7 +1208,7 @@ export default function App() {
 
         const navigationImageIds = resolveModalNavigationImageIds(modal);
         const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
-        const directoryPath = safeDirectories.find((directory) => directory.id === image.directoryId)?.path;
+        const directoryPath = directoryPathById.get(image.directoryId);
         if (!directoryPath) {
           return null;
         }
@@ -1198,7 +1227,7 @@ export default function App() {
         currentIndex: number;
         totalImages: number;
       }>;
-  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, safeDirectories]);
+  }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds]);
 
   const footerWindowItems = useMemo(() => {
     return openImageModals

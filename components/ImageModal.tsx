@@ -592,21 +592,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showOriginal, setShowOriginal] = useState(false);
 
   // Get live tags and favorite status from store instead of props
-  const imageFromStore = useImageStore((state) =>
-    state.images.find(img => img.id === image.id) ||
-    state.filteredImages.find(img => img.id === image.id)
-  );
-  const thumbnail = useResolvedThumbnail(imageFromStore ?? image);
+  const thumbnail = useResolvedThumbnail(image);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const showA1111Actions = !isVideo && a1111Enabled;
   const showComfyUIActions = !isVideo && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
-  const currentTags = imageFromStore?.tags || image.tags || [];
-  const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
-  const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
-  const currentRating = imageFromStore?.rating ?? image.rating ?? null;
+  const currentTags = image.tags || [];
+  const currentAutoTags = image.autoTags || [];
+  const currentIsFavorite = image.isFavorite ?? false;
+  const currentRating = image.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
