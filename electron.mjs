@@ -824,6 +824,7 @@ async function createWindow(startupDirectory = null) {
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',

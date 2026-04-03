@@ -9,6 +9,19 @@ import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
 import type { ImageRating } from '../types';
 
+const toFacetLabel = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return null;
+};
+
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -140,20 +153,23 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     for (const image of allImages) {
       image.models?.forEach((value) => {
-        if (value) models.add(value);
+        const label = toFacetLabel(value);
+        if (label) models.add(label);
       });
 
       image.loras?.forEach((value) => {
-        const label = typeof value === 'string' ? value : value?.name;
+        const label = toFacetLabel(typeof value === 'string' ? value : value?.name);
         if (label) loras.add(label);
       });
 
-      if (image.sampler) {
-        samplers.add(image.sampler);
+      const samplerLabel = toFacetLabel(image.sampler);
+      if (samplerLabel) {
+        samplers.add(samplerLabel);
       }
 
-      if (image.scheduler) {
-        schedulers.add(image.scheduler);
+      const schedulerLabel = toFacetLabel(image.scheduler);
+      if (schedulerLabel) {
+        schedulers.add(schedulerLabel);
       }
     }
 

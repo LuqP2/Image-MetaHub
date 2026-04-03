@@ -430,7 +430,9 @@ interface ImageState {
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   appendImagesSilently: (newImages: IndexedImage[]) => void;
+  appendImagesRaw: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
+  replaceDirectoryImagesRaw: (directoryId: string, newImages: IndexedImage[]) => void;
   mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
@@ -463,6 +465,7 @@ interface ImageState {
   reshuffle: () => void;
   setAdvancedFilters: (filters: any) => void;
   filterAndSortImages: () => void;
+  recomputeDerivedState: () => void;
 
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
@@ -561,6 +564,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     let pendingImagesQueue: IndexedImage[] = [];
     let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const FLUSH_INTERVAL_MS = 100;
+    const MAX_PENDING_IMAGES_PER_FLUSH = 1200;
+    const FORCE_FLUSH_PENDING_IMAGES_THRESHOLD = 2400;
     let pendingMergeQueue: IndexedImage[] = [];
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -592,8 +597,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             return;
         }
 
-        const imagesToAdd = pendingImagesQueue;
-        pendingImagesQueue = [];
+        const imagesToAdd = pendingImagesQueue.slice(0, MAX_PENDING_IMAGES_PER_FLUSH);
+        pendingImagesQueue = pendingImagesQueue.slice(imagesToAdd.length);
         if (pendingFlushTimer) {
             clearTimeout(pendingFlushTimer);
             pendingFlushTimer = null;
@@ -626,6 +631,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 queueMetadataTagImports(addedImages);
             }
             maybeQueueLineageBuild(700);
+        }
+
+        if (pendingImagesQueue.length > 0) {
+            scheduleFlush();
         }
     };
 
@@ -1890,6 +1899,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         filterAndSortImages: () => set(state => filterAndSort(state)),
+        recomputeDerivedState: () => set(state => _updateState(state, state.images)),
 
         setImages: (images) => {
             clearPendingQueue();
@@ -1902,6 +1912,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
             pendingImagesQueue.push(...newImages);
+            if (pendingImagesQueue.length >= FORCE_FLUSH_PENDING_IMAGES_THRESHOLD) {
+                flushPendingImages();
+                return;
+            }
             scheduleFlush();
         },
 
@@ -1932,6 +1946,32 @@ export const useImageStore = create<ImageState>((set, get) => {
             maybeQueueLineageBuild(700);
         },
 
+        appendImagesRaw: (newImages) => {
+            if (!newImages || newImages.length === 0) {
+                return;
+            }
+
+            set(state => {
+                const deduped = new Map<string, IndexedImage>();
+                for (const img of newImages) {
+                    if (img?.id && !deduped.has(img.id)) {
+                        deduped.set(img.id, img);
+                    }
+                }
+
+                const queuedUnique = Array.from(deduped.values());
+                const existingIds = new Set(state.images.map(img => img.id));
+                const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
+                if (uniqueNewImages.length === 0) {
+                    return state;
+                }
+
+                return {
+                    images: [...state.images, ...uniqueNewImages],
+                };
+            });
+        },
+
         replaceDirectoryImages: (directoryId, newImages) => {
             clearPendingQueue();
             set(state => {
@@ -1943,6 +1983,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
 
             maybeQueueLineageBuild(700);
+        },
+
+        replaceDirectoryImagesRaw: (directoryId, newImages) => {
+            clearPendingQueue();
+            set(state => {
+                const otherImages = state.images.filter(img => img.directoryId !== directoryId);
+                return {
+                    images: [...otherImages, ...newImages],
+                };
+            });
         },
 
         mergeImages: (updatedImages) => {
