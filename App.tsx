@@ -250,12 +250,8 @@ export default function App() {
       }
     }
 
-    if (selectedImage && !lookup.has(selectedImage.id)) {
-      lookup.set(selectedImage.id, selectedImage);
-    }
-
     return lookup;
-  }, [safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [safeClusterNavigationContext, safeFilteredImages]);
 
   // --- Settings Store State ---
   const {
@@ -998,7 +994,12 @@ export default function App() {
       return undefined;
     }
 
-    return imageLookup.get(imageId);
+    const fastMatch = imageLookup.get(imageId);
+    if (fastMatch) {
+      return fastMatch;
+    }
+
+    return useImageStore.getState().images.find((image) => image.id === imageId);
   }, [imageLookup]);
 
   const resolveModalNavigationImageIds = useCallback((modal: OpenImageModalState) => {

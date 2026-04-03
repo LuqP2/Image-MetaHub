@@ -592,17 +592,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showOriginal, setShowOriginal] = useState(false);
 
   // Get live tags and favorite status from store instead of props
-  const thumbnail = useResolvedThumbnail(image);
+  const imageFromStore = useImageStore(
+    useCallback(
+      (state) => state.images.find((candidate) => candidate.id === image.id),
+      [image.id]
+    )
+  );
+  const liveImage = imageFromStore ?? image;
+  const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const showA1111Actions = !isVideo && a1111Enabled;
   const showComfyUIActions = !isVideo && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
-  const currentTags = image.tags || [];
-  const currentAutoTags = image.autoTags || [];
-  const currentIsFavorite = image.isFavorite ?? false;
-  const currentRating = image.rating ?? null;
+  const currentTags = liveImage.tags || [];
+  const currentAutoTags = liveImage.autoTags || [];
+  const currentIsFavorite = liveImage.isFavorite ?? false;
+  const currentRating = liveImage.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
@@ -2006,7 +2013,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Prompt Section - Always Visible */}
               <div className="space-y-3">
                 <ImageLineageSection
-                  image={image}
+                  image={liveImage}
                   metadata={nMeta}
                   onOpenImage={(targetImage) => {
                     setPreviewImage(targetImage);
