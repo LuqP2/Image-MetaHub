@@ -700,6 +700,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
+  const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
 
   // Missing state restored
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
@@ -1595,16 +1596,30 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }, [itemsToRender]);
 
   useEffect(() => {
-    if (isInfinite || itemsToRender.length === 0) {
+    if (isInfinite) {
+      if (releasePaginatedBackgroundPauseRef.current) {
+        releasePaginatedBackgroundPauseRef.current();
+        releasePaginatedBackgroundPauseRef.current = null;
+      }
       return;
     }
 
-    const primaryImages = collectWarmupImages(itemsToRender, 0, Math.min(itemsToRender.length - 1, 35));
-    const secondaryImages = collectWarmupImages(itemsToRender, 36, Math.min(itemsToRender.length - 1, 119));
+    const visiblePageImages = collectWarmupImages(itemsToRender, 0, itemsToRender.length - 1);
+    const keepImageIds = new Set(visiblePageImages.map((image) => image.id));
 
-    thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
-    thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
-  }, [isInfinite, itemsToRender]);
+    thumbnailManager.cancelQueuedJobs({ queue: 'all', keepImageIds });
+    releasePaginatedBackgroundPauseRef.current?.();
+    releasePaginatedBackgroundPauseRef.current = thumbnailManager.pauseBackgroundWork();
+
+    thumbnailManager.prefetchImages(visiblePageImages, 'high', { markLoading: false });
+
+    return () => {
+      if (releasePaginatedBackgroundPauseRef.current) {
+        releasePaginatedBackgroundPauseRef.current();
+        releasePaginatedBackgroundPauseRef.current = null;
+      }
+    };
+  }, [isInfinite, itemsToRender, currentPage]);
 
   // Use itemsToRender for calculations
   // const isInfinite = itemsPerPage === -1; // Moved to top

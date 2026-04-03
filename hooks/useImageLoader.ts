@@ -752,7 +752,7 @@ export function useImageLoader() {
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
+            const cachedData = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.imageCount > 0) {
                 setLineageDirectorySignature(directory.id, {
@@ -1327,9 +1327,8 @@ export function useImageLoader() {
 
                         for (const dir of directoriesToLoad) {
                             await loadDirectoryFromCache(dir);
+                            recomputeDerivedState();
                         }
-
-                        recomputeDerivedState();
 
                         const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
                         setSuccess(`Loaded ${directoriesToLoad.length} ${directoriesText} from cache.`);
