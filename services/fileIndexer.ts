@@ -1388,8 +1388,6 @@ if (rawMetadata) {
   if (!normalizedMetadata) {
     // Unknown metadata format, no parser applied
   }
-}
-
   if (!normalizedMetadata && isVideo && videoInfo) {
     normalizedMetadata = {
       prompt: '',
@@ -1413,6 +1411,7 @@ if (rawMetadata) {
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
+}
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
@@ -1477,6 +1476,56 @@ if (rawMetadata) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
     return null;
   }
+}
+
+export async function reparseIndexedImage(
+  image: IndexedImage,
+  directoryPath: string
+): Promise<IndexedImage | null> {
+  if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
+    throw new Error('Metadata reparsing is only available in the desktop app.');
+  }
+
+  const [, relativePath = image.name] = image.id.split('::');
+  const joined = await window.electronAPI.joinPaths(directoryPath, relativePath);
+  if (!joined.success || !joined.path) {
+    throw new Error(joined.error || 'Failed to resolve the image path.');
+  }
+
+  const absolutePath = joined.path;
+  const readResult = await window.electronAPI.readFile(absolutePath);
+  if (!readResult.success || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read the image file.');
+  }
+
+  const statsResult = window.electronAPI.getFileStats
+    ? await window.electronAPI.getFileStats(absolutePath)
+    : { success: false } as { success: boolean; stats?: any; error?: string };
+  const stats = statsResult.success ? statsResult.stats : undefined;
+  const bytes = new Uint8Array(readResult.data);
+  const fileData = bytes.slice().buffer;
+
+  const fileEntry: CatalogFileEntry = {
+    handle: {
+      name: image.name,
+      kind: 'file',
+      _filePath: absolutePath,
+    } as ElectronFileHandle,
+    path: relativePath,
+    lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : image.lastModified,
+    contentModifiedMs: typeof stats?.mtimeMs === 'number'
+      ? stats.mtimeMs
+      : (image.contentModifiedMs ?? image.lastModified),
+    size: typeof stats?.size === 'number' ? stats.size : image.fileSize,
+    type: image.fileType ?? inferMimeTypeFromName(image.name),
+    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+  };
+
+  return processSingleFileOptimized(
+    fileEntry,
+    image.directoryId || image.id.split('::')[0] || '',
+    fileData
+  );
 }
 
 /**

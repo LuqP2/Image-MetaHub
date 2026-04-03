@@ -504,6 +504,56 @@ class CacheManager {
     return writer;
   }
 
+  async updateCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron || !images || images.length === 0) return;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const existing = await this.getCachedData(directoryPath, scanSubfolders);
+    if (!existing) {
+      return;
+    }
+
+    const updates = new Map(
+      sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true }).map((image) => [image.id, image])
+    );
+
+    let didChange = false;
+    const metadata = existing.metadata.map((entry) => {
+      const next = updates.get(entry.id);
+      if (!next) {
+        return entry;
+      }
+      didChange = true;
+      return next;
+    });
+
+    if (!didChange) {
+      return;
+    }
+
+    const result = await window.electronAPI.cacheData({
+      cacheId,
+      data: {
+        id: existing.id,
+        directoryPath,
+        directoryName,
+        lastScan: Date.now(),
+        imageCount: metadata.length,
+        metadata,
+        parserVersion: PARSER_VERSION,
+      },
+    });
+
+    if (!result.success) {
+      console.error('Failed to update cached images:', result.error);
+    }
+  }
+
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
     if (!this.isElectron) return;
     const arrayBuffer = await blob.arrayBuffer();
