@@ -130,6 +130,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const thumbnail = useResolvedThumbnail(image);
   const suppressNextClickRef = useRef(false);
   const dragResetTimeoutRef = useRef<number | null>(null);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -261,6 +262,31 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     }, 0);
   };
 
+  const handlePointerLikeDown = (clientX: number, clientY: number, button: number) => {
+    if (!canDragExternally || button !== 0) {
+      pointerDownRef.current = null;
+      return;
+    }
+
+    pointerDownRef.current = { x: clientX, y: clientY };
+  };
+
+  const handlePointerLikeMove = (clientX: number, clientY: number, buttons: number) => {
+    if (!pointerDownRef.current || (buttons & 1) !== 1) {
+      return;
+    }
+
+    const deltaX = clientX - pointerDownRef.current.x;
+    const deltaY = clientY - pointerDownRef.current.y;
+    if (Math.abs(deltaX) >= 4 || Math.abs(deltaY) >= 4) {
+      suppressNextClickRef.current = true;
+    }
+  };
+
+  const clearPointerTracking = () => {
+    pointerDownRef.current = null;
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
@@ -274,6 +300,18 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           isFocused ? 'outline outline-2 outline-dashed outline-blue-400 outline-offset-2 z-10' : ''
         }`}
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
+        onMouseDown={(e) => {
+          handlePointerLikeDown(e.clientX, e.clientY, e.button);
+          if (enableAuxClickOpen && e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        onMouseMove={(e) => {
+          handlePointerLikeMove(e.clientX, e.clientY, e.buttons);
+        }}
+        onMouseUp={clearPointerTracking}
+        onMouseLeave={clearPointerTracking}
         onClick={(e) => {
           if (suppressNextClickRef.current) {
             e.preventDefault();
@@ -298,12 +336,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         onDoubleClick={(e) => {
           if (doubleClickToOpen) {
             onImageClick(image, e);
-          }
-        }}
-        onMouseDown={(e) => {
-          if (enableAuxClickOpen && e.button === 1) {
-            e.preventDefault();
-            e.stopPropagation();
           }
         }}
         onAuxClick={(e) => {
