@@ -2006,7 +2006,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Prompt Section - Always Visible */}
               <div className="space-y-3">
                 <ImageLineageSection
-                  image={imageFromStore ?? image}
+                  image={image}
                   metadata={nMeta}
                   onOpenImage={(targetImage) => {
                     setPreviewImage(targetImage);
