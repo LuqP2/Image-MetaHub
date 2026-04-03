@@ -10,24 +10,64 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
+type ThrottledFunction<T extends (...args: any[]) => any> = T & {
+  cancel: () => void;
+  flush: () => void;
+};
+
 // Simple throttle utility to avoid excessive progress updates
-function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): ThrottledFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastCall = 0;
+  let pendingArgs: Parameters<T> | null = null;
 
-  return ((...args: any[]) => {
+  const invoke = (args: Parameters<T>) => {
+    lastCall = Date.now();
+    pendingArgs = null;
+    func(...args);
+  };
+
+  const throttled = ((...args: Parameters<T>) => {
     const now = Date.now();
+    pendingArgs = args;
     if (now - lastCall >= delay) {
-      lastCall = now;
-      func(...args);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      invoke(args);
     } else {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        func(...args);
+        timeoutId = null;
+        if (pendingArgs) {
+          invoke(pendingArgs);
+        }
       }, delay - (now - lastCall));
     }
-  }) as T;
+  }) as ThrottledFunction<T>;
+
+  throttled.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    pendingArgs = null;
+  };
+
+  throttled.flush = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (pendingArgs) {
+      invoke(pendingArgs);
+    }
+  };
+
+  return throttled;
 }
 
 // Extended FileSystemFileHandle interface for Electron compatibility
@@ -2023,6 +2063,7 @@ export async function processFiles(
     detail: { elapsedMs: performance.now() - phaseAStats.startTime, files: phaseAStats.processed }
   });
 
+  throttledPhaseAProgress.cancel();
   if (totalNewFiles > 0) {
     setProgress({ current: totalNewFiles, total: totalNewFiles });
   }
