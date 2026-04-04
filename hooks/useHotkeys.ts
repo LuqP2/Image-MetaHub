@@ -40,7 +40,10 @@ export const useHotkeys = ({
   const { toggleViewMode, theme, setTheme, keymap } = useSettingsStore();
 
   const focusArea = (area: 'sidebar' | 'grid' | 'preview') => {
-    const element = document.querySelector<HTMLElement>(`[data-area='${area}']`);
+    const selector = area === 'sidebar'
+      ? '[data-sidebar-tree="true"]'
+      : `[data-area='${area}']`;
+    const element = document.querySelector<HTMLElement>(selector);
     if (element) {
       element.focus();
     }

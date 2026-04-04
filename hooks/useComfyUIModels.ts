@@ -6,12 +6,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
+import {
+  buildComfyUIResourceCatalog,
+  type ComfyUIModelResource,
+} from '../services/comfyUIWorkflowBuilder';
 
 export interface ComfyUIResources {
-  checkpoints: string[];
+  models: ComfyUIModelResource[];
   loras: string[];
   samplers: string[];
   schedulers: string[];
+  objectInfo?: Record<string, any> | null;
 }
 
 interface UseComfyUIModelsReturn {
@@ -37,34 +42,21 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
     try {
       const client = new ComfyUIApiClient({ serverUrl: comfyUIServerUrl });
       const objectInfo = await client.getObjectInfo();
-
-      // Parse CheckpointLoaderSimple for available checkpoints
-      const checkpoints: string[] =
-        objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
-
-      // Parse LoraLoader for available LoRAs
-      const loras: string[] =
-        objectInfo?.LoraLoader?.input?.required?.lora_name?.[0] || [];
-
-      // Parse KSampler for available samplers and schedulers
-      const samplers: string[] =
-        objectInfo?.KSampler?.input?.required?.sampler_name?.[0] || [];
-
-      const schedulers: string[] =
-        objectInfo?.KSampler?.input?.required?.scheduler?.[0] || [];
+      const catalog = buildComfyUIResourceCatalog(objectInfo);
 
       setResources({
-        checkpoints,
-        loras,
-        samplers,
-        schedulers,
+        models: catalog.models,
+        loras: catalog.loras,
+        samplers: catalog.samplers,
+        schedulers: catalog.schedulers,
+        objectInfo,
       });
 
       console.log('[useComfyUIModels] Fetched resources:', {
-        checkpoints: checkpoints.length,
-        loras: loras.length,
-        samplers: samplers.length,
-        schedulers: schedulers.length,
+        models: catalog.models.length,
+        loras: catalog.loras.length,
+        samplers: catalog.samplers.length,
+        schedulers: catalog.schedulers.length,
       });
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to fetch ComfyUI resources';

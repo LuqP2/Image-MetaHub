@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Directory } from '../types';
 import { FolderOpen, RotateCcw, Trash2, ChevronDown, Folder, FolderTree, X, EyeOff, Eye } from 'lucide-react';
 
@@ -25,6 +25,16 @@ interface SubfolderNode {
   name: string;
   path: string;
   relativePath: string;
+}
+
+interface VisibleDirectoryNode {
+  key: string;
+  path: string;
+  parentKey: string | null;
+  depth: number;
+  hasSubfolders: boolean;
+  isExpanded: boolean;
+  rootDirectory: Directory;
 }
 
 const normalizePath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -76,6 +86,8 @@ export default function DirectoryList({
     y: number;
     path: string;
   } | null>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const treeKeyboardActiveRef = useRef(false);
 
   const loadSubfolders = useCallback(async (
     nodeKey: string,
@@ -179,8 +191,10 @@ export default function DirectoryList({
     event: React.MouseEvent
   ) => {
     event.stopPropagation();
+    treeKeyboardActiveRef.current = true;
+    treeRef.current?.focus({ preventScroll: true });
     if (!onToggleFolderSelection) return;
-    onToggleFolderSelection(path, event.ctrlKey);
+    onToggleFolderSelection(path, event.ctrlKey || event.metaKey);
   }, [onToggleFolderSelection]);
 
   const handleContextMenu = useCallback((
@@ -225,7 +239,7 @@ export default function DirectoryList({
           <div
             className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
-                ? 'bg-blue-600/30 hover:bg-blue-600/40'
+                ? 'bg-gray-800 hover:bg-gray-700/70'
                 : 'hover:bg-gray-700/50'
             }`}
             onClick={(e) => handleFolderClick(child.path, e)}
@@ -262,7 +276,7 @@ export default function DirectoryList({
                         }}
                         disabled={isIndexing}
                         className={`p-1 rounded hover:bg-gray-600 transition-colors ${
-                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-blue-400'
+                            isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-100'
                         }`}
                         title="Include folder"
                     >
@@ -328,8 +342,202 @@ export default function DirectoryList({
     });
   }, [expandedNodes, handleFolderClick, handleContextMenu, handleToggleNode, isFolderSelected, loadingNodes, subfolderCache, excludedFolders]);
 
+  const visibleNodes = useMemo<VisibleDirectoryNode[]>(() => {
+    const nodes: VisibleDirectoryNode[] = [];
+
+    const appendChildren = (
+      rootDirectory: Directory,
+      parentKey: string,
+      depth: number,
+    ) => {
+      const children = subfolderCache.get(parentKey) || [];
+
+      for (const child of children) {
+        const childKey = makeNodeKey(rootDirectory.id, child.relativePath);
+        const hasSubfolders =
+          loadingNodes.has(childKey) ||
+          !subfolderCache.has(childKey) ||
+          (subfolderCache.get(childKey)?.length ?? 0) > 0;
+        const isExpandedNode = expandedNodes.has(childKey);
+
+        nodes.push({
+          key: childKey,
+          path: child.path,
+          parentKey,
+          depth,
+          hasSubfolders,
+          isExpanded: isExpandedNode,
+          rootDirectory,
+        });
+
+        if (isExpandedNode && hasSubfolders) {
+          appendChildren(rootDirectory, childKey, depth + 1);
+        }
+      }
+    };
+
+    for (const dir of directories) {
+      const rootKey = makeNodeKey(dir.id, '');
+      const hasSubfolders =
+        loadingNodes.has(rootKey) ||
+        !subfolderCache.has(rootKey) ||
+        (subfolderCache.get(rootKey)?.length ?? 0) > 0;
+      const isExpandedNode = expandedNodes.has(rootKey);
+
+      nodes.push({
+        key: rootKey,
+        path: dir.path,
+        parentKey: null,
+        depth: 0,
+        hasSubfolders,
+        isExpanded: isExpandedNode,
+        rootDirectory: dir,
+      });
+
+      if (scanSubfolders && isExpandedNode && hasSubfolders) {
+        appendChildren(dir, rootKey, 1);
+      }
+    }
+
+    return nodes;
+  }, [directories, expandedNodes, loadingNodes, scanSubfolders, subfolderCache]);
+
+  useEffect(() => {
+    const handleGlobalPointerDown = (event: MouseEvent) => {
+      if (!treeRef.current?.contains(event.target as Node)) {
+        treeKeyboardActiveRef.current = false;
+      }
+    };
+
+    const handleGlobalFocusIn = (event: FocusEvent) => {
+      if (!treeRef.current?.contains(event.target as Node)) {
+        treeKeyboardActiveRef.current = false;
+      }
+    };
+
+    document.addEventListener('mousedown', handleGlobalPointerDown, true);
+    document.addEventListener('focusin', handleGlobalFocusIn);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalPointerDown, true);
+      document.removeEventListener('focusin', handleGlobalFocusIn);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!treeKeyboardActiveRef.current || !visibleNodes.length || !onToggleFolderSelection) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const isTyping = !!target?.closest('input, textarea, select, [contenteditable="true"]');
+      const isInModal = document.querySelector('[role="dialog"]') !== null;
+      if (isTyping || isInModal) {
+        return;
+      }
+
+      const selectedPaths = Array.from(selectedFolders);
+      const selectedIndex = visibleNodes.findIndex((node) =>
+        selectedPaths.includes(normalizePath(node.path))
+      );
+      const currentIndex = selectedIndex >= 0 ? selectedIndex : 0;
+      const currentNode = visibleNodes[currentIndex];
+      const pageStep = Math.max(5, Math.min(12, visibleNodes.length > 20 ? 10 : 5));
+
+      const selectNodeAt = (index: number) => {
+        const safeIndex = Math.max(0, Math.min(visibleNodes.length - 1, index));
+        if (selectedIndex >= 0 && safeIndex === currentIndex) {
+          treeRef.current?.focus({ preventScroll: true });
+          return;
+        }
+        onToggleFolderSelection(visibleNodes[safeIndex].path, false);
+        treeRef.current?.focus({ preventScroll: true });
+      };
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectNodeAt(currentIndex + 1);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectNodeAt(currentIndex - 1);
+        return;
+      }
+
+      if (event.key === 'PageDown') {
+        event.preventDefault();
+        selectNodeAt(currentIndex + pageStep);
+        return;
+      }
+
+      if (event.key === 'PageUp') {
+        event.preventDefault();
+        selectNodeAt(currentIndex - pageStep);
+        return;
+      }
+
+      if (event.key === 'Home') {
+        event.preventDefault();
+        selectNodeAt(0);
+        return;
+      }
+
+      if (event.key === 'End') {
+        event.preventDefault();
+        selectNodeAt(visibleNodes.length - 1);
+        return;
+      }
+
+      if (event.key === 'ArrowRight' && scanSubfolders && currentNode.hasSubfolders) {
+        event.preventDefault();
+        if (!currentNode.isExpanded) {
+          handleToggleNode(currentNode.key, currentNode.path, currentNode.rootDirectory);
+          return;
+        }
+
+        const nextNode = visibleNodes[currentIndex + 1];
+        if (nextNode && nextNode.parentKey === currentNode.key) {
+          selectNodeAt(currentIndex + 1);
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (currentNode.isExpanded && currentNode.hasSubfolders) {
+          handleToggleNode(currentNode.key, currentNode.path, currentNode.rootDirectory);
+          return;
+        }
+
+        if (currentNode.parentKey) {
+          const parentIndex = visibleNodes.findIndex((node) => node.key === currentNode.parentKey);
+          if (parentIndex >= 0) {
+            selectNodeAt(parentIndex);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleToggleNode, onToggleFolderSelection, scanSubfolders, selectedFolders, visibleNodes]);
+
   return (
-    <div className="border-b border-gray-700">
+    <div
+      ref={treeRef}
+      className="border-b border-gray-700 outline-none"
+      data-sidebar-tree="true"
+      tabIndex={0}
+      onFocus={() => {
+        treeKeyboardActiveRef.current = true;
+      }}
+      onMouseDownCapture={() => {
+        treeKeyboardActiveRef.current = true;
+      }}
+    >
       <div
         role="button"
         tabIndex={0}
@@ -356,7 +564,7 @@ export default function DirectoryList({
               }}
               className={`p-1.5 rounded-md border transition-all ${
                 includeSubfolders
-                  ? 'bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600/30'
+                  ? 'bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700'
                   : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
               }`}
               title={includeSubfolders ? 'Including subfolders (Recursive)' : 'Direct folder only (Flat)'}
@@ -406,17 +614,17 @@ export default function DirectoryList({
                   <div
                     className={`relative overflow-hidden flex items-center justify-between p-2 rounded-md transition-colors ${
                       isRootSelected
-                        ? 'bg-blue-600/30 hover:bg-blue-600/40'
+                        ? 'bg-gray-800 hover:bg-gray-700/70'
                         : 'bg-gray-800 hover:bg-gray-700/50'
                     }`}
                   >
                     {progressEntry && (
                       <div className="absolute inset-0 pointer-events-none">
                         {isScanning ? (
-                          <div className="absolute inset-0 bg-blue-500/10 animate-pulse" />
+                          <div className="absolute inset-0 bg-gray-200/5 animate-pulse" />
                         ) : (
                           <div
-                            className="absolute inset-y-0 left-0 bg-blue-500/20 transition-[width] duration-300 ease-out"
+                            className="absolute inset-y-0 left-0 bg-gray-200/10 transition-[width] duration-300 ease-out"
                             style={{ width: `${progressPercent}%` }}
                           />
                         )}
@@ -453,7 +661,7 @@ export default function DirectoryList({
                     <div className="relative z-10 flex items-center space-x-2 flex-shrink-0">
                       {progressEntry && (
                         <span
-                          className="text-[10px] font-medium text-blue-300 tabular-nums"
+                          className="text-[10px] font-medium text-gray-300 tabular-nums"
                           title={isScanning ? 'Scanning folder...' : `${progressEntry.current} / ${progressEntry.total} items loaded`}
                         >
                           {isScanning ? 'Scanning...' : `${Math.round(progressPercent)}%`}
@@ -473,7 +681,7 @@ export default function DirectoryList({
                         disabled={isIndexing || isRefreshing}
                         className={`transition-colors ${
                           isRefreshing
-                            ? 'text-blue-400'
+                            ? 'text-gray-200'
                             : isIndexing
                               ? 'text-gray-600 cursor-not-allowed'
                               : 'text-gray-400 hover:text-gray-50'

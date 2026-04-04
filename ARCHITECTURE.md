@@ -1,242 +1,412 @@
 # Architecture Documentation
 
-## Project Overview
+## Overview
 
-**Image MetaHub** is a React + Electron desktop application for browsing large collections of AI generated images. The app focuses on fast indexing, rich metadata filters, and fully local processing so that libraries remain private.
+**Image MetaHub** is an Electron + React desktop application for browsing and organizing large local libraries of AI-generated images and videos. The application is local-first: indexing, metadata extraction, filtering, caching, tagging, lineage, and most generation workflows run on the user's machine.
 
-### Current Version
+### Current Stack
 
-- **Version:** 0.13.2
-- **Frontend:** React 18 + TypeScript with Tailwind CSS 3.4
-- **Desktop Shell:** Electron 38 with auto-update hooks and CLI entry point
-- **State Management:** Zustand stores for both image data and application settings
-- **Build Tooling:** Vite 5 for development and bundling, Vitest for unit tests, ESLint 9 for linting
+* **Version:** 0.14.0
+* **Renderer:** React 18 + TypeScript
+* **Desktop shell:** Electron 38
+* **State management:** Zustand
+* **Build/dev:** Vite 7, TypeScript 5, ESLint 9, Vitest 3
+* **Styling:** Tailwind CSS 3
 
-### Release Highlights (v0.13.0)
+## Application Shape
 
-- **Video & GIF Support**: Full indexing and playback support for MP4, WEBM, and GIF files.
-- **Image Stacking Navigation**: Drill-down navigation for prompt-based stacks with maintaining context.
-- **Subfolder Management**: Ability to exclude specific subfolders and partial folder refresh.
-- **Shadow Metadata**: Non-destructive metadata editing with "View Original" and "Revert" capabilities.
-- **Indexing Performance**: Switch to synchronous I/O for header reads, reducing disk contention and improving speed by ~98%.
-- **Random Sort**: New sorting option with reshuffle capability.
+The renderer is centered around `App.tsx`, which coordinates:
 
-## Runtime Architecture
+* the main **Library** view
+* the **Smart Library** view
+* the **Model View**
+* the **multi-window image viewer**
+* the **comparison modal**
+* the **analytics modal**
+* generation modals and the shared generation queue sidebar
 
-### UI Layer
+The app is designed so the heavy work happens outside the tight render loop:
 
-- **App Shell (`App.tsx`)** orchestrates data loading, sidebar layout, and modal visibility. It wires store selectors into presentation components and passes directory visibility callbacks into `DirectoryList`.
-- **Sidebar (`components/Sidebar.tsx`)** hosts the directory tree, metadata filters, and provides a scroll container shared across both areas.
-- **Directory Tree (`components/DirectoryList.tsx`)** renders folders with tri-state checkboxes. Each node lazily requests subfolders through the Electron preload bridge and applies inherited selection state to descendants.
-- **Folder Selector (`components/FolderSelector.tsx`)** is shown before any directory is loaded. It enables recursive scanning on mount and introduces the refreshed logo artwork during onboarding.
-- **Status surfaces** such as `components/Header.tsx` and `components/StatusBar.tsx` expose the unified `v0.9.5` version information for quick sanity checks.
-- **Performance Patterns (v0.10.5)**: Critical components like `ImageCard` and `ImageTableRow` use `React.memo` with custom comparison functions to prevent unnecessary re-renders. Expensive operations like drag-to-select use `requestAnimationFrame` throttling, and filter inputs are debounced (300ms) to reduce computational overhead.
-- **Shadow Metadata Editor (v0.13.0)**: The `ImageModal` now supports a "Shadow Metadata" mode, allowing users to edit metadata without modifying the actual file. It uses a `shadowMetadata` property on the image object to store overrides, with UI controls to view original vs. edited values and revert changes.
+* indexing and metadata parsing are incremental
+* clustering and auto-tagging run in workers
+* thumbnails are cached and loaded separately from the main image list
+* stores use granular selectors to reduce renderer churn
 
-### State Management
+## Major Runtime Subsystems
 
-- **Image Store (`store/useImageStore.ts`)** keeps the indexed image catalog, filter options, and folder visibility map. A `Map<string, 'checked' | 'unchecked'>` tracks which directories contribute images. Helper utilities normalize paths so the selection logic works across Windows and POSIX separators.
-- **Performance Optimizations (v0.10.5)**: Components use granular Zustand selectors (e.g., `useImageStore(state => state.filteredImages)`) instead of mass destructuring to minimize unnecessary re-renders. This pattern reduces re-render cascades by 40-60% when unrelated store state changes.
-- **Selection Rules:** `setFolderSelectionState` applies tri-state behaviour. When a folder is unchecked with `applyToDescendants`, the action propagates to every descendant path. Conversely, `clearDescendantOverrides` marks a branch as fully included. `getFolderSelectionState` falls back to treating root folders as included when no explicit preference exists.
-- **Persistence:** `initializeFolderSelection` loads stored visibility preferences, while every mutation schedules `saveFolderSelection` so that IndexedDB remains in sync across restarts.
-- **Settings Store (`store/useSettingsStore.ts`)** keeps secondary preferences such as image size, view mode, cache location, and auto update toggles.
+### 1. Renderer Shell and UI Surfaces
 
-### Persistence & Local Storage
+**Core entry points**
 
-- **Folder Selection Storage (`services/folderSelectionStorage.ts`)** wraps IndexedDB access with graceful fallbacks. If IndexedDB is unavailable or corrupted the module disables persistence and relies on in-memory storage to avoid blocking the UI.
-- **Cache Manager (`services/cacheManager.ts`)** writes indexed metadata and thumbnails to disk for Electron builds. Cache keys incorporate the directory path plus the recursive/flat flag to prevent stale cross-contamination when folder depth preferences change.
-- **Local Storage** is used for lightweight preferences (e.g., last known `scanSubfolders` value) to bootstrap Zustand state before IndexedDB hydration finishes.
+* `App.tsx` orchestrates folders, library state, global modals, and top-level view switching.
+* `components/Header.tsx` exposes view mode switching, generation entry points, analytics access, safe mode, and Smart Library actions.
+* `components/Sidebar.tsx` contains the current sidebar filter experience:
+  * search
+  * active filter chips
+  * tags, favorites, and auto-tags
+  * faceted include/exclude sections for checkpoints, LoRAs, samplers, and schedulers
+  * advanced numeric/date filters
+* `components/DirectoryList.tsx` handles indexed folder navigation, subfolder visibility, exclusion, and auto-watch controls.
 
-### Directory Visibility Flow
+**Main browsing surfaces**
 
-1. **Onboarding** – `FolderSelector` forces `scanSubfolders` to `true`, ensuring the first indexing pass includes every nested folder.
-2. **Initialization** – `initializeFolderSelection` hydrates the folder-selection map before images are filtered so that visibility settings apply immediately when directories load.
-3. **Interaction** – `DirectoryList` renders each root directory and its lazily loaded descendants. The `FolderCheckbox` component computes the partial state by inspecting descendant selections and sets the HTML `indeterminate` flag for tri-state visuals.
-4. **Persistence** – Calling `setFolderSelectionState` updates the in-memory map, re-filters images, and saves the map through `saveFolderSelection`.
+* `components/ImageGrid.tsx` and `components/ImageTable.tsx` render the main library in grid/list form.
+* `components/ImageModal.tsx` is now a windowed viewer surface with move, resize, minimize/maximize, and dock/collapse behavior.
+* `components/ImagePreviewSidebar.tsx` shows metadata, telemetry, and generation actions in the side preview flow.
+* `components/ImageLineageSection.tsx` resolves source and derived images for transformation workflows.
 
-### File Indexing Pipeline
+**Pro surfaces**
 
-- **Discovery (`services/fileIndexer.ts`)** walks directories either recursively or flat based on the `scanSubfolders` flag. It extracts metadata through parser modules that understand InvokeAI, Automatic1111, ComfyUI, DreamStudio, Fooocus, SD.Next, SwarmUI, Midjourney, Draw Things, and more. It now supports video files (MP4, WEBM) and animations (GIF), extracting duration and dimensions where applicable.
-- **Caching (`services/cacheManager.ts`)** persists intermediate results so subsequent launches only process new or changed files.
-- **Enrichment (`hooks/useImageLoader.ts`)** coordinates indexing jobs, respects user-controlled concurrency, and updates progress indicators exposed through `useImageStore`.
+* `components/ComparisonModal.tsx` compares exactly two images with side-by-side, slider, and hover modes.
+* `components/Analytics.tsx` renders usage and telemetry dashboards.
+* `components/A1111GenerateModal.tsx` and `components/ComfyUIGenerateModal.tsx` expose generation controls.
 
-### Smart Library & Clustering
+### 2. State Stores
 
-- **Clustering Engine (`services/clusteringEngine.ts`)** computes similarity-based stacks using Jaccard/Levenshtein hybrid scoring with prompt normalization in `utils/similarityMetrics.ts`.
-- **Clustering Worker (`services/workers/clusteringWorker.ts`)** runs clustering off the main thread and streams progress updates for large datasets.
-- **Cluster Cache (`services/clusterCacheManager.ts`)** persists stack results with atomic writes and Electron `userData` fallbacks for crash-safe storage.
+The app uses several focused Zustand stores rather than a single monolith.
 
-### Auto-Tagging & Deduplication
+**`store/useImageStore.ts`**
 
-- **Auto-Tagging Engine (`services/autoTaggingEngine.ts`)** builds a TF-IDF model and emits suggested tags, persisted alongside indexed images.
-- **Auto-Tagging Worker (`services/workers/autoTaggingWorker.ts`)** handles long-running tag generation with cancellation support.
-- **Deduplication Engine (`services/deduplicationEngine.ts`)** scores images for keep/archive suggestions (favorites -> file size -> creation date), surfaced in `components/DeduplicationHelper.tsx`.
+This is the core application store. It owns:
 
-### ComfyUI Parser Architecture (Recent Refactoring)
+* indexed images and directory metadata
+* filter state and filtered results
+* selected images and navigation context
+* thumbnail status
+* stacking and Smart Library state
+* comparison state
+* annotations, favorites, tags, and shadow metadata
+* directory progress, enrichment progress, and transfer progress
+* clustering and auto-tagging worker state
 
-The ComfyUI parser (`services/parsers/comfyui/`) underwent major architectural improvements to separate data extraction from presentation logic:
+It also contains the central filter pipeline, including:
 
-**Core Components:**
+* search terms
+* include/exclude facets
+* auto-tag filters
+* favorite mode
+* safe mode
+* advanced filters such as dimensions, steps, CFG, dates, and verified telemetry
 
-- **traversalEngine.ts**: Graph traversal with generic accumulation system
-  - `resolveFacts()`: Returns type-safe `WorkflowFacts` object with structured metadata
-  - `checkIfParamNeedsAccumulation()`: Generic accumulation detection based on `accumulate: boolean` flag
-  - Replaced hardcoded LoRA collection with declarative parameter rules
-- **nodeRegistry.ts**: Declarative node definitions with enhanced parameter mapping
-  - `WorkflowFacts` interface: Structured type for prompts, model, loras, sampling params, dimensions
-  - `accumulate` flag: Mark parameters for multi-node collection (e.g., LoRAs)
-- **extractors.ts**: Reusable extraction functions
-  - `concatTextExtractor`, `extractLorasFromText`, `removeLoraTagsFromText`, `cleanWildcardText`, `extractLorasFromStack`, `getWildcardOrPopulatedText`
-  - Reduces code duplication by 80-90% across node definitions (ttN concat: 45→5 lines, CR LoRA Stack: 40→3 lines)
+**`store/useSettingsStore.ts`**
 
-**Benefits:**
+Persists user preferences such as:
 
-- Type-safe metadata access with autocomplete and compile-time checks
-- Easier addition of new nodes (just mark `accumulate: true` in registry)
-- Better testability with structured outputs
-- Reduced technical debt through reusable extraction patterns
+* sort order and view mode
+* thumbnail/file path display settings
+* indexing concurrency
+* global auto-watch
+* safe mode preferences
+* theme
+* keyboard shortcuts
+* A1111 and ComfyUI endpoints
 
-### Desktop Integration
+In Electron, this store persists through the settings IPC bridge rather than plain browser storage.
 
-- **Electron Main Process (`electron.mjs`)** configures the BrowserWindow title (`Image MetaHub v0.9.5`), wires IPC handlers for file operations, and manages auto-update prompts.
-- **Preload Bridge (`preload.js`)** exposes a sandboxed `electronAPI` with directory listing, file stats, and shell helpers used by the directory tree.
-- **CLI (`cli.ts`)** provides command-line indexing utilities with the same version stamp (`0.9.5-rc`) displayed in the desktop UI.
+**`store/useLicenseStore.ts`**
 
-### A1111 Integration
+Owns the offline license and trial state:
 
-The application provides bidirectional workflow with Automatic1111 WebUI, enabling users to send image metadata back to A1111 for editing or quick regeneration.
+* free / trial / expired / pro / lifetime status
+* 7-day trial activation
+* offline license key validation
 
-**Architecture:**
+**`store/useGenerationQueueStore.ts`**
 
-- **API Client (`services/a1111ApiClient.ts`)** handles REST communication with A1111's `/sdapi/v1` endpoints (options, samplers, txt2img)
-- **Formatter (`utils/a1111Formatter.ts`)** converts normalized metadata to A1111's three-line format compatible with "Read generation parameters" feature
-- **React Hooks** provide two workflows:
-  - `useCopyToA1111.ts`: Clipboard-based workflow for manual editing
-  - `useGenerateWithA1111.ts`: Direct API generation (always autoStart)
+Tracks generation jobs across providers:
 
-**UI Surface:**
+* queued, processing, done, failed, and canceled states
+* provider-specific payload needed for retry
+* currently active provider job
 
-- Split button in `ImagePreviewSidebar.tsx` and `ImageModal.tsx` (Copy primary, Generate in dropdown)
-- Context menu items in `ImageGrid.tsx` via `useContextMenu.ts`
-- Settings panel in `SettingsModal.tsx` for server URL configuration and connection testing
+The queue is synchronized by `hooks/useGenerationQueueSync.ts`.
 
-**Configuration:**
+## Indexing and Metadata Pipeline
 
-- Settings stored in `useSettingsStore.ts`: server URL (default: `http://127.0.0.1:7860`), connection status
-- User must launch A1111 with `--api` and `--cors-allow-origins` flags
-- 3-minute timeout for generation requests to accommodate slower models
+### Discovery and File Scanning
 
-### Project Structure
+Folder discovery starts in the renderer but uses Electron IPC for filesystem-heavy work. The app can scan flat or recursive directory trees and maintains per-directory progress feedback.
 
-```
+Key pieces:
+
+* `services/fileIndexer.ts`
+* `hooks/useImageLoader.ts`
+* `electron.mjs`
+* `preload.js`
+
+The pipeline supports:
+
+* incremental indexing
+* cache hydration on startup
+* progressive batch delivery to the renderer
+* directory-scoped progress reporting
+* watcher-driven refreshes
+
+### Metadata Engine
+
+Raw metadata extraction is handled by `services/metadataEngine.ts`.
+
+It reads:
+
+* PNG `tEXt` / `iTXt`
+* JPEG/WEBP EXIF/XMP/comment payloads
+* sidecar-style embedded JSON where applicable
+* video container metadata and `ffprobe` output for supported video formats
+
+The output is then normalized by `services/parsers/metadataParserFactory.ts`, which dispatches to generator-specific parsers such as:
+
+* `services/parsers/automatic1111Parser.ts`
+* `services/parsers/comfyUIParser.ts`
+* `services/parsers/invokeAIParser.ts`
+* `services/parsers/forgeParser.ts`
+* `services/parsers/sdNextParser.ts`
+* `services/parsers/drawThingsParser.ts`
+* `services/parsers/videoMetaHubParser.ts`
+
+### ComfyUI Parser
+
+ComfyUI parsing is the most sophisticated parser path and combines two layers:
+
+* `services/parsers/comfyUIParser.ts` for top-level detection, workflow/prompt merging, lineage extraction, and normalization
+* `services/parsers/comfyui/` for the declarative graph traversal system
+
+The `services/parsers/comfyui/` subsystem includes:
+
+* `nodeRegistry.ts` for node definitions and parameter mapping
+* `traversalEngine.ts` for backward graph traversal and fact resolution
+* `extractors.ts` for reusable prompt/LoRA/wildcard extraction helpers
+* `types.ts` for `WorkflowFacts` and parser graph types
+
+This parser feeds:
+
+* prompt/model/sampler extraction
+* richer LoRA detection
+* parser telemetry
+* lineage data for transformed images
+* workflow-native ComfyUI regeneration
+
+### Cache and Thumbnails
+
+Metadata and thumbnails are cached separately.
+
+**Metadata cache**
+
+* `services/cacheManager.ts` stores normalized image metadata in chunked cache files.
+* Parser/cache versioning is used to invalidate stale cache when metadata logic changes.
+* Writes are incremental to avoid large all-at-once cache flushes.
+
+**Thumbnail cache**
+
+* `services/thumbnailManager.ts` generates and reuses thumbnails.
+* Video thumbnails are generated from captured frames.
+* Thumbnail state is intentionally decoupled from the main image collection to avoid full-list re-renders as thumbnails arrive.
+
+## Filtering, Tags, and Curation
+
+The current filter system is intentionally explicit rather than implicit.
+
+### Sidebar Facets
+
+`components/FacetFilterSection.tsx` powers the current include/exclude facet UI for:
+
+* checkpoints
+* LoRAs
+* samplers
+* schedulers
+
+Each facet supports:
+
+* include and exclude actions per value
+* per-value result counts
+* local search inside the facet
+* pinning of active values at the top
+
+### Tags and Favorites
+
+`components/TagsAndFavorites.tsx` surfaces:
+
+* favorites include/exclude mode
+* manual tags
+* TF-IDF auto-tags
+
+Auto-tags support include/exclude cycling. Manual tags and favorites are persisted through the image annotation storage layer.
+
+### Annotations and Shadow Metadata
+
+Non-destructive metadata editing and annotations are split across:
+
+* `hooks/useShadowMetadata.ts`
+* `components/MetadataEditorModal.tsx`
+* `services/imageAnnotationsStorage.ts`
+
+This layer allows:
+
+* favorites
+* manual tags
+* notes imported from MetaHub Save payloads
+* shadow metadata overrides without overwriting the original file metadata
+
+## Smart Library
+
+The Smart Library is a separate browsing mode for similarity-based organization.
+
+**Main pieces**
+
+* `components/SmartLibrary.tsx`
+* `components/StackCard.tsx`
+* `components/StackExpandedView.tsx`
+* `components/DeduplicationHelper.tsx`
+* `components/SmartCollectionsSidebar.tsx`
+
+**Engines**
+
+* `services/clusteringEngine.ts`
+* `services/workers/clusteringWorker.ts`
+* `services/clusterCacheManager.ts`
+* `services/autoTaggingEngine.ts`
+* `services/workers/autoTaggingWorker.ts`
+* `services/deduplicationEngine.ts`
+
+Clustering and auto-tagging are deliberately offloaded to workers because they are CPU-heavy and operate over the full filtered image set.
+
+## Comparison and Analytics
+
+### Comparison
+
+`components/ComparisonModal.tsx` compares two images and coordinates:
+
+* synchronized zoom state
+* side-by-side rendering
+* overlay-based slider and hover modes
+* metadata diff vs standard view
+
+### Analytics
+
+`components/Analytics.tsx` uses `utils/analyticsUtils.ts` to compute:
+
+* period-based counts
+* top checkpoints / LoRAs / samplers
+* usage trends over time
+* habits by day/hour
+* telemetry coverage
+* performance by GPU
+* generation time distributions
+
+Telemetry detection itself is centralized in `utils/telemetryDetection.ts`.
+
+## Generation Integrations
+
+### Automatic1111
+
+The A1111 integration is built around:
+
+* `services/a1111ApiClient.ts`
+* `hooks/useCopyToA1111.ts`
+* `hooks/useGenerateWithA1111.ts`
+* `utils/a1111Formatter.ts`
+
+Two workflows are supported:
+
+* copy normalized parameters for manual import into A1111
+* call the A1111 API directly for quick regeneration
+
+### ComfyUI
+
+The ComfyUI integration is broader and currently spans:
+
+* `services/comfyUIApiClient.ts`
+* `services/comfyUIWorkflowBuilder.ts`
+* `services/comfyUIVisualWorkflow.ts`
+* `components/ComfyUIGenerateModal.tsx`
+* `components/ComfyUIWorkflowVisualEditor.tsx`
+* `hooks/useCopyToComfyUI.ts`
+* `hooks/useGenerateWithComfyUI.ts`
+* `hooks/useComfyUIModels.ts`
+* `contexts/ComfyUIProgressContext.tsx`
+
+The current behavior supports:
+
+* `original` workflow mode when an executable prompt graph exists
+* `simple` rebuild mode from normalized metadata
+* workflow patching with model/LoRA/source-image overrides
+* visual editing of supported node fields
+* advanced JSON editing for edge cases
+* WebSocket progress updates
+* queue persistence and retry
+
+## Desktop Integration
+
+### Electron Main Process
+
+`electron.mjs` owns:
+
+* BrowserWindow lifecycle
+* auto-update wiring
+* settings file reads/writes with atomic replacement and recovery paths
+* filesystem IPC handlers
+* folder watching
+* export/ZIP/transfer operations
+* video metadata reading via `ffprobe`
+* clipboard and drag-and-drop helpers
+
+### Preload Bridge
+
+`preload.js` exposes a constrained `window.electronAPI` surface for:
+
+* directory discovery
+* file reads and stats
+* cache and thumbnail operations
+* watcher events
+* settings persistence
+* export, transfer, and drag/drop helpers
+
+The renderer does not access Node APIs directly.
+
+### CLI
+
+`cli.ts` exposes a small command-line interface for:
+
+* `parse` to inspect metadata for a single file
+* `index` to emit JSONL for a directory
+
+Both commands reuse the same metadata engine as the desktop app.
+
+## Project Layout
+
+```text
 .
 ├── App.tsx
-├── components/
-│   ├── DirectoryList.tsx
-│   ├── FolderSelector.tsx
-│   ├── Header.tsx
-│   ├── Sidebar.tsx
-│   └── ...
-├── hooks/
-│   ├── useImageLoader.ts
-│   ├── useHotkeys.ts
-│   └── ...
-├── scripts/
-│   ├── release-workflow.js
-│   ├── generate-release.js
-│   └── ...
-├── services/
-│   ├── cacheManager.ts
-│   ├── fileIndexer.ts
-│   ├── folderSelectionStorage.ts
-│   └── parsers/
-├── store/
-│   ├── useImageStore.ts
-│   └── useSettingsStore.ts
-├── public/
-│   ├── logo1.svg
-│   └── icon.ico
-└── ...
+├── components/        # UI components and modal surfaces
+├── contexts/          # A1111 / ComfyUI progress contexts
+├── hooks/             # Renderer hooks and integration adapters
+├── services/          # Indexing, parsing, generation, caching, workers
+├── store/             # Zustand stores
+├── utils/             # Formatting, lineage, analytics, telemetry helpers
+├── __tests__/         # Vitest coverage
+├── electron.mjs       # Electron main process
+├── preload.js         # Electron preload bridge
+├── cli.ts             # CLI entry point
+└── scripts/           # Release, sync, and maintenance automation
 ```
 
-### Testing & Tooling
+## Testing and Release Notes
 
-- **Vitest** powers unit tests for the parser suite and utility layers.
-- **ESLint** enforces consistent code style, especially across the large parser surface.
-- **Pre-release scripts** (`generate-release.js`, `auto-release.js`, etc.) automate changelog syncing and release packaging.
+**Testing**
 
-## Version Update Guide
+* Vitest is used for parser, workflow-builder, lineage, and store/filter tests.
+* The heaviest regression surface is metadata parsing, especially ComfyUI graph handling and normalization.
 
-When updating the application version, the following files must be updated to ensure consistency across all components:
+**Release workflow**
 
-### Required Version Updates
+Top-level release automation lives in:
 
-1. **package.json** (line 6)
-   - Update the `"version"` field to the new version number
-   - This is the canonical version used by Electron's `app.getVersion()`
+* `generate-release.js`
+* `scripts/auto-release.js`
+* `scripts/release-workflow.js`
+* `scripts/sync-changelog.js`
 
-2. **components/Header.tsx** (around line 67)
-   - Update the header title: `Image MetaHub v{VERSION}`
-   - This displays in the main application header
+For release documentation, see:
 
-3. **components/StatusBar.tsx** (around line 24)
-   - Update the status bar version: `v{VERSION}`
-   - Appears in the footer status bar
-
-4. **components/FolderSelector.tsx** (around lines 20-21)
-   - Update welcome screen title: `Welcome to Image MetaHub v{VERSION}`
-   - Update version display: `v{VERSION}`
-
-5. **index.html** (line 10)
-   - Update page title: `<title>Image MetaHub v{VERSION}</title>`
-
-6. **electron.mjs** (around lines 520 and 1230-1231)
-   - Update window title fallback: `Image MetaHub v{VERSION}`
-   - Update mockUpdateInfo version and release notes header
-
-7. **cli.ts** (around line 15)
-   - Update CLI version: `.version('{VERSION}')`
-
-8. **CHANGELOG.md**
-   - Add or update the version section header: `## [{VERSION}] - YYYY-MM-DD`
-   - Document all changes in appropriate sections (Added, Changed, Fixed, etc.)
-
-9. **components/ChangelogModal.tsx** (around lines 129-131)
-   - Update "Message from the Dev" section with new version number
-   - Update description text to reflect changes in the new version
-
-10. **public/CHANGELOG.md**
-    - Synchronize with main CHANGELOG.md using: `cp CHANGELOG.md public/CHANGELOG.md`
-    - This file is used by the build process and GitHub releases
-
-11. **ARCHITECTURE.md** (line 8)
-    - Update "Current Version" section to reflect new version
-
-### Version Update Checklist
-
-- [ ] Update package.json version
-- [ ] Update all UI component version displays (Header, StatusBar, FolderSelector)
-- [ ] Update index.html page title
-- [ ] Update electron.mjs window title and mock update info
-- [ ] Update cli.ts version
-- [ ] Update or add CHANGELOG.md section for new version
-- [ ] Update ChangelogModal.tsx message from dev
-- [ ] Synchronize public/CHANGELOG.md
-- [ ] Update ARCHITECTURE.md current version
-- [ ] Verify all changes with search: `grep -r "OLD_VERSION" .`
-
-### Automated Search Command
-
-To find all occurrences of a version number:
-
-```bash
-grep -r "0\.10\.5" . --include="*.ts" --include="*.tsx" --include="*.html" --include="*.json" --include="*.md" --include="*.mjs"
-```
-
-### Release Workflow
-
-After updating all version references:
-
-1. Commit changes with message: `chore: bump version to {VERSION}`
-2. Create release using GitHub workflow or `npm run auto-release`
-3. GitHub Actions will build binaries and create release with CHANGELOG.md content
+* `CHANGELOG.md`
+* `RELEASE-GUIDE.md`
+* `RELEASE-AUTOMATION.md`

@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -24,7 +24,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 4; // v4: Added Eff. Loader SDXL, DF_Text_Box, and Unpack SDXL Tuple nodes for better SDXL workflow support
+const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
 
 // Get platform-specific icon
 function getIconPath() {
@@ -38,6 +38,10 @@ function getIconPath() {
 
 const execFileAsync = promisify(execFile);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
+const DEFAULT_WINDOW_WIDTH = 1400;
+const DEFAULT_WINDOW_HEIGHT = 900;
+const MIN_WINDOW_WIDTH = 800;
+const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 
 const getMimeTypeFromName = (name) => {
@@ -185,6 +189,7 @@ const settingsTempPath = `${settingsPath}.tmp`;
 const settingsBackupPath = `${settingsPath}.bak`;
 let cachedSettings = null;
 let cachedSettingsTime = 0;
+let settingsWriteQueue = Promise.resolve();
 
 const SETTINGS_WRITE_RETRY_DELAYS_MS = [0, 50, 150];
 
@@ -307,6 +312,23 @@ async function saveSettings(settings) {
   }
 }
 
+function queueSettingsUpdate(updater) {
+  const applyUpdate = async () => {
+    const currentSettings = await readSettings();
+    const nextSettings = await updater(currentSettings ?? {});
+    await saveSettings(nextSettings);
+    return nextSettings;
+  };
+
+  const queuedUpdate = settingsWriteQueue.then(applyUpdate, applyUpdate);
+  settingsWriteQueue = queuedUpdate.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return queuedUpdate;
+}
+
 
 async function getCacheRootPath() {
   const settings = await readSettings();
@@ -314,6 +336,20 @@ async function getCacheRootPath() {
     return settings.cachePath;
   }
   return app.getPath('userData');
+}
+
+function logRendererCrash(details = {}) {
+  try {
+    const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...details,
+    };
+
+    fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
+  } catch (error) {
+    console.error('Failed to write renderer crash log:', error);
+  }
 }
 // --- End Settings Management ---
 
@@ -707,19 +743,88 @@ if (autoUpdater) {
   console.log('⚠️ Auto-updater not available, skipping event handlers');
 }
 
-function createWindow(startupDirectory = null) {
+function clampWindowBoundsToDisplay(bounds, display) {
+  const workArea = display?.workArea ?? screen.getPrimaryDisplay().workArea;
+  const width = Math.max(MIN_WINDOW_WIDTH, Math.min(bounds?.width ?? DEFAULT_WINDOW_WIDTH, workArea.width));
+  const height = Math.max(MIN_WINDOW_HEIGHT, Math.min(bounds?.height ?? DEFAULT_WINDOW_HEIGHT, workArea.height));
+
+  let x = typeof bounds?.x === 'number'
+    ? bounds.x
+    : workArea.x + Math.round((workArea.width - width) / 2);
+  let y = typeof bounds?.y === 'number'
+    ? bounds.y
+    : workArea.y + Math.round((workArea.height - height) / 2);
+
+  x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - width);
+  y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - height);
+
+  return { x, y, width, height };
+}
+
+function resolveInitialWindowState(settings) {
+  const savedWindowState = settings?.windowState;
+  const savedBounds = savedWindowState?.bounds;
+  const displays = screen.getAllDisplays();
+
+  const preferredDisplay = typeof savedWindowState?.displayId === 'number'
+    ? displays.find((display) => display.id === savedWindowState.displayId)
+    : null;
+
+  const matchedDisplay = savedBounds
+    ? screen.getDisplayMatching({
+        x: savedBounds.x ?? 0,
+        y: savedBounds.y ?? 0,
+        width: savedBounds.width ?? DEFAULT_WINDOW_WIDTH,
+        height: savedBounds.height ?? DEFAULT_WINDOW_HEIGHT,
+      })
+    : null;
+
+  const targetDisplay = preferredDisplay ?? matchedDisplay ?? screen.getPrimaryDisplay();
+
+  return {
+    bounds: clampWindowBoundsToDisplay(savedBounds, targetDisplay),
+    isMaximized: Boolean(savedWindowState?.isMaximized),
+    isFullScreen: Boolean(savedWindowState?.isFullScreen),
+  };
+}
+
+async function persistWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const bounds = mainWindow.isMaximized() || mainWindow.isFullScreen()
+    ? mainWindow.getNormalBounds()
+    : mainWindow.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+
+  await queueSettingsUpdate((currentSettings) => ({
+    ...currentSettings,
+    windowState: {
+      bounds,
+      displayId: display?.id ?? null,
+      isMaximized: mainWindow.isMaximized(),
+      isFullScreen: mainWindow.isFullScreen(),
+    },
+  }));
+}
+
+async function createWindow(startupDirectory = null) {
+  const settings = await readSettings();
+  const initialWindowState = resolveInitialWindowState(settings);
+
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
+    ...initialWindowState.bounds,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     icon: getIconPath(),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',
@@ -738,7 +843,7 @@ function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.13.2');
+    mainWindow.setTitle('Image MetaHub v0.14.0');
   }
 
   // Load the app
@@ -758,6 +863,13 @@ function createWindow(startupDirectory = null) {
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
+    if (initialWindowState.isMaximized) {
+      mainWindow.maximize();
+    }
+    if (initialWindowState.isFullScreen) {
+      mainWindow.setFullScreen(true);
+    }
+
     mainWindow.show();
 
     // If a startup directory was provided via CLI, send it to the renderer
@@ -823,6 +935,32 @@ function createWindow(startupDirectory = null) {
     mainWindow = null;
   });
 
+  let persistWindowStateTimer = null;
+  const queueWindowStatePersist = () => {
+    if (persistWindowStateTimer) {
+      clearTimeout(persistWindowStateTimer);
+    }
+
+    persistWindowStateTimer = setTimeout(() => {
+      persistWindowState().catch((error) => {
+        console.error('Failed to persist window state:', error);
+      });
+    }, 200);
+  };
+
+  mainWindow.on('move', queueWindowStatePersist);
+  mainWindow.on('resize', queueWindowStatePersist);
+  mainWindow.on('close', () => {
+    if (persistWindowStateTimer) {
+      clearTimeout(persistWindowStateTimer);
+      persistWindowStateTimer = null;
+    }
+
+    persistWindowState().catch((error) => {
+      console.error('Failed to persist window state during close:', error);
+    });
+  });
+
   // Track fullscreen state changes and notify renderer
   // These events work on macOS, Windows, and Linux
   mainWindow.on('enter-full-screen', () => {
@@ -849,6 +987,22 @@ function createWindow(startupDirectory = null) {
         mainWindow.webContents.send('fullscreen-state-check', { isFullscreen: currentFullscreenState });
       }
     }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    logRendererCrash({
+      kind: 'render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+    });
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('Renderer became unresponsive');
+    logRendererCrash({
+      kind: 'unresponsive',
+    });
   });
 }
 
@@ -899,7 +1053,7 @@ app.whenReady().then(async () => {
   // Setup IPC handlers for file operations BEFORE creating window
   setupFileOperationHandlers();
   
-  createWindow(startupDirectory);
+  await createWindow(startupDirectory);
 });
 
 // Setup IPC handlers for file operations
@@ -940,7 +1094,8 @@ async function statMediaEntries(directory, entries, baseDirectory) {
     const stats = await fs.stat(fullPath);
     return {
       name: path.relative(baseDirectory, fullPath).replace(/\\/g, '/'),
-      lastModified: stats.birthtimeMs,
+      lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+      contentModifiedMs: stats.mtimeMs,
       size: stats.size,
       type: getMimeTypeFromName(lowerName),
       birthtimeMs: stats.birthtimeMs,
@@ -948,6 +1103,24 @@ async function statMediaEntries(directory, entries, baseDirectory) {
   });
 
   return fileRecords.filter(Boolean);
+}
+
+const IGNORED_SCAN_DIRECTORY_NAMES = new Set([
+  'thumbnails',
+  '.thumbnails',
+  '.cache',
+  'node_modules',
+  '.git',
+]);
+
+function shouldIgnoreScanDirectory(fullPath, baseDirectory) {
+  const relativePath = path.relative(baseDirectory, fullPath).replace(/\\/g, '/');
+  if (!relativePath || relativePath === '.') {
+    return false;
+  }
+
+  const segments = relativePath.split('/').filter(Boolean);
+  return segments.some((segment) => IGNORED_SCAN_DIRECTORY_NAMES.has(segment.toLowerCase()));
 }
 
 async function getFilesRecursively(directory, baseDirectory) {
@@ -960,11 +1133,18 @@ async function getFilesRecursively(directory, baseDirectory) {
       continue;
     }
 
+    if (shouldIgnoreScanDirectory(currentDirectory, baseDirectory)) {
+      continue;
+    }
+
     try {
       const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          directoriesToVisit.push(path.join(currentDirectory, entry.name));
+          const nextDirectory = path.join(currentDirectory, entry.name);
+          if (!shouldIgnoreScanDirectory(nextDirectory, baseDirectory)) {
+            directoriesToVisit.push(nextDirectory);
+          }
         }
       }
 
@@ -1061,9 +1241,10 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('save-settings', async (event, newSettings) => {
     try {
-      const currentSettings = await readSettings();
-      const mergedSettings = { ...currentSettings, ...newSettings };
-      await saveSettings(mergedSettings);
+      await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
+        ...newSettings,
+      }));
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
@@ -1132,6 +1313,29 @@ function setupFileOperationHandlers() {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
       }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-json-cache-data', async (event, cacheId) => {
+    const filePath = await getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-json-cache-data', async (event, { cacheId, data }) => {
+    try {
+      const filePath = await getCacheFilePath(cacheId);
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+      return { success: true };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });
@@ -2580,7 +2784,9 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow().catch((error) => {
+      console.error('Failed to recreate main window:', error);
+    });
   }
 });
 

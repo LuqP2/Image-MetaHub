@@ -1,14 +1,30 @@
 /**
  * ComfyUI Generation Modal
- * Modal form for customizing generation parameters before sending to ComfyUI
+ * Supports original-workflow and simple rebuild generation modes.
  */
 
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { IndexedImage } from '../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, Maximize2, Minimize2, SlidersHorizontal, X } from 'lucide-react';
+import { BaseMetadata, IndexedImage } from '../types';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useComfyUIModels } from '../hooks/useComfyUIModels';
 import hotkeyManager from '../services/hotkeyManager';
+import {
+  analyzeComfyWorkflow,
+  applyWorkflowOverridesToPromptGraph,
+  clonePromptGraph,
+  cloneWorkflowUi,
+  extractEmbeddedComfyWorkflow,
+  updatePromptNodeLiteralValue,
+  type ComfyUILoRAConfig,
+  type ComfyUIModelFamily,
+  type ComfyUIModelResource,
+  type ComfyUIPromptGraph,
+  type ComfyUISourceImagePolicy,
+  type ComfyUIWorkflowMode,
+} from '../services/comfyUIWorkflowBuilder';
+import { buildVisualWorkflowGraph } from '../services/comfyUIVisualWorkflow';
+import ComfyUIWorkflowVisualEditor from './ComfyUIWorkflowVisualEditor';
 
 interface ComfyUIGenerateModalProps {
   isOpen: boolean;
@@ -16,11 +32,6 @@ interface ComfyUIGenerateModalProps {
   image: IndexedImage;
   onGenerate: (params: GenerationParams) => Promise<void>;
   isGenerating: boolean;
-}
-
-export interface LoRAConfig {
-  name: string;
-  strength: number;
 }
 
 export interface GenerationParams {
@@ -33,11 +44,124 @@ export interface GenerationParams {
   numberOfImages: number;
   width: number;
   height: number;
-  model?: string;
-  loras?: LoRAConfig[];
+  model?: ComfyUIModelResource | null;
+  loras?: ComfyUILoRAConfig[];
   sampler?: string;
   scheduler?: string;
+  workflowMode: ComfyUIWorkflowMode;
+  sourceImagePolicy: ComfyUISourceImagePolicy;
+  advancedPromptJson?: string;
+  advancedWorkflowJson?: string;
+  maskFile?: File | null;
 }
+
+type ModalTab = 'parameters' | 'visual';
+
+const MODEL_FAMILY_LABELS: Record<ComfyUIModelFamily, string> = {
+  checkpoint: 'Checkpoint',
+  unet: 'UNet',
+  vae: 'VAE',
+  clip: 'CLIP',
+  lora: 'LoRA',
+  unknown: 'Unknown',
+};
+
+const formatJson = (value: unknown): string => {
+  if (!value) {
+    return '';
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '';
+  }
+};
+
+export function sanitizeStoredModelForWorkflowMode(
+  model: ComfyUIModelResource | null,
+  workflowMode: ComfyUIWorkflowMode
+): ComfyUIModelResource | null {
+  if (workflowMode === 'simple' && model?.family !== 'checkpoint') {
+    return null;
+  }
+
+  return model;
+}
+
+const buildMetadataFromParams = (
+  params: GenerationParams,
+  baseMetadata?: BaseMetadata | null
+): BaseMetadata => ({
+  ...(baseMetadata || {}),
+  prompt: params.prompt,
+  negativePrompt: params.negativePrompt,
+  model: params.model?.name || baseMetadata?.model || 'unknown',
+  cfg_scale: params.cfgScale,
+  steps: params.steps,
+  seed: params.seed,
+  width: params.width,
+  height: params.height,
+  sampler: params.sampler,
+  scheduler: params.scheduler || baseMetadata?.scheduler || 'normal',
+  batch_size: params.numberOfImages,
+  numberOfImages: params.numberOfImages,
+});
+
+const createModelOverrideFromLiteral = (
+  family: ComfyUIModelFamily,
+  classType: string,
+  inputKey: string,
+  value: string
+): ComfyUIModelResource => ({
+  name: value,
+  family,
+  sourceNode: classType,
+  inputKey,
+});
+
+const getObjectInfoStringOptions = (
+  objectInfo: Record<string, any> | null | undefined,
+  classType: string,
+  inputKey: string
+): Array<string | number | boolean> => {
+  const isPrimitiveList = (value: unknown): value is Array<string | number | boolean> =>
+    Array.isArray(value) && value.every((entry) => ['string', 'number', 'boolean'].includes(typeof entry));
+
+  const nodeSpec = objectInfo?.[classType];
+  if (!nodeSpec?.input) {
+    return [];
+  }
+
+  const candidateSpecs = [
+    nodeSpec.input.required?.[inputKey],
+    nodeSpec.input.optional?.[inputKey],
+  ].filter(Boolean);
+
+  for (const spec of candidateSpecs) {
+    if (isPrimitiveList(spec)) {
+      return Array.from(new Set(spec));
+    }
+
+    if (!Array.isArray(spec) || spec.length === 0) {
+      continue;
+    }
+
+    const firstEntry = spec[0];
+    if (isPrimitiveList(firstEntry)) {
+      return Array.from(new Set(firstEntry));
+    }
+
+    const config = spec.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+    if (config && typeof config === 'object') {
+      const choices = (config as any).choices || (config as any).values || (config as any).options;
+      if (isPrimitiveList(choices)) {
+        return Array.from(new Set(choices));
+      }
+    }
+  }
+
+  return [];
+};
 
 export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   isOpen,
@@ -46,34 +170,141 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
   onGenerate,
   isGenerating,
 }) => {
-  // Feature access safety check
   const { canUseComfyUI } = useFeatureAccess();
-
-  // Fetch available models and LoRAs
   const { resources, isLoading: isLoadingResources, error: resourcesError } = useComfyUIModels();
+  const normalizedMetadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  const workflowAnalysis = useMemo(
+    () => analyzeComfyWorkflow(image, normalizedMetadata),
+    [image, normalizedMetadata]
+  );
+  const embeddedWorkflow = useMemo(() => extractEmbeddedComfyWorkflow(image), [image]);
 
   const [params, setParams] = useState<GenerationParams>({
     prompt: '',
     negativePrompt: '',
-    cfgScale: 7.0,
+    cfgScale: 7,
     steps: 20,
     seed: -1,
     randomSeed: false,
     numberOfImages: 1,
     width: 1024,
     height: 1024,
-    model: undefined,
+    model: null,
     loras: [],
     sampler: undefined,
     scheduler: undefined,
+    workflowMode: workflowAnalysis.originalAvailable ? 'original' : 'simple',
+    sourceImagePolicy: 'reuse_original',
+    advancedPromptJson: '',
+    advancedWorkflowJson: '',
+    maskFile: null,
   });
-
+  const [validationError, setValidationError] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [loraSearch, setLoraSearch] = useState('');
-  const [selectedLoras, setSelectedLoras] = useState<LoRAConfig[]>([]);
-  const [validationError, setValidationError] = useState<string>('');
+  const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
+  const [advancedPromptJsonText, setAdvancedPromptJsonText] = useState('');
+  const [advancedWorkflowJsonText, setAdvancedWorkflowJsonText] = useState('');
+  const [advancedEditorLoaded, setAdvancedEditorLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState<ModalTab>('parameters');
+  const [selectedVisualNodeId, setSelectedVisualNodeId] = useState<string | null>(null);
+  const [workingPromptGraph, setWorkingPromptGraph] = useState<ComfyUIPromptGraph | null>(null);
+  const [workingWorkflowUi, setWorkingWorkflowUi] = useState(embeddedWorkflow.workflow);
+  const [isExpandedModal, setIsExpandedModal] = useState(false);
 
-  // Pause hotkeys when modal is open
+  const visualPromptAnalysis = useMemo(() => {
+    if (!workingPromptGraph) {
+      return workflowAnalysis;
+    }
+
+    return analyzeComfyWorkflow(
+      {
+        workflow: workingWorkflowUi,
+        prompt: workingPromptGraph,
+      },
+      normalizedMetadata
+    );
+  }, [normalizedMetadata, workingPromptGraph, workingWorkflowUi, workflowAnalysis]);
+
+  const visualGraph = useMemo(
+    () => buildVisualWorkflowGraph(workingPromptGraph, workingWorkflowUi, visualPromptAnalysis),
+    [visualPromptAnalysis, workingPromptGraph, workingWorkflowUi]
+  );
+
+  const visualFieldOptions = useMemo(() => {
+    const fieldOptions: Record<string, Array<string | number | boolean>> = {};
+
+    if (visualGraph && resources?.objectInfo) {
+      for (const node of visualGraph.nodes) {
+        for (const field of node.fields) {
+          const options = getObjectInfoStringOptions(resources.objectInfo, node.classType, field.key);
+          if (options.length > 0) {
+            fieldOptions[`${node.id}:${field.key}`] = options;
+          }
+        }
+      }
+    }
+
+    for (const target of visualPromptAnalysis.modelTargets) {
+      const options = (resources?.models || [])
+        .filter((model) => model.family === target.family)
+        .map((model) => model.name);
+      if (options.length > 0) {
+        fieldOptions[`${target.nodeId}:${target.inputKey}`] = options;
+      }
+    }
+
+    for (const target of visualPromptAnalysis.loraTargets) {
+      if ((resources?.loras || []).length > 0) {
+        fieldOptions[`${target.nodeId}:${target.nameKey}`] = resources?.loras || [];
+      }
+    }
+
+    for (const nodeId of visualPromptAnalysis.samplerTargets) {
+      if ((resources?.samplers || []).length > 0) {
+        fieldOptions[`${nodeId}:sampler_name`] = resources?.samplers || [];
+      }
+      if ((resources?.schedulers || []).length > 0) {
+        fieldOptions[`${nodeId}:scheduler`] = resources?.schedulers || [];
+      }
+    }
+
+    return fieldOptions;
+  }, [
+    resources?.loras,
+    resources?.models,
+    resources?.objectInfo,
+    resources?.samplers,
+    resources?.schedulers,
+    visualGraph,
+    visualPromptAnalysis,
+  ]);
+
+  const patchPromptGraphForParams = (basePrompt: ComfyUIPromptGraph | null, nextParams: GenerationParams) => {
+    if (!basePrompt || !workflowAnalysis.originalAvailable) {
+      return basePrompt;
+    }
+
+    return applyWorkflowOverridesToPromptGraph(
+      basePrompt,
+      workflowAnalysis,
+      buildMetadataFromParams(nextParams, normalizedMetadata),
+      {
+        model: nextParams.model,
+        loras: nextParams.loras,
+      }
+    ).prompt;
+  };
+
+  const applyNextParams = (nextParams: GenerationParams) => {
+    setParams(nextParams);
+    setValidationError('');
+
+    if (workflowAnalysis.originalAvailable && embeddedWorkflow.prompt) {
+      setWorkingPromptGraph((current) => patchPromptGraphForParams(current || embeddedWorkflow.prompt, nextParams));
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       hotkeyManager.pauseHotkeys();
@@ -86,579 +317,871 @@ export const ComfyUIGenerateModal: React.FC<ComfyUIGenerateModalProps> = ({
     };
   }, [isOpen]);
 
-  // Initialize form with persisted parameters when modal opens
   useEffect(() => {
-    if (isOpen && image.metadata?.normalizedMetadata) {
-      const meta = image.metadata.normalizedMetadata;
+    if (!isOpen || !normalizedMetadata) {
+      return;
+    }
 
-      // Load persisted parameters from localStorage
-      const storedModel = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_MODEL') : null;
-      const storedCfgScale = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_CFG_SCALE') : null;
-      const storedSteps = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_STEPS') : null;
-      const storedRandomSeed = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_RANDOM_SEED') : null;
-      const storedLoras = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_LORAS') : null;
-      const storedSampler = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_SAMPLER') : null;
-      const storedScheduler = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_SCHEDULER') : null;
+    const storedMode = typeof window !== 'undefined'
+      ? localStorage.getItem('IMH_COMFYUI_LAST_MODE') as ComfyUIWorkflowMode | null
+      : null;
+    const storedSourcePolicy = typeof window !== 'undefined'
+      ? localStorage.getItem('IMH_COMFYUI_LAST_SOURCE_POLICY') as ComfyUISourceImagePolicy | null
+      : null;
+    const storedModel = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_MODEL_OBJECT') : null;
+    const storedLoras = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_LORAS') : null;
+    const storedRandomSeed = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_RANDOM_SEED') : null;
 
-      // Use persisted values or fallback to image metadata
-      const preferredModel = storedModel || meta.model || undefined;
-      const preferredCfgScale = storedCfgScale ? parseFloat(storedCfgScale) : meta.cfg_scale || 7.0;
-      const preferredSteps = storedSteps ? parseInt(storedSteps) : meta.steps || 20;
-      const preferredRandomSeed = storedRandomSeed ? storedRandomSeed === 'true' : false;
-      const preferredSampler = storedSampler || meta.sampler || undefined;
-      const preferredScheduler = storedScheduler || meta.scheduler || undefined;
+    let parsedModel: ComfyUIModelResource | null = null;
+    if (storedModel) {
+      try {
+        parsedModel = JSON.parse(storedModel);
+      } catch {
+        parsedModel = null;
+      }
+    }
 
-      let preferredLoras: LoRAConfig[] = [];
-      if (storedLoras) {
-        try {
-          preferredLoras = JSON.parse(storedLoras);
-        } catch (e) {
-          console.error('Failed to parse stored LoRAs:', e);
-        }
+    let parsedLoras: ComfyUILoRAConfig[] = [];
+    if (storedLoras) {
+      try {
+        parsedLoras = JSON.parse(storedLoras);
+      } catch {
+        parsedLoras = [];
+      }
+    }
+
+    const nextWorkflowMode = workflowAnalysis.originalAvailable
+      ? (storedMode || 'original')
+      : 'simple';
+
+    const nextParams: GenerationParams = {
+      prompt: normalizedMetadata.prompt || '',
+      negativePrompt: normalizedMetadata.negativePrompt || '',
+      cfgScale: (normalizedMetadata as any).cfgScale ?? normalizedMetadata.cfg_scale ?? 7,
+      steps: normalizedMetadata.steps || 20,
+      seed: normalizedMetadata.seed ?? -1,
+      randomSeed: storedRandomSeed === 'true',
+      numberOfImages: 1,
+      width: normalizedMetadata.width || 1024,
+      height: normalizedMetadata.height || 1024,
+      model: sanitizeStoredModelForWorkflowMode(parsedModel, nextWorkflowMode),
+      loras: parsedLoras,
+      sampler: normalizedMetadata.sampler || undefined,
+      scheduler: normalizedMetadata.scheduler || undefined,
+      workflowMode: nextWorkflowMode,
+      sourceImagePolicy: storedSourcePolicy || 'reuse_original',
+      advancedPromptJson: '',
+      advancedWorkflowJson: '',
+      maskFile: null,
+    };
+
+    setParams(nextParams);
+    setWorkingWorkflowUi(cloneWorkflowUi(embeddedWorkflow.workflow));
+    setWorkingPromptGraph(
+      workflowAnalysis.originalAvailable && embeddedWorkflow.prompt
+        ? patchPromptGraphForParams(embeddedWorkflow.prompt, nextParams)
+        : clonePromptGraph(embeddedWorkflow.prompt)
+    );
+
+    setAdvancedPromptJsonText('');
+    setAdvancedWorkflowJsonText('');
+    setAdvancedEditorLoaded(false);
+    setShowAdvancedEditor(false);
+    setValidationError('');
+    setModelSearch('');
+    setLoraSearch('');
+    setActiveTab('parameters');
+    setSelectedVisualNodeId(null);
+    setIsExpandedModal(false);
+  }, [
+    embeddedWorkflow.prompt,
+    embeddedWorkflow.workflow,
+    isOpen,
+    normalizedMetadata,
+    workflowAnalysis.originalAvailable,
+  ]);
+
+  useEffect(() => {
+    if (params.workflowMode !== 'original' && activeTab === 'visual') {
+      setActiveTab('parameters');
+    }
+  }, [activeTab, params.workflowMode]);
+
+  useEffect(() => {
+    setParams((prev) => {
+      const sanitizedModel = sanitizeStoredModelForWorkflowMode(prev.model || null, prev.workflowMode);
+      if (sanitizedModel === prev.model) {
+        return prev;
       }
 
-      setParams({
-        prompt: meta.prompt || '',
-        negativePrompt: meta.negativePrompt || '',
-        cfgScale: preferredCfgScale,
-        steps: preferredSteps,
-        seed: meta.seed !== undefined ? meta.seed : -1,
-        randomSeed: preferredRandomSeed,
-        numberOfImages: 1,
-        width: meta.width || 1024,
-        height: meta.height || 1024,
-        model: preferredModel,
-        loras: [],
-        sampler: preferredSampler,
-        scheduler: preferredScheduler,
-      });
-      setSelectedLoras(preferredLoras);
-      setModelSearch('');
-      setLoraSearch('');
-      setValidationError('');
+      return {
+        ...prev,
+        model: sanitizedModel,
+      };
+    });
+  }, [params.workflowMode]);
+
+  useEffect(() => {
+    if (!showAdvancedEditor || advancedEditorLoaded) {
+      return;
     }
-  }, [isOpen, image]);
+
+    setAdvancedPromptJsonText(formatJson(workingPromptGraph));
+    setAdvancedWorkflowJsonText(formatJson(workingWorkflowUi));
+    setAdvancedEditorLoaded(true);
+  }, [advancedEditorLoaded, showAdvancedEditor, workingPromptGraph, workingWorkflowUi]);
+
+  useEffect(() => {
+    if (!visualGraph || visualGraph.nodes.length === 0) {
+      setSelectedVisualNodeId(null);
+      return;
+    }
+
+    if (!selectedVisualNodeId || !visualGraph.nodes.some((node) => node.id === selectedVisualNodeId)) {
+      const preferredNode = visualGraph.nodes.find((node) => node.category === 'sampler') || visualGraph.nodes[0];
+      setSelectedVisualNodeId(preferredNode.id);
+    }
+  }, [selectedVisualNodeId, visualGraph]);
+
+  const compatibleModelFamilies = useMemo(() => {
+    if (params.workflowMode === 'simple') {
+      return new Set<ComfyUIModelFamily>(['checkpoint']);
+    }
+
+    return new Set<ComfyUIModelFamily>(
+      visualPromptAnalysis.compatibleModelFamilies.length > 0
+        ? visualPromptAnalysis.compatibleModelFamilies
+        : ['checkpoint']
+    );
+  }, [params.workflowMode, visualPromptAnalysis.compatibleModelFamilies]);
+
+  const filteredModels = useMemo(() => {
+    const allModels = resources?.models || [];
+    const search = modelSearch.trim().toLowerCase();
+    return allModels.filter((model) => {
+      if (!compatibleModelFamilies.has(model.family)) {
+        return false;
+      }
+      if (!search) {
+        return true;
+      }
+      return model.name.toLowerCase().includes(search);
+    });
+  }, [compatibleModelFamilies, modelSearch, resources?.models]);
+
+  const filteredLoras = useMemo(() => {
+    const search = loraSearch.trim().toLowerCase();
+    return (resources?.loras || [])
+      .filter((lora) => !params.loras?.some((selected) => selected.name === lora))
+      .filter((lora) => !search || lora.toLowerCase().includes(search));
+  }, [loraSearch, params.loras, resources?.loras]);
+
+  const isTransformation = visualPromptAnalysis.generationType === 'img2img'
+    || visualPromptAnalysis.generationType === 'inpaint'
+    || visualPromptAnalysis.generationType === 'outpaint';
+  const requiresMaskInput = isTransformation && visualPromptAnalysis.maskTargets.length > 0;
+  const visualTabDisabled = params.workflowMode !== 'original' || !workflowAnalysis.originalAvailable || !workingPromptGraph;
+  const visualViewportHeight = isExpandedModal ? 720 : 560;
+
+  const syncParamsFromVisualField = (
+    currentParams: GenerationParams,
+    nodeId: string,
+    inputKey: string,
+    value: string | number | boolean
+  ): GenerationParams => {
+    const nextParams = { ...currentParams };
+
+    if (workflowAnalysis.positiveTargets.some((target) => target.nodeId === nodeId && target.inputKey === inputKey)) {
+      nextParams.prompt = String(value);
+    }
+
+    if (workflowAnalysis.negativeTargets.some((target) => target.nodeId === nodeId && target.inputKey === inputKey)) {
+      nextParams.negativePrompt = String(value);
+    }
+
+    if (workflowAnalysis.dimensionTargets.some((target) => target.nodeId === nodeId && target.inputKey === inputKey)) {
+      if (inputKey === 'width') {
+        nextParams.width = Number(value);
+      }
+      if (inputKey === 'height') {
+        nextParams.height = Number(value);
+      }
+    }
+
+    if (workflowAnalysis.batchTargets.some((target) => target.nodeId === nodeId && target.inputKey === inputKey)) {
+      nextParams.numberOfImages = Math.max(1, Math.min(10, Number(value) || 1));
+    }
+
+    if (workflowAnalysis.samplerTargets.includes(nodeId)) {
+      if (inputKey === 'seed') {
+        nextParams.seed = Number(value);
+        nextParams.randomSeed = false;
+      }
+      if (inputKey === 'steps') {
+        nextParams.steps = Number(value);
+      }
+      if (inputKey === 'cfg') {
+        nextParams.cfgScale = Number(value);
+      }
+      if (inputKey === 'sampler_name') {
+        nextParams.sampler = String(value);
+      }
+      if (inputKey === 'scheduler') {
+        nextParams.scheduler = String(value);
+      }
+    }
+
+    const modelTarget = workflowAnalysis.modelTargets.find(
+      (target) => target.nodeId === nodeId && target.inputKey === inputKey && typeof value === 'string'
+    );
+    if (modelTarget) {
+      const matchedResource = resources?.models.find(
+        (resource) => resource.family === modelTarget.family && resource.name === value
+      );
+      nextParams.model = matchedResource || createModelOverrideFromLiteral(
+        modelTarget.family,
+        modelTarget.classType,
+        modelTarget.inputKey,
+        String(value)
+      );
+    }
+
+    const loraIndex = workflowAnalysis.loraTargets.findIndex((target) => target.nodeId === nodeId);
+    if (loraIndex >= 0) {
+      const nextLoras = [...(nextParams.loras || [])];
+      const existing = nextLoras[loraIndex] || { name: '', strength: 1 };
+      const loraTarget = workflowAnalysis.loraTargets[loraIndex];
+
+      if (inputKey === loraTarget.nameKey) {
+        existing.name = String(value);
+      }
+      if (inputKey === loraTarget.strengthKey) {
+        existing.strength = Number(value);
+      }
+
+      nextLoras[loraIndex] = existing;
+      nextParams.loras = nextLoras.filter((entry) => entry.name.trim().length > 0);
+    }
+
+    return nextParams;
+  };
+
+  const handleVisualFieldChange = (nodeId: string, inputKey: string, value: string | number | boolean) => {
+    if (!workingPromptGraph) {
+      return;
+    }
+
+    setWorkingPromptGraph((current) => {
+      const basePrompt = current || workingPromptGraph;
+      return updatePromptNodeLiteralValue(basePrompt, nodeId, inputKey, value);
+    });
+    setParams((current) => syncParamsFromVisualField(current, nodeId, inputKey, value));
+    setValidationError('');
+  };
 
   const handleGenerate = async () => {
-    // Validation
-    if (!params.prompt.trim()) {
-      setValidationError('Prompt cannot be empty');
+    const effectivePrompt = params.prompt.trim();
+    if (!effectivePrompt) {
+      setValidationError('Prompt cannot be empty.');
       return;
     }
 
-    if (params.cfgScale <= 0) {
-      setValidationError('CFG Scale must be greater than 0');
+    if (params.workflowMode === 'original' && !workflowAnalysis.originalAvailable) {
+      setValidationError('Original workflow mode is not available for this image.');
       return;
     }
 
-    if (params.steps <= 0) {
-      setValidationError('Steps must be greater than 0');
+    if (params.sourceImagePolicy === 'selected_image_and_mask' && requiresMaskInput && !params.maskFile) {
+      setValidationError('Select a mask file before generating.');
       return;
     }
 
-    if (params.numberOfImages <= 0 || params.numberOfImages > 10) {
-      setValidationError('Number of images must be between 1 and 10');
+    const manualPromptJson = showAdvancedEditor ? advancedPromptJsonText.trim() : '';
+    const manualWorkflowJson = showAdvancedEditor ? advancedWorkflowJsonText.trim() : '';
+
+    if (manualPromptJson) {
+      try {
+        JSON.parse(manualPromptJson);
+      } catch {
+        setValidationError('Prompt API JSON is invalid.');
+        return;
+      }
+    }
+
+    if (manualWorkflowJson) {
+      try {
+        JSON.parse(manualWorkflowJson);
+      } catch {
+        setValidationError('Workflow UI JSON is invalid.');
+        return;
+      }
+    }
+
+    if (params.workflowMode === 'original' && !manualPromptJson && !workingPromptGraph) {
+      setValidationError('Original workflow graph is unavailable.');
       return;
     }
 
     setValidationError('');
 
-    // Persist parameters to localStorage
     if (typeof window !== 'undefined') {
-      if (params.model) localStorage.setItem('IMH_COMFYUI_LAST_MODEL', params.model);
-      localStorage.setItem('IMH_COMFYUI_LAST_CFG_SCALE', params.cfgScale.toString());
-      localStorage.setItem('IMH_COMFYUI_LAST_STEPS', params.steps.toString());
-      localStorage.setItem('IMH_COMFYUI_LAST_RANDOM_SEED', params.randomSeed.toString());
-      if (selectedLoras.length > 0) {
-        localStorage.setItem('IMH_COMFYUI_LAST_LORAS', JSON.stringify(selectedLoras));
+      localStorage.setItem('IMH_COMFYUI_LAST_MODE', params.workflowMode);
+      localStorage.setItem('IMH_COMFYUI_LAST_SOURCE_POLICY', params.sourceImagePolicy);
+      localStorage.setItem('IMH_COMFYUI_LAST_RANDOM_SEED', String(params.randomSeed));
+      if (params.model) {
+        localStorage.setItem('IMH_COMFYUI_LAST_MODEL_OBJECT', JSON.stringify(params.model));
+      } else {
+        localStorage.removeItem('IMH_COMFYUI_LAST_MODEL_OBJECT');
       }
-      if (params.sampler) localStorage.setItem('IMH_COMFYUI_LAST_SAMPLER', params.sampler);
-      if (params.scheduler) localStorage.setItem('IMH_COMFYUI_LAST_SCHEDULER', params.scheduler);
+      if (params.loras && params.loras.length > 0) {
+        localStorage.setItem('IMH_COMFYUI_LAST_LORAS', JSON.stringify(params.loras));
+      } else {
+        localStorage.removeItem('IMH_COMFYUI_LAST_LORAS');
+      }
     }
 
-    // Include selected LoRAs in params
-    const generationParams: GenerationParams = {
-      ...params,
-      loras: selectedLoras.length > 0 ? selectedLoras : undefined,
-    };
+    const resolvedAdvancedPromptJson = params.workflowMode === 'original'
+      ? (manualPromptJson || (workingPromptGraph ? JSON.stringify(workingPromptGraph) : ''))
+      : undefined;
+    const resolvedAdvancedWorkflowJson = params.workflowMode === 'original'
+      ? (manualWorkflowJson || (workingWorkflowUi ? JSON.stringify(workingWorkflowUi) : undefined))
+      : undefined;
 
-    // Call parent handler
-    await onGenerate(generationParams);
+    await onGenerate({
+      ...params,
+      advancedPromptJson: resolvedAdvancedPromptJson || undefined,
+      advancedWorkflowJson: resolvedAdvancedWorkflowJson || undefined,
+    });
   };
 
   const handleAddLora = (loraName: string) => {
-    if (!loraName || selectedLoras.some(l => l.name === loraName)) {
+    if (!loraName) {
       return;
     }
-    setSelectedLoras(prev => [...prev, { name: loraName, strength: 1.0 }]);
+
+    applyNextParams({
+      ...params,
+      loras: [...(params.loras || []), { name: loraName, strength: 1 }],
+    });
+  };
+
+  const handleUpdateLora = (index: number, strength: number) => {
+    applyNextParams({
+      ...params,
+      loras: (params.loras || []).map((lora, currentIndex) =>
+        currentIndex === index ? { ...lora, strength } : lora
+      ),
+    });
   };
 
   const handleRemoveLora = (index: number) => {
-    setSelectedLoras(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleUpdateLoraStrength = (index: number, strength: number) => {
-    setSelectedLoras(prev => prev.map((lora, i) =>
-      i === index ? { ...lora, strength } : lora
-    ));
-  };
-
-  const handleClose = () => {
-    // Allow closing even during generation (non-blocking)
-    onClose();
-  };
-
-  const handleLoadFromImage = () => {
-    if (!image.metadata?.normalizedMetadata) return;
-
-    const meta = image.metadata.normalizedMetadata;
-    setParams({
-      prompt: meta.prompt || '',
-      negativePrompt: meta.negativePrompt || '',
-      cfgScale: meta.cfg_scale || 7.0,
-      steps: meta.steps || 20,
-      seed: meta.seed !== undefined ? meta.seed : -1,
-      randomSeed: false,
-      numberOfImages: 1,
-      width: meta.width || 1024,
-      height: meta.height || 1024,
-      model: meta.model || undefined,
-      loras: [],
-      sampler: meta.sampler || undefined,
-      scheduler: meta.scheduler || undefined,
+    applyNextParams({
+      ...params,
+      loras: (params.loras || []).filter((_, currentIndex) => currentIndex !== index),
     });
-    setSelectedLoras([]);
   };
 
   if (!isOpen) {
     return null;
   }
 
-  // Safety check: Don't render if feature is not available
   if (!canUseComfyUI) {
-    console.warn('[IMH] ComfyUIGenerateModal accessed without permission');
     return null;
   }
 
-  // Check if metadata is available
-  if (!image.metadata?.normalizedMetadata) {
+  if (!normalizedMetadata) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
-        <div
-          className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 max-w-md"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-red-400">No Metadata Available</h2>
-            <button onClick={handleClose} className="p-1 rounded-full hover:bg-gray-700">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+        <div className="w-full max-w-md rounded-lg bg-gray-800 p-6 text-gray-100" onClick={(event) => event.stopPropagation()}>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-red-400">No Metadata Available</h2>
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
               <X size={20} />
             </button>
           </div>
-          <p className="text-gray-300">This image doesn't have metadata available for generation.</p>
-          <button
-            onClick={handleClose}
-            className="mt-4 w-full bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium"
-          >
-            Close
-          </button>
+          <p className="text-sm text-gray-300">This image does not have enough metadata for ComfyUI generation.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" onClick={handleClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="bg-gray-800 text-gray-100 rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        className="flex flex-col rounded-lg bg-gray-800 p-6 text-gray-100 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: isExpandedModal ? 'min(96vw, 1680px)' : 'min(92vw, 1320px)',
+          height: isExpandedModal ? '92vh' : '88vh',
+          maxHeight: '92vh',
+          minHeight: '720px',
+          resize: 'both',
+          overflow: 'hidden',
+        }}
       >
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Generate with ComfyUI</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">Generate with ComfyUI</h2>
+            <p className="text-sm text-gray-400">
+              {workflowAnalysis.originalAvailable
+                ? 'Original workflow is available for this image.'
+                : 'Original workflow is unavailable. Generation will use simple rebuild.'}
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={handleClose}
-              className="p-1 rounded-full hover:bg-gray-700 transition-colors"
+              type="button"
+              onClick={() => setIsExpandedModal((current) => !current)}
+              className="rounded-full p-2 text-gray-300 hover:bg-gray-700"
+              title={isExpandedModal ? 'Restore modal size' : 'Expand modal'}
             >
+              {isExpandedModal ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+            <button onClick={onClose} className="rounded-full p-1 hover:bg-gray-700">
               <X size={24} />
             </button>
           </div>
         </div>
 
-        {/* Content - Scrollable */}
-        <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Prompt */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-300">
-              Prompt
-            </label>
-            <textarea
-              value={params.prompt}
-              onChange={(e) => setParams(prev => ({ ...prev, prompt: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.ctrlKey) {
-                  e.preventDefault();
-                  handleGenerate();
-                }
-              }}
-              rows={10}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="Enter your prompt..."
-            />
-          </div>
-
-          {/* Negative Prompt */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-300">
-              Negative Prompt
-            </label>
-            <textarea
-              value={params.negativePrompt}
-              onChange={(e) => setParams(prev => ({ ...prev, negativePrompt: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.ctrlKey) {
-                  e.preventDefault();
-                  handleGenerate();
-                }
-              }}
-              rows={6}
-              className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500"
-              placeholder="Enter negative prompt (optional)..."
-            />
-          </div>
-
-          {/* Generation Parameters */}
-          <div className="bg-gray-900 p-4 rounded-md border border-gray-700 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300">Generation Parameters</h3>
-            <button
-              onClick={handleLoadFromImage}
-              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Load parameters from image metadata"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Load from Image
-            </button>
-            {/* Model Selection */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Model
-              </label>
-              <input
-                type="text"
-                value={modelSearch}
-                onChange={(e) => setModelSearch(e.target.value)}
-                placeholder="Search model..."
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading models...</div>
-              ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading models: {resourcesError}</div>
-              ) : (
-                <select
-                  value={params.model || ''}
-                  onChange={(e) => {
-                    const selected = e.target.value || undefined;
-                    if (selected) {
-                      localStorage.setItem('IMH_COMFYUI_LAST_MODEL', selected);
-                    }
-                    setParams(prev => ({ ...prev, model: selected }));
-                  }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  disabled={!resources?.checkpoints || resources.checkpoints.length === 0}
-                >
-                  {!params.model && <option value="">Select a model...</option>}
-                  {resources?.checkpoints
-                    .filter(checkpoint => checkpoint.toLowerCase().includes(modelSearch.trim().toLowerCase()))
-                    .map(checkpoint => (
-                    <option key={checkpoint} value={checkpoint}>
-                      {checkpoint}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {resources?.checkpoints.length === 0 && (
-                <p className="text-xs text-gray-400">No models found in ComfyUI</p>
-              )}
+        <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+          <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-gray-300">Workflow Mode</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                disabled={!workflowAnalysis.originalAvailable}
+                onClick={() => applyNextParams({ ...params, workflowMode: 'original' })}
+                className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                  params.workflowMode === 'original'
+                    ? 'border-purple-400 bg-purple-500/10 text-purple-100'
+                    : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                } ${!workflowAnalysis.originalAvailable ? 'cursor-not-allowed opacity-50' : ''}`}
+              >
+                <div className="text-sm font-semibold">Original workflow</div>
+                <div className="mt-1 text-xs text-gray-400">Patches the embedded ComfyUI graph and keeps provenance.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyNextParams({ ...params, workflowMode: 'simple' })}
+                className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                  params.workflowMode === 'simple'
+                    ? 'border-blue-400 bg-blue-500/10 text-blue-100'
+                    : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                }`}
+              >
+                <div className="text-sm font-semibold">Simple rebuild</div>
+                <div className="mt-1 text-xs text-gray-400">Builds a safe txt2img pipeline from normalized metadata.</div>
+              </button>
             </div>
+            {workflowAnalysis.warnings.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {workflowAnalysis.warnings.map((warning) => (
+                  <div
+                    key={warning}
+                    className="flex items-start gap-2 rounded-md border border-yellow-700/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200"
+                  >
+                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                    <span>{warning}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-            {/* LoRA Selection */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                LoRAs
-              </label>
-              {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading LoRAs...</div>
-              ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading LoRAs</div>
-              ) : (
-                <>
+          <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('parameters')}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                  activeTab === 'parameters'
+                    ? 'bg-purple-500/15 text-purple-100 ring-1 ring-purple-400/40'
+                    : 'text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                <SlidersHorizontal size={16} />
+                Parameters
+              </button>
+              <button
+                type="button"
+                disabled={visualTabDisabled}
+                onClick={() => !visualTabDisabled && setActiveTab('visual')}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                  activeTab === 'visual'
+                    ? 'bg-blue-500/15 text-blue-100 ring-1 ring-blue-400/40'
+                    : 'text-gray-300 hover:bg-gray-800'
+                } ${visualTabDisabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : ''}`}
+              >
+                <Eye size={16} />
+                Visual Workflow
+              </button>
+            </div>
+          </div>
+
+          {activeTab === 'parameters' ? (
+            <>
+              <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-300">Core</h3>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-300">Prompt</label>
+                  <textarea
+                    rows={8}
+                    value={params.prompt}
+                    onChange={(event) => applyNextParams({ ...params, prompt: event.target.value })}
+                    className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <label className="block text-sm font-medium text-gray-300">Negative Prompt</label>
+                  <textarea
+                    rows={5}
+                    value={params.negativePrompt}
+                    onChange={(event) => applyNextParams({ ...params, negativePrompt: event.target.value })}
+                    className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">Sampler</label>
+                    <select
+                      value={params.sampler || ''}
+                      onChange={(event) => applyNextParams({ ...params, sampler: event.target.value || undefined })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {!params.sampler && <option value="">Select sampler...</option>}
+                      {(resources?.samplers || []).map((sampler) => (
+                        <option key={sampler} value={sampler}>{sampler}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">Scheduler</label>
+                    <select
+                      value={params.scheduler || ''}
+                      onChange={(event) => applyNextParams({ ...params, scheduler: event.target.value || undefined })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {!params.scheduler && <option value="">Select scheduler...</option>}
+                      {(resources?.schedulers || []).map((scheduler) => (
+                        <option key={scheduler} value={scheduler}>{scheduler}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-4">
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>CFG</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={params.cfgScale}
+                      onChange={(event) => applyNextParams({ ...params, cfgScale: parseFloat(event.target.value) || 0 })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>Steps</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={params.steps}
+                      onChange={(event) => applyNextParams({ ...params, steps: parseInt(event.target.value, 10) || 0 })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>Width</span>
+                    <input
+                      type="number"
+                      min="64"
+                      step="64"
+                      value={params.width}
+                      onChange={(event) => applyNextParams({ ...params, width: parseInt(event.target.value, 10) || 512 })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>Height</span>
+                    <input
+                      type="number"
+                      min="64"
+                      step="64"
+                      value={params.height}
+                      onChange={(event) => applyNextParams({ ...params, height: parseInt(event.target.value, 10) || 512 })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>Seed</span>
+                    <input
+                      type="number"
+                      value={params.randomSeed ? -1 : params.seed}
+                      disabled={params.randomSeed}
+                      onChange={(event) => applyNextParams({ ...params, seed: parseInt(event.target.value, 10) || -1 })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 self-end rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={params.randomSeed}
+                      onChange={(event) => applyNextParams({ ...params, randomSeed: event.target.checked })}
+                    />
+                    Random seed
+                  </label>
+                  <label className="space-y-2 text-sm font-medium text-gray-300">
+                    <span>Images</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={params.numberOfImages}
+                      onChange={(event) =>
+                        applyNextParams({
+                          ...params,
+                          numberOfImages: Math.max(1, Math.min(10, parseInt(event.target.value, 10) || 1)),
+                        })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-300">Modeling</h3>
+                <div className="mb-2 flex flex-wrap gap-2 text-xs text-gray-400">
+                  {Array.from(compatibleModelFamilies).map((family) => (
+                    <span key={family} className="rounded-full border border-gray-700 px-2 py-0.5">
+                      {MODEL_FAMILY_LABELS[family]}
+                    </span>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-300">Model</label>
+                  <input
+                    type="text"
+                    value={modelSearch}
+                    onChange={(event) => setModelSearch(event.target.value)}
+                    placeholder="Search model..."
+                    className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  {isLoadingResources ? (
+                    <div className="text-xs text-gray-400">Loading models...</div>
+                  ) : resourcesError ? (
+                    <div className="text-xs text-red-400">{resourcesError}</div>
+                  ) : (
+                    <select
+                      value={params.model ? `${params.model.family}:${params.model.name}` : ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        const nextModel = filteredModels.find((model) => `${model.family}:${model.name}` === value) || null;
+                        applyNextParams({ ...params, model: nextModel });
+                      }}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      {!params.model && <option value="">Use current model</option>}
+                      {filteredModels.map((model) => (
+                        <option key={`${model.family}:${model.name}`} value={`${model.family}:${model.name}`}>
+                          [{MODEL_FAMILY_LABELS[model.family]}] {model.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <label className="block text-sm font-medium text-gray-300">LoRAs</label>
                   <input
                     type="text"
                     value={loraSearch}
-                    onChange={(e) => setLoraSearch(e.target.value)}
+                    onChange={(event) => setLoraSearch(event.target.value)}
                     placeholder="Search LoRA..."
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleAddLora(e.target.value);
-                        e.target.value = ''; // Reset dropdown
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        handleAddLora(event.target.value);
+                        event.target.value = '';
                       }
                     }}
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    disabled={!resources?.loras || resources.loras.length === 0}
+                    className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   >
-                    <option value="">Add a LoRA...</option>
-                    {resources?.loras
-                      .filter(lora => lora.toLowerCase().includes(loraSearch.trim().toLowerCase()))
-                      .filter(lora => !selectedLoras.some(selected => selected.name === lora))
-                      .map(lora => (
-                        <option key={lora} value={lora}>
-                          {lora}
-                        </option>
-                      ))}
+                    <option value="">Add LoRA...</option>
+                    {filteredLoras.map((lora) => (
+                      <option key={lora} value={lora}>{lora}</option>
+                    ))}
                   </select>
-
-                  {/* Selected LoRAs as tags */}
-                  {selectedLoras.length > 0 ? (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {selectedLoras.map((lora, index) => (
+                  {(params.loras || []).length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {(params.loras || []).map((lora, index) => (
                         <div
                           key={`${lora.name}-${index}`}
-                          className="flex items-center gap-2 bg-purple-900/30 border border-purple-700/50 rounded-full px-3 py-1.5 text-xs"
+                          className="flex items-center gap-2 rounded-full border border-purple-700/50 bg-purple-900/30 px-3 py-1.5 text-xs"
                         >
-                          <span className="text-purple-200 font-medium">{lora.name}</span>
+                          <span className="font-medium text-purple-100">{lora.name}</span>
                           <input
                             type="number"
-                            value={lora.strength}
-                            onChange={(e) => handleUpdateLoraStrength(index, parseFloat(e.target.value) || 0)}
                             step="0.1"
-                            min="-2.0"
-                            max="2.0"
-                            className="w-14 bg-purple-950/50 border border-purple-700/50 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            min="-2"
+                            max="2"
+                            value={lora.strength}
+                            onChange={(event) => handleUpdateLora(index, parseFloat(event.target.value) || 0)}
+                            className="w-14 rounded border border-purple-700/50 bg-purple-950/50 px-1.5 py-0.5 text-center text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
                           />
-                          <button
-                            onClick={() => handleRemoveLora(index)}
-                            className="text-purple-300 hover:text-purple-100 transition-colors"
-                            title="Remove LoRA"
-                          >
+                          <button onClick={() => handleRemoveLora(index)} className="text-purple-300 hover:text-purple-100">
                             <X size={14} />
                           </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500 italic mt-2">No LoRAs selected</p>
+                    <p className="text-xs italic text-gray-500">No LoRAs selected.</p>
                   )}
+                </div>
+              </div>
+
+              {isTransformation && (
+                <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-300">Transform</h3>
+                  <div className="space-y-3">
+                    <label className="block text-sm font-medium text-gray-300">Source Image Policy</label>
+                    <select
+                      value={params.sourceImagePolicy}
+                      onChange={(event) =>
+                        applyNextParams({
+                          ...params,
+                          sourceImagePolicy: event.target.value as ComfyUISourceImagePolicy,
+                        })}
+                      className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="reuse_original">Reuse original workflow assets</option>
+                      <option value="selected_image">Use selected image</option>
+                      {requiresMaskInput && <option value="selected_image_and_mask">Use selected image + selected mask</option>}
+                    </select>
+                    <div className="text-xs text-gray-400">
+                      Generation type detected: <span className="font-semibold text-gray-200">{visualPromptAnalysis.generationType}</span>
+                    </div>
+                    {params.sourceImagePolicy === 'selected_image_and_mask' && requiresMaskInput && (
+                      <label className="block space-y-2 text-sm font-medium text-gray-300">
+                        <span>Mask File</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => applyNextParams({ ...params, maskFile: event.target.files?.[0] || null })}
+                          className="block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-purple-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-purple-100 hover:file:bg-purple-500/30"
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !showAdvancedEditor;
+                    setShowAdvancedEditor(next);
+                    if (next) {
+                      setAdvancedPromptJsonText(formatJson(workingPromptGraph));
+                      setAdvancedWorkflowJsonText(formatJson(workingWorkflowUi));
+                      setAdvancedEditorLoaded(true);
+                    }
+                  }}
+                  className="flex w-full items-center justify-between text-left text-sm font-semibold text-gray-300"
+                >
+                  <span>Advanced / Debug</span>
+                  {showAdvancedEditor ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </button>
+                {showAdvancedEditor && (
+                  <div className="mt-4 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
+                      <span>Prompt API JSON is authoritative for execution in original mode.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdvancedPromptJsonText(formatJson(workingPromptGraph));
+                          setAdvancedWorkflowJsonText(formatJson(workingWorkflowUi));
+                        }}
+                        className="rounded border border-gray-700 px-2 py-1 text-gray-300 hover:bg-gray-800"
+                      >
+                        Reload current state
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">Prompt API JSON</label>
+                      <textarea
+                        rows={10}
+                        value={advancedPromptJsonText}
+                        onChange={(event) => setAdvancedPromptJsonText(event.target.value)}
+                        className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">Workflow UI JSON</label>
+                      <textarea
+                        rows={8}
+                        value={advancedWorkflowJsonText}
+                        onChange={(event) => setAdvancedWorkflowJsonText(event.target.value)}
+                        className="w-full resize-y rounded border border-gray-700 bg-gray-950 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Use this only for debugging or edge cases. The visual editor is meant to replace direct JSON editing for normal workflow adjustments.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              {visualTabDisabled ? (
+                <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-6 text-sm text-gray-400">
+                  Visual editing is available only in <span className="font-semibold text-gray-200">Original workflow</span> mode with an embedded executable prompt graph.
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-lg border border-blue-700/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+                    Visual edits update the same working prompt graph used for original workflow execution. Structural graph editing is intentionally out of scope for v1.
+                  </div>
+                  <ComfyUIWorkflowVisualEditor
+                    graph={visualGraph}
+                    selectedNodeId={selectedVisualNodeId}
+                    fieldOptions={visualFieldOptions}
+                    viewportHeight={visualViewportHeight}
+                    onSelectNode={setSelectedVisualNodeId}
+                    onFieldChange={handleVisualFieldChange}
+                  />
                 </>
               )}
-              {resources?.loras.length === 0 && (
-                <p className="text-xs text-gray-400">No LoRAs found in ComfyUI</p>
-              )}
-            </div>
-
-            {/* Sampler Selection */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Sampler
-              </label>
-              {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading samplers...</div>
-              ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading samplers</div>
-              ) : (
-                <select
-                  value={params.sampler || ''}
-                  onChange={(e) => setParams(prev => ({ ...prev, sampler: e.target.value || undefined }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  disabled={!resources?.samplers || resources.samplers.length === 0}
-                >
-                  {!params.sampler && <option value="">Select a sampler...</option>}
-                  {resources?.samplers?.map((sampler) => (
-                    <option key={sampler} value={sampler}>
-                      {sampler}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {resources?.samplers?.length === 0 && (
-                <p className="text-xs text-gray-400">No samplers found in ComfyUI</p>
-              )}
-            </div>
-
-            {/* Scheduler Selection */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Scheduler
-              </label>
-              {isLoadingResources ? (
-                <div className="text-xs text-gray-400">Loading schedulers...</div>
-              ) : resourcesError ? (
-                <div className="text-xs text-red-400">Error loading schedulers</div>
-              ) : (
-                <select
-                  value={params.scheduler || ''}
-                  onChange={(e) => setParams(prev => ({ ...prev, scheduler: e.target.value || undefined }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  disabled={!resources?.schedulers || resources.schedulers.length === 0}
-                >
-                  {!params.scheduler && <option value="">Select a scheduler...</option>}
-                  {resources?.schedulers?.map((scheduler) => (
-                    <option key={scheduler} value={scheduler}>
-                      {scheduler}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {resources?.schedulers?.length === 0 && (
-                <p className="text-xs text-gray-400">No schedulers found in ComfyUI</p>
-              )}
-            </div>
-
-            {/* Image Size */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Image Size
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">Width</label>
-                  <input
-                    type="number"
-                    value={params.width}
-                    onChange={(e) => setParams(prev => ({ ...prev, width: parseInt(e.target.value) || 512 }))}
-                    step="64"
-                    min="64"
-                    max="2048"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-xs text-gray-400">Height</label>
-                  <input
-                    type="number"
-                    value={params.height}
-                    onChange={(e) => setParams(prev => ({ ...prev, height: parseInt(e.target.value) || 512 }))}
-                    step="64"
-                    min="64"
-                    max="2048"
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* CFG Scale and Steps - Side by side */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">
-                  CFG Scale
-                </label>
-                <input
-                  type="number"
-                  value={params.cfgScale}
-                  onChange={(e) => setParams(prev => ({ ...prev, cfgScale: parseFloat(e.target.value) || 0 }))}
-                  step="0.5"
-                  min="0"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">
-                  Steps
-                </label>
-                <input
-                  type="number"
-                  value={params.steps}
-                  onChange={(e) => setParams(prev => ({ ...prev, steps: parseInt(e.target.value) || 0 }))}
-                  min="1"
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-
-            {/* Seed */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Seed
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={params.randomSeed ? -1 : params.seed}
-                  onChange={(e) => setParams(prev => ({ ...prev, seed: parseInt(e.target.value) || -1 }))}
-                  disabled={params.randomSeed}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                />
-              </div>
-              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={params.randomSeed}
-                  onChange={(e) => setParams(prev => ({ ...prev, randomSeed: e.target.checked }))}
-                  className="cursor-pointer"
-                />
-                Random seed
-              </label>
-            </div>
-
-            {/* Number of Images */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
-                Number of Images
-              </label>
-              <input
-                type="number"
-                value={params.numberOfImages}
-                onChange={(e) => setParams(prev => ({ ...prev, numberOfImages: parseInt(e.target.value) || 1 }))}
-                min="1"
-                max="10"
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <p className="text-xs text-gray-500">Max: 10 images</p>
-            </div>
-          </div>
-
-          {/* Validation Error */}
-          {validationError && (
-            <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded text-sm">
-              {validationError}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-700">
-          <button
-            onClick={handleClose}
-            className="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            {isGenerating ? (
-              <>
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Generating...</span>
-              </>
-            ) : (
-              <span>Generate</span>
-            )}
-          </button>
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <div className="text-sm text-red-400">{validationError}</div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isGenerating ? 'Generating...' : 'Generate'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

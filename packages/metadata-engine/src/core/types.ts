@@ -511,6 +511,7 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
 }
 
 export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
+export type ImageRating = 1 | 2 | 3 | 4 | 5;
 
 export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
@@ -542,6 +543,7 @@ export interface IndexedImage {
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status
   tags?: string[];               // Quick access to tags array
+  rating?: ImageRating;          // Optional 1-5 user rating
 }
 
 /**
@@ -552,6 +554,7 @@ export interface ImageAnnotations {
   imageId: string;              // Links to IndexedImage.id (unique)
   isFavorite: boolean;           // Star/Favorite flag
   tags: string[];                // User-defined tags (lowercase normalized)
+  rating?: ImageRating;          // Optional 1-5 user rating
   addedAt: number;               // Timestamp when first annotated
   updatedAt: number;             // Timestamp of last update
 }

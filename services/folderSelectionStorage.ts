@@ -1,29 +1,16 @@
 /// <reference lib="dom" />
 
+import { openPreferencesDatabase, PREFERENCES_STORE_NAMES } from './preferencesDb';
+
 export type StoredSelectionState = 'checked' | 'unchecked'; // Legacy type for migration
 
-const DB_NAME = 'image-metahub-preferences';
-const DB_VERSION = 4; // Updated to match imageAnnotationsStorage.ts (Shadow Metadata Phase)
-const STORE_NAME = 'folderSelection';
+const STORE_NAME = PREFERENCES_STORE_NAMES.folderSelection;
 const RECORD_KEY = 'selection';
 const EXCLUDED_FOLDERS_KEY = 'excluded-folders';
-const STORAGE_VERSION_KEY = 'folder-selection-version';
-const CURRENT_VERSION = 2; // Version 2: Array-based selection (v1 was Map-based)
 
 let inMemorySelection: string[] = [];
+let inMemoryExcludedFolders: string[] = [];
 let isPersistenceDisabled = false;
-let hasResetAttempted = false;
-
-const getIndexedDB = () => {
-  if (typeof indexedDB === 'undefined') {
-    if (!isPersistenceDisabled) {
-      console.warn('IndexedDB is not available in this environment. Folder selection persistence is disabled.');
-      isPersistenceDisabled = true;
-    }
-    return null;
-  }
-  return indexedDB;
-};
 
 function disablePersistence(error?: unknown) {
   if (isPersistenceDisabled) {
@@ -37,110 +24,12 @@ function disablePersistence(error?: unknown) {
   isPersistenceDisabled = true;
 }
 
-async function deleteDatabase(): Promise<boolean> {
-  const idb = getIndexedDB();
-  if (!idb) {
-    return false;
-  }
-
-  const deleteResult = await new Promise<boolean>((resolve) => {
-    const request = idb.deleteDatabase(DB_NAME);
-
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => {
-      console.error('Failed to reset folder selection storage', request.error);
-      resolve(false);
-    };
-    request.onblocked = () => {
-      console.warn('Folder selection storage reset is blocked by an open connection.');
-      resolve(false);
-    };
-  });
-
-  return deleteResult;
-}
-
-function getErrorName(error: unknown): string | undefined {
-  if (error instanceof DOMException) {
-    return error.name;
-  }
-
-  if (typeof error === 'object' && error && 'name' in error) {
-    return String((error as { name: unknown }).name);
-  }
-
-  return undefined;
-}
-
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
-  if (isPersistenceDisabled) {
-    return null;
-  }
-
-  const idb = getIndexedDB();
-  if (!idb) {
-    return null;
-  }
-
-  try {
-    return await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = idb.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        }
-      };
-
-      request.onsuccess = () => {
-        const db = request.result;
-        db.onversionchange = () => {
-          try {
-            db.close();
-          } catch (closeError) {
-            console.warn('Failed to close folder selection storage during version change', closeError);
-          }
-        };
-        hasResetAttempted = false;
-        resolve(db);
-      };
-
-      request.onerror = () => {
-        const error = request.error;
-        console.warn('Failed to open folder selection storage', error);
-
-        // Check for VersionError immediately and reject with proper error
-        if (error && (error.name === 'VersionError' || (error as any).constructor?.name === 'VersionError')) {
-          const versionError = new Error('VersionError');
-          versionError.name = 'VersionError';
-          reject(versionError);
-        } else {
-          reject(error);
-        }
-      };
-    });
-  } catch (error) {
-    const errorName = getErrorName(error);
-
-    console.log('🔍 IndexedDB Error caught:', { errorName, allowReset, hasResetAttempted });
-
-    // Auto-reset on version errors, unknown errors, or invalid state
-    if (allowReset && !hasResetAttempted && (errorName === 'VersionError' || errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
-      console.warn('🔄 Resetting folder selection storage due to IndexedDB error:', error);
-      hasResetAttempted = true;
-      const resetSuccessful = await deleteDatabase();
-      console.log('🗑️ Database deletion result:', resetSuccessful);
-      if (resetSuccessful) {
-        console.log('♻️ Attempting to reopen database with version 1...');
-        return openDatabase({ allowReset: false });
-      }
-    }
-
-    console.error('❌ Could not recover from IndexedDB error. Disabling persistence.');
-    disablePersistence(error);
-    return null;
-  }
+  return openPreferencesDatabase({
+    context: 'folder selection storage',
+    disablePersistence,
+    allowReset,
+  });
 }
 
 export async function loadSelectedFolders(): Promise<string[]> {
@@ -283,12 +172,12 @@ export async function saveFolderSelection(selection: Record<string, StoredSelect
 
 export async function loadExcludedFolders(): Promise<string[]> {
   if (isPersistenceDisabled) {
-    return []; // No in-memory fallback for exclusion yet, but could add if needed
+    return [...inMemoryExcludedFolders];
   }
 
   const db = await openDatabase();
   if (!db) {
-    return [];
+    return [...inMemoryExcludedFolders];
   }
 
   return new Promise((resolve) => {
@@ -311,20 +200,24 @@ export async function loadExcludedFolders(): Promise<string[]> {
     request.onsuccess = () => {
       const result = request.result;
       if (!result || !result.data) {
+        inMemoryExcludedFolders = [];
         resolve([]);
         return;
       }
+      inMemoryExcludedFolders = [...result.data];
       resolve([...result.data]);
     };
 
     request.onerror = () => {
       console.error('Failed to load excluded folders', request.error);
-      resolve([]);
+      resolve([...inMemoryExcludedFolders]);
     };
   });
 }
 
 export async function saveExcludedFolders(excludedPaths: string[]): Promise<void> {
+  inMemoryExcludedFolders = [...excludedPaths];
+
   if (isPersistenceDisabled) {
     return;
   }

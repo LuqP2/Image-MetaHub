@@ -58,6 +58,34 @@ function extractBoardFromWorkflow(workflow: any): string | null {
     return null;
 }
 
+function extractSourceImageFromInvokeAI(metadata: InvokeAIMetadata) {
+  if (!Array.isArray(metadata.ref_images) || metadata.ref_images.length === 0) {
+    return undefined;
+  }
+
+  const source = metadata.ref_images[0];
+  if (!source || typeof source !== 'object') {
+    return undefined;
+  }
+
+  const record = source as Record<string, any>;
+  const absolutePath = typeof record.path === 'string' ? record.path : undefined;
+  const fileName =
+    record.file_name ||
+    record.image_name ||
+    record.name ||
+    (absolutePath ? absolutePath.split(/[/\\]/).pop() : undefined);
+
+  if (!fileName && !absolutePath) {
+    return undefined;
+  }
+
+  return {
+    fileName: typeof fileName === 'string' ? fileName : undefined,
+    absolutePath,
+  };
+}
+
 
 // --- Extraction Functions ---
 
@@ -216,6 +244,20 @@ export function parseInvokeAIMetadata(metadata: InvokeAIMetadata): BaseMetadata 
   }
 
   result.generator = 'InvokeAI';
+
+  const generationMode = String(metadata.generation_mode || '').toLowerCase();
+  if (generationMode === 'img2img' || generationMode === 'inpaint' || generationMode === 'outpaint') {
+    const denoiseStrength = metadata.denoise ?? metadata.denoising_strength ?? metadata.strength;
+    if (typeof denoiseStrength === 'number') {
+      result.denoise = denoiseStrength;
+    }
+    result.generationType = generationMode as BaseMetadata['generationType'];
+    result.lineage = {
+      detection: 'explicit',
+      denoiseStrength: typeof denoiseStrength === 'number' ? denoiseStrength : null,
+      sourceImage: extractSourceImageFromInvokeAI(metadata),
+    };
+  }
 
   return result as BaseMetadata;
 }

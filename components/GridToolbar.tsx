@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Copy,
   Folder,
@@ -8,7 +8,8 @@ import {
   Sparkles,
   Trash2,
   ChevronDown,
-  Tag
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -17,6 +18,7 @@ import { type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 
 interface GridToolbarProps {
 
@@ -57,12 +59,24 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
 
   // ... (rest of the file)
 
   const selectedCount = selectedImages.size;
-  const selectedImagesList = images.filter(img => selectedImages.has(img.id));
+  const selectedImagesList = useMemo(() => {
+    if (selectedImages.size === 0) {
+      return [];
+    }
+
+    const pageLookup = new Map(images.map((image) => [image.id, image]));
+    const storeImages = useImageStore.getState().images;
+
+    return Array.from(selectedImages)
+      .map((imageId) => pageLookup.get(imageId) ?? storeImages.find((image) => image.id === imageId))
+      .filter((image): image is IndexedImage => Boolean(image));
+  }, [images, selectedImages]);
   const firstSelectedImage = selectedImagesList[0];
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
@@ -180,24 +194,56 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setIsTagModalOpen(true);
   };
 
+  const handleReparseSelected = async () => {
+    if (selectedImagesList.length === 0) {
+      return;
+    }
+
+    await reparseImages(selectedImagesList);
+  };
+
   const selectedModels = useImageStore((state) => state.selectedModels);
+  const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const selectedSamplers = useImageStore((state) => state.selectedSamplers);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
 
   const hasActiveFilters = 
       selectedModels.length > 0 ||
+      excludedModels.length > 0 ||
       selectedLoras.length > 0 ||
+      excludedLoras.length > 0 ||
+      selectedSamplers.length > 0 ||
+      excludedSamplers.length > 0 ||
       selectedSchedulers.length > 0 ||
+      excludedSchedulers.length > 0 ||
+      selectedGenerators.length > 0 ||
+      excludedGenerators.length > 0 ||
+      selectedGpuDevices.length > 0 ||
+      excludedGpuDevices.length > 0 ||
       selectedTags.length > 0 ||
       excludedTags.length > 0 ||
+      selectedAutoTags.length > 0 ||
+      excludedAutoTags.length > 0 ||
       !!searchQuery ||
       favoriteFilterMode !== 'neutral' ||
+      selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
   if (selectedCount === 0 && !hasActiveFilters) {
@@ -256,8 +302,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
                 </button>
 
-                {/* Divider */}
-                <div className="w-px h-4 bg-gray-700 mx-1" />
+                <button
+                  onClick={handleReparseSelected}
+                  className={`p-1.5 rounded transition-colors ${
+                    isReparsing
+                      ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
+                      : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
+                  }`}
+                  title={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
+                  disabled={selectedCount === 0 || isReparsing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+                </button>
 
                  {/* Tagging */}
                  <button

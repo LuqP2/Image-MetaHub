@@ -49,6 +49,8 @@ const detectDefaultIndexingConcurrency = (): number => {
 
 const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
 
+export type StartupVerificationMode = 'off' | 'idle' | 'strict';
+
 // Define the state shape
 interface SettingsState {
   // App settings
@@ -67,6 +69,7 @@ interface SettingsState {
   showFilenames: boolean;
   showFullFilePath: boolean;
   globalAutoWatch: boolean;
+  startupVerificationMode: StartupVerificationMode;
   doubleClickToOpen: boolean;
   sensitiveTags: string[];
   blurSensitiveImages: boolean;
@@ -100,6 +103,7 @@ interface SettingsState {
   setShowFilenames: (value: boolean) => void;
   setShowFullFilePath: (value: boolean) => void;
   toggleGlobalAutoWatch: () => void;
+  setStartupVerificationMode: (value: StartupVerificationMode) => void;
   setDoubleClickToOpen: (value: boolean) => void;
   setSensitiveTags: (tags: string[]) => void;
   setBlurSensitiveImages: (value: boolean) => void;
@@ -138,6 +142,7 @@ export const useSettingsStore = create<SettingsState>()(
       showFilenames: false,
       showFullFilePath: false,
       globalAutoWatch: true,
+      startupVerificationMode: 'off',
       doubleClickToOpen: false,
       sensitiveTags: ['nsfw', 'private', 'hidden'],
       blurSensitiveImages: true,
@@ -178,6 +183,7 @@ export const useSettingsStore = create<SettingsState>()(
       setShowFilenames: (value) => set({ showFilenames: !!value }),
       setShowFullFilePath: (value) => set({ showFullFilePath: !!value }),
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
+      setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
       setDoubleClickToOpen: (value) => set({ doubleClickToOpen: !!value }),
       setSensitiveTags: (tags) => {
         const normalized = (Array.isArray(tags) ? tags : [])
@@ -226,6 +232,7 @@ export const useSettingsStore = create<SettingsState>()(
         showFilenames: false,
         showFullFilePath: false,
         globalAutoWatch: true,
+        startupVerificationMode: 'off',
         doubleClickToOpen: false,
         sensitiveTags: ['nsfw', 'private', 'hidden'],
         blurSensitiveImages: true,
@@ -270,6 +277,15 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.showFullFilePath !== 'boolean') {
           state.showFullFilePath = false;
+        }
+
+        if (
+          state &&
+          state.startupVerificationMode !== 'off' &&
+          state.startupVerificationMode !== 'idle' &&
+          state.startupVerificationMode !== 'strict'
+        ) {
+          state.startupVerificationMode = 'off';
         }
 
         if (state && !Array.isArray(state.sensitiveTags)) {

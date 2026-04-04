@@ -5,6 +5,8 @@ import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
+import { normalizeFacetValue } from '../utils/facetNormalization';
 
 // Configure logging level
 const DEBUG = false;
@@ -42,20 +44,29 @@ const getIsElectron = () => {
 // Global cache for file data to avoid Zustand serialization issues
 const fileDataCache = new Map<string, Uint8Array>();
 
+type DirectoryFileRecord = {
+    name: string;
+    lastModified: number;
+    size: number;
+    type: string;
+    birthtimeMs?: number;
+    contentModifiedMs?: number;
+};
+
 // Function to clear file data cache
 function clearFileDataCache() {
   fileDataCache.clear();
 }
 
 // Helper for getting files recursively in the browser
-async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<{ name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[]> {
+async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle, path: string = ''): Promise<DirectoryFileRecord[]> {
     const files = [];
     for await (const entry of (directoryHandle as any).values()) {
         const entryPath = path ? `${path}/${entry.name}` : entry.name;
         if (entry.kind === 'file') {
             if (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg')) {
                 const file = await entry.getFile();
-                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified });
+                files.push({ name: entryPath, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
             }
         } else if (entry.kind === 'directory') {
             try {
@@ -69,7 +80,7 @@ async function getFilesRecursivelyWeb(directoryHandle: FileSystemDirectoryHandle
     return files;
 }
 
-async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<{ name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[]> {
+async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, directoryPath: string, recursive: boolean): Promise<DirectoryFileRecord[]> {
     if (getIsElectron()) {
         const result = await (window as any).electronAPI.listDirectoryFiles({ dirPath: directoryPath, recursive });
         if (result.success && result.files) {
@@ -84,7 +95,7 @@ async function getDirectoryFiles(directoryHandle: FileSystemDirectoryHandle, dir
             for await (const entry of (directoryHandle as any).values()) {
                 if (entry.kind === 'file' && (entry.name.endsWith('.png') || entry.name.endsWith('.jpg') || entry.name.endsWith('.jpeg'))) {
                     const file = await entry.getFile();
-                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified });
+                    files.push({ name: file.name, lastModified: file.lastModified, size: file.size, type: file.type || 'image', birthtimeMs: file.lastModified, contentModifiedMs: file.lastModified });
                 }
             }
             return files;
@@ -124,9 +135,9 @@ async function getHandleFromPath(rootHandle: FileSystemDirectoryHandle, path: st
 async function getFileHandles(
     directoryHandle: FileSystemDirectoryHandle,
     directoryPath: string,
-    files: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number }[]
-): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number}[]> {
-    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number}[] = [];
+    files: { name: string; lastModified: number; size?: number; type?: string; birthtimeMs?: number; contentModifiedMs?: number }[]
+): Promise<{handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number, contentModifiedMs?: number}[]> {
+    const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number, contentModifiedMs?: number}[] = [];
 
     if (getIsElectron()) {
         // Use batch path joining for optimal performance - single IPC call instead of multiple
@@ -174,14 +185,14 @@ async function getFileHandles(
                     throw new Error(`Failed to read file: ${filePath}`);
                 }
             };
-            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs });
+            handles.push({ handle: mockHandle as any, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs, contentModifiedMs: file.contentModifiedMs });
         }
     } else {
         // Browser implementation needs to handle sub-paths
         for (const file of files) {
             const handle = await getHandleFromPath(directoryHandle, file.name);
             if (handle) {
-                handles.push({ handle, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs });
+                handles.push({ handle, path: file.name, lastModified: file.lastModified, size: file.size, type: file.type, birthtimeMs: file.birthtimeMs, contentModifiedMs: file.contentModifiedMs });
             }
         }
     }
@@ -228,7 +239,9 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, mergeImages, clearImages, replaceDirectoryImages, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress
+        setFilterOptions, removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        recomputeDerivedState,
+        setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
 
     // AbortController for cancelling ongoing operations
@@ -243,6 +256,9 @@ export function useImageLoader() {
         last: 0,
         timer: null,
     });
+    const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const idleReconcileQueueRef = useRef<Directory[]>([]);
+    const idleReconcileRunningRef = useRef(false);
     const FILTER_REFRESH_MIN_INTERVAL_MS = 5000;
 
     // Helper function to check if indexing should be cancelled
@@ -287,27 +303,47 @@ export function useImageLoader() {
         const allImages = useImageStore.getState().images;
         const models = new Set<string>();
         const loras = new Set<string>();
+        const samplers = new Set<string>();
         const schedulers = new Set<string>();
+        const generators = new Set<string>();
+        const gpuDevices = new Set<string>();
 
         for (const image of allImages) {
-            if (image.models && image.models.length > 0) image.models.forEach(model => models.add(model));
-            if (image.loras && image.loras.length > 0) {
-                image.loras.forEach(lora => {
-                    if (typeof lora === 'string') {
-                        loras.add(lora);
-                    } else if (lora && typeof lora === 'object' && lora.name) {
-                        loras.add(lora.name);
+            if (image.models && image.models.length > 0) {
+                image.models.forEach(model => {
+                    const normalized = normalizeFacetValue(model);
+                    if (normalized) {
+                        models.add(normalized);
                     }
                 });
             }
-            if (image.scheduler) schedulers.add(image.scheduler);
+            if (image.loras && image.loras.length > 0) {
+                image.loras.forEach(lora => {
+                    const normalized = normalizeFacetValue(lora);
+                    if (normalized) {
+                        loras.add(normalized);
+                    }
+                });
+            }
+            const sampler = normalizeFacetValue(image.sampler);
+            if (sampler) samplers.add(sampler);
+            const scheduler = normalizeFacetValue(image.scheduler);
+            if (scheduler) schedulers.add(scheduler);
+            generators.add(getImageGenerator(image));
+            const gpuDevice = getImageGpuDevice(image);
+            if (gpuDevice) {
+                gpuDevices.add(gpuDevice);
+            }
         }
 
         setFilterOptions({
             models: Array.from(models).sort(),
             loras: Array.from(loras).sort(),
+            samplers: Array.from(samplers).sort(),
             schedulers: Array.from(schedulers).sort(),
-            dimensions: [],
+            generators: Array.from(generators).sort(),
+            gpuDevices: Array.from(gpuDevices).sort(),
+            dimensions: [] as string[],
         });
     }, [setFilterOptions]);
 
@@ -422,14 +458,22 @@ export function useImageLoader() {
                 clearTimeout(ref.timer);
                 ref.timer = null;
             }
+            if (idleReconcileTimerRef.current) {
+                clearTimeout(idleReconcileTimerRef.current);
+                idleReconcileTimerRef.current = null;
+            }
         };
     }, []);
 
     const finalizeDirectoryLoad = useCallback(async (
         directory: Directory,
-        options: { suppressIndexingState?: boolean } = {}
+        options: {
+            suppressIndexingState?: boolean;
+            suppressSuccessMessage?: boolean;
+        } = {}
     ) => {
         const suppressIndexingState = options.suppressIndexingState ?? false;
+        const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
 
         // Prevent multiple finalizations for the same directory
         const finalizationKey = `finalized_${directory.id}`;
@@ -451,7 +495,9 @@ export function useImageLoader() {
         
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
-            setSuccess(`Loaded 0 images from ${directory.name}.`);
+            if (!suppressSuccessMessage) {
+                setSuccess(`Loaded 0 images from ${directory.name}.`);
+            }
             setDirectoryProgress(directory.id, null);
             if (!suppressIndexingState) {
                 setLoading(false);
@@ -471,7 +517,10 @@ export function useImageLoader() {
         }
 
         scheduleGlobalFilterRefresh(true);
-        setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        await refreshLineageDirectorySignature(directory);
+        if (!suppressSuccessMessage) {
+            setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
+        }
         setDirectoryProgress(directory.id, null);
         if (!suppressIndexingState) {
             setLoading(false);
@@ -496,7 +545,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
+    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
 
     const CACHE_HYDRATE_FLUSH_SIZE = 2048;
     const DIRECTORY_THUMBNAIL_WARMUP_LIMIT = 384;
@@ -517,14 +566,212 @@ export function useImageLoader() {
         });
     }, []);
 
+    async function refreshLineageDirectorySignature(directory: Directory) {
+        if (!getIsElectron()) {
+            return;
+        }
+
+        const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+        const summary = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
+        if (!summary) {
+            setLineageDirectorySignature(directory.id, null);
+            return;
+        }
+
+        setLineageDirectorySignature(directory.id, {
+            directoryId: directory.id,
+            path: directory.path,
+            lastScan: summary.lastScan,
+            imageCount: summary.imageCount,
+            parserVersion: summary.parserVersion ?? 0,
+        });
+    }
+
+    const clearIdleReconcileTimer = useCallback(() => {
+        if (idleReconcileTimerRef.current) {
+            clearTimeout(idleReconcileTimerRef.current);
+            idleReconcileTimerRef.current = null;
+        }
+    }, []);
+
+    const reconcileCachedDirectory = useCallback(async (directory: Directory) => {
+        if (!getIsElectron()) {
+            return false;
+        }
+
+        const activeDirectory = useImageStore.getState().directories.find(entry => entry.id === directory.id);
+        if (!activeDirectory) {
+            return false;
+        }
+
+        const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
+        await cacheManager.init();
+
+        const allCurrentFiles = await getDirectoryFiles(activeDirectory.handle, activeDirectory.path, shouldScanSubfolders);
+        const fileStatsMap = new Map(
+            allCurrentFiles.map(file => [file.name, {
+                size: file.size,
+                type: file.type,
+                birthtimeMs: file.birthtimeMs ?? file.lastModified,
+                contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
+            }])
+        );
+
+        const diff = await cacheManager.validateCacheAndGetDiff(
+            activeDirectory.path,
+            activeDirectory.name,
+            allCurrentFiles,
+            shouldScanSubfolders,
+        );
+
+        if (diff.newAndModifiedFiles.length === 0 && diff.deletedFileIds.length === 0) {
+            return false;
+        }
+
+        setDirectoryRefreshing(activeDirectory.id, true);
+
+        try {
+            if (diff.deletedFileIds.length > 0) {
+                removeImages(diff.deletedFileIds);
+            }
+
+            const changedIds = Array.from(new Set(
+                diff.newAndModifiedFiles.map(file => `${activeDirectory.id}::${file.name}`)
+            ));
+            if (changedIds.length > 0) {
+                removeImages(changedIds);
+            }
+
+            const cacheWriter = await cacheManager.createIncrementalWriter(activeDirectory.path, activeDirectory.name, shouldScanSubfolders);
+            const sortedFilesWithStats = diff.newAndModifiedFiles.length > 0
+                ? [...diff.newAndModifiedFiles]
+                    .sort((a, b) => b.lastModified - a.lastModified)
+                    .map(file => ({
+                        ...file,
+                        size: fileStatsMap.get(file.name)?.size ?? file.size,
+                        type: fileStatsMap.get(file.name)?.type ?? file.type,
+                        birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                        contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
+                    }))
+                : [];
+
+            const fileHandles = sortedFilesWithStats.length > 0
+                ? await getFileHandles(activeDirectory.handle, activeDirectory.path, sortedFilesWithStats)
+                : [];
+
+            const { phaseB } = await processFiles(
+                fileHandles,
+                () => {},
+                (batch) => {
+                    addImages(batch);
+                    thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
+                },
+                activeDirectory.id,
+                activeDirectory.name,
+                shouldScanSubfolders,
+                (deletedFileIds) => {
+                    if (deletedFileIds.length > 0) {
+                        removeImages(deletedFileIds);
+                    }
+                },
+                undefined,
+                waitWhilePaused,
+                {
+                    cacheWriter,
+                    concurrency: useSettingsStore.getState().indexingConcurrency ?? 4,
+                    preloadedImages: diff.cachedImages.map(img => ({
+                        ...img,
+                        directoryId: activeDirectory.id,
+                        directoryName: activeDirectory.name,
+                        enrichmentState: img.enrichmentState ?? 'enriched',
+                        fileSize: img.fileSize ?? fileStatsMap.get(img.name)?.size,
+                        fileType: img.fileType ?? fileStatsMap.get(img.name)?.type,
+                        contentModifiedMs: img.contentModifiedMs ?? fileStatsMap.get(img.name)?.contentModifiedMs,
+                    })),
+                    fileStats: fileStatsMap,
+                    onEnrichmentBatch: (batch) => {
+                        mergeImages(batch);
+                    },
+                    hydratePreloadedImages: false,
+                }
+            );
+
+            await phaseB;
+            scheduleGlobalFilterRefresh(true);
+            await refreshLineageDirectorySignature(activeDirectory);
+            scheduleLineageRebuild(800);
+            return true;
+        } catch (reconcileError) {
+            console.error(`[startup-reconcile] Failed for ${activeDirectory.path}:`, reconcileError);
+            return false;
+        } finally {
+            setDirectoryRefreshing(activeDirectory.id, false);
+            setEnrichmentProgress(null);
+            setProgress(null);
+        }
+    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleGlobalFilterRefresh, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
+
+    const runIdleReconcileQueue = useCallback(async () => {
+        if (idleReconcileRunningRef.current) {
+            return;
+        }
+
+        idleReconcileRunningRef.current = true;
+
+        try {
+            while (idleReconcileQueueRef.current.length > 0) {
+                const indexingState = useImageStore.getState().indexingState;
+                if (indexingState === 'indexing' || indexingState === 'paused') {
+                    idleReconcileRunningRef.current = false;
+                    idleReconcileTimerRef.current = setTimeout(() => {
+                        idleReconcileTimerRef.current = null;
+                        void runIdleReconcileQueue();
+                    }, 3000);
+                    return;
+                }
+
+                const directory = idleReconcileQueueRef.current.shift();
+                if (!directory) {
+                    continue;
+                }
+
+                await reconcileCachedDirectory(directory);
+            }
+        } finally {
+            idleReconcileRunningRef.current = false;
+        }
+    }, [reconcileCachedDirectory]);
+
+    const scheduleIdleReconcile = useCallback((directories: Directory[]) => {
+        clearIdleReconcileTimer();
+
+        if (!directories || directories.length === 0) {
+            idleReconcileQueueRef.current = [];
+            return;
+        }
+
+        idleReconcileQueueRef.current = directories.slice();
+        idleReconcileTimerRef.current = setTimeout(() => {
+            idleReconcileTimerRef.current = null;
+            void runIdleReconcileQueue();
+        }, 4000);
+    }, [clearIdleReconcileTimer, runIdleReconcileQueue]);
+
 
     const loadDirectoryFromCache = useCallback(async (directory: Directory) => {
         try {
             await cacheManager.init();
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
-            const cachedData = await cacheManager.getCachedData(directory.path, shouldScanSubfolders);
+            const cachedData = await cacheManager.getCacheSummary(directory.path, shouldScanSubfolders);
 
             if (cachedData && cachedData.imageCount > 0) {
+                setLineageDirectorySignature(directory.id, {
+                    directoryId: directory.id,
+                    path: directory.path,
+                    lastScan: cachedData.lastScan,
+                    imageCount: cachedData.imageCount,
+                    parserVersion: cachedData.parserVersion ?? 0,
+                });
                 const isElectron = getIsElectron();
                 let totalLoaded = 0;
                 let totalFilteredOut = 0;
@@ -542,12 +789,10 @@ export function useImageLoader() {
                     const batch = hydratedImagesBuffer.splice(0, hydratedImagesBuffer.length);
 
                     if (!hasHydratedDirectory) {
-                        replaceDirectoryImages(directory.id, batch);
+                        replaceDirectoryImagesRaw(directory.id, batch);
                         hasHydratedDirectory = true;
-                        void useImageStore.getState().importMetadataTags(batch);
                     } else {
-                        addImages(batch);
-                        useImageStore.getState().flushPendingImages();
+                        appendImagesRaw(batch);
                     }
 
                     if (!cacheWarmupScheduled) {
@@ -648,22 +893,38 @@ export function useImageLoader() {
                 }
                 setDirectoryProgress(directory.id, null);
             } else {
+                setLineageDirectorySignature(directory.id, null);
                 setDirectoryProgress(directory.id, null);
             }
         } catch (err) {
             error(`Failed to load directory from cache ${directory.name}:`, err);
+            setLineageDirectorySignature(directory.id, null);
             setDirectoryProgress(directory.id, null);
             // Don't set global error for this, as it's a background process
         }
-    }, [addImages, replaceDirectoryImages, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setProgress]);
+    }, [appendImagesRaw, replaceDirectoryImagesRaw, scheduleDirectoryThumbnailWarmup, setDirectoryProgress, setLineageDirectorySignature, setProgress]);
 
-    const loadDirectory = useCallback(async (directory: Directory, isUpdate: boolean, refreshPath?: string) => {
+    const loadDirectory = useCallback(async (
+        directory: Directory,
+        isUpdate: boolean,
+        refreshPath?: string,
+        options: {
+            suppressSuccessMessage?: boolean;
+            suppressErrorMessage?: boolean;
+        } = {}
+    ) => {
         const suppressIndexingState = isUpdate;
+        const suppressSuccessMessage = options.suppressSuccessMessage ?? false;
+        const suppressErrorMessage = options.suppressErrorMessage ?? false;
         setDirectoryProgress(directory.id, { current: 0, total: 0 });
         if (suppressIndexingState) {
             setDirectoryRefreshing(directory.id, true);
-            setError(null);
-            setSuccess(null);
+            if (!suppressErrorMessage) {
+                setError(null);
+            }
+            if (!suppressSuccessMessage) {
+                setSuccess(null);
+            }
         } else {
             setLoading(true);
             setError(null);
@@ -711,6 +972,7 @@ export function useImageLoader() {
                     size: file.size,
                     type: file.type,
                     birthtimeMs: file.birthtimeMs ?? file.lastModified,
+                    contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
                 }])
             );
 
@@ -744,6 +1006,7 @@ export function useImageLoader() {
                         lastModified: img.lastModified,
                         size: fileStatsMap.get(img.name)?.size,
                         type: fileStatsMap.get(img.name)?.type,
+                        contentModifiedMs: fileStatsMap.get(img.name)?.contentModifiedMs,
                     }))
                 )
                 : [];
@@ -779,6 +1042,7 @@ export function useImageLoader() {
                         enrichmentState: img.enrichmentState ?? 'enriched',
                         fileSize: stats?.size,
                         fileType: stats?.type,
+                        contentModifiedMs: img.contentModifiedMs ?? stats?.contentModifiedMs,
                     } as IndexedImage;
                 });
             }
@@ -799,6 +1063,7 @@ export function useImageLoader() {
                 size: fileStatsMap.get(file.name)?.size ?? file.size,
                 type: fileStatsMap.get(file.name)?.type ?? file.type,
                 birthtimeMs: fileStatsMap.get(file.name)?.birthtimeMs ?? file.birthtimeMs ?? file.lastModified,
+                contentModifiedMs: fileStatsMap.get(file.name)?.contentModifiedMs ?? file.contentModifiedMs ?? file.lastModified,
             }));
 
             const fileHandles = sortedFilesWithStats.length > 0
@@ -890,7 +1155,7 @@ export function useImageLoader() {
                     });
 
                 if (!shouldCancelIndexing(suppressIndexingState)) {
-                    finalizeDirectoryLoad(directory, { suppressIndexingState });
+                    finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                 }
             } else {
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
@@ -901,13 +1166,15 @@ export function useImageLoader() {
                         total: preloadedImages.length,
                     });
                 }
-                finalizeDirectoryLoad(directory, { suppressIndexingState });
+                finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
             }
 
         } catch (err) {
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
-                setError(`Failed to load directory ${directory.name}. Check console for details.`);
+                if (!suppressErrorMessage) {
+                    setError(`Failed to load directory ${directory.name}. Check console for details.`);
+                }
             }
             setDirectoryProgress(directory.id, null);
             if (suppressIndexingState) {
@@ -1037,8 +1304,10 @@ export function useImageLoader() {
             const storedPaths = localStorage.getItem('image-metahub-directories');
             if (storedPaths) {
                 try {
+                    setLineageRebuildSuspended(true);
                     const paths = JSON.parse(storedPaths);
                     if (paths.length === 0) {
+                        setLineageRebuildSuspended(false);
                         setLoading(false);
                         return;
                     }
@@ -1059,6 +1328,7 @@ export function useImageLoader() {
                     
                     // Then, load them all sequentially to avoid overwhelming the system.
                     const directoriesToLoad = useImageStore.getState().directories;
+                    const startupVerificationMode = useSettingsStore.getState().startupVerificationMode;
 
                     const hydrateInBackground = async () => {
                         // Update allowed paths BEFORE loading from cache to avoid security violations
@@ -1067,6 +1337,7 @@ export function useImageLoader() {
 
                         for (const dir of directoriesToLoad) {
                             await loadDirectoryFromCache(dir);
+                            recomputeDerivedState();
                         }
 
                         const directoriesText = directoriesToLoad.length === 1 ? 'directory' : 'directories';
@@ -1075,25 +1346,43 @@ export function useImageLoader() {
 
                     await hydrateInBackground();
 
+                    setLineageRebuildSuspended(false);
+                    const hydratedLineageSnapshot = await hydratePersistedLineageSnapshot();
+                    if (!hydratedLineageSnapshot) {
+                        scheduleLineageRebuild(1200);
+                    }
+
+                    if (startupVerificationMode === 'strict') {
+                        for (const dir of directoriesToLoad) {
+                            await reconcileCachedDirectory(dir);
+                        }
+                    } else if (startupVerificationMode === 'idle') {
+                        scheduleIdleReconcile(directoriesToLoad);
+                    }
+
                     return;
                 } catch (e) {
                     error("Error loading from storage", e);
                     setError("Failed to load previously saved directories.");
                 } finally {
+                    setLineageRebuildSuspended(false);
                     setProgress(null);
                     setLoading(false);
                 }
             } else {
+                 setLineageRebuildSuspended(false);
                  setLoading(false);
             }
         } else {
             console.warn('Loading from storage is only supported in Electron.');
+            setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, setLoading, setError, setFilterOptions, setSuccess, loadDirectory]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
+        idleReconcileQueueRef.current = idleReconcileQueueRef.current.filter(directory => directory.id !== directoryId);
         
         // Remove from store (this removes images from view and updates localStorage)
         // NOTE: We intentionally DO NOT clear the cache here!
@@ -1111,7 +1400,7 @@ export function useImageLoader() {
 
     const processNewWatchedFiles = useCallback(async (
         directory: Directory,
-        files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }>
+        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string }>
     ) => {
         try {
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
@@ -1164,6 +1453,7 @@ export function useImageLoader() {
                 } as any,
                 path: file.relativePath || file.normalizedName,
                 lastModified: file.lastModified,
+                contentModifiedMs: file.contentModifiedMs ?? file.lastModified,
                 size: file.size,
                 type: file.normalizedType,
                 birthtimeMs: file.lastModified
@@ -1171,7 +1461,12 @@ export function useImageLoader() {
 
             // Criar file stats map
             const fileStatsMap = new Map(
-                newFiles.map(f => [f.relativePath || f.normalizedName, { size: f.size, type: f.normalizedType, birthtimeMs: f.lastModified }])
+                newFiles.map(f => [f.relativePath || f.normalizedName, {
+                    size: f.size,
+                    type: f.normalizedType,
+                    birthtimeMs: f.lastModified,
+                    contentModifiedMs: f.contentModifiedMs ?? f.lastModified,
+                }])
             );
 
             const enrichedForCache: IndexedImage[] = [];

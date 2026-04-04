@@ -285,6 +285,48 @@ describe('ComfyUI Parser - Detection Methods', () => {
   });
 });
 
+describe('ComfyUI Parser - MetaHub lineage metadata', () => {
+  it('prefers parent_image for library lineage and keeps source_image as workflowSourceImage', async () => {
+    const metadata: any = {
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'portrait',
+        negativePrompt: '',
+        seed: 123,
+        steps: 20,
+        cfg: 7,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        model: 'base.safetensors',
+        width: 512,
+        height: 512,
+        generation_type: 'img2img',
+        parent_image: {
+          fileName: 'selected.png',
+          relativePath: 'library/selected.png',
+        },
+        source_image: {
+          fileName: 'workflow-input.png',
+          relativePath: 'inputs/workflow-input.png',
+        },
+        workflow: { nodes: [] },
+        prompt_api: {
+          '1': {
+            class_type: 'KSampler',
+            inputs: {},
+          },
+        },
+      },
+    };
+
+    const result = await parseImageMetadata(metadata);
+
+    expect(result?.generationType).toBe('img2img');
+    expect(result?.lineage?.sourceImage?.fileName).toBe('selected.png');
+    expect(result?.lineage?.workflowSourceImage?.fileName).toBe('workflow-input.png');
+  });
+});
+
 describe('ComfyUI Parser - Error Handling', () => {
   it('should fallback to regex parsing when no terminal node found', () => {
     const invalidFixture = {
@@ -310,8 +352,16 @@ describe('ComfyUI Parser - Error Handling', () => {
     };
     
     const result = resolvePromptFromGraph(emptyFixture.workflow, emptyFixture.prompt);
-    
+
     expect(result._telemetry).toBeDefined();
     expect(result._telemetry.warnings).toContain('No terminal node found');
+  });
+
+  it('should handle missing workflow and prompt payloads without throwing', () => {
+    const result = resolvePromptFromGraph(undefined, undefined);
+
+    expect(result._telemetry).toBeDefined();
+    expect(result._telemetry.warnings).toContain('No terminal node found');
+    expect(result.comfyui_version).toBeUndefined();
   });
 });

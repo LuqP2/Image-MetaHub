@@ -8,21 +8,25 @@ import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,
   Archive,
+  ChevronRight,
   CheckSquare,
   Crown,
   EyeOff,
   Package,
   Play,
-  Tag
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
+import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
@@ -30,11 +34,13 @@ import TagManagerModal from './TagManagerModal';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
+import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
+  enableAuxClickOpen?: boolean;
   isSelected: boolean;
   isFocused?: boolean;
   onImageLoad: (id: string, aspectRatio: number) => void;
@@ -55,6 +61,14 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   }
   const lower = fileName.toLowerCase();
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+};
+
+const isTypingTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 };
 
 const getRelativeImagePath = (image: IndexedImage): string => {
@@ -113,9 +127,12 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const thumbnail = useResolvedThumbnail(image);
+  const suppressNextClickRef = useRef(false);
+  const dragResetTimeoutRef = useRef<number | null>(null);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -182,6 +199,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     setImageUrl(null);
   }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
 
+  useEffect(() => {
+    return () => {
+      if (dragResetTimeoutRef.current !== null) {
+        window.clearTimeout(dragResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setPreviewImage(image);
@@ -220,6 +245,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     const [, relativeFromId] = image.id.split('::');
     const relativePath = relativeFromId || image.name;
 
+    suppressNextClickRef.current = true;
     e.preventDefault();
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'copy';
@@ -227,11 +253,48 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
     window.electronAPI?.startFileDrag({ directoryPath, relativePath });
   };
 
+  const handleDragEnd = () => {
+    if (dragResetTimeoutRef.current !== null) {
+      window.clearTimeout(dragResetTimeoutRef.current);
+    }
+
+    dragResetTimeoutRef.current = window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+      dragResetTimeoutRef.current = null;
+    }, 0);
+  };
+
+  const handlePointerLikeDown = (clientX: number, clientY: number, button: number) => {
+    if (!canDragExternally || button !== 0) {
+      pointerDownRef.current = null;
+      return;
+    }
+
+    pointerDownRef.current = { x: clientX, y: clientY };
+  };
+
+  const handlePointerLikeMove = (clientX: number, clientY: number, buttons: number) => {
+    if (!pointerDownRef.current || (buttons & 1) !== 1) {
+      return;
+    }
+
+    const deltaX = clientX - pointerDownRef.current.x;
+    const deltaY = clientY - pointerDownRef.current.y;
+    if (Math.abs(deltaX) >= 4 || Math.abs(deltaY) >= 4) {
+      suppressNextClickRef.current = true;
+    }
+  };
+
+  const clearPointerTracking = () => {
+    pointerDownRef.current = null;
+  };
+
   return (
     <div className="flex flex-col items-center" style={{ width: `${baseWidth}px` }}>
       {showToast && <Toast message="Prompt copied to clipboard!" onDismiss={() => setShowToast(false)} />}
       <div
         ref={mergedRef}
+        data-image-id={image.id}
         className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
           isSelected 
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
@@ -240,7 +303,26 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
           isFocused ? 'outline outline-2 outline-dashed outline-blue-400 outline-offset-2 z-10' : ''
         }`}
         style={{ width: '100%', height: `${baseWidth * 1.2}px`, flexShrink: 0 }}
+        onMouseDown={(e) => {
+          handlePointerLikeDown(e.clientX, e.clientY, e.button);
+          if (enableAuxClickOpen && e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        onMouseMove={(e) => {
+          handlePointerLikeMove(e.clientX, e.clientY, e.buttons);
+        }}
+        onMouseUp={clearPointerTracking}
+        onMouseLeave={clearPointerTracking}
         onClick={(e) => {
+          if (suppressNextClickRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            suppressNextClickRef.current = false;
+            return;
+          }
+
           if (doubleClickToOpen) {
             if (e.ctrlKey || e.metaKey) {
               toggleImageSelection(image.id);
@@ -259,9 +341,17 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
             onImageClick(image, e);
           }
         }}
+        onAuxClick={(e) => {
+          if (enableAuxClickOpen && e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            onImageClick(image, e);
+          }
+        }}
 
         onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         draggable={canDragExternally}
       >
         {/* Checkbox for selection - always visible on hover or when selected */}
@@ -396,8 +486,19 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, i
         )}
       </div>
       {showFilenames && (
-        <div className="mt-2 w-full px-1">
-          <p className="text-[11px] text-gray-400 text-center truncate" title={fullDisplayName}>{displayName}</p>
+        <div className="mt-2 w-full min-h-[2.25rem] px-1">
+          <p
+            className="text-[11px] leading-tight text-center text-gray-400"
+            style={{
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+            title={fullDisplayName}
+          >
+            {displayName}
+          </p>
         </div>
       )}
     </div>
@@ -413,7 +514,7 @@ function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
 const GAP_SIZE = 16;
 const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
 const CARD_HEIGHT_RATIO = 1.2;
-const FILENAME_HEIGHT = 24;
+const FILENAME_HEIGHT = 40;
 
 const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
   (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
@@ -500,6 +601,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
                   e.stopPropagation();
                   onStackClick(item);
               }}
+              enableAuxClickOpen={false}
               isSelected={selectedImages.has(item.coverImage.id)}
               isFocused={false}
               onImageLoad={handleImageLoad}
@@ -596,9 +698,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
   const gridRef = useRef<HTMLDivElement>(null);
+  const gridKeyboardActiveRef = useRef(false);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
+  const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
 
   // Missing state restored
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
@@ -622,6 +727,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
   const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
+  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
   // Drag-to-select states
   const [isSelecting, setIsSelecting] = useState(false);
@@ -632,6 +738,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
@@ -646,7 +753,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
 
   const { generateWithA1111, isGenerating } = useGenerateWithA1111();
+
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
     contextMenu,
@@ -663,6 +772,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     copyRawMetadata,
     addTag
   } = useContextMenu();
+
+  useEffect(() => {
+    if (!contextMenu.visible && isCopySubmenuOpen) {
+      setIsCopySubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isCopySubmenuOpen]);
 
   const handleAddTag = useCallback(() => {
     // Calculate effective target count
@@ -754,6 +869,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
 
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
+    if (targetImageIds.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    bulkSetImageRating(targetImageIds, rating);
+    hideContextMenu();
+  }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
+
+  const handleReparseMetadata = useCallback(async () => {
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+    await reparseImages(targetImages);
+  }, [getContextTargetImages, hideContextMenu, reparseImages]);
+
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
     if (targetImages.length === 0) {
@@ -802,6 +939,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) {
+      return;
+    }
+
     // Only start selection if clicking on the grid background (not on an interactive element)
     const target = e.target as HTMLElement;
     
@@ -841,6 +982,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     const currentSelection = (!e.ctrlKey && !e.shiftKey) ? new Set<string>() : new Set(selectedImages);
     setInitialSelectedImages(currentSelection);
   }, [selectedImages]);
+
+  useEffect(() => {
+    const handleGlobalPointerDown = (event: MouseEvent) => {
+      if (!gridRef.current?.contains(event.target as Node)) {
+        gridKeyboardActiveRef.current = false;
+      }
+    };
+
+    const handleGlobalFocusIn = (event: FocusEvent) => {
+      if (!gridRef.current?.contains(event.target as Node)) {
+        gridKeyboardActiveRef.current = false;
+      }
+    };
+
+    document.addEventListener('mousedown', handleGlobalPointerDown, true);
+    document.addEventListener('focusin', handleGlobalFocusIn);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalPointerDown, true);
+      document.removeEventListener('focusin', handleGlobalFocusIn);
+    };
+  }, []);
 
   // Throttled with requestAnimationFrame for performance
   const rafIdRef = useRef<number | null>(null);
@@ -985,7 +1148,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
       // For arrow keys and page navigation, require grid focus
       const needsFocus = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key);
-      if (needsFocus && !gridRef.current?.contains(document.activeElement)) {
+      if (needsFocus && !gridKeyboardActiveRef.current) {
         return;
       }
 
@@ -1107,13 +1270,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   // Memoized cardRef callback factory
   const createCardRef = useCallback((imageId: string) => {
-    return (el: HTMLDivElement | null) => {
+    const existing = cardRefCallbacksRef.current.get(imageId);
+    if (existing) {
+      return existing;
+    }
+
+    const callback = (el: HTMLDivElement | null) => {
       if (el) {
         imageCardsRef.current.set(imageId, el);
       } else {
         imageCardsRef.current.delete(imageId);
       }
     };
+
+    cardRefCallbacksRef.current.set(imageId, callback);
+    return callback;
   }, []);
 
 
@@ -1144,40 +1315,76 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
+          <div className="px-4 py-2">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
+            <div className="flex flex-wrap gap-1.5">
+              {RATING_VALUES.map((value) => (
+                <button
+                  key={value}
+                  onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
+                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                >
+                  {value}
+                </button>
+              ))}
+              <button
+                onClick={() => handleSetRating(null)}
+                className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={copyPrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
+          <div
+            className="relative"
+            onMouseEnter={() => setIsCopySubmenuOpen(true)}
+            onMouseLeave={() => setIsCopySubmenuOpen(false)}
           >
-            <Copy className="w-4 h-4" />
-            Copy Prompt
-          </button>
-          <button
-            onClick={copyNegativePrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Negative Prompt
-          </button>
-          <button
-            onClick={copySeed}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Seed
-          </button>
-          <button
-            onClick={copyModel}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Model
-          </button>
+            <button
+              onClick={() => setIsCopySubmenuOpen((open) => !open)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="flex-1">Copy</span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isCopySubmenuOpen && (
+              <div className="absolute left-full top-0 ml-1 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                <button
+                  onClick={copyPrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.prompt && !(contextMenu.image?.metadata as any)?.prompt}
+                >
+                  Prompt
+                </button>
+                <button
+                  onClick={copyNegativePrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.negativePrompt && !(contextMenu.image?.metadata as any)?.negativePrompt}
+                >
+                  Negative Prompt
+                </button>
+                <button
+                  onClick={copySeed}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.seed && !(contextMenu.image?.metadata as any)?.seed}
+                >
+                  Seed
+                </button>
+                <button
+                  onClick={copyModel}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.models?.[0] && !(contextMenu.image?.metadata as any)?.model}
+                >
+                  Checkpoint
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -1203,6 +1410,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               <Copy className="w-4 h-4" />
               Copy Raw Metadata
             </button>
+
+          <button
+            onClick={handleReparseMetadata}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={isReparsing}
+          >
+            <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+            {getContextTargetImages().length > 1 ? `Reparse Selected (${getContextTargetImages().length})` : 'Reparse Metadata'}
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -1361,15 +1577,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
               width: params.width,
               height: params.height,
               batch_size: params.numberOfImages,
+              model: params.model?.name || selectedImageForGeneration.metadata?.normalizedMetadata?.model,
               ...(params.sampler ? { sampler: params.sampler } : {}),
               ...(params.scheduler ? { scheduler: params.scheduler } : {}),
             };
             await generateWithComfyUI(selectedImageForGeneration, {
               customMetadata,
               overrides: {
-                model: params.model,
+                model: params.model || undefined,
                 loras: params.loras,
               },
+              workflowMode: params.workflowMode,
+              sourceImagePolicy: params.sourceImagePolicy,
+              advancedPromptJson: params.advancedPromptJson,
+              advancedWorkflowJson: params.advancedWorkflowJson,
+              maskFile: params.maskFile,
             });
             setIsComfyUIGenerateModalOpen(false);
             setSelectedImageForGeneration(null);
@@ -1402,16 +1624,30 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   }, [itemsToRender]);
 
   useEffect(() => {
-    if (isInfinite || itemsToRender.length === 0) {
+    if (isInfinite) {
+      if (releasePaginatedBackgroundPauseRef.current) {
+        releasePaginatedBackgroundPauseRef.current();
+        releasePaginatedBackgroundPauseRef.current = null;
+      }
       return;
     }
 
-    const primaryImages = collectWarmupImages(itemsToRender, 0, Math.min(itemsToRender.length - 1, 35));
-    const secondaryImages = collectWarmupImages(itemsToRender, 36, Math.min(itemsToRender.length - 1, 119));
+    const visiblePageImages = collectWarmupImages(itemsToRender, 0, itemsToRender.length - 1);
+    const keepImageIds = new Set(visiblePageImages.map((image) => image.id));
 
-    thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
-    thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
-  }, [isInfinite, itemsToRender]);
+    thumbnailManager.cancelQueuedJobs({ queue: 'all', keepImageIds });
+    releasePaginatedBackgroundPauseRef.current?.();
+    releasePaginatedBackgroundPauseRef.current = thumbnailManager.pauseBackgroundWork();
+
+    thumbnailManager.prefetchImages(visiblePageImages, 'high', { markLoading: false });
+
+    return () => {
+      if (releasePaginatedBackgroundPauseRef.current) {
+        releasePaginatedBackgroundPauseRef.current();
+        releasePaginatedBackgroundPauseRef.current = null;
+      }
+    };
+  }, [isInfinite, itemsToRender, currentPage]);
 
   // Use itemsToRender for calculations
   // const isInfinite = itemsPerPage === -1; // Moved to top
@@ -1442,6 +1678,14 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             style={{ position: 'relative' }}
             data-area="grid"
             tabIndex={0}
+            onFocus={() => {
+              gridKeyboardActiveRef.current = true;
+            }}
+            onMouseDownCapture={(event) => {
+              if (!isTypingTarget(event.target)) {
+                gridKeyboardActiveRef.current = true;
+              }
+            }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -1553,7 +1797,18 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
         data-area="grid"
         tabIndex={0}
-        onClick={() => gridRef.current?.focus()}
+        onFocus={() => {
+          gridKeyboardActiveRef.current = true;
+        }}
+        onMouseDownCapture={(event) => {
+          if (!isTypingTarget(event.target)) {
+            gridKeyboardActiveRef.current = true;
+          }
+        }}
+        onClick={() => {
+          gridKeyboardActiveRef.current = true;
+          gridRef.current?.focus();
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1586,6 +1841,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                             <ImageCard
                                 image={item.coverImage}
                                 onImageClick={() => handleStackClick(item)}
+                                enableAuxClickOpen={false}
                                 isSelected={selectedImages.has(item.coverImage.id)}
                                 isFocused={false}
                                 onImageLoad={handleImageLoad}

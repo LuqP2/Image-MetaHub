@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback } from 'react';
-import { ComfyUIProgressUpdate } from '../services/comfyUIApiClient';
+import { ComfyUIProgressUpdate, normalizeLoopbackServerUrl } from '../services/comfyUIApiClient';
 
 export interface ComfyUIProgressState {
   isGenerating: boolean;
@@ -25,9 +25,10 @@ export function useComfyUIProgress() {
     // Store prompt ID for reference
     promptIdRef.current = promptId;
     clientIdRef.current = clientId || generateClientId();
+    const resolvedServerUrl = normalizeLoopbackServerUrl(serverUrl);
 
     // Convert http:// to ws://
-    const wsUrl = serverUrl.replace(/^http/, 'ws') + `/ws?clientId=${clientIdRef.current}`;
+    const wsUrl = resolvedServerUrl.replace(/^http/, 'ws') + `/ws?clientId=${clientIdRef.current}`;
 
     console.log('[ComfyUI Progress] Connecting to WebSocket:', wsUrl);
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
-import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks } from 'lucide-react';
+import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { IndexedImageTransferProgress } from '../types';
@@ -23,6 +23,14 @@ interface FooterProps {
   queueCount?: number;
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
+  windowItems?: Array<{
+    id: string;
+    title: string;
+    isActive: boolean;
+    isMinimized: boolean;
+  }>;
+  onWindowSelect?: (id: string) => void;
+  onWindowClose?: (id: string) => void;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -51,7 +59,10 @@ const Footer: React.FC<FooterProps> = ({
   transferProgress,
   queueCount = 0,
   isQueueOpen = false,
-  onToggleQueue
+  onToggleQueue,
+  windowItems = [],
+  onWindowSelect,
+  onWindowClose,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -74,7 +85,59 @@ const Footer: React.FC<FooterProps> = ({
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
-    <footer className={`sticky bottom-0 px-6 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
+    <footer className="sticky bottom-0 z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
+      {windowItems.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-800/60 px-4 py-2">
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+            Windows
+          </span>
+          {windowItems.map((windowItem) => (
+            <div
+              key={windowItem.id}
+              onAuxClick={(event) => {
+                if (event.button !== 1) {
+                  return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                onWindowClose?.(windowItem.id);
+              }}
+              className={`flex max-w-[260px] shrink-0 items-stretch overflow-hidden rounded-lg border transition-colors ${
+                windowItem.isActive
+                  ? 'border-blue-500/50 bg-blue-500/15 text-blue-100'
+                  : windowItem.isMinimized
+                    ? 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                    : 'border-gray-700 bg-gray-800/90 text-gray-300 hover:border-gray-600 hover:text-white'
+              }`}
+            >
+              <button
+                onClick={() => onWindowSelect?.(windowItem.id)}
+                className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-xs font-medium"
+                title={windowItem.title}
+              >
+                {windowItem.isMinimized ? '[_] ' : ''}
+                {windowItem.title}
+              </button>
+              <button
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onWindowClose?.(windowItem.id);
+                }}
+                className={`border-l px-2 text-gray-400 transition-colors hover:text-white ${
+                  windowItem.isActive ? 'border-blue-500/30 hover:bg-blue-500/20' : 'border-gray-700/80 hover:bg-gray-700/80'
+                }`}
+                aria-label={`Close ${windowItem.title}`}
+                title="Close window"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={`px-6 flex items-center gap-4 ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
       <div className="min-w-0 flex-1 flex items-center gap-3 text-xs">
         {customText ? (
            <Token>
@@ -243,6 +306,7 @@ const Footer: React.FC<FooterProps> = ({
             )}
           </button>
         )}
+      </div>
       </div>
     </footer>
   );

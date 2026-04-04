@@ -16,14 +16,21 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   const { availableTags, bulkAddTag, bulkRemoveTag, images } = useImageStore();
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingRemoveTag, setPendingRemoveTag] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusInput = () => {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  };
 
   // Focus input when modal opens
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+      setInputValue('');
+      setIsSubmitting(false);
+      setPendingRemoveTag(null);
+      focusInput();
     }
   }, [isOpen]);
 
@@ -95,7 +102,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
       console.error('Failed to add tags:', error);
     } finally {
       setIsSubmitting(false);
-      inputRef.current?.focus();
+      focusInput();
     }
   };
 
@@ -106,33 +113,30 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
     // Join with comma and space, and add a trailing comma space for convenience to type next
     const newValue = parts.map(p => p.trim()).join(', ') + ', ';
     setInputValue(newValue);
-    inputRef.current?.focus();
+    focusInput();
   };
 
-  const handleRemoveTag = async (tag: string, e?: React.MouseEvent) => {
+  const handleRemoveTagRequest = (tag: string, e?: React.MouseEvent) => {
+    e?.preventDefault();
     e?.stopPropagation();
-    
-    // Use timeout to allow event loop to clear before blocking with confirm
-    // This often helps with focus/event issues around native dialogs
-    setTimeout(async () => {
-        if (!confirm(`Remove tag "${tag}" from ${selectedImages.length} images?`)) {
-            inputRef.current?.focus();
-            return;
-        }
-        
-        setIsSubmitting(true);
-        try {
-          await bulkRemoveTag(selectedImageIds, tag);
-        } catch (error) {
-          console.error('Failed to remove tag:', error);
-        } finally {
-          setIsSubmitting(false);
-          // Force focus restoration
-          setTimeout(() => {
-             inputRef.current?.focus();
-          }, 0);
-        }
-    }, 10);
+    setPendingRemoveTag(tag);
+  };
+
+  const handleConfirmRemoveTag = async () => {
+    if (!pendingRemoveTag) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await bulkRemoveTag(selectedImageIds, pendingRemoveTag);
+    } catch (error) {
+      console.error('Failed to remove tag:', error);
+    } finally {
+      setIsSubmitting(false);
+      setPendingRemoveTag(null);
+      focusInput();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -142,6 +146,11 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
         handleAddTag(inputValue);
       }
     } else if (e.key === 'Escape') {
+      if (pendingRemoveTag) {
+        setPendingRemoveTag(null);
+        focusInput();
+        return;
+      }
       onClose();
     }
   };
@@ -187,9 +196,11 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               autoComplete="off"
             />
             <button
+              type="button"
               onClick={() => handleAddTag(inputValue)}
               disabled={!inputValue.trim() || isSubmitting}
               className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Add tags"
             >
               <Plus size={16} />
             </button>
@@ -199,6 +210,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
                 {suggestions.map(tag => (
                   <button
+                    type="button"
                     key={tag.name}
                     onClick={() => handleSuggestionClick(tag.name)}
                     className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex justify-between items-center group"
@@ -210,6 +222,41 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
               </div>
             )}
           </div>
+
+          {pendingRemoveTag && (
+            <div className="rounded-lg border border-rose-500/30 bg-rose-950/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-rose-200">
+                    Remove tag "{pendingRemoveTag}" from {selectedImages.length} images?
+                  </div>
+                  <p className="mt-1 text-xs text-rose-200/70">
+                    This only removes the tag from the selected images.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingRemoveTag(null);
+                      focusInput();
+                    }}
+                    className="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 transition-colors hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmRemoveTag}
+                    disabled={isSubmitting}
+                    className="rounded-md border border-rose-500/40 bg-rose-600/80 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Existing Tags List */}
           <div className="space-y-2">
@@ -240,8 +287,11 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                        </span>
                     )}
                     <button
-                      onClick={(e) => handleRemoveTag(name, e)}
+                      type="button"
+                      onClick={(e) => handleRemoveTagRequest(name, e)}
                       className="ml-1 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label={`Remove tag ${name}`}
+                      title={`Remove tag ${name}`}
                     >
                       <X size={14} />
                     </button>

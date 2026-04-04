@@ -193,6 +193,7 @@ function processBatch(
         name: path.basename(filePath),
         path: filePath,
         lastModified: stats.birthtimeMs ?? stats.mtimeMs,
+        contentModifiedMs: stats.mtimeMs,
         size: stats.size,
         type: path.extname(filePath).slice(1)
       };

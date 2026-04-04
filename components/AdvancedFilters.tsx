@@ -1,87 +1,235 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, X, Calendar, Settings, CheckCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Calendar, CheckCircle, ChevronDown, Star, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { AdvancedFilters, ImageRating } from '../types';
+import { getRatingChipClasses, RATING_VALUES } from './RatingStars';
 
 interface AdvancedFiltersProps {
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: AdvancedFilters;
+  onAdvancedFiltersChange: (filters: AdvancedFilters) => void;
   onClearAdvancedFilters: () => void;
   availableDimensions: string[];
+  selectedRatings: ImageRating[];
+  onSelectedRatingsChange: (ratings: ImageRating[]) => void;
 }
+
+type MultiSelectFilterKey = 'generationModes' | 'mediaTypes';
+type MultiSelectFilterValues = {
+  generationModes: NonNullable<AdvancedFilters['generationModes']>;
+  mediaTypes: NonNullable<AdvancedFilters['mediaTypes']>;
+};
 
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
-  availableDimensions
+  availableDimensions,
+  selectedRatings,
+  onSelectedRatingsChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [localFilters, setLocalFilters] = useState(advancedFilters || {});
+  const [localFilters, setLocalFilters] = useState<AdvancedFilters>(advancedFilters || {});
 
   useEffect(() => {
     setLocalFilters(advancedFilters || {});
   }, [advancedFilters]);
 
-  // Debounce filter updates to avoid excessive re-filtering (300ms delay)
+  const isNumericRangeKey = (
+    key: keyof AdvancedFilters
+  ): key is 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb' => (
+    key === 'steps' ||
+    key === 'cfg' ||
+    key === 'generationTimeMs' ||
+    key === 'stepsPerSecond' ||
+    key === 'vramPeakMb'
+  );
+
+  const normalizeFilters = (filters: AdvancedFilters): AdvancedFilters => {
+    const nextFilters = { ...filters };
+
+    (Object.keys(nextFilters) as Array<keyof AdvancedFilters>).forEach((key) => {
+      const value = nextFilters[key];
+      if (value === null || value === undefined || value === '') {
+        delete nextFilters[key];
+        return;
+      }
+
+      if (key === 'date' && typeof value === 'object') {
+        const dateValue = value as NonNullable<AdvancedFilters['date']>;
+        if ((!dateValue.from || dateValue.from === '') && (!dateValue.to || dateValue.to === '')) {
+          delete nextFilters[key];
+        }
+        return;
+      }
+
+      if (isNumericRangeKey(key) && typeof value === 'object') {
+        const rangeValue = value as NonNullable<AdvancedFilters[typeof key]>;
+        const minMissing = rangeValue.min === null || rangeValue.min === undefined;
+        const maxMissing = rangeValue.max === null || rangeValue.max === undefined;
+        if (minMissing && maxMissing) {
+          delete nextFilters[key];
+        }
+        return;
+      }
+
+      if ((key === 'generationModes' || key === 'mediaTypes') && Array.isArray(value) && value.length === 0) {
+        delete nextFilters[key];
+      }
+    });
+
+    return nextFilters;
+  };
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      // Only update if local filters differ from prop filters
-      if (JSON.stringify(localFilters) !== JSON.stringify(advancedFilters)) {
-        onAdvancedFiltersChange(localFilters);
+      const normalized = normalizeFilters(localFilters);
+      if (JSON.stringify(normalized) !== JSON.stringify(advancedFilters)) {
+        onAdvancedFiltersChange(normalized);
       }
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [localFilters]); // Only depend on localFilters to debounce properly
+  }, [advancedFilters, localFilters, onAdvancedFiltersChange]);
 
-  const updateFilter = (key: string, value: any) => {
-    const newFilters = { ...localFilters, [key]: value };
-    // Remove empty filters
-    Object.keys(newFilters).forEach(k => {
-      if (newFilters[k] === null || newFilters[k] === undefined) {
-        delete newFilters[k];
-      }
-      // For date objects, check if both from and to are empty
-      else if (k === 'date' && typeof newFilters[k] === 'object') {
-        const dateObj = newFilters[k];
-        if ((!dateObj.from || dateObj.from === '') && (!dateObj.to || dateObj.to === '')) {
-          delete newFilters[k];
-        }
-      }
-      // For steps/cfg objects, remove if both min and max are null/undefined
-      else if ((k === 'steps' || k === 'cfg') && typeof newFilters[k] === 'object') {
-        const rangeObj = newFilters[k];
-        if ((rangeObj.min === null || rangeObj.min === undefined) &&
-            (rangeObj.max === null || rangeObj.max === undefined)) {
-          delete newFilters[k];
-        }
-      }
-      // For other objects, remove if empty
-      else if (typeof newFilters[k] === 'object' && Object.keys(newFilters[k]).length === 0) {
-        delete newFilters[k];
-      }
-    });
-
-    // Update local state immediately for UI responsiveness
-    // The actual filter change will be debounced by the useEffect above
-    setLocalFilters(newFilters);
+  const updateFilter = <K extends keyof AdvancedFilters>(key: K, value: AdvancedFilters[K]) => {
+    setLocalFilters((prev) => normalizeFilters({ ...prev, [key]: value }));
   };
 
-  const hasActiveFilters = Object.keys(advancedFilters || {}).length > 0;
+  const advancedFilterCount = Object.keys(advancedFilters || {}).length + selectedRatings.length;
+  const hasActiveFilters = advancedFilterCount > 0;
+  const generationSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (localFilters.steps) {
+      parts.push(`Steps ${localFilters.steps.min ?? '...'}-${localFilters.steps.max ?? '...'}`);
+    }
+    if (localFilters.cfg) {
+      parts.push(`CFG ${localFilters.cfg.min ?? '...'}-${localFilters.cfg.max ?? '...'}`);
+    }
+    return parts.join(' • ') || 'Ranges for generation parameters.';
+  }, [localFilters.cfg, localFilters.steps]);
+
+  const imageSummary = localFilters.dimension
+    ? `Pinned to ${localFilters.dimension}.`
+    : 'Resolution and aspect focused filters.';
+
+  const fileSummary = localFilters.date?.from || localFilters.date?.to
+    ? `${localFilters.date?.from || '...'} to ${localFilters.date?.to || '...'}`
+    : 'Filter by file date range.';
+
+  const metaHubSummary = localFilters.hasVerifiedTelemetry
+    ? 'Only images with verified metrics.'
+    : localFilters.telemetryState === 'present'
+      ? 'Only images with telemetry data.'
+      : localFilters.telemetryState === 'missing'
+        ? 'Only images missing telemetry data.'
+        : 'MetaHub-specific metadata filters.';
+  const generationModes = Array.isArray(localFilters.generationModes) ? localFilters.generationModes : [];
+  const mediaTypes = Array.isArray(localFilters.mediaTypes) ? localFilters.mediaTypes : [];
+  const ratingSummary = selectedRatings.length > 0
+    ? `Matching ratings ${selectedRatings.join(', ')}.`
+    : 'Toggle one or more ratings.';
+
+  const metadataSummary = [
+    generationModes.length > 0 ? generationModes.join(' + ') : null,
+    mediaTypes.length > 0 ? mediaTypes.join(' + ') : null,
+  ].filter(Boolean).join(' • ') || 'Generation mode and media-type filters.';
+
+  const toggleMultiSelectFilter = <K extends MultiSelectFilterKey>(key: K, value: MultiSelectFilterValues[K][number]) => {
+    const currentValues = (Array.isArray(localFilters[key]) ? localFilters[key] : []) as string[];
+    const nextValues = currentValues.includes(value)
+      ? currentValues.filter((item) => item !== value)
+      : [...currentValues, value];
+
+    updateFilter(key, nextValues as AdvancedFilters[K]);
+  };
+
+  const renderNumberRange = (
+    label: string,
+    key: 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb',
+    options: { minPlaceholder: string; maxPlaceholder: string; step?: string; max?: string }
+  ) => (
+    <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-100">{label}</h4>
+          <p className="text-xs text-gray-500">
+            {localFilters[key] ? `${localFilters[key].min ?? '...'} to ${localFilters[key].max ?? '...'}` : 'Any value'}
+          </p>
+        </div>
+        {localFilters[key] && (
+          <button
+            type="button"
+            onClick={() => updateFilter(key, null)}
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+            title={`Clear ${label.toLowerCase()} filter`}
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          type="number"
+          placeholder={options.minPlaceholder}
+          step={options.step}
+          min="0"
+          max={options.max}
+          value={localFilters[key]?.min ?? ''}
+          onChange={(event) => {
+            const raw = event.target.value;
+            if (raw === '') {
+              updateFilter(key, localFilters[key]?.max !== undefined ? { min: null, max: localFilters[key].max } : null);
+              return;
+            }
+            const parsed = key === 'cfg' ? parseFloat(raw) : parseInt(raw, 10);
+            if (Number.isNaN(parsed) || parsed < 0) return;
+            const currentMax = localFilters[key]?.max;
+            updateFilter(key, {
+              min: parsed,
+              max: currentMax === null || currentMax === undefined ? null : Math.max(parsed, currentMax),
+            });
+          }}
+          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+        />
+        <input
+          type="number"
+          placeholder={options.maxPlaceholder}
+          step={options.step}
+          min="0"
+          max={options.max}
+          value={localFilters[key]?.max ?? ''}
+          onChange={(event) => {
+            const raw = event.target.value;
+            if (raw === '') {
+              updateFilter(key, localFilters[key]?.min !== undefined ? { min: localFilters[key].min, max: null } : null);
+              return;
+            }
+            const parsed = key === 'cfg' ? parseFloat(raw) : parseInt(raw, 10);
+            if (Number.isNaN(parsed) || parsed < 0) return;
+            const currentMin = localFilters[key]?.min;
+            updateFilter(key, {
+              min: currentMin === null || currentMin === undefined ? null : Math.min(currentMin, parsed),
+              max: parsed,
+            });
+          }}
+          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+        />
+      </div>
+    </div>
+  );
 
   return (
-    <div className="border-b border-gray-700">
+    <div className="border-t border-gray-800/80">
       <div className="w-full flex items-center justify-between p-4">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex-1 flex items-center justify-between hover:bg-gray-700/50 transition-colors -m-4 p-4"
+          className="flex-1 flex items-center justify-between hover:bg-gray-800/50 transition-colors -m-4 p-4"
         >
           <div className="flex items-center space-x-2">
-            <Settings className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-300 font-medium">Advanced Filters</span>
+            <span className="text-gray-200 font-medium">Metadata & File Filters</span>
             {hasActiveFilters && (
-              <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                {Object.keys(advancedFilters).length} active
+              <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
+                {advancedFilterCount} active
               </span>
             )}
           </div>
@@ -111,276 +259,275 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 space-y-4">
+            <div className="space-y-4 px-4 pb-4">
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
+                    <p className="mt-1 text-xs text-gray-500">{generationSummary}</p>
+                  </div>
+                  {(localFilters.steps || localFilters.cfg) && (
+                    <button
+                      type="button"
+                      onClick={() => setLocalFilters((prev) => normalizeFilters({ ...prev, steps: undefined, cfg: undefined }))}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear generation filters"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {renderNumberRange('Steps', 'steps', { minPlaceholder: 'Min', maxPlaceholder: 'Max', max: '100' })}
+                  {renderNumberRange('CFG', 'cfg', { minPlaceholder: 'Min', maxPlaceholder: 'Max', step: '0.1', max: '20' })}
+                </div>
+              </div>
 
-              {/* Dimensions Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Dimensions
-                </label>
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-100">Image</h3>
+                    <p className="mt-1 text-xs text-gray-500">{imageSummary}</p>
+                  </div>
+                  {localFilters.dimension && (
+                    <button
+                      type="button"
+                      onClick={() => updateFilter('dimension', null)}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear dimensions filter"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
                 <select
                   value={localFilters.dimension || ''}
-                  onChange={(e) => updateFilter('dimension', e.target.value || null)}
-                  className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
+                  onChange={(event) => updateFilter('dimension', event.target.value || null)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                 >
                   <option value="">All dimensions</option>
-                  {availableDimensions.map(dim => (
-                    <option key={dim} value={dim}>{dim}</option>
+                  {availableDimensions.map((dimension) => (
+                    <option key={dimension} value={dimension}>{dimension}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Steps Range */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Steps Range: {localFilters.steps ? `${localFilters.steps.min} - ${localFilters.steps.max}` : 'All'}
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    placeholder="Min"
-                    value={localFilters.steps?.min ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        if (!localFilters.steps?.max) {
-                          updateFilter('steps', null);
-                        } else {
-                          updateFilter('steps', { min: null, max: localFilters.steps.max });
-                        }
-                      } else {
-                        const min = parseInt(value);
-                        if (isNaN(min) || min < 0) return;
-                        const max = localFilters.steps?.max ?? 100;
-                        updateFilter('steps', { min, max: Math.max(min, max) });
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault();
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = parseInt(e.target.value);
-                      if (!isNaN(value) && value < 0) {
-                        e.target.value = '0';
-                        const max = localFilters.steps?.max ?? 100;
-                        updateFilter('steps', { min: 0, max });
-                      }
-                    }}
-                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    min="0"
-                    max="100"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max"
-                    value={localFilters.steps?.max ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        if (!localFilters.steps?.min) {
-                          updateFilter('steps', null);
-                        } else {
-                          updateFilter('steps', { min: localFilters.steps.min, max: null });
-                        }
-                      } else {
-                        const max = parseInt(value);
-                        if (isNaN(max) || max < 0) return;
-                        const min = localFilters.steps?.min ?? 0;
-                        updateFilter('steps', { min: Math.min(min, max), max });
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault();
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = parseInt(e.target.value);
-                      if (!isNaN(value) && value < 0) {
-                        e.target.value = '0';
-                        const min = localFilters.steps?.min ?? 0;
-                        updateFilter('steps', { min, max: 0 });
-                      }
-                    }}
-                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    min="0"
-                    max="100"
-                  />
-                </div>
-              </div>
-
-              {/* CFG Scale Range */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  CFG Scale: {localFilters.cfg ? `${localFilters.cfg.min} - ${localFilters.cfg.max}` : 'All'}
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="number"
-                    placeholder="Min"
-                    step="0.1"
-                    value={localFilters.cfg?.min ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        if (!localFilters.cfg?.max) {
-                          updateFilter('cfg', null);
-                        } else {
-                          updateFilter('cfg', { min: null, max: localFilters.cfg.max });
-                        }
-                      } else {
-                        const min = parseFloat(value);
-                        if (isNaN(min) || min < 0) return;
-                        const max = localFilters.cfg?.max ?? 20;
-                        updateFilter('cfg', { min, max: Math.max(min, max) });
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault();
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (!isNaN(value) && value < 0) {
-                        e.target.value = '0';
-                        const max = localFilters.cfg?.max ?? 20;
-                        updateFilter('cfg', { min: 0, max });
-                      }
-                    }}
-                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    min="0"
-                    max="20"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max"
-                    step="0.1"
-                    value={localFilters.cfg?.max ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        if (!localFilters.cfg?.min) {
-                          updateFilter('cfg', null);
-                        } else {
-                          updateFilter('cfg', { min: localFilters.cfg.min, max: null });
-                        }
-                      } else {
-                        const max = parseFloat(value);
-                        if (isNaN(max) || max < 0) return;
-                        const min = localFilters.cfg?.min ?? 0;
-                        updateFilter('cfg', { min: Math.min(min, max), max });
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-                        e.preventDefault();
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (!isNaN(value) && value < 0) {
-                        e.target.value = '0';
-                        const min = localFilters.cfg?.min ?? 0;
-                        updateFilter('cfg', { min, max: 0 });
-                      }
-                    }}
-                    className="flex-1 bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    min="0"
-                    max="20"
-                  />
-                </div>
-              </div>
-
-              {/* Date Range */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="flex items-center text-sm font-medium text-gray-300">
-                    <Calendar className="w-4 h-4 mr-1" />
-                    Date Range
-                  </label>
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <Calendar className="h-4 w-4 text-blue-400" />
+                      File
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{fileSummary}</p>
+                  </div>
                   {(localFilters.date?.from || localFilters.date?.to) && (
                     <button
+                      type="button"
                       onClick={() => updateFilter('date', null)}
-                      className="text-xs text-gray-400 hover:text-red-400"
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
                       title="Clear date range"
                     >
                       <X size={14} />
                     </button>
                   )}
                 </div>
-                <div className="space-y-2">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <input
+                    type="date"
+                    value={localFilters.date?.from || ''}
+                    onChange={(event) => updateFilter('date', {
+                      from: event.target.value || '',
+                      to: localFilters.date?.to || '',
+                    })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                  />
+                  <input
+                    type="date"
+                    value={localFilters.date?.to || ''}
+                    onChange={(event) => updateFilter('date', {
+                      from: localFilters.date?.from || '',
+                      to: event.target.value || '',
+                    })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
-                    <label className="text-xs text-gray-400 mb-1 block">From</label>
-                    <input
-                      type="date"
-                      value={localFilters.date?.from || ''}
-                      onChange={(e) => {
-                        const newFrom = e.target.value;
-                        const currentTo = localFilters.date?.to || '';
-                        
-                        // Only create date object if at least one field has a value
-                        if (!newFrom && !currentTo) {
-                          updateFilter('date', null);
-                        } else {
-                          updateFilter('date', { 
-                            from: newFrom || '', 
-                            to: currentTo || '' 
-                          });
-                        }
-                      }}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    />
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <CheckCircle className="h-4 w-4 text-gray-400" />
+                      Metadata & File Type
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{metadataSummary}</p>
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">To</label>
-                    <input
-                      type="date"
-                      value={localFilters.date?.to || ''}
-                      onChange={(e) => {
-                        const newTo = e.target.value;
-                        const currentFrom = localFilters.date?.from || '';
-                        
-                        // Only create date object if at least one field has a value
-                        if (!currentFrom && !newTo) {
-                          updateFilter('date', null);
-                        } else {
-                          updateFilter('date', { 
-                            from: currentFrom || '', 
-                            to: newTo || '' 
-                          });
-                        }
-                      }}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md p-2 text-sm"
-                    />
+                  {(generationModes.length > 0 || mediaTypes.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setLocalFilters((prev: Record<string, any>) => normalizeFilters({
+                        ...prev,
+                        generationModes: [],
+                        mediaTypes: [],
+                      }))}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear metadata and file type filters"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
+                    <h4 className="text-sm font-semibold text-gray-100">Generation Mode</h4>
+                    <p className="mt-1 text-xs text-gray-500">Match txt2img or img2img outputs.</p>
+                    <div className="mt-3 space-y-2">
+                      {([
+                        ['txt2img', 'txt2img'],
+                        ['img2img', 'img2img'],
+                      ] as const).map(([value, label]) => (
+                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={generationModes.includes(value)}
+                            onChange={() => toggleMultiSelectFilter('generationModes', value)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                          />
+                          <div className="text-sm text-gray-200">{label}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
+                    <h4 className="text-sm font-semibold text-gray-100">Media Type</h4>
+                    <p className="mt-1 text-xs text-gray-500">Restrict results to images or videos.</p>
+                    <div className="mt-3 space-y-2">
+                      {([
+                        ['image', 'Images'],
+                        ['video', 'Videos'],
+                      ] as const).map(([value, label]) => (
+                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={mediaTypes.includes(value)}
+                            onChange={() => toggleMultiSelectFilter('mediaTypes', value)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                          />
+                          <div className="text-sm text-gray-200">{label}</div>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Verified Telemetry Checkbox */}
-              <div className="pt-2 border-t border-gray-700">
-                <label className="flex items-center cursor-pointer group">
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <Star className="h-4 w-4 text-amber-400" />
+                      Rating
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{ratingSummary}</p>
+                  </div>
+                  {selectedRatings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectedRatingsChange([])}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear rating filters"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelectedRatingsChange([])}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      selectedRatings.length === 0
+                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
+                        : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {RATING_VALUES.map((value) => {
+                    const active = selectedRatings.includes(value);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => onSelectedRatingsChange(
+                          active
+                            ? selectedRatings.filter((rating) => rating !== value)
+                            : [...selectedRatings, value]
+                        )}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, active)}`}
+                        title={`Toggle rating ${value}`}
+                      >
+                        {value}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <CheckCircle className="h-4 w-4 text-emerald-400" />
+                      MetaHub
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{metaHubSummary}</p>
+                  </div>
+                  {(localFilters.hasVerifiedTelemetry || localFilters.telemetryState || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
+                    <button
+                      type="button"
+                      onClick={() => setLocalFilters((prev) => normalizeFilters({
+                        ...prev,
+                        telemetryState: undefined,
+                        hasVerifiedTelemetry: undefined,
+                        generationTimeMs: undefined,
+                        stepsPerSecond: undefined,
+                        vramPeakMb: undefined,
+                      }))}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear MetaHub filters"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <label className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={localFilters.hasVerifiedTelemetry === true}
-                    onChange={(e) => updateFilter('hasVerifiedTelemetry', e.target.checked ? true : null)}
-                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800 cursor-pointer"
+                    onChange={(event) => setLocalFilters((prev) => normalizeFilters({
+                      ...prev,
+                      telemetryState: undefined,
+                      hasVerifiedTelemetry: event.target.checked ? true : undefined,
+                    }))}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
                   />
-                  <span className="ml-3 flex items-center gap-2 text-sm text-gray-300 group-hover:text-green-400 transition-colors">
-                    <CheckCircle size={16} className="text-green-500" />
-                    <span>
-                      Verified Telemetry Only
-                      <span className="ml-2 text-xs text-gray-500">(MetaHub Save Node)</span>
-                    </span>
-                  </span>
+                  <div>
+                    <div className="text-sm text-gray-200">MetaHub Save Node only</div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Restrict to images with VRAM, device, and runtime metadata from the MetaHub Save Node.
+                    </p>
+                  </div>
                 </label>
-                <p className="mt-1 ml-7 text-xs text-gray-500">
-                  Show only images with complete performance metrics (generation time, VRAM, GPU device, software versions)
-                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {renderNumberRange('Generation Time (ms)', 'generationTimeMs', { minPlaceholder: 'Min ms', maxPlaceholder: 'Max ms', step: '50' })}
+                  {renderNumberRange('Speed (it/s)', 'stepsPerSecond', { minPlaceholder: 'Min', maxPlaceholder: 'Max', step: '0.1' })}
+                  {renderNumberRange('VRAM Peak (MB)', 'vramPeakMb', { minPlaceholder: 'Min MB', maxPlaceholder: 'Max MB', step: '1' })}
+                </div>
               </div>
-
             </div>
           </motion.div>
         )}

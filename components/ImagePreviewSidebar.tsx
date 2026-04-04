@@ -14,6 +14,9 @@ import ProBadge from './ProBadge';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import ImageLineageSection from './ImageLineageSection';
+import { getGenerationTypeLabel } from '../utils/imageLineage';
+import RatingStars from './RatingStars';
 
 const TAG_SUGGESTION_LIMIT = 5;
 
@@ -151,17 +154,29 @@ type ContextMenuState = {
   selectionText: string;
 };
 
-const ImagePreviewSidebar: React.FC = () => {
+interface ImagePreviewSidebarProps {
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+}
+
+const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
+  width,
+  isResizing,
+  onResizeStart,
+}) => {
   const {
     previewImage,
     setPreviewImage,
     directories,
     toggleFavorite,
+    setImageRating,
     addTagToImage,
     removeTagFromImage,
     removeAutoTagFromImage,
     availableTags,
     setSearchQuery,
+    setSelectedImage,
   } = useImageStore();
   const recentTags = useImageStore((state) => state.recentTags);
   const previewImageFromStore = useImageStore((state) => {
@@ -353,6 +368,11 @@ const ImagePreviewSidebar: React.FC = () => {
     toggleFavorite(activeImage.id);
   };
 
+  const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    if (!activeImage) return;
+    setImageRating(activeImage.id, rating);
+  };
+
   // Filter autocomplete tags
   const autocompleteOptions = tagInput && activeImage
     ? availableTags
@@ -367,9 +387,20 @@ const ImagePreviewSidebar: React.FC = () => {
     <div
       data-area="preview"
       tabIndex={-1}
-      className="fixed right-0 top-0 h-full w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl"
+      style={{ width }}
+      className={`fixed right-0 top-0 h-full bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 z-40 flex flex-col shadow-xl ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}
       onClick={hideContextMenu}
     >
+      <div
+        role="separator"
+        aria-label="Resize preview sidebar"
+        aria-orientation="vertical"
+        onPointerDown={onResizeStart}
+        className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+        title="Drag to resize preview sidebar"
+      >
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Image Preview</h2>
@@ -413,10 +444,10 @@ const ImagePreviewSidebar: React.FC = () => {
             {hasVerifiedTelemetry(activeImage) && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
-                title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                title="MetaHub Save Node - Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
               >
                 <CheckCircle size={12} className="flex-shrink-0" />
-                <span className="whitespace-nowrap">Verified</span>
+                <span className="whitespace-nowrap">MetaHub Save Node</span>
               </span>
             )}
           </div>
@@ -427,18 +458,21 @@ const ImagePreviewSidebar: React.FC = () => {
         <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50 space-y-2">
           {/* Favorite and Tags Row */}
           <div className="flex items-start gap-3">
-            {/* Favorite Star - Discrete */}
-            <button
-              onClick={handleToggleFavorite}
-              className={`p-1.5 rounded transition-all ${
-                activeImage.isFavorite
-                  ? 'text-yellow-400 hover:text-yellow-300'
-                  : 'text-gray-500 hover:text-yellow-400'
-              }`}
-              title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            >
-              <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
+              <button
+                onClick={handleToggleFavorite}
+                className={`p-1 rounded transition-all ${
+                  activeImage.isFavorite
+                    ? 'text-yellow-400 hover:text-yellow-300'
+                    : 'text-gray-500 hover:text-yellow-400'
+                }`}
+                title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
+              </button>
+              <div className="h-5 w-px bg-gray-300/80 dark:bg-gray-700/70" />
+              <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />
+            </div>
 
             {/* Tags Pills */}
             <div className="flex-1 space-y-2">
@@ -554,6 +588,14 @@ const ImagePreviewSidebar: React.FC = () => {
           <>
             <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 pb-2">Metadata</h3>
             <div className="space-y-3">
+              <ImageLineageSection
+                image={activeImage}
+                metadata={nMeta}
+                onOpenImage={(targetImage) => {
+                  setPreviewImage(targetImage);
+                  setSelectedImage(targetImage);
+                }}
+              />
               <MetadataItem label="Format" value={nMeta.format} onCopy={(v) => copyToClipboard(v, "Format")} />
               <MetadataItem label="Prompt" value={nMeta.prompt} isPrompt onCopy={(v) => copyToClipboard(v, "Prompt")} />
               <MetadataItem label="Negative Prompt" value={nMeta.negativePrompt} isPrompt onCopy={(v) => copyToClipboard(v, "Negative Prompt")} />
@@ -563,6 +605,7 @@ const ImagePreviewSidebar: React.FC = () => {
               )}
 
               <div className="grid grid-cols-2 gap-2 text-sm">
+                  <MetadataItem label="Generation Type" value={nMeta.generationType ? getGenerationTypeLabel(nMeta.generationType) : undefined} />
                   <MetadataItem label="Steps" value={nMeta.steps} />
                   <MetadataItem label="CFG Scale" value={nMeta.cfgScale ?? nMeta.cfg_scale} />
                   <MetadataItem label="Seed" value={nMeta.seed} />
@@ -862,15 +905,21 @@ const ImagePreviewSidebar: React.FC = () => {
                       width: params.width,
                       height: params.height,
                       batch_size: params.numberOfImages,
+                      model: params.model?.name || nMeta?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
                     await generateWithComfyUI(activeImage, {
                       customMetadata,
                       overrides: {
-                        model: params.model,
+                        model: params.model || undefined,
                         loras: params.loras,
                       },
+                      workflowMode: params.workflowMode,
+                      sourceImagePolicy: params.sourceImagePolicy,
+                      advancedPromptJson: params.advancedPromptJson,
+                      advancedWorkflowJson: params.advancedWorkflowJson,
+                      maskFile: params.maskFile,
                     });
                     setIsComfyUIGenerateModalOpen(false);
                   }}

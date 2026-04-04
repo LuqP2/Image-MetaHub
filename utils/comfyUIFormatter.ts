@@ -3,8 +3,9 @@
  * Converts BaseMetadata to ComfyUI workflow JSON format for clipboard copying
  */
 
-import { BaseMetadata } from '../types';
+import { BaseMetadata, IndexedImage } from '../types';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
+import { extractEmbeddedComfyWorkflow } from '../services/comfyUIWorkflowBuilder';
 
 /**
  * Format metadata as ComfyUI workflow JSON
@@ -17,6 +18,26 @@ export function formatMetadataForComfyUI(metadata: BaseMetadata): string {
 
   // Return formatted JSON for clipboard
   return JSON.stringify(workflow, null, 2);
+}
+
+export function formatImageForComfyUI(image: IndexedImage): string {
+  const embedded = extractEmbeddedComfyWorkflow(image);
+  if (embedded.prompt) {
+    return JSON.stringify({
+      prompt: embedded.prompt,
+      extra_pnginfo: {
+        workflow: embedded.workflow || {},
+        prompt: embedded.prompt,
+      },
+    }, null, 2);
+  }
+
+  const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  if (!metadata) {
+    return JSON.stringify({}, null, 2);
+  }
+
+  return formatMetadataForComfyUI(metadata);
 }
 
 /**

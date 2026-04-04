@@ -30,7 +30,9 @@ import Analytics from './components/Analytics';
 import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
+import NodeView from './components/NodeView';
 import GridToolbar from './components/GridToolbar';
+import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
@@ -42,6 +44,96 @@ import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams 
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
+import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
+
+interface OpenImageModalState {
+  modalId: string;
+  imageId: string;
+  navigationImageIds: string[];
+  navigationSource: 'filtered' | 'cluster' | 'scope';
+  zIndex: number;
+  initialWindowOffset: number;
+  isMinimized: boolean;
+}
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
+const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
+const SIDEBAR_DEFAULT_WIDTH = 320;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 640;
+const RIGHT_SIDEBAR_DEFAULT_WIDTH = 384;
+const RIGHT_SIDEBAR_MIN_WIDTH = 320;
+const RIGHT_SIDEBAR_MAX_WIDTH = 640;
+const SIDEBAR_COLLAPSED_CONTENT_OFFSET = 48;
+const MAIN_CONTENT_MIN_WIDTH = 560;
+
+const sanitizePreferredWidth = (
+  width: number,
+  fallbackWidth: number,
+  minWidth: number,
+  maxWidth: number
+) => {
+  if (!Number.isFinite(width)) {
+    return fallbackWidth;
+  }
+
+  return Math.min(Math.max(width, minWidth), maxWidth);
+};
+
+const clampSidebarWidth = (width: number, viewportWidth: number, reservedRightWidth = 0) => {
+  const maxWidthFromViewport = viewportWidth - reservedRightWidth - MAIN_CONTENT_MIN_WIDTH;
+  const upperBound = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
+
+  return Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), upperBound);
+};
+
+const clampRightSidebarWidth = (width: number, viewportWidth: number, reservedLeftWidth = 0) => {
+  const maxWidthFromViewport = viewportWidth - reservedLeftWidth - MAIN_CONTENT_MIN_WIDTH;
+  const upperBound = Math.max(RIGHT_SIDEBAR_MIN_WIDTH, Math.min(RIGHT_SIDEBAR_MAX_WIDTH, maxWidthFromViewport));
+
+  return Math.min(Math.max(width, RIGHT_SIDEBAR_MIN_WIDTH), upperBound);
+};
+
+const resolveSidebarWidths = ({
+  hasDirectories,
+  isSidebarCollapsed,
+  hasRightSidebar,
+  viewportWidth,
+  preferredLeftWidth,
+  preferredRightWidth,
+}: {
+  hasDirectories: boolean;
+  isSidebarCollapsed: boolean;
+  hasRightSidebar: boolean;
+  viewportWidth: number;
+  preferredLeftWidth: number;
+  preferredRightWidth: number;
+}) => {
+  let leftWidth = preferredLeftWidth;
+  let rightWidth = preferredRightWidth;
+
+  for (let iteration = 0; iteration < 4; iteration += 1) {
+    const nextLeftWidth =
+      hasDirectories && !isSidebarCollapsed
+        ? clampSidebarWidth(preferredLeftWidth, viewportWidth, hasRightSidebar ? rightWidth : 0)
+        : preferredLeftWidth;
+    const reservedLeftWidth = hasDirectories
+      ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : nextLeftWidth)
+      : 0;
+    const nextRightWidth = hasRightSidebar
+      ? clampRightSidebarWidth(preferredRightWidth, viewportWidth, reservedLeftWidth)
+      : preferredRightWidth;
+
+    if (nextLeftWidth === leftWidth && nextRightWidth === rightWidth) {
+      break;
+    }
+
+    leftWidth = nextLeftWidth;
+    rightWidth = nextRightWidth;
+  }
+
+  return { leftWidth, rightWidth };
+};
 
 export default function App() {
   const { progressState: a1111Progress } = useA1111ProgressContext();
@@ -55,6 +147,7 @@ export default function App() {
 
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
+  const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -63,6 +156,8 @@ export default function App() {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const previewImage = useImageStore((state) => state.previewImage);
   const clustersCount = useImageStore((state) => state.clusters.length);
+  const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -84,16 +179,21 @@ export default function App() {
   const removeExcludedFolder = useImageStore((state) => state.removeExcludedFolder);
   const availableModels = useImageStore((state) => state.availableModels);
   const availableLoras = useImageStore((state) => state.availableLoras);
+  const availableSamplers = useImageStore((state) => state.availableSamplers);
   const availableSchedulers = useImageStore((state) => state.availableSchedulers);
   const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
+  const selectedSamplers = useImageStore((state) => state.selectedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const advancedFilters = useImageStore((state) => state.advancedFilters);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+  const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
 
   // Folder selection selectors
   const selectedFolders = useImageStore((state) => state.selectedFolders);
@@ -121,9 +221,8 @@ export default function App() {
   const setSuccess = useImageStore((state) => state.setSuccess);
   const setError = useImageStore((state) => state.setError);
   const setTransferProgress = useImageStore((state) => state.setTransferProgress);
-  const handleNavigateNext = useImageStore((state) => state.handleNavigateNext);
-  const handleNavigatePrevious = useImageStore((state) => state.handleNavigatePrevious);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
+  const setActiveImageScope = useImageStore((state) => state.setActiveImageScope);
   const cleanupInvalidImages = useImageStore((state) => state.cleanupInvalidImages);
   const closeComparisonModal = useImageStore((state) => state.closeComparisonModal);
   const setComparisonImages = useImageStore((state) => state.setComparisonImages);
@@ -134,9 +233,32 @@ export default function App() {
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
 
+  const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
+  const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
+  const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
+  const hasDirectories = safeDirectories.length > 0;
+  const directoryPathById = useMemo(
+    () => new Map(safeDirectories.map((directory) => [directory.id, directory.path])),
+    [safeDirectories]
+  );
+  const imageLookup = useMemo(() => {
+    const lookup = new Map<string, IndexedImage>();
+
+    for (const image of safeFilteredImages) {
+      lookup.set(image.id, image);
+    }
+
+    for (const image of safeClusterNavigationContext) {
+      if (!lookup.has(image.id)) {
+        lookup.set(image.id, image);
+      }
+    }
+
+    return lookup;
+  }, [safeClusterNavigationContext, safeFilteredImages]);
 
   // --- Settings Store State ---
   const {
@@ -153,25 +275,124 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const previousSearchQueryRef = useRef(searchQuery);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'hotkeys' | 'themes'>('general');
-  const [settingsSection, setSettingsSection] = useState<'license' | null>(null);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
+  const [settingsSection, setSettingsSection] = useState<SettingsFocusSection>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 1440;
+    }
+
+    return window.innerWidth;
+  });
+  const [preferredSidebarWidth, setPreferredSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    const storedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+
+    return sanitizePreferredWidth(
+      storedWidth,
+      SIDEBAR_DEFAULT_WIDTH,
+      SIDEBAR_MIN_WIDTH,
+      SIDEBAR_MAX_WIDTH
+    );
+  });
+  const [preferredRightSidebarWidth, setPreferredRightSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') {
+      return RIGHT_SIDEBAR_DEFAULT_WIDTH;
+    }
+
+    const storedWidth = Number(window.localStorage.getItem(RIGHT_SIDEBAR_WIDTH_STORAGE_KEY));
+
+    return sanitizePreferredWidth(
+      storedWidth,
+      RIGHT_SIDEBAR_DEFAULT_WIDTH,
+      RIGHT_SIDEBAR_MIN_WIDTH,
+      RIGHT_SIDEBAR_MAX_WIDTH
+    );
+  });
+  const [sidebarResizeState, setSidebarResizeState] = useState<{
+    side: 'left' | 'right';
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isHotkeyHelpOpen, setIsHotkeyHelpOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node'>('library');
+  const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
+  const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
+  const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const lastOpenedModalImageIdRef = useRef<string | null>(null);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  useEffect(() => {
+    if (libraryView !== 'node' && activeImageScope !== null) {
+      setActiveImageScope(null);
+    }
+  }, [activeImageScope, libraryView, setActiveImageScope]);
+  const hasRightSidebar = Boolean(previewImage || isQueueOpen);
+  const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
+    () =>
+      resolveSidebarWidths({
+        hasDirectories,
+        isSidebarCollapsed,
+        hasRightSidebar,
+        viewportWidth,
+        preferredLeftWidth: preferredSidebarWidth,
+        preferredRightWidth: preferredRightSidebarWidth,
+      }),
+    [
+      hasDirectories,
+      hasRightSidebar,
+      isSidebarCollapsed,
+      preferredRightSidebarWidth,
+      preferredSidebarWidth,
+      viewportWidth,
+    ]
+  );
+  const mainContentMarginLeft = hasDirectories
+    ? (isSidebarCollapsed ? SIDEBAR_COLLAPSED_CONTENT_OFFSET : sidebarWidth)
+    : 0;
+  const mainContentMarginRight = hasRightSidebar ? rightSidebarWidth : 0;
+  const isSidebarResizing = sidebarResizeState !== null;
+  const isLeftSidebarResizing = sidebarResizeState?.side === 'left';
+  const isRightSidebarResizing = sidebarResizeState?.side === 'right';
+
+  const handleSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      side: 'left',
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    });
+  }, [sidebarWidth]);
+
+  const handleRightSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      side: 'right',
+      startX: event.clientX,
+      startWidth: rightSidebarWidth,
+    });
+  }, [rightSidebarWidth]);
 
   // --- Hotkeys Hook ---
   const { commands } = useHotkeys({
@@ -194,24 +415,25 @@ export default function App() {
     isExpired,
     isFree,
     isPro,
+    canUseAnalytics,
     canUseBatchExport,
     showProModal,
     startTrial,
   } = useFeatureAccess();
 
-  const handleOpenSettings = (tab: 'general' | 'hotkeys' | 'themes' = 'general', section: 'license' | null = null) => {
-    setSettingsTab(tab);
+  const handleOpenSettings = (tab: SettingsTabInput = 'library', section: SettingsFocusSection = null) => {
+    setSettingsTab(resolveSettingsTab(tab));
     setSettingsSection(section);
     setIsSettingsModalOpen(true);
   };
 
   const handleOpenHotkeySettings = () => {
     setIsHotkeyHelpOpen(false);
-    handleOpenSettings('hotkeys');
+    handleOpenSettings('shortcuts');
   };
 
   const handleOpenLicenseSettings = () => {
-    handleOpenSettings('general', 'license');
+    handleOpenSettings('license', 'license');
   };
 
   // Create a dummy image for generation from scratch (no base image)
@@ -225,6 +447,7 @@ export default function App() {
       metadataString: '',
       models: [],
       loras: [],
+      sampler: '',
       scheduler: '',
       metadata: {
         normalizedMetadata: {
@@ -625,11 +848,276 @@ export default function App() {
     }
   }, [selectedImage, safeDirectories, setSelectedImage]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredSidebarWidth))
+    );
+  }, [preferredSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      RIGHT_SIDEBAR_WIDTH_STORAGE_KEY,
+      String(Math.round(preferredRightSidebarWidth))
+    );
+  }, [preferredRightSidebarWidth]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarResizeState || typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const deltaX = event.clientX - sidebarResizeState.startX;
+      if (sidebarResizeState.side === 'left') {
+        const nextWidth = sidebarResizeState.startWidth + deltaX;
+        setPreferredSidebarWidth(
+          clampSidebarWidth(nextWidth, viewportWidth, mainContentMarginRight)
+        );
+        return;
+      }
+
+      const nextWidth = sidebarResizeState.startWidth - deltaX;
+      setPreferredRightSidebarWidth(
+        clampRightSidebarWidth(nextWidth, viewportWidth, mainContentMarginLeft)
+      );
+    };
+
+    const handlePointerUp = () => {
+      setSidebarResizeState(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [mainContentMarginLeft, mainContentMarginRight, sidebarResizeState, viewportWidth]);
+
+  useEffect(() => {
+    if (!selectedImage) {
+      lastOpenedModalImageIdRef.current = null;
+      return;
+    }
+
+    if (lastOpenedModalImageIdRef.current === selectedImage.id) {
+      return;
+    }
+    lastOpenedModalImageIdRef.current = selectedImage.id;
+
+    const navigationSource =
+      clusterNavigationContext && clusterNavigationContext.length > 0
+        ? clusterNavigationContext
+        : safeActiveImageScope ?? safeFilteredImages;
+    const navigationImageIds = navigationSource.map((image) => image.id);
+    const navigationSourceType: OpenImageModalState['navigationSource'] =
+      clusterNavigationContext && clusterNavigationContext.length > 0
+        ? 'cluster'
+        : safeActiveImageScope
+          ? 'scope'
+          : 'filtered';
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const existingModal = current.find((modal) => modal.imageId === selectedImage.id);
+
+      if (existingModal) {
+        const nextZIndex = current.length > 1 ? highestZIndex + 1 : existingModal.zIndex;
+        const shouldUpdate =
+          existingModal.isMinimized || existingModal.zIndex !== nextZIndex;
+
+        if (!shouldUpdate) {
+          return current;
+        }
+
+        return current.map((modal) => {
+          if (modal.modalId !== existingModal.modalId) {
+            return modal;
+          }
+
+          return {
+            ...modal,
+            zIndex: nextZIndex,
+            isMinimized: false,
+          };
+        });
+      }
+
+      const navigationSource =
+        safeClusterNavigationContext.length > 0
+          ? safeClusterNavigationContext
+          : safeActiveImageScope ?? safeFilteredImages;
+      const navigationImageIds = navigationSource.map((image) => image.id);
+      const navigationSourceType: OpenImageModalState['navigationSource'] =
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered';
+
+      const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
+
+      return [
+        ...current,
+        {
+          modalId,
+          imageId: selectedImage.id,
+          navigationImageIds,
+          navigationSource: navigationSourceType,
+          zIndex: highestZIndex + 1,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+        },
+      ];
+    });
+  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+
+  const filteredNavigationImageIds = useMemo(
+    () => safeFilteredImages.map((image) => image.id),
+    [safeFilteredImages]
+  );
+
+  const activeScopeNavigationImageIds = useMemo(
+    () => safeActiveImageScope?.map((image) => image.id) ?? null,
+    [safeActiveImageScope]
+  );
+
+  const getImageByIdFromStore = useCallback((imageId: string) => {
+    if (!imageId) {
+      return undefined;
+    }
+
+    const fastMatch = imageLookup.get(imageId);
+    if (fastMatch) {
+      return fastMatch;
+    }
+
+    return useImageStore.getState().images.find((image) => image.id === imageId);
+  }, [imageLookup]);
+
+  const resolveModalNavigationImageIds = useCallback((modal: OpenImageModalState) => {
+    if (modal.navigationSource === 'filtered') {
+      return filteredNavigationImageIds;
+    }
+
+    if (modal.navigationSource === 'scope') {
+      return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+    }
+
+    return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, imageLookup]);
+
+  useEffect(() => {
+    if (openImageModals.length === 0) {
+      return;
+    }
+
+    setOpenImageModals((current) => {
+      let changed = false;
+      const next = current.flatMap((modal) => {
+        const image = getImageByIdFromStore(modal.imageId);
+        const directoryExists = image ? safeDirectories.some((directory) => directory.id === image.directoryId) : false;
+
+        if (!image || !directoryExists) {
+          changed = true;
+          return [];
+        }
+
+        if (modal.navigationSource === 'filtered') {
+          return [modal];
+        }
+
+        if (modal.navigationSource === 'scope' && activeScopeNavigationImageIds === null) {
+          return [modal];
+        }
+
+        const navigationImageIds = resolveModalNavigationImageIds(modal);
+        if (navigationImageIds.length !== modal.navigationImageIds.length) {
+          changed = true;
+          return [{ ...modal, navigationImageIds }];
+        }
+
+        return [modal];
+      });
+
+      return changed ? next : current;
+    });
+  }, [activeScopeNavigationImageIds, getImageByIdFromStore, resolveModalNavigationImageIds, safeDirectories]);
+
+  useEffect(() => {
+    const selectedImageId = useImageStore.getState().selectedImage?.id ?? null;
+    const nextActiveModal = [...openImageModals]
+      .filter((modal) => !modal.isMinimized)
+      .sort((left, right) => right.zIndex - left.zIndex)[0];
+    const nextActiveModalId = nextActiveModal?.modalId ?? null;
+
+    if (nextActiveModalId !== activeImageModalId) {
+      setActiveImageModalId(nextActiveModalId);
+      return;
+    }
+
+    if (nextActiveModal) {
+      const nextActiveImage = getImageByIdFromStore(nextActiveModal.imageId);
+      if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
+        setSelectedImage(nextActiveImage);
+      }
+    } else {
+      if (selectedImageId !== null) {
+        setSelectedImage(null);
+      }
+      if (openImageModals.length === 0 && useImageStore.getState().clusterNavigationContext !== null) {
+        setClusterNavigationContext(null);
+      }
+    }
+  }, [activeImageModalId, getImageByIdFromStore, openImageModals, setClusterNavigationContext, setSelectedImage]);
+
   // --- Memoized Callbacks for UI ---
   const handleImageDeleted = useCallback((imageId: string) => {
     removeImage(imageId);
-    // Only close modal if the deleted image is still the one currently selected
-    // (This allows ImageModal to navigate to next image BEFORE deletion without App closing it)
+    setOpenImageModals((current) => {
+      return current.flatMap((modal) => {
+        const navigationImageIds = modal.navigationImageIds.filter((id) => id !== imageId);
+        if (modal.imageId === imageId) {
+          return [];
+        }
+        return [{ ...modal, navigationImageIds }];
+      });
+    });
     if (useImageStore.getState().selectedImage?.id === imageId) {
       setSelectedImage(null);
     }
@@ -637,27 +1125,153 @@ export default function App() {
 
   const handleImageRenamed = useCallback((imageId: string, newName: string) => {
     updateImage(imageId, newName);
-    setSelectedImage(null);
-  }, [updateImage, setSelectedImage]);
+  }, [updateImage]);
 
-  const getCurrentImageIndex = useCallback(() => {
-    if (!selectedImage) return 0;
-    return safeFilteredImages.findIndex(img => img.id === selectedImage.id);
-  }, [selectedImage, safeFilteredImages]);
+  const handleActivateImageModal = useCallback((modalId: string) => {
+    setOpenImageModals((current) => {
+      const targetModal = current.find((modal) => modal.modalId === modalId);
+      if (!targetModal) {
+        return current;
+      }
 
-  // Memoize ImageModal callbacks to prevent unnecessary re-renders during Phase B
-  const handleCloseImageModal = useCallback(() => {
-    setClusterNavigationContext(null);
-    setSelectedImage(null);
-  }, [setSelectedImage, setClusterNavigationContext]);
+      const nextZIndex = Math.max(...current.map((modal) => modal.zIndex)) + 1;
+      return current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, zIndex: nextZIndex, isMinimized: false } : modal
+      );
+    });
+    setActiveImageModalId(modalId);
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    const targetImage = targetModal ? getImageByIdFromStore(targetModal.imageId) ?? null : null;
+    if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
+      setSelectedImage(targetImage);
+    }
+  }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
 
-  const handleImageModalNavigateNext = useCallback(() => {
-    handleNavigateNext();
-  }, [handleNavigateNext]);
+  const handleMinimizeImageModal = useCallback((modalId: string) => {
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, isMinimized: true } : modal
+      )
+    );
+  }, []);
 
-  const handleImageModalNavigatePrevious = useCallback(() => {
-    handleNavigatePrevious();
-  }, [handleNavigatePrevious]);
+  const handleMinimizeAllImageModals = useCallback(() => {
+    setOpenImageModals((current) => {
+      if (current.every((modal) => modal.isMinimized)) {
+        return current;
+      }
+
+      return current.map((modal) => (
+        modal.isMinimized ? modal : { ...modal, isMinimized: true }
+      ));
+    });
+  }, []);
+
+  const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
+    setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
+
+    if (useImageStore.getState().selectedImage?.id === imageId) {
+      setSelectedImage(null);
+    }
+  }, [setSelectedImage]);
+
+  const handleCloseImageModalFromFooter = useCallback((modalId: string) => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    handleCloseImageModal(targetModal.modalId, targetModal.imageId);
+  }, [handleCloseImageModal, openImageModals]);
+
+  const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
+    const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
+    if (!targetModal) {
+      return;
+    }
+
+    const availableImageIds = resolveModalNavigationImageIds(targetModal);
+    const currentIndex = availableImageIds.findIndex((imageId) => imageId === targetModal.imageId);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const nextImageId =
+      direction === 'next'
+        ? availableImageIds[currentIndex + 1]
+        : availableImageIds[currentIndex - 1];
+
+    if (!nextImageId) {
+      return;
+    }
+
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, imageId: nextImageId } : modal
+      )
+    );
+
+    const nextImage = getImageByIdFromStore(nextImageId);
+    if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
+      setSelectedImage(nextImage);
+    }
+  }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
+
+  const handleOpenImageModalInBackground = useCallback((image: IndexedImage) => {
+    const navigationSource =
+      safeClusterNavigationContext.length > 0
+        ? safeClusterNavigationContext
+        : safeFilteredImages;
+    const navigationImageIds = navigationSource.map((entry) => entry.id);
+    const navigationSourceType: OpenImageModalState['navigationSource'] =
+      safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const nextZIndex = highestZIndex + 1;
+      const existingModal = current.find((modal) => modal.imageId === image.id);
+
+      if (existingModal) {
+        return current.map((modal) => {
+          if (modal.modalId !== existingModal.modalId) {
+            return modal;
+          }
+
+          return {
+            ...modal,
+            navigationImageIds,
+            navigationSource: navigationSourceType,
+            zIndex: nextZIndex,
+            isMinimized: true,
+          };
+        });
+      }
+
+      return [
+        ...current,
+        {
+          modalId: `image-modal-${Date.now()}-${image.id}`,
+          imageId: image.id,
+          navigationImageIds,
+          navigationSource: navigationSourceType,
+          zIndex: nextZIndex,
+          initialWindowOffset: current.length * 28,
+          isMinimized: true,
+        },
+      ];
+    });
+  }, [safeClusterNavigationContext, safeFilteredImages]);
+
+  const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
+    if (event.button === 1) {
+      event.preventDefault();
+      handleOpenImageModalInBackground(image);
+      return;
+    }
+
+    handleImageSelection(image, event);
+  }, [handleImageSelection, handleOpenImageModalInBackground]);
 
   const handleOpenBatchExport = useCallback(() => {
     if (!canUseBatchExport) {
@@ -680,8 +1294,61 @@ export default function App() {
   const totalPages = itemsPerPage === -1
     ? 1
     : Math.ceil(safeFilteredImages.length / itemsPerPage);
-  const hasDirectories = safeDirectories.length > 0;
-  const directoryPath = selectedImage ? safeDirectories.find(d => d.id === selectedImage.directoryId)?.path : undefined;
+  const openImageModalEntries = useMemo(() => {
+    return openImageModals
+      .map((modal) => {
+        const image = getImageByIdFromStore(modal.imageId);
+        if (!image) {
+          return null;
+        }
+
+        const navigationImageIds = resolveModalNavigationImageIds(modal);
+        const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
+        const directoryPath = directoryPathById.get(image.directoryId);
+        if (!directoryPath) {
+          return null;
+        }
+
+        return {
+          ...modal,
+          image,
+          directoryPath,
+          currentIndex: currentIndex === -1 ? 0 : currentIndex,
+          totalImages: navigationImageIds.length,
+        };
+      })
+      .filter(Boolean) as Array<OpenImageModalState & {
+        image: IndexedImage;
+        directoryPath: string;
+        currentIndex: number;
+        totalImages: number;
+      }>;
+  }, [directoryPathById, getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds]);
+
+  const footerWindowItems = useMemo(() => {
+    return openImageModals
+      .map((modal) => {
+        const image = getImageByIdFromStore(modal.imageId);
+        if (!image) {
+          return null;
+        }
+
+        return {
+          id: modal.modalId,
+          title: image.name,
+          isActive: activeImageModalId === modal.modalId,
+          isMinimized: modal.isMinimized,
+        };
+      })
+      .filter(Boolean) as Array<{
+        id: string;
+        title: string;
+        isActive: boolean;
+        isMinimized: boolean;
+      }>;
+  }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
+  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
+
   const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -759,29 +1426,56 @@ export default function App() {
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          width={sidebarWidth}
+          isResizing={isLeftSidebarResizing}
+          onResizeStart={handleSidebarResizeStart}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           availableModels={availableModels}
           availableLoras={availableLoras}
+          availableSamplers={availableSamplers}
           availableSchedulers={availableSchedulers}
           selectedModels={selectedModels}
           selectedLoras={selectedLoras}
+          selectedSamplers={selectedSamplers}
           selectedSchedulers={selectedSchedulers}
           onModelChange={(models) => setSelectedFilters({ models })}
           onLoraChange={(loras) => setSelectedFilters({ loras })}
+          onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
-            setSelectedFilters({ models: [], loras: [], schedulers: [] });
+            setSearchQuery('');
+            setSelectedFilters({
+              models: [],
+              excludedModels: [],
+              loras: [],
+              excludedLoras: [],
+              samplers: [],
+              excludedSamplers: [],
+              schedulers: [],
+              excludedSchedulers: [],
+              generators: [],
+              excludedGenerators: [],
+              gpuDevices: [],
+              excludedGpuDevices: [],
+            });
             setSelectedTags([]);
             setExcludedTags([]);
             setSelectedAutoTags([]);
+            setExcludedAutoTags([]);
             setFavoriteFilterMode('neutral');
+            setSelectedRatings([]);
             setAdvancedFilters({});
           }}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={setAdvancedFilters}
-          onClearAdvancedFilters={() => setAdvancedFilters({})}
+          onClearAdvancedFilters={() => {
+            setAdvancedFilters({});
+            setSelectedRatings([]);
+          }}
           availableDimensions={availableDimensions}
+          selectedRatings={selectedRatings}
+          onSelectedRatingsChange={setSelectedRatings}
           onAddFolder={handleSelectFolder}
           isIndexing={indexingState === 'indexing' || indexingState === 'completed'}
           scanSubfolders={scanSubfolders}
@@ -811,12 +1505,24 @@ export default function App() {
       )}
       
       {isQueueOpen ? (
-        <GenerationQueueSidebar onClose={() => setIsQueueOpen(false)} />
+        <GenerationQueueSidebar
+          onClose={() => setIsQueueOpen(false)}
+          width={rightSidebarWidth}
+          isResizing={isRightSidebarResizing}
+          onResizeStart={handleRightSidebarResizeStart}
+        />
       ) : (
-        <ImagePreviewSidebar />
+        <ImagePreviewSidebar
+          width={rightSidebarWidth}
+          isResizing={isRightSidebarResizing}
+          onResizeStart={handleRightSidebarResizeStart}
+        />
       )}
 
-      <div className={`${hasDirectories ? (isSidebarCollapsed ? 'ml-12' : 'ml-80') : 'ml-0'} ${(previewImage || isQueueOpen) ? 'mr-96' : 'mr-0'} h-screen flex flex-col transition-all duration-300 ease-in-out`}>
+      <div
+        className={`h-screen flex flex-col ${isSidebarResizing ? 'transition-none' : 'transition-[margin] duration-300 ease-in-out'}`}
+        style={{ marginLeft: mainContentMarginLeft, marginRight: mainContentMarginRight }}
+      >
         <Header
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
@@ -875,25 +1581,40 @@ export default function App() {
 
           {hasDirectories && (
             <>
-                <GridToolbar
-                  selectedImages={safeSelectedImages}
-                  images={paginatedImages}
-                  directories={safeDirectories}
-                  onDeleteSelected={handleDeleteSelectedImages}
-                  onGenerateA1111={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsA1111GenerateModalOpen(true);
-                  }}
-                  onGenerateComfyUI={(image) => {
-                    setSelectedImageForGeneration(image);
-                    setIsComfyUIGenerateModalOpen(true);
-                  }}
-                  onCompare={(images) => {
-                    setComparisonImages(images);
-                    openComparisonModal();
-                  }}
-                  onBatchExport={handleOpenBatchExport}
-                />
+                {libraryView === 'library' && (
+                  <AnalyticsSummaryStrip
+                    images={safeFilteredImages}
+                    allImages={safeImages}
+                    onOpenAnalytics={() => {
+                      if (canUseAnalytics) {
+                        setIsAnalyticsOpen(true);
+                        return;
+                      }
+                      showProModal('analytics');
+                    }}
+                  />
+                )}
+                {(libraryView === 'library' || libraryView === 'node') && (
+                  <GridToolbar
+                    selectedImages={safeSelectedImages}
+                    images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
+                    directories={safeDirectories}
+                    onDeleteSelected={handleDeleteSelectedImages}
+                    onGenerateA1111={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsA1111GenerateModalOpen(true);
+                    }}
+                    onGenerateComfyUI={(image) => {
+                      setSelectedImageForGeneration(image);
+                      setIsComfyUIGenerateModalOpen(true);
+                    }}
+                    onCompare={(images) => {
+                      setComparisonImages(images);
+                      openComparisonModal();
+                    }}
+                    onBatchExport={handleOpenBatchExport}
+                  />
+                )}
 
               <div className="flex-1 min-h-0">
                 {libraryView === 'library' ? (
@@ -904,7 +1625,7 @@ export default function App() {
                   ) : viewMode === 'grid' ? (
                         <ImageGrid
                           images={paginatedImages}
-                          onImageClick={handleImageSelection}
+                          onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           currentPage={currentPage}
                           totalPages={totalPages}
@@ -927,6 +1648,17 @@ export default function App() {
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
+                  />
+                ) : libraryView === 'node' ? (
+                  <NodeView
+                    images={safeFilteredImages}
+                    selectedImages={safeSelectedImages}
+                    onImageClick={handleImageSelection}
+                    onBatchExport={handleOpenBatchExport}
+                    isQueueOpen={isQueueOpen}
+                    onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                    onVisibleImagesChange={setNodeViewVisibleImages}
+                    onResultImagesChange={setActiveImageScope}
                   />
                 ) : (
                   <SmartLibrary
@@ -955,24 +1687,41 @@ export default function App() {
                   queueCount={queueCount}
                   isQueueOpen={isQueueOpen}
                   onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
+                  windowItems={footerWindowItems}
+                  onWindowSelect={handleActivateImageModal}
+                  onWindowClose={handleCloseImageModalFromFooter}
                 />
               )}
             </>
           )}
         </main>
 
-        {selectedImage && directoryPath && (
+        {openImageModalEntries.map((modal) => (
           <ImageModal
-            image={selectedImage}
-            onClose={handleCloseImageModal}
+            key={modal.modalId}
+            image={modal.image}
+            onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}
             onImageRenamed={handleImageRenamed}
-            currentIndex={getCurrentImageIndex()}
-            totalImages={safeFilteredImages.length}
-            onNavigateNext={handleImageModalNavigateNext}
-            onNavigatePrevious={handleImageModalNavigatePrevious}
-            directoryPath={directoryPath}
+            currentIndex={modal.currentIndex}
+            totalImages={modal.totalImages}
+            onNavigateNext={() => handleImageModalNavigate(modal.modalId, 'next')}
+            onNavigatePrevious={() => handleImageModalNavigate(modal.modalId, 'previous')}
+            directoryPath={modal.directoryPath}
             isIndexing={progress && progress.total > 0 && progress.current < progress.total}
+            zIndex={modal.zIndex}
+            isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
+            onActivate={() => handleActivateImageModal(modal.modalId)}
+            initialWindowOffset={modal.initialWindowOffset}
+            isMinimized={modal.isMinimized}
+            onMinimize={() => handleMinimizeImageModal(modal.modalId)}
+          />
+        ))}
+
+        {hasVisibleImageModal && (
+          <div
+            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
+            onClick={handleMinimizeAllImageModals}
           />
         )}
 
@@ -1048,15 +1797,21 @@ export default function App() {
                 width: params.width,
                 height: params.height,
                 batch_size: params.numberOfImages,
+                model: params.model?.name || imageToUse.metadata?.normalizedMetadata?.model,
                 ...(params.sampler ? { sampler: params.sampler } : {}),
                 ...(params.scheduler ? { scheduler: params.scheduler } : {}),
               };
               await generateWithComfyUI(imageToUse, {
                 customMetadata,
                 overrides: {
-                  model: params.model,
+                  model: params.model || undefined,
                   loras: params.loras,
                 },
+                workflowMode: params.workflowMode,
+                sourceImagePolicy: params.sourceImagePolicy,
+                advancedPromptJson: params.advancedPromptJson,
+                advancedWorkflowJson: params.advancedWorkflowJson,
+                maskFile: params.maskFile,
               });
               setIsComfyUIGenerateModalOpen(false);
               setSelectedImageForGeneration(null);

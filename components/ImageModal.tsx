@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -23,6 +23,9 @@ import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal } from './MetadataEditorModal';
+import ImageLineageSection from './ImageLineageSection';
+import { getGenerationTypeLabel } from '../utils/imageLineage';
+import RatingStars from './RatingStars';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -66,7 +69,130 @@ interface ImageModalProps {
   onNavigatePrevious?: () => void;
   directoryPath?: string;
   isIndexing?: boolean;
+  zIndex?: number;
+  isActive?: boolean;
+  onActivate?: () => void;
+  initialWindowOffset?: number;
+  isMinimized?: boolean;
+  onMinimize?: () => void;
 }
+
+interface ModalWindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+type ModalInteractionState =
+  | { mode: 'idle' }
+  | {
+      mode: 'drag';
+      startX: number;
+      startY: number;
+      initialX: number;
+      initialY: number;
+    }
+  | {
+      mode: 'resize';
+      startX: number;
+      startY: number;
+      initialWidth: number;
+      initialHeight: number;
+      initialX: number;
+      initialY: number;
+      direction:
+        | 'top'
+        | 'right'
+        | 'bottom'
+        | 'left'
+        | 'top-left'
+        | 'top-right'
+        | 'bottom-left'
+        | 'bottom-right';
+    };
+
+const MODAL_MARGIN = 20;
+const MIN_MODAL_WIDTH = 760;
+const MIN_MODAL_HEIGHT = 520;
+const DEFAULT_MODAL_MAX_WIDTH = 1600;
+const DEFAULT_MODAL_MAX_HEIGHT = 1080;
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const getModalViewportMetrics = () => {
+  if (typeof window === 'undefined') {
+    return {
+      viewportWidth: DEFAULT_MODAL_MAX_WIDTH,
+      viewportHeight: DEFAULT_MODAL_MAX_HEIGHT,
+      margin: MODAL_MARGIN,
+      minWidth: MIN_MODAL_WIDTH,
+      minHeight: MIN_MODAL_HEIGHT,
+    };
+  }
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const margin = viewportWidth < 900 ? 12 : MODAL_MARGIN;
+
+  return {
+    viewportWidth,
+    viewportHeight,
+    margin,
+    minWidth: Math.min(MIN_MODAL_WIDTH, Math.max(420, viewportWidth - margin * 2)),
+    minHeight: Math.min(MIN_MODAL_HEIGHT, Math.max(360, viewportHeight - margin * 2)),
+  };
+};
+
+const createDefaultModalWindow = (): ModalWindowState => {
+  const metrics = getModalViewportMetrics();
+  const width = clamp(
+    Math.min(DEFAULT_MODAL_MAX_WIDTH, metrics.viewportWidth - metrics.margin * 2),
+    metrics.minWidth,
+    metrics.viewportWidth - metrics.margin * 2
+  );
+  const height = clamp(
+    Math.min(Math.round(metrics.viewportHeight * 0.9), DEFAULT_MODAL_MAX_HEIGHT),
+    metrics.minHeight,
+    metrics.viewportHeight - metrics.margin * 2
+  );
+
+  return {
+    width,
+    height,
+    x: Math.round((metrics.viewportWidth - width) / 2),
+    y: Math.round((metrics.viewportHeight - height) / 2),
+  };
+};
+
+const createMaximizedModalWindow = (): ModalWindowState => {
+  const metrics = getModalViewportMetrics();
+  const margin = Math.max(8, metrics.margin - 8);
+  const width = Math.max(metrics.minWidth, metrics.viewportWidth - margin * 2);
+  const height = Math.max(metrics.minHeight, metrics.viewportHeight - margin * 2);
+
+  return {
+    x: margin,
+    y: margin,
+    width,
+    height,
+  };
+};
+
+const clampModalWindowToViewport = (windowState: ModalWindowState): ModalWindowState => {
+  const metrics = getModalViewportMetrics();
+  const maxWidth = Math.max(metrics.minWidth, metrics.viewportWidth - metrics.margin * 2);
+  const maxHeight = Math.max(metrics.minHeight, metrics.viewportHeight - metrics.margin * 2);
+  const width = clamp(windowState.width, metrics.minWidth, maxWidth);
+  const height = clamp(windowState.height, metrics.minHeight, maxHeight);
+
+  return {
+    width,
+    height,
+    x: clamp(windowState.x, metrics.margin, metrics.viewportWidth - metrics.margin - width),
+    y: clamp(windowState.y, metrics.margin, metrics.viewportHeight - metrics.margin - height),
+  };
+};
 
 type ContextMenuState =
   | {
@@ -384,7 +510,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onNavigateNext,
   onNavigatePrevious,
   directoryPath,
-  isIndexing = false
+  isIndexing = false,
+  zIndex = 50,
+  isActive = true,
+  onActivate,
+  initialWindowOffset = 0,
+  isMinimized = false,
+  onMinimize,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -400,8 +532,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
   });
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
+  const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
+    const defaultWindow = createDefaultModalWindow();
+    return clampModalWindowToViewport({
+      ...defaultWindow,
+      x: defaultWindow.x + initialWindowOffset,
+      y: defaultWindow.y + initialWindowOffset,
+    });
+  });
+  const [modalInteraction, setModalInteraction] = useState<ModalInteractionState>({ mode: 'idle' });
+  const modalShellRef = useRef<HTMLDivElement>(null);
+  const modalWindowRef = useRef<ModalWindowState>(modalWindow);
+  const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
+  const modalPaintFrameRef = useRef<number | null>(null);
+  const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Zoom and pan states
@@ -427,12 +576,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const setImageRating = useImageStore((state) => state.setImageRating);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
   const removeTagFromImage = useImageStore((state) => state.removeTagFromImage);
   const removeAutoTagFromImage = useImageStore((state) => state.removeAutoTagFromImage);
   const availableTags = useImageStore((state) => state.availableTags);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const recentTags = useImageStore((state) => state.recentTags);
+  const setSelectedImage = useImageStore((state) => state.setSelectedImage);
+  const setPreviewImage = useImageStore((state) => state.setPreviewImage);
 
   // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
@@ -440,28 +592,65 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showOriginal, setShowOriginal] = useState(false);
 
   // Get live tags and favorite status from store instead of props
-  const imageFromStore = useImageStore((state) =>
-    state.images.find(img => img.id === image.id) ||
-    state.filteredImages.find(img => img.id === image.id)
+  const imageFromStore = useImageStore(
+    useCallback(
+      (state) => state.images.find((candidate) => candidate.id === image.id),
+      [image.id]
+    )
   );
-  const thumbnail = useResolvedThumbnail(imageFromStore ?? image);
+  const liveImage = imageFromStore ?? image;
+  const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
   const showA1111Actions = !isVideo && a1111Enabled;
   const showComfyUIActions = !isVideo && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
-  const currentTags = imageFromStore?.tags || image.tags || [];
-  const currentAutoTags = imageFromStore?.autoTags || image.autoTags || [];
-  const currentIsFavorite = imageFromStore?.isFavorite ?? image.isFavorite ?? false;
+  const currentTags = liveImage.tags || [];
+  const currentAutoTags = liveImage.autoTags || [];
+  const currentIsFavorite = liveImage.isFavorite ?? false;
+  const currentRating = liveImage.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
+  const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
+  const isWindowInteractionActive = modalInteraction.mode !== 'idle';
+  const showSidebar = !isFullscreen && !isSidebarCollapsed;
+  const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
+  const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
+  const imageFullPath = `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`;
+  const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
+
+  const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
+    if (isFullscreen || !modalShellRef.current) {
+      return;
+    }
+
+    modalShellRef.current.style.left = `${windowState.x}px`;
+    modalShellRef.current.style.top = `${windowState.y}px`;
+    modalShellRef.current.style.width = `${windowState.width}px`;
+    modalShellRef.current.style.height = `${windowState.height}px`;
+  }, [isFullscreen]);
+
+  const scheduleModalWindowPaint = useCallback((windowState: ModalWindowState) => {
+    liveModalWindowRef.current = windowState;
+
+    if (typeof window === 'undefined' || modalPaintFrameRef.current !== null) {
+      return;
+    }
+
+    modalPaintFrameRef.current = window.requestAnimationFrame(() => {
+      modalPaintFrameRef.current = null;
+      applyModalWindowStyles(liveModalWindowRef.current);
+    });
+  }, [applyModalWindowStyles]);
 
   // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
@@ -473,8 +662,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   }, []);
 
+  const clearMediaOverlayHideTimer = useCallback(() => {
+    if (typeof window === 'undefined' || mediaOverlayHideTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(mediaOverlayHideTimeoutRef.current);
+    mediaOverlayHideTimeoutRef.current = null;
+  }, []);
+
+  const revealMediaOverlay = useCallback(() => {
+    setIsMediaOverlayVisible(true);
+    clearMediaOverlayHideTimer();
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    mediaOverlayHideTimeoutRef.current = window.setTimeout(() => {
+      setIsMediaOverlayVisible(false);
+      mediaOverlayHideTimeoutRef.current = null;
+    }, 1500);
+  }, [clearMediaOverlayHideTimer]);
+
   // Listen for fullscreen changes from Electron
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
     const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
       setIsFullscreen(data.isFullscreen);
@@ -489,10 +705,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       unsubscribeFullscreenChanged?.();
       unsubscribeFullscreenStateCheck?.();
     };
-  }, []);
+  }, [isActive]);
 
   // Initialize fullscreen mode from sessionStorage (backward compatibility)
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     const shouldStartFullscreen = sessionStorage.getItem('openImageFullscreen') === 'true';
     if (shouldStartFullscreen) {
       sessionStorage.removeItem('openImageFullscreen');
@@ -506,7 +726,156 @@ const ImageModal: React.FC<ImageModalProps> = ({
         }
       }, 100);
     }
+  }, [isActive]);
+
+  useEffect(() => {
+    modalWindowRef.current = modalWindow;
+    liveModalWindowRef.current = modalWindow;
+    applyModalWindowStyles(modalWindow);
+  }, [applyModalWindowStyles, modalWindow]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && modalPaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(modalPaintFrameRef.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      return;
+    }
+
+    const handleResize = () => {
+      if (isWindowMaximized) {
+        setModalWindow(createMaximizedModalWindow());
+        return;
+      }
+
+      setModalWindow((current) => clampModalWindowToViewport(current));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isFullscreen, isWindowMaximized]);
+
+  useEffect(() => {
+    if (isFullscreen || modalInteraction.mode === 'idle') {
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault();
+      const metrics = getModalViewportMetrics();
+      const currentWindow = liveModalWindowRef.current;
+
+      if (modalInteraction.mode === 'drag') {
+        scheduleModalWindowPaint({
+          ...currentWindow,
+          x: clamp(
+            modalInteraction.initialX + (event.clientX - modalInteraction.startX),
+            metrics.margin,
+            metrics.viewportWidth - metrics.margin - currentWindow.width
+          ),
+          y: clamp(
+            modalInteraction.initialY + (event.clientY - modalInteraction.startY),
+            metrics.margin,
+            metrics.viewportHeight - metrics.margin - currentWindow.height
+          ),
+        });
+        return;
+      }
+
+      const deltaX = event.clientX - modalInteraction.startX;
+      const deltaY = event.clientY - modalInteraction.startY;
+      const resizeFromLeft =
+        modalInteraction.direction === 'left' ||
+        modalInteraction.direction === 'top-left' ||
+        modalInteraction.direction === 'bottom-left';
+      const resizeFromRight =
+        modalInteraction.direction === 'right' ||
+        modalInteraction.direction === 'top-right' ||
+        modalInteraction.direction === 'bottom-right';
+      const resizeFromTop =
+        modalInteraction.direction === 'top' ||
+        modalInteraction.direction === 'top-left' ||
+        modalInteraction.direction === 'top-right';
+      const resizeFromBottom =
+        modalInteraction.direction === 'bottom' ||
+        modalInteraction.direction === 'bottom-left' ||
+        modalInteraction.direction === 'bottom-right';
+
+      let nextX = modalInteraction.initialX;
+      let nextY = modalInteraction.initialY;
+      let nextWidth = modalInteraction.initialWidth;
+      let nextHeight = modalInteraction.initialHeight;
+
+      if (resizeFromLeft) {
+        nextX = clamp(
+          modalInteraction.initialX + deltaX,
+          metrics.margin,
+          modalInteraction.initialX + modalInteraction.initialWidth - metrics.minWidth
+        );
+        nextWidth = modalInteraction.initialWidth - (nextX - modalInteraction.initialX);
+      }
+
+      if (resizeFromRight) {
+        nextWidth = clamp(
+          modalInteraction.initialWidth + deltaX,
+          metrics.minWidth,
+          metrics.viewportWidth - metrics.margin - modalInteraction.initialX
+        );
+      }
+
+      if (resizeFromTop) {
+        nextY = clamp(
+          modalInteraction.initialY + deltaY,
+          metrics.margin,
+          modalInteraction.initialY + modalInteraction.initialHeight - metrics.minHeight
+        );
+        nextHeight = modalInteraction.initialHeight - (nextY - modalInteraction.initialY);
+      }
+
+      if (resizeFromBottom) {
+        nextHeight = clamp(
+          modalInteraction.initialHeight + deltaY,
+          metrics.minHeight,
+          metrics.viewportHeight - metrics.margin - modalInteraction.initialY
+        );
+      }
+
+      scheduleModalWindowPaint({
+        x: nextX,
+        y: nextY,
+        width: nextWidth,
+        height: nextHeight,
+      });
+    };
+
+    const handlePointerUp = () => {
+      if (typeof window !== 'undefined' && modalPaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(modalPaintFrameRef.current);
+        modalPaintFrameRef.current = null;
+        applyModalWindowStyles(liveModalWindowRef.current);
+      }
+
+      setModalWindow(clampModalWindowToViewport(liveModalWindowRef.current));
+      setModalInteraction({ mode: 'idle' });
+    };
+
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
    // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
@@ -536,6 +905,100 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const videoInfo = (nMeta as any)?.video;
   const motionModel = (nMeta as any)?.motion_model;
+
+  const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (isFullscreen || isWindowMaximized || event.button !== 0) {
+      return;
+    }
+
+    const currentWindow = modalWindowRef.current;
+    event.preventDefault();
+    setModalInteraction({
+      mode: 'drag',
+      startX: event.clientX,
+      startY: event.clientY,
+      initialX: currentWindow.x,
+      initialY: currentWindow.y,
+    });
+  }, [isFullscreen, isWindowMaximized]);
+
+  const shouldStartWindowDrag = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    return !target.closest([
+      '[data-no-window-drag="true"]',
+      '[data-window-drag-region="details"]',
+      '[data-resize-handle="true"]',
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'option',
+      'a',
+      'label',
+      'summary',
+      '[role="button"]',
+      '[role="link"]',
+      'img',
+      'video',
+      'canvas',
+    ].join(', '));
+  }, []);
+
+  const handleWindowSurfacePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!shouldStartWindowDrag(event.target)) {
+      return;
+    }
+
+    beginWindowDrag(event);
+  }, [beginWindowDrag, shouldStartWindowDrag]);
+
+  const handleImageContainerPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    revealMediaOverlay();
+
+    if (!isFullscreen) {
+      handleWindowSurfacePointerDown(event);
+    }
+  }, [handleWindowSurfacePointerDown, isFullscreen, revealMediaOverlay]);
+
+  const beginWindowResize = useCallback((direction: 'top' | 'right' | 'bottom' | 'left' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isFullscreen || isWindowMaximized || event.button !== 0) {
+      return;
+    }
+
+    const currentWindow = modalWindowRef.current;
+    event.preventDefault();
+    event.stopPropagation();
+    setModalInteraction({
+      mode: 'resize',
+      direction,
+      startX: event.clientX,
+      startY: event.clientY,
+      initialWidth: currentWindow.width,
+      initialHeight: currentWindow.height,
+      initialX: currentWindow.x,
+      initialY: currentWindow.y,
+    });
+  }, [isFullscreen, isWindowMaximized]);
+
+  const resetModalWindow = useCallback(() => {
+    setIsWindowMaximized(false);
+    setModalWindow(createDefaultModalWindow());
+  }, []);
+
+  const toggleWindowMaximize = useCallback(() => {
+    if (isWindowMaximized) {
+      setIsWindowMaximized(false);
+      setModalWindow(restoredModalWindowRef.current ?? createDefaultModalWindow());
+      return;
+    }
+
+    restoredModalWindowRef.current = modalWindowRef.current;
+    setIsWindowMaximized(true);
+    setModalWindow(createMaximizedModalWindow());
+  }, [isWindowMaximized]);
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) {
@@ -734,13 +1197,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [image.id]);
+    revealMediaOverlay();
+  }, [image.id, revealMediaOverlay]);
 
   // Reset zoom and pan when entering/exiting fullscreen
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [isFullscreen]);
+    setIsMediaOverlayVisible(false);
+    clearMediaOverlayHideTimer();
+  }, [clearMediaOverlayHideTimer, isFullscreen]);
 
   // Zoom handlers
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -759,6 +1225,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!(e.target instanceof Element) || !e.target.closest('img, video, canvas, [data-media-element="true"]')) {
+      return;
+    }
+
     if (zoom > 1 && e.button === 0) {
       setIsDragging(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -880,6 +1350,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
     toggleFavorite(image.id);
   }, [image.id, toggleFavorite]);
 
+  const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    setImageRating(image.id, rating);
+  }, [image.id, setImageRating]);
+
   const focusTagInput = useCallback(async () => {
     const focusInput = () => {
       tagInputRef.current?.focus();
@@ -898,7 +1372,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {
-    const imageContainer = document.getElementById('image-zoom-container');
+    const imageContainer = imageContainerRef.current;
     if (imageContainer) {
       imageContainer.addEventListener('wheel', handleWheel, { passive: false });
     }
@@ -947,6 +1421,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [currentIndex, image, isIndexing, onClose, onImageDeleted, onNavigateNext, onNavigatePrevious, totalImages]);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
       if (hotkeyManager.areHotkeysPaused()) {
@@ -1032,6 +1510,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     handleDelete,
     handleToggleFavorite,
     hideContextMenu,
+    isActive,
     isFullscreen,
     isRenaming,
     onClose,
@@ -1040,6 +1519,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     previewKeymap,
     toggleFullscreen,
   ]);
+
+  useEffect(() => {
+    return () => {
+      clearMediaOverlayHideTimer();
+    };
+  }, [clearMediaOverlayHideTimer]);
 
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {
@@ -1087,28 +1572,102 @@ const ImageModal: React.FC<ImageModalProps> = ({
         .slice(0, 5)
     : [];
 
+  if (isMinimized) {
+    return null;
+  }
+
   return (
     <div
-      className={`fixed inset-0 flex items-center justify-center z-50 transition-all duration-300 ${
-        isFullscreen ? 'bg-black p-0' : 'bg-black/90 backdrop-blur-md p-4 md:p-8'
+      className={`fixed inset-0 transition-all duration-300 ${
+        isFullscreen ? 'pointer-events-auto bg-black' : 'pointer-events-none'
       }`}
-      onClick={onClose}
+      style={{ zIndex }}
+      onClick={isFullscreen ? onClose : undefined}
     >
       <div
+        ref={modalShellRef}
         className={`${
           isFullscreen 
-            ? 'w-full h-full rounded-none' 
-            : 'w-full h-full max-w-[1600px] max-h-[90vh] bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
-        } flex flex-col md:flex-row transition-all duration-300 animate-in fade-in zoom-in-95`}
+            ? 'fixed inset-0 h-full w-full rounded-none'
+            : 'fixed bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
+        } pointer-events-auto flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+        onPointerDown={() => onActivate?.()}
         onClick={(e) => {
           e.stopPropagation();
           hideContextMenu();
         }}
+        style={
+          isFullscreen
+            ? undefined
+            : {
+                left: `${modalWindow.x}px`,
+                top: `${modalWindow.y}px`,
+                width: `${modalWindow.width}px`,
+                height: `${modalWindow.height}px`,
+                transition: isWindowInteractionActive ? 'none' : 'box-shadow 160ms ease, border-color 160ms ease',
+              }
+        }
       >
+        {!isFullscreen && (
+          <div
+            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 backdrop-blur-sm cursor-move"
+            onPointerDown={handleWindowSurfacePointerDown}
+            onDoubleClick={toggleWindowMaximize}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+                {image.name}
+              </div>
+              <div className="truncate text-[11px] text-gray-500" title={imageFullPath}>
+                {imageFullPath}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onMinimize}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title="Minimize window"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={toggleWindowMaximize}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                title={isWindowMaximized ? 'Restore window' : 'Maximize window'}
+              >
+                {isWindowMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={onClose}
+                onPointerDown={(event) => event.stopPropagation()}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
+                aria-label="Close image"
+                title="Close (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className={`flex min-h-0 flex-1 ${showSidebarOnBottom ? 'flex-col' : 'flex-row'}`}>
         {/* Image Display Section */}
         <div
-          id="image-zoom-container"
-          className={`w-full ${isFullscreen ? 'h-full' : 'md:w-3/4 h-1/2 md:h-full'} bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          ref={imageContainerRef}
+          className={`w-full ${
+            isFullscreen
+              ? 'h-full'
+              : !showSidebar
+                ? 'h-full'
+              : showSidebarOnBottom
+                ? 'min-h-[280px] flex-1'
+                : 'h-full flex-1 min-w-0'
+          } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          onPointerDown={handleImageContainerPointerDown}
+          onPointerMove={revealMediaOverlay}
           onMouseDown={isVideo ? undefined : handleMouseDown}
           onMouseMove={isVideo ? undefined : handleMouseMove}
           onMouseUp={isVideo ? undefined : handleMouseUp}
@@ -1117,12 +1676,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
         >
           {imageUrl ? (
             isVideo ? (
-              <VideoPlayer
-                key={image.id}
-                src={imageUrl}
-                poster={preferredThumbnailUrl ?? undefined}
-                onContextMenu={handleContextMenu}
-              />
+              <div data-no-window-drag="true" className="max-h-full max-w-full">
+                <VideoPlayer
+                  key={image.id}
+                  src={imageUrl}
+                  poster={preferredThumbnailUrl ?? undefined}
+                  onContextMenu={handleContextMenu}
+                />
+              </div>
             ) : (
               <img
                 src={imageUrl}
@@ -1141,30 +1702,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="w-full h-full animate-pulse bg-gray-700 rounded-md"></div>
           )}
 
-          {onNavigatePrevious && <button onClick={onNavigatePrevious} className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">←</button>}
-          {onNavigateNext && <button onClick={onNavigateNext} className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black/50 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity">→</button>}
+          {onNavigatePrevious && (
+            <button
+              onClick={onNavigatePrevious}
+              className={`absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              title="Previous image"
+            >
+              ←
+            </button>
+          )}
+          {onNavigateNext && (
+            <button
+              onClick={onNavigateNext}
+              className={`absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              title="Next image"
+            >
+              →
+            </button>
+          )}
 
-          <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
+          <div data-no-window-drag="true" className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
 
           {!isVideo && (
-            <div className="absolute bottom-4 left-4 flex flex-col gap-2 bg-black/60 rounded-lg p-2 backdrop-blur-sm border border-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div data-no-window-drag="true" className={`absolute bottom-4 left-4 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
                 disabled={zoom >= 5}
-                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Zoom In"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
-              <div className="text-white text-xs text-center font-mono">{Math.round(zoom * 100)}%</div>
+              <div className="text-center font-mono text-xs text-white/80">{Math.round(zoom * 100)}%</div>
               <button
                 onClick={handleZoomOut}
                 disabled={zoom <= 1}
-                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
                 title="Zoom Out"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1174,7 +1751,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={handleResetZoom}
                 disabled={zoom <= 1}
-                className="text-white p-2 hover:bg-white/20 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-all text-xs"
+                className="rounded p-2 text-white/90 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 text-xs"
                 title="Reset Zoom"
               >
                 Reset
@@ -1182,24 +1759,69 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
-          <div className="absolute top-4 right-4 flex items-center gap-2">
-            <button onClick={toggleFullscreen} className="bg-black/60 text-white rounded-full px-3 py-2 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
-              {isFullscreen ? 'Exit' : 'Fullscreen'}
-            </button>
-            <button
-              onClick={onClose}
-              className="bg-black/60 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-              aria-label="Close image"
-              title="Close (Esc)"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div data-no-window-drag="true" className={`absolute top-4 right-4 flex flex-col items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
+            {isFullscreen ? (
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  onClick={toggleFullscreen}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                  title="Exit fullscreen"
+                >
+                  <Minimize2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
+                  aria-label="Close image"
+                  title="Close (Esc)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  title={showSidebarOnRight ? 'Show details on bottom' : 'Show details on right'}
+                >
+                  {showSidebarOnRight ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={() => setIsSidebarCollapsed((current) => !current)}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
+                >
+                  {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={resetModalWindow}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  title="Reset window"
+                >
+                  <Repeat className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={toggleFullscreen}
+                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
+                  title="Fullscreen"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Metadata Panel */}
+        {showSidebar && (
         <div
-          className={`w-full ${isFullscreen ? 'hidden' : 'md:w-1/4 h-1/2 md:h-full'} p-6 overflow-y-auto space-y-4`}
+          data-window-drag-region="details"
+          className={`w-full ${
+            showSidebarOnBottom
+              ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
+              : 'h-full w-[340px] max-w-[42%] min-w-[300px] border-l border-gray-800/80'
+          } p-6 overflow-y-auto space-y-4`}
           onContextMenu={handleSelectionContextMenu}
         >
           <div>
@@ -1210,34 +1832,37 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded-lg">Cancel</button>
               </div>
             ) : (
-              <h2 className="text-xl font-bold text-gray-100 break-all flex items-center gap-2 flex-wrap">
-                <span className="break-all">{image.name}</span>
-                {hasVerifiedTelemetry(image) && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
-                    title="Verified Telemetry - Generated with MetaHub Save Node. Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasVerifiedTelemetry(image) && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
+                      title="MetaHub Save Node - Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
+                    >
+                      <CheckCircle size={14} className="flex-shrink-0" />
+                      <span className="whitespace-nowrap">MetaHub Save Node</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setIsRenaming(true)}
+                    disabled={isIndexing}
+                    className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
+                    title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
                   >
-                    <CheckCircle size={14} className="flex-shrink-0" />
-                    <span className="whitespace-nowrap">Verified Telemetry</span>
-                  </span>
-                )}
-                <button
-                  onClick={() => setIsRenaming(true)}
-                  disabled={isIndexing}
-                  className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
-                  title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isIndexing}
-                  className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
-                  title={isIndexing ? "Cannot delete during indexing" : "Delete image"}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </h2>
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={isIndexing}
+                    className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
+                    title={isIndexing ? "Cannot delete during indexing" : "Delete image"}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
             )}
             <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
           </div>
@@ -1246,18 +1871,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite and Tags Row */}
             <div className="flex items-start gap-3">
-              {/* Favorite Star - Discrete */}
-              <button
-                onClick={handleToggleFavorite}
-                className={`p-1.5 rounded transition-all ${
-                  currentIsFavorite
-                    ? 'text-yellow-400 hover:text-yellow-300'
-                    : 'text-gray-500 hover:text-yellow-400'
-                }`}
-                title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              >
-                <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
+                <button
+                  onClick={handleToggleFavorite}
+                  className={`p-1 rounded transition-all ${
+                    currentIsFavorite
+                      ? 'text-yellow-400 hover:text-yellow-300'
+                      : 'text-gray-500 hover:text-yellow-400'
+                  }`}
+                  title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
+                </button>
+                <div className="h-5 w-px bg-gray-700/70" />
+                <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />
+              </div>
 
               {/* Tags Pills */}
               <div className="flex-1 space-y-2">
@@ -1384,6 +2012,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <div className="space-y-4">
               {/* Prompt Section - Always Visible */}
               <div className="space-y-3">
+                <ImageLineageSection
+                  image={liveImage}
+                  metadata={nMeta}
+                  onOpenImage={(targetImage) => {
+                    setPreviewImage(targetImage);
+                    setSelectedImage(targetImage);
+                  }}
+                />
                 <MetadataItem label="Prompt" value={effectiveMetadata?.prompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.prompt || '', 'Prompt')} />
                 <MetadataItem label="Negative Prompt" value={effectiveMetadata?.negativePrompt} isPrompt onCopy={() => copyToClipboard(effectiveMetadata?.negativePrompt || '', 'Negative Prompt')} />
                 
@@ -1419,6 +2055,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </button>
                 {showDetails && (
                   <div className="space-y-3 mt-3">
+                    {nMeta.generationType && (
+                      <MetadataItem label="Generation Type" value={getGenerationTypeLabel(nMeta.generationType)} />
+                    )}
                     <MetadataItem label="Model" value={nMeta.model} onCopy={(v) => copyToClipboard(v, "Model")} />
                     {nMeta.generator && (
                       <MetadataItem label="Generator" value={nMeta.generator} />
@@ -1773,15 +2412,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       width: params.width,
                       height: params.height,
                       batch_size: params.numberOfImages,
+                      model: params.model?.name || nMeta?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
                     await generateWithComfyUI(image, {
                       customMetadata,
                       overrides: {
-                        model: params.model,
+                        model: params.model || undefined,
                         loras: params.loras,
                       },
+                      workflowMode: params.workflowMode,
+                      sourceImagePolicy: params.sourceImagePolicy,
+                      advancedPromptJson: params.advancedPromptJson,
+                      advancedWorkflowJson: params.advancedWorkflowJson,
+                      maskFile: params.maskFile,
                     });
                     setIsComfyUIGenerateModalOpen(false);
                   }}
@@ -1847,6 +2492,62 @@ const ImageModal: React.FC<ImageModalProps> = ({
             )}
           </div>
         </div>
+        )}
+        </div>
+
+        {!isFullscreen && (
+          <>
+            <div
+              className="absolute inset-x-5 top-0 h-1.5 cursor-ns-resize bg-transparent"
+              onPointerDown={beginWindowResize('top')}
+              data-resize-handle="true"
+              title="Resize height"
+            />
+            <div
+              className="absolute inset-y-5 right-0 w-1.5 cursor-ew-resize bg-transparent"
+              onPointerDown={beginWindowResize('right')}
+              data-resize-handle="true"
+              title="Resize width"
+            />
+            <div
+              className="absolute inset-x-5 bottom-0 h-1.5 cursor-ns-resize bg-transparent"
+              onPointerDown={beginWindowResize('bottom')}
+              data-resize-handle="true"
+              title="Resize height"
+            />
+            <div
+              className="absolute inset-y-5 left-0 w-1.5 cursor-ew-resize bg-transparent"
+              onPointerDown={beginWindowResize('left')}
+              data-resize-handle="true"
+              title="Resize width"
+            >
+            </div>
+            <div
+              className="absolute left-0 top-0 h-5 w-5 cursor-nwse-resize"
+              onPointerDown={beginWindowResize('top-left')}
+              data-resize-handle="true"
+              title="Resize window"
+            />
+            <div
+              className="absolute right-0 top-0 h-5 w-5 cursor-nesw-resize"
+              onPointerDown={beginWindowResize('top-right')}
+              data-resize-handle="true"
+              title="Resize window"
+            />
+            <div
+              className="absolute bottom-0 left-0 h-5 w-5 cursor-nesw-resize"
+              onPointerDown={beginWindowResize('bottom-left')}
+              data-resize-handle="true"
+              title="Resize window"
+            />
+            <div
+              className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
+              onPointerDown={beginWindowResize('bottom-right')}
+              data-resize-handle="true"
+              title="Resize window"
+            />
+          </>
+        )}
       </div>
 
       {/* Metadata Editor Modal */}
@@ -1953,9 +2654,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-// Wrap with React.memo to prevent re-renders during Phase B metadata updates
-// Custom comparator: only compare image.id, onClose, and isIndexing
-// This prevents flickering when the image object reference changes but the ID stays the same
+// Wrap with React.memo to avoid churn during metadata updates while still
+// invalidating on the props that change visible window state.
 export default React.memo(ImageModal, (prevProps, nextProps) => {
   // Return true if props are EQUAL (skip re-render)
   // Return false if props are DIFFERENT (re-render)
@@ -1970,17 +2670,18 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
 
   const propsEqual =
     prevProps.image.id === nextProps.image.id &&
+    prevProps.image.name === nextProps.image.name &&
     prevProps.image.isFavorite === nextProps.image.isFavorite &&
+    prevProps.image.rating === nextProps.image.rating &&
     tagsEqual(prevProps.image.tags, nextProps.image.tags) &&
-    prevProps.onClose === nextProps.onClose &&
-    prevProps.onImageDeleted === nextProps.onImageDeleted &&
-    prevProps.onImageRenamed === nextProps.onImageRenamed &&
     prevProps.currentIndex === nextProps.currentIndex &&
     prevProps.totalImages === nextProps.totalImages &&
-    prevProps.onNavigateNext === nextProps.onNavigateNext &&
-    prevProps.onNavigatePrevious === nextProps.onNavigatePrevious &&
     prevProps.directoryPath === nextProps.directoryPath &&
-    prevProps.isIndexing === nextProps.isIndexing;
+    prevProps.isIndexing === nextProps.isIndexing &&
+    prevProps.zIndex === nextProps.zIndex &&
+    prevProps.isActive === nextProps.isActive &&
+    prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
+    prevProps.isMinimized === nextProps.isMinimized;
 
   return propsEqual; // true = skip re-render, false = re-render
 });

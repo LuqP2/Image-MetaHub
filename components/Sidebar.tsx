@@ -1,32 +1,55 @@
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronLeft, Plus, RefreshCw } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
-import { ChevronLeft, X, ChevronDown, Plus, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import ActiveFilters from './ActiveFilters';
+import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
+import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
+
+const toFacetLabel = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return null;
+};
 
 interface SidebarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   availableModels: string[];
   availableLoras: string[];
+  availableSamplers: string[];
   availableSchedulers: string[];
   availableDimensions: string[];
   selectedModels: string[];
   selectedLoras: string[];
+  selectedSamplers: string[];
   selectedSchedulers: string[];
   onModelChange: (models: string[]) => void;
   onLoraChange: (loras: string[]) => void;
+  onSamplerChange: (samplers: string[]) => void;
   onSchedulerChange: (schedulers: string[]) => void;
   onClearAllFilters: () => void;
-  advancedFilters: any;
-  onAdvancedFiltersChange: (filters: any) => void;
+  advancedFilters: AdvancedFilterState;
+  onAdvancedFiltersChange: (filters: AdvancedFilterState) => void;
   onClearAdvancedFilters: () => void;
+  selectedRatings: ImageRating[];
+  onSelectedRatingsChange: (ratings: ImageRating[]) => void;
   children?: React.ReactNode;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onAddFolder?: () => void;
   isIndexing: boolean;
   scanSubfolders: boolean;
@@ -43,21 +66,25 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSearchChange,
   availableModels,
   availableLoras,
+  availableSamplers,
   availableSchedulers,
   availableDimensions,
   selectedModels,
   selectedLoras,
+  selectedSamplers,
   selectedSchedulers,
-  onModelChange,
-  onLoraChange,
-  onSchedulerChange,
   onClearAllFilters,
   advancedFilters,
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
+  selectedRatings,
+  onSelectedRatingsChange,
   children,
   isCollapsed,
   onToggleCollapse,
+  width,
+  isResizing,
+  onResizeStart,
   onAddFolder,
   isIndexing = false,
   scanSubfolders,
@@ -68,61 +95,186 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSortOrderChange,
   onReshuffle
 }) => {
+  const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
-
-  const [expandedSections, setExpandedSections] = useState({
-    models: true,
-    loras: true,
-    schedulers: true,
-  });
-
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  const handleModelToggle = (model: string, checked: boolean) => {
-    if (checked) {
-      onModelChange([...selectedModels, model]);
-    } else {
-      onModelChange(selectedModels.filter(m => m !== model));
+  const allImages = useImageStore((state) => state.images);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const excludedModels = useImageStore((state) => state.excludedModels);
+  const excludedLoras = useImageStore((state) => state.excludedLoras);
+  const excludedSamplers = useImageStore((state) => state.excludedSamplers);
+  const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
+  const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
+  const countFacetValues = useMemo(() => {
+    if (isIndexing) {
+      return {
+        modelCounts: new Map<string, number>(),
+        loraCounts: new Map<string, number>(),
+        samplerCounts: new Map<string, number>(),
+        schedulerCounts: new Map<string, number>(),
+      };
     }
+
+    const modelCounts = new Map<string, number>();
+    const loraCounts = new Map<string, number>();
+    const samplerCounts = new Map<string, number>();
+    const schedulerCounts = new Map<string, number>();
+
+    for (const image of filteredImages) {
+      image.models?.forEach((value) => {
+        if (value) modelCounts.set(value, (modelCounts.get(value) ?? 0) + 1);
+      });
+
+      image.loras?.forEach((value) => {
+        const label = typeof value === 'string' ? value : value?.name;
+        if (label) loraCounts.set(label, (loraCounts.get(label) ?? 0) + 1);
+      });
+
+      if (image.sampler) {
+        samplerCounts.set(image.sampler, (samplerCounts.get(image.sampler) ?? 0) + 1);
+      }
+
+      if (image.scheduler) {
+        schedulerCounts.set(image.scheduler, (schedulerCounts.get(image.scheduler) ?? 0) + 1);
+      }
+    }
+
+    return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
+  }, [filteredImages, isIndexing]);
+
+  const facetUniverse = useMemo(() => {
+    const models = new Set<string>();
+    const loras = new Set<string>();
+    const samplers = new Set<string>();
+    const schedulers = new Set<string>();
+
+    for (const image of allImages) {
+      image.models?.forEach((value) => {
+        const label = toFacetLabel(value);
+        if (label) models.add(label);
+      });
+
+      image.loras?.forEach((value) => {
+        const label = toFacetLabel(typeof value === 'string' ? value : value?.name);
+        if (label) loras.add(label);
+      });
+
+      const samplerLabel = toFacetLabel(image.sampler);
+      if (samplerLabel) {
+        samplers.add(samplerLabel);
+      }
+
+      const schedulerLabel = toFacetLabel(image.scheduler);
+      if (schedulerLabel) {
+        schedulers.add(schedulerLabel);
+      }
+    }
+
+    return {
+      models: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      loras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      samplers: Array.from(samplers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      schedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    };
+  }, [allImages]);
+
+  const toggleExplicitFacet = (
+    value: string,
+    selectedValues: string[],
+    excludedValues: string[],
+    mode: 'include' | 'exclude',
+    keys: {
+      selected: 'models' | 'loras' | 'samplers' | 'schedulers';
+      excluded: 'excludedModels' | 'excludedLoras' | 'excludedSamplers' | 'excludedSchedulers';
+    }
+  ) => {
+    const nextSelected = mode === 'include'
+      ? (selectedValues.includes(value) ? selectedValues.filter((item) => item !== value) : [...selectedValues, value])
+      : selectedValues.filter((item) => item !== value);
+
+    const nextExcluded = mode === 'exclude'
+      ? (excludedValues.includes(value) ? excludedValues.filter((item) => item !== value) : [...excludedValues, value])
+      : excludedValues.filter((item) => item !== value);
+
+    setSelectedFilters({
+      [keys.selected]: nextSelected,
+      [keys.excluded]: nextExcluded,
+    });
   };
 
-  const handleLoraToggle = (lora: string, checked: boolean) => {
-    if (checked) {
-      onLoraChange([...selectedLoras, lora]);
-    } else {
-      onLoraChange(selectedLoras.filter(l => l !== lora));
-    }
-  };
+  const generationFacets = [
+    {
+      title: 'Checkpoints',
+      items: facetUniverse.models,
+      selectedValues: selectedModels,
+      excludedValues: excludedModels,
+      counts: countFacetValues.modelCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'include', { selected: 'models', excluded: 'excludedModels' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'exclude', { selected: 'models', excluded: 'excludedModels' }),
+      onClear: () => setSelectedFilters({ models: [], excludedModels: [] }),
+    },
+    {
+      title: 'LoRAs',
+      items: facetUniverse.loras,
+      selectedValues: selectedLoras,
+      excludedValues: excludedLoras,
+      counts: countFacetValues.loraCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'include', { selected: 'loras', excluded: 'excludedLoras' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'exclude', { selected: 'loras', excluded: 'excludedLoras' }),
+      onClear: () => setSelectedFilters({ loras: [], excludedLoras: [] }),
+    },
+    {
+      title: 'Samplers',
+      items: facetUniverse.samplers,
+      selectedValues: selectedSamplers,
+      excludedValues: excludedSamplers,
+      counts: countFacetValues.samplerCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'include', { selected: 'samplers', excluded: 'excludedSamplers' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'exclude', { selected: 'samplers', excluded: 'excludedSamplers' }),
+      onClear: () => setSelectedFilters({ samplers: [], excludedSamplers: [] }),
+    },
+    {
+      title: 'Schedulers',
+      items: facetUniverse.schedulers,
+      selectedValues: selectedSchedulers,
+      excludedValues: excludedSchedulers,
+      counts: countFacetValues.schedulerCounts,
+      onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'include', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
+      onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'exclude', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
+      onClear: () => setSelectedFilters({ schedulers: [], excludedSchedulers: [] }),
+    },
+  ].filter((facet) =>
+    facet.items.length > 0 || facet.selectedValues.length > 0 || facet.excludedValues.length > 0
+  );
 
-  const handleSchedulerToggle = (scheduler: string, checked: boolean) => {
-    if (checked) {
-      onSchedulerChange([...selectedSchedulers, scheduler]);
-    } else {
-      onSchedulerChange(selectedSchedulers.filter(s => s !== scheduler));
-    }
-  };
-
-  const clearSection = (section: 'models' | 'loras' | 'schedulers') => {
-    switch (section) {
-      case 'models':
-        onModelChange([]);
-        break;
-      case 'loras':
-        onLoraChange([]);
-        break;
-      case 'schedulers':
-        onSchedulerChange([]);
-        break;
-    }
-  };
+  const hasAnyActiveFilters =
+    Boolean(searchQuery) ||
+    selectedModels.length > 0 ||
+    excludedModels.length > 0 ||
+    selectedLoras.length > 0 ||
+    excludedLoras.length > 0 ||
+    selectedSamplers.length > 0 ||
+    excludedSamplers.length > 0 ||
+    selectedSchedulers.length > 0 ||
+    excludedSchedulers.length > 0 ||
+    selectedGenerators.length > 0 ||
+    excludedGenerators.length > 0 ||
+    selectedGpuDevices.length > 0 ||
+    excludedGpuDevices.length > 0 ||
+    selectedTags.length > 0 ||
+    excludedTags.length > 0 ||
+    selectedAutoTags.length > 0 ||
+    excludedAutoTags.length > 0 ||
+    favoriteFilterMode !== 'neutral' ||
+    selectedRatings.length > 0 ||
+    Object.keys(advancedFilters || {}).length > 0;
 
   if (isCollapsed) {
     return (
@@ -139,7 +291,26 @@ const Sidebar: React.FC<SidebarProps> = ({
            <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
         </button>
         <div className="flex flex-col space-y-3">
-          {(selectedModels.length > 0 || selectedLoras.length > 0 || selectedSchedulers.length > 0) && (
+          {(selectedModels.length > 0 ||
+            excludedModels.length > 0 ||
+            selectedLoras.length > 0 ||
+            excludedLoras.length > 0 ||
+            selectedSamplers.length > 0 ||
+            excludedSamplers.length > 0 ||
+            selectedSchedulers.length > 0 ||
+            excludedSchedulers.length > 0 ||
+            selectedGenerators.length > 0 ||
+            excludedGenerators.length > 0 ||
+            selectedGpuDevices.length > 0 ||
+            excludedGpuDevices.length > 0 ||
+            selectedTags.length > 0 ||
+            excludedTags.length > 0 ||
+            selectedAutoTags.length > 0 ||
+            excludedAutoTags.length > 0 ||
+            searchQuery ||
+            favoriteFilterMode !== 'neutral' ||
+            selectedRatings.length > 0 ||
+            Object.keys(advancedFilters || {}).length > 0) && (
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" title="Active filters"></div>
           )}
         </div>
@@ -151,7 +322,18 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div
       data-area="sidebar"
       tabIndex={-1}
-      className="fixed left-0 top-0 h-full w-80 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col transition-all duration-300 ease-in-out shadow-2xl shadow-black/40">
+      style={{ width }}
+      className={`fixed left-0 top-0 h-full bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      <div
+        role="separator"
+        aria-label="Resize filters sidebar"
+        aria-orientation="vertical"
+        onPointerDown={onResizeStart}
+        className="absolute right-0 top-0 z-50 flex h-full w-3 translate-x-1/2 cursor-col-resize items-center justify-center"
+        title="Drag to resize filters sidebar"
+      >
+        <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
+      </div>
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
         <div className="flex items-center gap-3 p-4 pb-2">
@@ -161,19 +343,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div className="flex flex-col overflow-hidden">
                 <h1 className="text-lg font-bold tracking-tight text-white/90 truncate">Image MetaHub</h1>
-                <span className="text-[10px] font-mono font-normal text-gray-500">v0.13.2</span>
+                <span className="text-[10px] font-mono font-normal text-gray-500">v0.14.0</span>
             </div>
         </div>
-
         <div className="flex items-center justify-between px-4 pb-3 pt-1">
-            <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Filters</h2>
-            <button
+          <button
             onClick={onToggleCollapse}
-            className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
+            className="ml-auto rounded-lg border border-gray-700 bg-gray-800/40 p-1.5 text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-white hover:shadow-lg hover:shadow-blue-500/20"
             title="Collapse sidebar"
-            >
+          >
             <ChevronLeft className="w-4 h-4" />
-            </button>
+          </button>
         </div>
       </div>
 
@@ -187,7 +367,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
-        {/* Sort Order - Moved from footer for semantic consistency with filters */}
+        <div className="border-b border-gray-800/80">
+          <ActiveFilters />
+        </div>
+
         <div className="px-4 py-3 border-b border-gray-700">
           <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
           <div className="flex items-center">
@@ -223,7 +406,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               disabled={isIndexing}
               className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
                 isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed' 
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
                   : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
               }`}
               title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
@@ -250,246 +433,50 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Tags and Favorites Section */}
         <TagsAndFavorites />
 
-        {/* Models Section */}
-        {availableModels.length > 0 && (
-          <div className="border-b border-gray-700">
+        {generationFacets.length > 0 && (
+          <section className="border-y border-gray-800/80 bg-gray-950/20">
             <button
-              onClick={() => toggleSection('models')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
+              type="button"
+              onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
             >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">Models</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableModels.length}
-                </span>
-                {selectedModels.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedModels.length} selected
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                {selectedModels.length > 0 && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('models');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear model filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('models');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.models ? 'rotate-180' : ''}`}
-                />
-              </div>
+              <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
+              <ChevronDown
+                className={`h-4 w-4 text-gray-500 transition-transform ${isGenerationParametersExpanded ? 'rotate-180' : ''}`}
+              />
             </button>
-            <AnimatePresence>
-              {expandedSections.models && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    {availableModels
-                      .filter(model => typeof model === 'string' && model.trim() !== '')
-                      .map((model, index) => (
-                      <label key={`model-${index}-${model}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedModels.includes(model)}
-                          onChange={(e) => handleModelToggle(model, e.target.checked)}
-                          className="w-4 h-4 text-accent bg-gray-700 border-gray-600 rounded-md focus:ring-accent focus:ring-2"
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={model}>{model}</span>
-                      </label>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+            {isGenerationParametersExpanded && (
+              <div className="space-y-3 px-4 pb-4">
+                {generationFacets.map((facet) => (
+                  <FacetFilterSection
+                    key={facet.title}
+                    title={facet.title}
+                    items={facet.items}
+                    counts={facet.counts}
+                    selectedValues={facet.selectedValues}
+                    excludedValues={facet.excludedValues}
+                    onIncludeToggle={facet.onIncludeToggle}
+                    onExcludeToggle={facet.onExcludeToggle}
+                    onClear={facet.onClear}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
-        {/* LoRAs Section */}
-        {availableLoras.length > 0 && (
-          <div className="border-b border-gray-700">
-            <button
-              onClick={() => toggleSection('loras')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">LoRAs</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableLoras.length}
-                </span>
-                {selectedLoras.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedLoras.length} selected
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                {selectedLoras.length > 0 && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('loras');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear LoRA filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('loras');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.loras ? 'rotate-180' : ''}`}
-                />
-              </div>
-            </button>
-            <AnimatePresence>
-              {expandedSections.loras && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    {availableLoras
-                      .filter(lora => typeof lora === 'string' && lora.trim() !== '')
-                      .map((lora, index) => (
-                      <label key={`lora-${index}-${lora}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedLoras.includes(lora)}
-                          onChange={(e) => handleLoraToggle(lora, e.target.checked)}
-                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={lora}>{lora}</span>
-                      </label>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Schedulers Section */}
-        {availableSchedulers.length > 0 && (
-          <div className="border-b border-gray-700">
-            <button
-              onClick={() => toggleSection('schedulers')}
-              className="w-full flex items-center justify-between p-4 hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-300 font-medium">Schedulers</span>
-                <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded border border-gray-600">
-                  {availableSchedulers.length}
-                </span>
-                {selectedSchedulers.length > 0 && (
-                  <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
-                    {selectedSchedulers.length} selected
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                {selectedSchedulers.length > 0 && (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSection('schedulers');
-                    }}
-                    className="text-xs text-gray-400 hover:text-red-400 cursor-pointer"
-                    title="Clear scheduler filters"
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearSection('schedulers');
-                      }
-                    }}
-                  >
-                    <X size={16} />
-                  </span>
-                )}
-                <ChevronDown
-                  className={`w-4 h-4 transform transition-transform ${expandedSections.schedulers ? 'rotate-180' : ''}`}
-                />
-              </div>
-            </button>
-            <AnimatePresence>
-              {expandedSections.schedulers && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 max-h-64 overflow-y-auto scrollbar-thin">
-                    {availableSchedulers
-                      .filter(scheduler => typeof scheduler === 'string' && scheduler.trim() !== '')
-                      .map((scheduler, index) => (
-                      <label key={`scheduler-${index}-${scheduler}`} className="flex items-center space-x-2 py-2 hover:bg-gray-700/30 px-2 rounded-lg cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedSchedulers.includes(scheduler)}
-                          onChange={(e) => handleSchedulerToggle(scheduler, e.target.checked)}
-                          className="w-4 h-4 text-blue-500 bg-gray-700 border-gray-600 rounded-md focus:ring-blue-500 focus:ring-2"
-                        />
-                        <span className="text-gray-200 text-sm flex-1 truncate" title={scheduler}>{scheduler}</span>
-                      </label>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Advanced Filters */}
         <AdvancedFilters
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={onAdvancedFiltersChange}
           onClearAdvancedFilters={onClearAdvancedFilters}
           availableDimensions={availableDimensions}
+          selectedRatings={selectedRatings}
+          onSelectedRatingsChange={onSelectedRatingsChange}
         />
       </div>
 
       {/* Clear All Filters */}
-      {(selectedModels.length > 0 ||
-        selectedLoras.length > 0 ||
-        selectedSchedulers.length > 0 ||
-        selectedTags.length > 0 ||
-        excludedTags.length > 0 ||
-        selectedAutoTags.length > 0 ||
-        favoriteFilterMode !== 'neutral' ||
-        Object.keys(advancedFilters || {}).length > 0) && (
+      {hasAnyActiveFilters && (
         <div className="p-4 border-t border-gray-700">
           <button
             onClick={onClearAllFilters}

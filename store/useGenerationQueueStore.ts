@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BaseMetadata } from '../types';
 import { WorkflowOverrides } from '../services/comfyUIApiClient';
+import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfyUIWorkflowBuilder';
 
 export type GenerationProvider = 'a1111' | 'comfyui';
 export type GenerationStatus = 'waiting' | 'processing' | 'done' | 'failed' | 'canceled';
@@ -15,6 +16,11 @@ export type ComfyUIQueuePayload = {
   provider: 'comfyui';
   customMetadata?: Partial<BaseMetadata>;
   overrides?: WorkflowOverrides;
+  workflowMode?: ComfyUIWorkflowMode;
+  sourceImagePolicy?: ComfyUISourceImagePolicy;
+  advancedPromptJson?: string;
+  advancedWorkflowJson?: string;
+  maskFile?: File | null;
 };
 
 export type GenerationQueuePayload = A1111QueuePayload | ComfyUIQueuePayload;

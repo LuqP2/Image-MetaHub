@@ -45,7 +45,7 @@ export interface ElectronAPI {
   listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
-    files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number }[];
+    files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
@@ -80,9 +80,11 @@ export interface ElectronAPI {
   
   // --- Caching ---
   getCachedData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+  getJsonCacheData: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   getCacheChunk: (args: { cacheId: string; chunkIndex: number }) => Promise<{ success: boolean; data?: any; error?: string }>;
   getCacheSummary: (cacheId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   cacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
+  writeJsonCacheData: (args: { cacheId: string; data: any }) => Promise<{ success: boolean; error?: string }>;
   prepareCacheWrite: (args: { cacheId: string }) => Promise<{ success: boolean; error?: string }>;
   writeCacheChunk: (args: { cacheId: string; chunkIndex: number; data: any }) => Promise<{ success: boolean; error?: string }>;
   finalizeCacheWrite: (args: { cacheId: string; record: any }) => Promise<{ success: boolean; error?: string }>;
@@ -392,6 +394,29 @@ export interface MotionModelInfo {
   hash?: string | null;
 }
 
+export type GenerationType = 'txt2img' | 'img2img' | 'inpaint' | 'outpaint';
+
+export interface SourceImageReference {
+  fileName?: string | null;
+  relativePath?: string | null;
+  absolutePath?: string | null;
+  sha256?: string | null;
+  width?: number | null;
+  height?: number | null;
+  nodeId?: string | null;
+  nodeType?: string | null;
+}
+
+export interface ImageLineage {
+  detection?: 'explicit' | 'inferred';
+  sourceImage?: SourceImageReference | null;
+  workflowSourceImage?: SourceImageReference | null;
+  denoiseStrength?: number | null;
+  maskBlur?: number | null;
+  maskedContent?: string | null;
+  resizeMode?: string | null;
+}
+
 export interface BaseMetadata {
   prompt: string;
   negativePrompt?: string;
@@ -412,6 +437,8 @@ export interface BaseMetadata {
   media_type?: 'image' | 'video';
   video?: VideoInfo | null;
   motion_model?: MotionModelInfo | null;
+  generationType?: GenerationType;
+  lineage?: ImageLineage | null;
   // MetaHub Save Node user inputs
   tags?: string[]; // User-defined tags from MetaHub Save Node
   notes?: string; // User notes from MetaHub Save Node
@@ -646,6 +673,47 @@ export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIM
 }
 
 export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
+export type ImageRating = 1 | 2 | 3 | 4 | 5;
+
+export interface NumericRangeFilter {
+  min?: number | null;
+  max?: number | null;
+  maxExclusive?: boolean;
+}
+
+export interface DateRangeFilter {
+  from?: string;
+  to?: string;
+}
+
+export interface AdvancedFilters {
+  dimension?: string;
+  steps?: NumericRangeFilter;
+  cfg?: NumericRangeFilter;
+  date?: DateRangeFilter;
+  generationModes?: Array<'txt2img' | 'img2img'>;
+  mediaTypes?: Array<'image' | 'video'>;
+  telemetryState?: 'present' | 'missing';
+  hasVerifiedTelemetry?: boolean;
+  generationTimeMs?: NumericRangeFilter;
+  stepsPerSecond?: NumericRangeFilter;
+  vramPeakMb?: NumericRangeFilter;
+}
+
+export interface SelectedFiltersUpdate {
+  models?: string[];
+  excludedModels?: string[];
+  loras?: string[];
+  excludedLoras?: string[];
+  samplers?: string[];
+  excludedSamplers?: string[];
+  schedulers?: string[];
+  excludedSchedulers?: string[];
+  generators?: string[];
+  excludedGenerators?: string[];
+  gpuDevices?: string[];
+  excludedGpuDevices?: string[];
+}
 
 export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
@@ -658,8 +726,10 @@ export interface IndexedImage {
   metadata: ImageMetadata;
   metadataString: string; // For faster searching
   lastModified: number; // File's last modified date
+  contentModifiedMs?: number; // Real file content modification timestamp for cache diffing
   models: string[]; // Extracted models from metadata
   loras: (string | LoRAInfo)[]; // Extracted LoRAs from metadata
+  sampler?: string; // Extracted sampler from metadata
   scheduler: string; // Extracted scheduler from metadata
   board?: string; // Extracted board name from metadata
   prompt?: string; // Extracted prompt from metadata
@@ -668,6 +738,7 @@ export interface IndexedImage {
   steps?: number; // Extracted steps from metadata
   seed?: number; // Extracted seed from metadata
   dimensions?: string; // Extracted dimensions (width x height) from metadata
+  workflowNodes?: string[]; // Extracted ComfyUI workflow node types
   directoryName?: string; // Name of the selected directory for context
   directoryId?: string; // Unique ID for the parent directory
   enrichmentState?: 'catalog' | 'enriched';
@@ -677,6 +748,7 @@ export interface IndexedImage {
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status
   tags?: string[];               // Quick access to tags array
+  rating?: ImageRating;          // Optional 1-5 user rating
 
   // Smart Clustering & Auto-Tagging (Phase 1)
   clusterId?: string;            // Cluster this image belongs to
@@ -693,6 +765,7 @@ export interface ImageAnnotations {
   imageId: string;              // Links to IndexedImage.id (unique)
   isFavorite: boolean;           // Star/Favorite flag
   tags: string[];                // User-defined tags (lowercase normalized)
+  rating?: ImageRating;          // Optional 1-5 user rating
   addedAt: number;               // Timestamp when first annotated
   updatedAt: number;             // Timestamp of last update
 }
@@ -719,9 +792,14 @@ export interface Directory {
 export interface FilterOptions {
   models: string[];
   loras: string[];
-  schedulers:string[];
+  samplers: string[];
+  schedulers: string[];
+  generators: string[];
+  gpuDevices: string[];
+  dimensions: string[];
   selectedModel: string;
   selectedLora: string;
+  selectedSampler: string;
   selectedScheduler: string;
 }
 
