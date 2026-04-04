@@ -34,6 +34,7 @@ const ActiveFilters: React.FC = () => {
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
@@ -276,7 +277,7 @@ const ActiveFilters: React.FC = () => {
         ))}
 
         {selectedTags.map((value) => (
-          <FacetChip key={`tag-${value}`} label="Tag" value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
+          <FacetChip key={`tag-${value}`} label={selectedTagsMatchMode === 'all' ? 'Tag (all)' : 'Tag'} value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
         ))}
         {excludedTags.map((value) => (
           <FacetChip key={`tag-ex-${value}`} label="Exclude tag" value={value} tone="rose" onRemove={() => setExcludedTags(excludedTags.filter((item) => item !== value))} />

@@ -18,6 +18,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
   const purgeTag = vi.fn().mockResolvedValue(undefined);
   const setSelectedTags = vi.fn();
   const setExcludedTags = vi.fn();
+  const setSelectedTagsMatchMode = vi.fn();
   const setSelectedAutoTags = vi.fn();
   const setExcludedAutoTags = vi.fn();
   const setSelectedRatings = vi.fn();
@@ -31,6 +32,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     filteredImages: [],
     selectedTags: [],
     excludedTags: [],
+    selectedTagsMatchMode: 'any',
     selectedAutoTags: [],
     excludedAutoTags: [],
     favoriteFilterMode: 'neutral',
@@ -41,6 +43,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     purgeTag,
     setSelectedTags,
     setExcludedTags,
+    setSelectedTagsMatchMode,
     setSelectedAutoTags,
     setExcludedAutoTags,
     setSelectedRatings,
@@ -55,6 +58,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     purgeTag,
     setSelectedTags,
     setExcludedTags,
+    setSelectedTagsMatchMode,
     setSelectedRatings,
     refreshAvailableAutoTags,
   };
@@ -115,6 +119,18 @@ describe('TagsAndFavorites manual tag browser', () => {
 
     expect(setSelectedTags).toHaveBeenCalledWith(['ghost-tag']);
     expect(setExcludedTags).toHaveBeenCalledWith([]);
+  });
+
+  it('toggles tag match mode from any to all', () => {
+    const { setSelectedTagsMatchMode } = seedSidebarState({
+      availableTags: [{ name: 'ghost-tag', count: 2 }],
+      selectedTagsMatchMode: 'any',
+    });
+
+    render(<TagsAndFavorites />);
+    fireEvent.click(screen.getByLabelText('Tag match mode: any'));
+
+    expect(setSelectedTagsMatchMode).toHaveBeenCalledWith('all');
   });
 
   it('toggles rating chips with multi-select OR behavior', () => {

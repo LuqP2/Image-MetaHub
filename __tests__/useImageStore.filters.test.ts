@@ -140,6 +140,17 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 
+  it('supports matching all selected manual tags', () => {
+    useImageStore.getState().setSelectedTags(['portrait', 'warm']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+
+    useImageStore.getState().setSelectedTagsMatchMode('all');
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+
+    useImageStore.getState().setSelectedTagsMatchMode('any');
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png']);
+  });
+
   it('supports include and exclude for checkpoints, loras, samplers, and schedulers', () => {
     useImageStore.getState().setSelectedFilters({
       models: ['modelA'],

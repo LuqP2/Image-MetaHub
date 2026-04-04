@@ -781,6 +781,7 @@ export interface TagInfo {
 }
 
 export type InclusionFilterMode = 'neutral' | 'include' | 'exclude';
+export type TagMatchMode = 'any' | 'all';
 
 export interface Directory {
   id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)

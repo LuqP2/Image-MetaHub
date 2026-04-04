@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -386,6 +386,7 @@ interface ImageState {
   recentTags: string[];
   selectedTags: string[];
   excludedTags: string[];
+  selectedTagsMatchMode: TagMatchMode;
   selectedAutoTags: string[]; // Filter by auto-tags
   excludedAutoTags: string[];
   favoriteFilterMode: InclusionFilterMode;
@@ -521,6 +522,7 @@ interface ImageState {
   purgeTag: (tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
+  setSelectedTagsMatchMode: (mode: TagMatchMode) => void;
   setSelectedAutoTags: (tags: string[]) => void;
   setExcludedAutoTags: (tags: string[]) => void;
   setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
@@ -1251,7 +1253,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedTags && state.selectedTags.length > 0) {
             results = results.filter(img => {
                 if (!img.tags || img.tags.length === 0) return false;
-                // Match ANY selected tag (OR logic)
+                if (state.selectedTagsMatchMode === 'all') {
+                    return state.selectedTags.every(tag => img.tags!.includes(tag));
+                }
                 return state.selectedTags.some(tag => img.tags!.includes(tag));
             });
         }
@@ -1676,6 +1680,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         recentTags: loadRecentTags(),
         selectedTags: [],
         excludedTags: [],
+        selectedTagsMatchMode: 'any',
         selectedAutoTags: [],
         excludedAutoTags: [],
         favoriteFilterMode: 'neutral',
@@ -3314,6 +3319,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
+        setSelectedTagsMatchMode: (mode) => set(state => {
+            const newState = { ...state, selectedTagsMatchMode: mode };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
         setFavoriteFilterMode: (mode) => set(state => {
             const newState = { ...state, favoriteFilterMode: mode };
             return { ...newState, ...filterAndSort(newState) };
@@ -3570,6 +3580,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             recentTags: loadRecentTags(),
             selectedTags: [],
             excludedTags: [],
+            selectedTagsMatchMode: 'any',
             selectedAutoTags: [],
             excludedAutoTags: [],
             favoriteFilterMode: 'neutral',

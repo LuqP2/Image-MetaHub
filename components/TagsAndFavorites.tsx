@@ -27,10 +27,12 @@ const TagsAndFavorites: React.FC = () => {
   const availableAutoTags = useImageStore((state) => state.availableAutoTags);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const setSelectedTags = useImageStore((state) => state.setSelectedTags);
   const setExcludedTags = useImageStore((state) => state.setExcludedTags);
+  const setSelectedTagsMatchMode = useImageStore((state) => state.setSelectedTagsMatchMode);
   const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
   const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
   const renameTag = useImageStore((state) => state.renameTag);
@@ -461,9 +463,22 @@ const TagsAndFavorites: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Tags</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTagsMatchMode(selectedTagsMatchMode === 'any' ? 'all' : 'any')}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide transition-colors ${
+                          selectedTagsMatchMode === 'all'
+                            ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
+                            : 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                        }`}
+                        title={selectedTagsMatchMode === 'all' ? 'Tags must match all included filters' : 'Tags can match any included filter'}
+                        aria-label={`Tag match mode: ${selectedTagsMatchMode}`}
+                      >
+                        {selectedTagsMatchMode === 'all' ? 'All' : 'Any'}
+                      </button>
                       {selectedTags.length > 0 && (
                         <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
-                          {selectedTags.length} include
+                          {selectedTags.length} include{selectedTags.length > 1 ? ` · ${selectedTagsMatchMode}` : ''}
                         </span>
                       )}
                       {excludedTags.length > 0 && (
