@@ -13,6 +13,12 @@ interface AdvancedFiltersProps {
   onSelectedRatingsChange: (ratings: ImageRating[]) => void;
 }
 
+type MultiSelectFilterKey = 'generationModes' | 'mediaTypes';
+type MultiSelectFilterValues = {
+  generationModes: NonNullable<AdvancedFilters['generationModes']>;
+  mediaTypes: NonNullable<AdvancedFilters['mediaTypes']>;
+};
+
 const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   advancedFilters,
   onAdvancedFiltersChange,
@@ -128,13 +134,13 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     mediaTypes.length > 0 ? mediaTypes.join(' + ') : null,
   ].filter(Boolean).join(' • ') || 'Generation mode and media-type filters.';
 
-  const toggleMultiSelectFilter = (key: 'generationModes' | 'mediaTypes', value: string) => {
-    const currentValues = Array.isArray(localFilters[key]) ? localFilters[key] : [];
+  const toggleMultiSelectFilter = <K extends MultiSelectFilterKey>(key: K, value: MultiSelectFilterValues[K][number]) => {
+    const currentValues = (Array.isArray(localFilters[key]) ? localFilters[key] : []) as string[];
     const nextValues = currentValues.includes(value)
-      ? currentValues.filter((item: string) => item !== value)
+      ? currentValues.filter((item) => item !== value)
       : [...currentValues, value];
 
-    updateFilter(key, nextValues);
+    updateFilter(key, nextValues as AdvancedFilters[K]);
   };
 
   const renderNumberRange = (
@@ -378,10 +384,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     <h4 className="text-sm font-semibold text-gray-100">Generation Mode</h4>
                     <p className="mt-1 text-xs text-gray-500">Match txt2img or img2img outputs.</p>
                     <div className="mt-3 space-y-2">
-                      {[
+                      {([
                         ['txt2img', 'txt2img'],
                         ['img2img', 'img2img'],
-                      ].map(([value, label]) => (
+                      ] as const).map(([value, label]) => (
                         <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
                           <input
                             type="checkbox"
@@ -399,10 +405,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     <h4 className="text-sm font-semibold text-gray-100">Media Type</h4>
                     <p className="mt-1 text-xs text-gray-500">Restrict results to images or videos.</p>
                     <div className="mt-3 space-y-2">
-                      {[
+                      {([
                         ['image', 'Images'],
                         ['video', 'Videos'],
-                      ].map(([value, label]) => (
+                      ] as const).map(([value, label]) => (
                         <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
                           <input
                             type="checkbox"

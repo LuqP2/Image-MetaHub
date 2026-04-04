@@ -1449,7 +1449,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 results = results.filter(image => {
                     const normalizedMetadata = image.metadata?.normalizedMetadata;
                     const explicitGenerationType = normalizedMetadata?.generationType;
-                    if (typeof explicitGenerationType === 'string') {
+                    if (explicitGenerationType === 'txt2img' || explicitGenerationType === 'img2img') {
                         return advancedFilters.generationModes.includes(explicitGenerationType);
                     }
 
