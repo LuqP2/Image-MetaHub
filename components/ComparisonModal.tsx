@@ -1,26 +1,32 @@
-import React, { useState, useEffect, FC } from 'react';
+import React, { useState, useEffect, FC, useMemo } from 'react';
 import { X, Repeat, ArrowLeft } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { ComparisonModalProps, ZoomState, ComparisonViewMode } from '../types';
+import { ComparisonLayoutMode, ComparisonModalProps, ZoomState, ComparisonViewMode } from '../types';
 import ComparisonPane from './ComparisonPane';
 import ComparisonMetadataPanel from './ComparisonMetadataPanel';
 import ComparisonOverlayView from './ComparisonOverlayView';
 
 const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
-  // Granular selectors for performance
   const comparisonImages = useImageStore((state) => state.comparisonImages);
   const directories = useImageStore((state) => state.directories);
   const swapComparisonImages = useImageStore((state) => state.swapComparisonImages);
   const clearComparison = useImageStore((state) => state.clearComparison);
+  const removeImageFromComparison = useImageStore((state) => state.removeImageFromComparison);
 
-  // State
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [sharedZoom, setSharedZoom] = useState<ZoomState>({ zoom: 1, x: 0, y: 0 });
-  const [metadataExpanded, setMetadataExpanded] = useState(false);
+  const [expandedMetadataIndexes, setExpandedMetadataIndexes] = useState<Set<number>>(() => new Set());
   const [viewMode, setViewMode] = useState<ComparisonViewMode>('side-by-side');
+  const [layoutMode, setLayoutMode] = useState<ComparisonLayoutMode>('strip');
   const [metadataViewMode, setMetadataViewMode] = useState<'standard' | 'diff'>('standard');
 
-  // Handlers
+  const imageCount = comparisonImages.length;
+  const supportsOverlayModes = imageCount === 2;
+  const directoryPathById = useMemo(
+    () => new Map(directories.map((directory) => [directory.id, directory.path])),
+    [directories]
+  );
+
   const updateSharedZoom = (zoom: number, x: number, y: number) => {
     setSharedZoom({ zoom, x, y });
   };
@@ -32,7 +38,9 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleSwap = () => {
-    swapComparisonImages();
+    if (imageCount === 2) {
+      swapComparisonImages();
+    }
   };
 
   const handleClose = () => {
@@ -40,12 +48,39 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
     onClose();
   };
 
-  // Keyboard shortcuts
+  const handleRemoveImage = (index: number) => {
+    removeImageFromComparison(index);
+    if (imageCount <= 2) {
+      onClose();
+    }
+  };
+
+  const toggleMetadataPanel = (index: number) => {
+    setExpandedMetadataIndexes((current) => {
+      const next = new Set(current);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setExpandedMetadataIndexes(new Set(comparisonImages.map((_, index) => index)));
+  }, [comparisonImages]);
+
+  useEffect(() => {
+    if (!supportsOverlayModes && viewMode !== 'side-by-side') {
+      setViewMode('side-by-side');
+    }
+  }, [supportsOverlayModes, viewMode]);
+
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -59,22 +94,10 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
         case 'S':
           if (viewMode !== 'side-by-side') return;
           e.preventDefault();
-          setSyncEnabled(prev => {
-            const newValue = !prev;
-            // Show notification
-            const notification = document.createElement('div');
-            notification.className = 'fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-            notification.textContent = `Sync ${newValue ? 'enabled' : 'disabled'}`;
-            document.body.appendChild(notification);
-            setTimeout(() => {
-              if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-              }
-            }, 2000);
-            return newValue;
-          });
+          setSyncEnabled((prev) => !prev);
           break;
         case ' ':
+          if (imageCount !== 2) return;
           e.preventDefault();
           handleSwap();
           break;
@@ -83,35 +106,32 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, syncEnabled, viewMode]);
+  }, [imageCount, isOpen, viewMode]);
 
-  if (!isOpen || !comparisonImages[0] || !comparisonImages[1]) return null;
+  if (!isOpen || imageCount < 2) return null;
 
-  // Get directory paths for each image
-  const leftDirectory = directories.find(d => d.id === comparisonImages[0]?.directoryId);
-  const rightDirectory = directories.find(d => d.id === comparisonImages[1]?.directoryId);
-  const viewModes: { id: ComparisonViewMode; label: string; hint: string }[] = [
-    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image' },
-    { id: 'side-by-side', label: 'Side-by-Side', hint: 'Two panes with optional synced zoom' },
-    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images' },
+  const viewModes: { id: ComparisonViewMode; label: string; hint: string; disabled?: boolean }[] = [
+    { id: 'side-by-side', label: imageCount > 2 ? 'Compare' : 'Side-by-Side', hint: imageCount > 2 ? 'Compare all selected images together' : 'Two panes with optional synced zoom' },
+    { id: 'slider', label: 'Slider', hint: 'Drag the divider to reveal each image', disabled: !supportsOverlayModes },
+    { id: 'hover', label: 'Hover', hint: 'Hover to toggle between the images', disabled: !supportsOverlayModes },
   ];
   const isSideBySide = viewMode === 'side-by-side';
+  const metadataReference = comparisonImages[0]?.metadata?.normalizedMetadata ?? null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col">
-      {/* Header */}
+    <div className="fixed inset-0 z-[140] bg-black/85 backdrop-blur-sm flex flex-col">
       <div className="sticky top-0 z-10 bg-gray-800/90 backdrop-blur-sm border-b border-gray-700 px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-gray-200">Comparison View</h2>
+            <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-xs font-medium text-purple-200">
+              {imageCount} image{imageCount === 1 ? '' : 's'}
+            </span>
             <button
               onClick={handleSwap}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                     bg-gray-700/50 hover:bg-gray-700
-                     text-gray-300 hover:text-white
-                     border border-gray-600/50
-                     text-sm font-medium transition-colors"
-              title="Swap images (Space)"
+              disabled={imageCount !== 2}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-600/50 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={imageCount === 2 ? 'Swap images (Space)' : 'Swap is only available when comparing 2 images'}
             >
               <Repeat className="w-4 h-4" />
               <span className="hidden sm:inline">Swap</span>
@@ -122,14 +142,12 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
             <button
               onClick={() => setSyncEnabled(!syncEnabled)}
               disabled={!isSideBySide}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border
-                       ${syncEnabled
-                         ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500'
-                         : 'bg-gray-700/50 hover:bg-gray-700 text-gray-300 border-gray-600/50'
-                       }
-                       ${!isSideBySide ? 'opacity-60 cursor-not-allowed' : ''}
-                      `}
-              title={isSideBySide ? 'Toggle zoom synchronization (S)' : 'Sync is available in Side-by-Side mode'}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+                syncEnabled
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500'
+                  : 'bg-gray-700/50 hover:bg-gray-700 text-gray-300 border-gray-600/50'
+              } ${!isSideBySide ? 'opacity-60 cursor-not-allowed' : ''}`}
+              title={isSideBySide ? 'Toggle zoom synchronization (S)' : 'Sync is available in compare mode'}
             >
               Sync: {syncEnabled ? 'ON' : 'OFF'}
             </button>
@@ -144,37 +162,70 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Mode</span>
-            <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
-              {viewModes.map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => setViewMode(mode.id)}
-                  className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 last:border-r-0
-                             ${viewMode === mode.id
-                               ? 'bg-blue-600 text-white border-blue-500/60'
-                               : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
-                             }`}
-                  title={mode.hint}
-                >
-                  {mode.label}
-                </button>
-              ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {comparisonImages.map((image, index) => (
+            <div key={image.id} className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-700 bg-gray-900/70 px-3 py-1 text-xs text-gray-200">
+              <span className="text-gray-500">#{index + 1}</span>
+              <span className="truncate max-w-[220px]" title={image.name}>{image.name}</span>
+              <button
+                onClick={() => handleRemoveImage(index)}
+                className="rounded-full p-0.5 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                title={`Remove ${image.name} from comparison`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <span className="text-xs text-gray-500 hidden lg:inline">
-              Slider: drag the divider | Side-by-Side: synced zoom | Hover: reveal the second image
-            </span>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Mode</span>
+              <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
+                {viewModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    onClick={() => !mode.disabled && setViewMode(mode.id)}
+                    disabled={mode.disabled}
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 last:border-r-0 ${
+                      viewMode === mode.id
+                        ? 'bg-blue-600 text-white border-blue-500/60'
+                        : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+                    } ${mode.disabled ? 'opacity-40 cursor-not-allowed hover:bg-transparent hover:text-gray-300' : ''}`}
+                    title={mode.hint}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {imageCount > 2 && isSideBySide && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-gray-400">Layout</span>
+                <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
+                  {(['strip', 'grid'] as ComparisonLayoutMode[]).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setLayoutMode(mode)}
+                      className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 last:border-r-0 ${
+                        layoutMode === mode
+                          ? 'bg-blue-600 text-white border-blue-500/60'
+                          : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+                      }`}
+                    >
+                      {mode === 'strip' ? 'Side Strip' : '2x2 Grid'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <button
             onClick={handleClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
-                     bg-gray-700/50 hover:bg-gray-700
-                     text-gray-300 hover:text-white
-                     border border-gray-600/50
-                     text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-600/50 text-sm font-medium transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Grid</span>
@@ -182,65 +233,79 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
         </div>
       </div>
 
-      {/* Compare Area */}
-      <div className="flex-1 overflow-hidden">
-        {isSideBySide ? (
-          <div className="flex flex-col md:flex-row h-full overflow-hidden">
-            <ComparisonPane
-              image={comparisonImages[0]}
-              directoryPath={leftDirectory?.path || ''}
-              position="left"
-              syncEnabled={syncEnabled}
-              externalZoom={syncEnabled ? sharedZoom : undefined}
-              onZoomChange={handleZoomChange}
-            />
-
-            <ComparisonPane
-              image={comparisonImages[1]}
-              directoryPath={rightDirectory?.path || ''}
-              position="right"
-              syncEnabled={syncEnabled}
-              externalZoom={syncEnabled ? sharedZoom : undefined}
-              onZoomChange={handleZoomChange}
-            />
-          </div>
-        ) : (
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {supportsOverlayModes && !isSideBySide ? (
           <ComparisonOverlayView
             leftImage={comparisonImages[0]}
             rightImage={comparisonImages[1]}
-            leftDirectory={leftDirectory?.path || ''}
-            rightDirectory={rightDirectory?.path || ''}
+            leftDirectory={directoryPathById.get(comparisonImages[0].directoryId) || ''}
+            rightDirectory={directoryPathById.get(comparisonImages[1].directoryId) || ''}
             mode={viewMode as Exclude<ComparisonViewMode, 'side-by-side'>}
             sharedZoom={sharedZoom}
             onZoomChange={updateSharedZoom}
           />
+        ) : (
+          <div className="h-full overflow-auto bg-gray-950 p-2">
+            <div
+              className={`grid h-full min-h-[60vh] gap-2 ${layoutMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 auto-rows-fr' : ''}`}
+              style={
+                layoutMode === 'strip'
+                  ? {
+                      gridTemplateColumns: `repeat(${imageCount}, minmax(320px, 1fr))`,
+                      gridAutoRows: 'minmax(0, 1fr)',
+                    }
+                  : undefined
+              }
+            >
+              {comparisonImages.map((image, index) => {
+                const isOddLastGridItem = layoutMode === 'grid' && imageCount % 2 === 1 && index === imageCount - 1;
+
+                return (
+                  <ComparisonPane
+                    key={image.id}
+                    image={image}
+                    directoryPath={directoryPathById.get(image.directoryId) || ''}
+                    syncEnabled={syncEnabled}
+                    externalZoom={syncEnabled ? sharedZoom : undefined}
+                    onZoomChange={handleZoomChange}
+                    className={`h-full rounded-xl border border-gray-800 overflow-hidden ${isOddLastGridItem ? 'md:col-span-2' : ''}`}
+                    imageLabel={`Image ${index + 1}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Metadata Panels */}
       <div className="bg-gray-900/50 border-t border-gray-700 p-4 overflow-y-auto max-h-[40vh]">
-        {/* Metadata View Mode Toggle */}
-        <div className="flex justify-between items-center mb-4 max-w-7xl mx-auto">
-          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Metadata</h3>
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4 max-w-7xl mx-auto">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Metadata</h3>
+            {metadataViewMode === 'diff' && imageCount > 2 && (
+              <p className="mt-1 text-xs text-gray-500">Diff mode highlights differences against Image 1 as the reference.</p>
+            )}
+          </div>
+
           <div className="inline-flex bg-gray-900/60 border border-gray-700/70 rounded-lg overflow-hidden">
             <button
               onClick={() => setMetadataViewMode('standard')}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40
-                         ${metadataViewMode === 'standard'
-                           ? 'bg-blue-600 text-white border-blue-500/60'
-                           : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
-                         }`}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors border-r border-gray-700/40 ${
+                metadataViewMode === 'standard'
+                  ? 'bg-blue-600 text-white border-blue-500/60'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+              }`}
               title="Show all metadata in standard format"
             >
               Standard View
             </button>
             <button
               onClick={() => setMetadataViewMode('diff')}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors
-                         ${metadataViewMode === 'diff'
-                           ? 'bg-blue-600 text-white border-blue-500/60'
-                           : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
-                         }`}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                metadataViewMode === 'diff'
+                  ? 'bg-blue-600 text-white border-blue-500/60'
+                  : 'text-gray-300 hover:text-white hover:bg-gray-700/60'
+              }`}
               title="Highlight differences between metadata"
             >
               Diff View
@@ -248,31 +313,38 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4 max-w-7xl mx-auto">
-          <ComparisonMetadataPanel
-            image={comparisonImages[0]}
-            isExpanded={metadataExpanded}
-            onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
-            viewMode={metadataViewMode}
-            otherImageMetadata={comparisonImages[1]?.metadata?.normalizedMetadata}
-          />
+        <div className={`grid gap-4 max-w-7xl mx-auto ${imageCount > 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
+          {comparisonImages.map((image, index) => {
+            const isOddLastGridItem = imageCount > 2 && imageCount % 2 === 1 && index === imageCount - 1;
+            const otherImageMetadata = index === 0 ? null : metadataReference;
 
-          <ComparisonMetadataPanel
-            image={comparisonImages[1]}
-            isExpanded={metadataExpanded}
-            onToggleExpanded={() => setMetadataExpanded(!metadataExpanded)}
-            viewMode={metadataViewMode}
-            otherImageMetadata={comparisonImages[0]?.metadata?.normalizedMetadata}
-          />
+            return (
+              <ComparisonMetadataPanel
+                key={image.id}
+                image={image}
+                isExpanded={expandedMetadataIndexes.has(index)}
+                onToggleExpanded={() => toggleMetadataPanel(index)}
+                viewMode={metadataViewMode}
+                otherImageMetadata={otherImageMetadata}
+                className={isOddLastGridItem ? 'md:col-span-2' : ''}
+                compareLabel={index === 0 ? 'Reference' : metadataViewMode === 'diff' ? 'vs Image 1' : undefined}
+              />
+            );
+          })}
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Help (subtle hint) */}
       <div className="absolute bottom-4 left-4 text-xs text-gray-500 hidden md:block">
         <p>
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Esc</kbd> Close •{' '}
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">S</kbd> Toggle Sync •{' '}
-          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Space</kbd> Swap
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Esc</kbd> Close
+          {' '}•{' '}
+          <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">S</kbd> Toggle Sync
+          {imageCount === 2 ? (
+            <>
+              {' '}•{' '}
+              <kbd className="px-1.5 py-0.5 bg-gray-800 border border-gray-700 rounded">Space</kbd> Swap
+            </>
+          ) : null}
         </p>
       </div>
     </div>

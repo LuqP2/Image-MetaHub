@@ -106,7 +106,9 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   isExpanded,
   onToggleExpanded,
   viewMode = 'standard',
-  otherImageMetadata
+  otherImageMetadata,
+  className,
+  compareLabel,
 }) => {
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
@@ -150,7 +152,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
 
   if (!metadata) {
     return (
-      <div className="w-full md:w-1/2 p-4 bg-gray-800/50 rounded-lg border border-gray-700/50">
+      <div className={`p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 ${className ?? ''}`}>
         <button
           onClick={onToggleExpanded}
           className="w-full p-3 flex items-center justify-between text-left hover:bg-gray-700/30 transition-colors rounded-lg"
@@ -158,6 +160,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
           <span className="font-semibold text-gray-200 truncate flex-1" title={image.name}>
             {image.name}
           </span>
+          {compareLabel ? <span className="mr-2 text-[11px] uppercase tracking-[0.14em] text-gray-500">{compareLabel}</span> : null}
           {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
         </button>
         {isExpanded && (
@@ -170,7 +173,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   }
 
   return (
-    <div className="w-full md:w-1/2 bg-gray-800/50 rounded-lg border border-gray-700/50 overflow-hidden">
+    <div className={`bg-gray-800/50 rounded-lg border border-gray-700/50 overflow-hidden ${className ?? ''}`}>
       {/* Toggle Button */}
       <button
         onClick={onToggleExpanded}
@@ -179,6 +182,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
         <span className="font-semibold text-gray-200 truncate flex-1 mr-2" title={image.name}>
           {image.name}
         </span>
+        {compareLabel ? <span className="mr-2 text-[11px] uppercase tracking-[0.14em] text-gray-500">{compareLabel}</span> : null}
         {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
       </button>
 

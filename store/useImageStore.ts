@@ -351,7 +351,7 @@ interface ImageState {
   isFullscreenMode: boolean;
 
   // Comparison State
-  comparisonImages: [IndexedImage | null, IndexedImage | null];
+  comparisonImages: IndexedImage[];
   isComparisonModalOpen: boolean;
 
   // Filter & Sort State
@@ -498,9 +498,9 @@ interface ImageState {
   setAutoTaggingProgress: (progress: { current: number; total: number; message: string } | null) => void;
 
   // Comparison Actions
-  setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
+  setComparisonImages: (images: IndexedImage[]) => void;
   addImageToComparison: (image: IndexedImage) => void;
-  removeImageFromComparison: (index: 0 | 1) => void;
+  removeImageFromComparison: (index: number) => void;
   swapComparisonImages: () => void;
   clearComparison: () => void;
   openComparisonModal: () => void;
@@ -1666,7 +1666,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
         viewingStackPrompt: null,
         isFullscreenMode: false,
-        comparisonImages: [null, null],
+        comparisonImages: [],
         isComparisonModalOpen: false,
 
         // Annotations initial values
@@ -2679,33 +2679,42 @@ export const useImageStore = create<ImageState>((set, get) => {
         setAutoTaggingProgress: (progress) => set({ autoTaggingProgress: progress }),
 
         // Comparison Actions
-        setComparisonImages: (images) => set({ comparisonImages: images }),
+        setComparisonImages: (images) => set({
+            comparisonImages: images
+                .filter((image): image is IndexedImage => Boolean(image))
+                .filter((image, index, arr) => arr.findIndex((candidate) => candidate.id === image.id) === index)
+                .slice(0, 4)
+        }),
 
         addImageToComparison: (image) => set(state => {
-            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
-
-            // Find first empty slot
-            const emptyIndex = newImages.findIndex(img => img === null);
-            if (emptyIndex !== -1) {
-                newImages[emptyIndex] = image;
+            if (state.comparisonImages.some(existing => existing.id === image.id) || state.comparisonImages.length >= 4) {
+                return state;
             }
 
-            return { comparisonImages: newImages };
+            return { comparisonImages: [...state.comparisonImages, image] };
         }),
 
         removeImageFromComparison: (index) => set(state => {
-            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
-            newImages[index] = null;
-            return { comparisonImages: newImages };
+            if (index < 0 || index >= state.comparisonImages.length) {
+                return state;
+            }
+
+            return {
+                comparisonImages: state.comparisonImages.filter((_, imageIndex) => imageIndex !== index)
+            };
         }),
 
         swapComparisonImages: () => set(state => {
-            const [left, right] = state.comparisonImages;
-            return { comparisonImages: [right, left] };
+            if (state.comparisonImages.length < 2) {
+                return state;
+            }
+
+            const [first, second, ...rest] = state.comparisonImages;
+            return { comparisonImages: [second, first, ...rest] };
         }),
 
         clearComparison: () => set({
-            comparisonImages: [null, null],
+            comparisonImages: [],
             isComparisonModalOpen: false
         }),
 
@@ -3553,7 +3562,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             viewingStackPrompt: null,
             sortOrder: 'desc',
             isFullscreenMode: false,
-            comparisonImages: [null, null],
+            comparisonImages: [],
             isComparisonModalOpen: false,
             annotations: new Map(),
             availableTags: [],

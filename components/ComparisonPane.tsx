@@ -9,10 +9,11 @@ import useComparisonImageSource from '../hooks/useComparisonImageSource';
 const ComparisonPane: FC<ComparisonPaneProps> = ({
   image,
   directoryPath,
-  position,
   syncEnabled,
   externalZoom,
-  onZoomChange
+  onZoomChange,
+  className,
+  imageLabel,
 }) => {
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -29,7 +30,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
 
   if (loadError) {
     return (
-      <div className="w-full md:w-1/2 flex items-center justify-center bg-gray-900/50 border-r border-gray-700">
+      <div className={`flex items-center justify-center bg-gray-900/50 ${className ?? ''}`}>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <p className="text-red-300 font-semibold">Failed to load image</p>
@@ -41,7 +42,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   }
 
   return (
-    <div className={`w-full md:w-1/2 h-[50vh] md:h-full relative group bg-black ${position === 'left' ? 'md:border-r' : 'md:border-l'} border-gray-700`}>
+    <div className={`relative group bg-black min-h-0 ${className ?? ''}`}>
       <TransformWrapper
         ref={transformRef}
         initialScale={1}
@@ -119,6 +120,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
             {/* Image Name Label */}
             <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-sm rounded-lg p-2">
               <p className="text-white text-sm font-medium truncate" title={image.name}>
+                {imageLabel ? <span className="mr-2 text-xs uppercase tracking-wide text-gray-300">{imageLabel}</span> : null}
                 {image.name}
               </p>
             </div>
@@ -157,7 +159,10 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
 export default React.memo(ComparisonPane, (prev, next) => {
   return (
     prev.image.id === next.image.id &&
+    prev.directoryPath === next.directoryPath &&
     prev.syncEnabled === next.syncEnabled &&
+    prev.className === next.className &&
+    prev.imageLabel === next.imageLabel &&
     prev.externalZoom?.zoom === next.externalZoom?.zoom &&
     prev.externalZoom?.x === next.externalZoom?.x &&
     prev.externalZoom?.y === next.externalZoom?.y

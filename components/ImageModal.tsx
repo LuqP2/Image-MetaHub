@@ -2211,12 +2211,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClose(); // Close ImageModal, ComparisonModal will auto-open
                 }
               }}
-              disabled={canUseComparison && comparisonCount >= 2}
+              disabled={canUseComparison && comparisonCount >= 4}
               className="w-full justify-center bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
-              title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 2 ? "Comparison queue full" : "Add to comparison"}
+              title={!canUseComparison ? "Comparison (Pro Feature)" : comparisonCount >= 4 ? "Comparison queue full" : "Add to comparison"}
             >
               <GitCompare className="w-3 h-3" />
-              Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/2)`}
+              Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/4)`}
               {!canUseComparison && initialized && <ProBadge size="sm" />}
             </button>
           </div>
