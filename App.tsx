@@ -147,6 +147,7 @@ export default function App() {
 
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
+  const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -232,6 +233,7 @@ export default function App() {
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
 
+  const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
   const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
