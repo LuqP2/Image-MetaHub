@@ -275,7 +275,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
       case 'scheduler': setSelectedFilters({ schedulers: [key], excludedSchedulers: [] }); break;
       case 'gpu': setSelectedFilters({ gpuDevices: [key], excludedGpuDevices: [] }); break;
       case 'rating': setSelectedRatings([Number(key) as 1 | 2 | 3 | 4 | 5]); break;
-      case 'telemetry': setAdvancedFilters({ ...filterState.advancedFilters, hasVerifiedTelemetry: key === 'verified' ? true : undefined }); break;
+      case 'telemetry': setAdvancedFilters({ ...filterState.advancedFilters, telemetryState: key === 'present' ? 'present' : 'missing', hasVerifiedTelemetry: undefined }); break;
     }
   };
 

@@ -71,4 +71,21 @@ describe('Analytics Explorer', () => {
     expect(useImageStore.getState().selectedGenerators).toEqual([]);
     expect(useImageStore.getState().excludedGenerators).toEqual(['ComfyUI']);
   });
+
+  it('promotes telemetry compare cohorts using the same telemetry predicate', () => {
+    render(<Analytics isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Full Library' }));
+    fireEvent.change(screen.getByDisplayValue('Generator'), { target: { value: 'telemetry' } });
+
+    const promoteButtons = screen.getAllByRole('button', { name: /Promote to global filter/i });
+
+    fireEvent.click(promoteButtons[0]);
+    expect(useImageStore.getState().advancedFilters.telemetryState).toBe('present');
+    expect(useImageStore.getState().advancedFilters.hasVerifiedTelemetry).toBeUndefined();
+
+    fireEvent.click(promoteButtons[1]);
+    expect(useImageStore.getState().advancedFilters.telemetryState).toBe('missing');
+    expect(useImageStore.getState().advancedFilters.hasVerifiedTelemetry).toBeUndefined();
+  });
 });

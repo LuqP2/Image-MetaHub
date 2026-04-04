@@ -12,7 +12,7 @@ import {
 } from '../services/imageAnnotationsStorage';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
-import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
+import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
@@ -1471,6 +1471,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                             : 'image';
                     return advancedFilters.mediaTypes.includes(resolvedMediaType);
                 });
+            }
+            if (advancedFilters.telemetryState === 'present') {
+                results = results.filter(image => hasTelemetryData(image));
+            }
+            if (advancedFilters.telemetryState === 'missing') {
+                results = results.filter(image => !hasTelemetryData(image));
             }
             if (advancedFilters.hasVerifiedTelemetry === true) {
                 results = results.filter(image => hasVerifiedTelemetry(image));

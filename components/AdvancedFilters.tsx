@@ -112,7 +112,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
   const metaHubSummary = localFilters.hasVerifiedTelemetry
     ? 'Only images with verified metrics.'
-    : 'MetaHub-specific metadata filters.';
+    : localFilters.telemetryState === 'present'
+      ? 'Only images with telemetry data.'
+      : localFilters.telemetryState === 'missing'
+        ? 'Only images missing telemetry data.'
+        : 'MetaHub-specific metadata filters.';
   const generationModes = Array.isArray(localFilters.generationModes) ? localFilters.generationModes : [];
   const mediaTypes = Array.isArray(localFilters.mediaTypes) ? localFilters.mediaTypes : [];
   const ratingSummary = selectedRatings.length > 0
@@ -476,11 +480,12 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{metaHubSummary}</p>
                   </div>
-                  {(localFilters.hasVerifiedTelemetry || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
+                  {(localFilters.hasVerifiedTelemetry || localFilters.telemetryState || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
                     <button
                       type="button"
                       onClick={() => setLocalFilters((prev) => normalizeFilters({
                         ...prev,
+                        telemetryState: undefined,
                         hasVerifiedTelemetry: undefined,
                         generationTimeMs: undefined,
                         stepsPerSecond: undefined,
@@ -497,7 +502,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   <input
                     type="checkbox"
                     checked={localFilters.hasVerifiedTelemetry === true}
-                    onChange={(event) => updateFilter('hasVerifiedTelemetry', event.target.checked ? true : null)}
+                    onChange={(event) => setLocalFilters((prev) => normalizeFilters({
+                      ...prev,
+                      telemetryState: undefined,
+                      hasVerifiedTelemetry: event.target.checked ? true : undefined,
+                    }))}
                     className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-green-500 focus:ring-offset-gray-800"
                   />
                   <div>

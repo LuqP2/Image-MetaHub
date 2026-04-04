@@ -136,6 +136,26 @@ const ActiveFilters: React.FC = () => {
           </div>
         )}
 
+        {advancedFilters?.telemetryState === 'present' && (
+          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+            <CheckCircle size={12} />
+            <span>Has telemetry</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-cyan-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.telemetryState === 'missing' && (
+          <div className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
+            <CheckCircle size={12} />
+            <span>Missing telemetry</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-gray-800/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {advancedFilters?.dimension && (
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />

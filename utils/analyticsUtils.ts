@@ -891,7 +891,7 @@ const getImageLoraNames = (image: IndexedImage): string[] =>
     .map((lora) => (typeof lora === 'string' ? lora : lora?.name))
     .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
 
-const hasTelemetry = (image: IndexedImage): boolean => {
+export const hasTelemetryData = (image: IndexedImage): boolean => {
   const analytics = getImageAnalytics(image);
   return Boolean(
     analytics &&
@@ -1056,7 +1056,7 @@ const buildCompareCohort = (
       case 'rating':
         return String(image.rating ?? '') === key;
       case 'telemetry':
-        return key === 'verified' ? hasTelemetry(image) : !hasTelemetry(image);
+        return key === 'present' ? hasTelemetryData(image) : !hasTelemetryData(image);
       default:
         return false;
     }
@@ -1065,11 +1065,11 @@ const buildCompareCohort = (
   const favoriteCount = cohortImages.filter((image) => image.isFavorite).length;
   const ratedImages = cohortImages.filter((image) => typeof image.rating === 'number');
   const dominantModel = collectFacetItems(cohortImages, (image) => image.models || [], 1)[0]?.label;
-  const telemetryCount = cohortImages.filter((image) => hasTelemetry(image)).length;
+  const telemetryCount = cohortImages.filter((image) => hasTelemetryData(image)).length;
 
   return {
     key,
-    label: key === 'verified' ? 'Verified metrics' : key,
+    label: key === 'present' ? 'Has telemetry' : key === 'missing' ? 'Missing telemetry' : key,
     count: cohortImages.length,
     favoriteRate: cohortImages.length > 0 ? favoriteCount / cohortImages.length : 0,
     averageRating: ratedImages.length > 0
@@ -1090,7 +1090,7 @@ export const getCompareDimensionOptions = (
   scheduler: data.resources.schedulers.map((item) => item.key),
   gpu: data.performance.byGPU.map((item) => item.name),
   rating: data.curation.ratingDistribution.map((item) => item.key).filter((key) => key !== 'unrated'),
-  telemetry: ['verified', 'missing'],
+  telemetry: ['present', 'missing'],
 });
 
 export const buildAnalyticsExplorerData = ({

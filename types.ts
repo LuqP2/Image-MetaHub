@@ -690,6 +690,9 @@ export interface AdvancedFilters {
   steps?: NumericRangeFilter;
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
+  generationModes?: Array<'txt2img' | 'img2img'>;
+  mediaTypes?: Array<'image' | 'video'>;
+  telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;
   stepsPerSecond?: NumericRangeFilter;
