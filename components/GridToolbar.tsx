@@ -18,8 +18,6 @@ import { type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
-import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
-import { getBulkRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 
 interface GridToolbarProps {
@@ -57,12 +55,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
-  const [ratingDropdownOpen, setRatingDropdownOpen] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const ratingDropdownRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
-  const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
@@ -91,9 +86,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setGenerateDropdownOpen(false);
-      }
-      if (ratingDropdownRef.current && !ratingDropdownRef.current.contains(event.target as Node)) {
-        setRatingDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -200,19 +192,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       return;
     }
     setIsTagModalOpen(true);
-  };
-
-  const handleSetRating = async (rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const imageIds = selectedImagesList.map((image) => image.id);
-    if (imageIds.length === 0) {
-      setRatingDropdownOpen(false);
-      showNotification('Select at least one image first.', 'error');
-      return;
-    }
-
-    await bulkSetImageRating(imageIds, rating);
-    setRatingDropdownOpen(false);
-    showNotification(rating === null ? 'Rating cleared.' : `Rating ${rating} applied.`);
   };
 
   const handleReparseSelected = async () => {
@@ -322,44 +301,6 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 >
                   <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
                 </button>
-
-                <div className="relative" ref={ratingDropdownRef}>
-                  <button
-                    onClick={() => setRatingDropdownOpen((open) => !open)}
-                    className="rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-[11px] font-semibold text-sky-200 transition-colors hover:border-sky-400/50 hover:bg-sky-500/20"
-                    title="Set Rating"
-                  >
-                    1-5
-                  </button>
-                  {ratingDropdownOpen && selectedCount > 0 && (
-                    <div className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[150px] z-50">
-                      <div className="px-3 py-2">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {RATING_VALUES.map((value) => (
-                            <button
-                              key={value}
-                              onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                              className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
-                            >
-                              {value}
-                            </button>
-                          ))}
-                          
-                          <button
-                            onClick={() => handleSetRating(null)}
-                            className="rounded-md border border-gray-700 bg-gray-900/50 px-2 py-1 text-xs text-gray-300 transition-colors hover:border-rose-500/60 hover:text-rose-200"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Divider */}
-                <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 <button
                   onClick={handleReparseSelected}
