@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
@@ -352,6 +352,62 @@ function logRendererCrash(details = {}) {
   }
 }
 // --- End Settings Management ---
+
+const launcherScriptsPath = path.join(app.getPath('userData'), 'launchers');
+
+function normalizeLauncherCommand(command) {
+  if (typeof command !== 'string') {
+    return '';
+  }
+
+  return command.trim();
+}
+
+async function writeLauncherScript(command) {
+  const normalizedCommand = normalizeLauncherCommand(command);
+  if (!normalizedCommand) {
+    throw new Error('No launch command configured. Add one in Settings > Integrations.');
+  }
+
+  await fs.mkdir(launcherScriptsPath, { recursive: true });
+  const extension = process.platform === 'win32' ? '.cmd' : '.sh';
+  const scriptPath = path.join(launcherScriptsPath, `generator-launcher${extension}`);
+  const scriptContent = process.platform === 'win32'
+    ? normalizedCommand.replace(/\r?\n/g, '\r\n')
+    : `#!/bin/sh\n${normalizedCommand}\n`;
+
+  await fs.writeFile(scriptPath, scriptContent, 'utf8');
+
+  if (process.platform !== 'win32') {
+    await fs.chmod(scriptPath, 0o755);
+  }
+
+  return scriptPath;
+}
+
+async function launchGeneratorCommand(command) {
+  const scriptPath = await writeLauncherScript(command);
+
+  if (process.platform === 'win32') {
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', 'cmd.exe', '/k', scriptPath], {
+      cwd: path.dirname(scriptPath),
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+    });
+    child.unref();
+    return { scriptPath };
+  }
+
+  const child = spawn('/bin/sh', [scriptPath], {
+    cwd: path.dirname(scriptPath),
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  return { scriptPath };
+}
 
 // --- Application Menu ---
 function createApplicationMenu() {
@@ -1248,6 +1304,15 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
+  });
+
+  ipcMain.handle('launch-generator', async (event, command) => {
+    try {
+      const result = await launchGeneratorCommand(command);
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to launch generator.' };
     }
   });
 

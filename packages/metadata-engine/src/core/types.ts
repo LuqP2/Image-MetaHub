@@ -18,6 +18,7 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
+  launchGenerator: (command: string) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;

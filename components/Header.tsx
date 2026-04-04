@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, ChevronDown, Layers, Layers2, Eye, EyeOff, ArrowLeft, Boxes } from 'lucide-react';
+import React from 'react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Boxes } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -8,8 +8,6 @@ interface HeaderProps {
     onOpenSettings: () => void;
     onOpenAnalytics: () => void;
     onOpenLicense: () => void;
-    onOpenA1111Generate?: () => void;
-    onOpenComfyUIGenerate?: () => void;
     libraryView?: 'library' | 'smart' | 'model' | 'node';
     onLibraryViewChange?: (view: 'library' | 'smart' | 'model' | 'node') => void;
 }
@@ -18,15 +16,11 @@ const Header: React.FC<HeaderProps> = ({
     onOpenSettings, 
     onOpenAnalytics, 
     onOpenLicense, 
-    onOpenA1111Generate, 
-    onOpenComfyUIGenerate,
     libraryView,
     onLibraryViewChange
 }) => {
   const {
     canUseAnalytics,
-    canUseA1111,
-    canUseComfyUI,
     showProModal,
     isTrialActive,
     trialDaysRemaining,
@@ -39,12 +33,15 @@ const Header: React.FC<HeaderProps> = ({
   // Store hooks for View Controls
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
+  const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
   const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const clustersCount = useImageStore((state) => state.clusters.length);
+  const setSuccess = useImageStore((state) => state.setSuccess);
+  const setError = useImageStore((state) => state.setError);
 
   // Store hooks for Smart Library Actions
   const directories = useImageStore((state) => state.directories);
@@ -54,11 +51,10 @@ const Header: React.FC<HeaderProps> = ({
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
 
-  const [isGenerateDropdownOpen, setIsGenerateDropdownOpen] = useState(false);
-
   const primaryPath = directories[0]?.path ?? '';
   const hasDirectories = directories.length > 0;
   const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
+  const hasLaunchCommand = generatorLaunchCommand.trim().length > 0;
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;
@@ -68,6 +64,26 @@ const Header: React.FC<HeaderProps> = ({
   const handleGenerateAutoTags = () => {
     if (!primaryPath) return;
     startAutoTagging(primaryPath, scanSubfolders);
+  };
+
+  const handleLaunchGenerator = async () => {
+    if (!window.electronAPI?.launchGenerator) {
+      setError('Launch Generator is only available in the desktop app.');
+      return;
+    }
+
+    if (!hasLaunchCommand) {
+      setError('Add a launch command in Settings > Integrations first.');
+      return;
+    }
+
+    const result = await window.electronAPI.launchGenerator(generatorLaunchCommand);
+    if (result.success) {
+      setSuccess('Generator launch command started.');
+      return;
+    }
+
+    setError(result.error || 'Failed to launch generator.');
   };
 
   const statusConfig = (() => {
@@ -269,57 +285,18 @@ const Header: React.FC<HeaderProps> = ({
           
           <div className="w-px h-5 bg-gray-700/50 mx-1"></div>
 
-          {/* Generate Dropdown - Solid Blue Theme */}
-          <div className="relative">
-            <button
-              onClick={() => setIsGenerateDropdownOpen(!isGenerateDropdownOpen)}
-              onBlur={() => setTimeout(() => setIsGenerateDropdownOpen(false), 200)}
-              className="px-3 py-1.5 rounded-lg transition-all duration-300 text-xs font-bold text-white hover:bg-blue-500 bg-blue-600 shadow-md shadow-blue-900/20 border border-blue-500/50 group flex items-center gap-2"
-              title={(canUseA1111 || canUseComfyUI) ? "Generate new image" : "Generate new image (Pro Feature)"}
-            >
-              <Sparkles size={14} className="text-white/90 group-hover:text-white transition-colors" />
-              Generate
-              {!canUseA1111 && !canUseComfyUI && initialized && (
-                <Crown className="w-3 h-3 text-amber-300 absolute -top-1.5 -right-1.5 drop-shadow-md" />
-              )}
-              <ChevronDown size={14} className={`transition-transform duration-300 ${isGenerateDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isGenerateDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl py-2 z-50 transform origin-top-right transition-all animate-in fade-in zoom-in-95 duration-200">
-                <button
-                  onClick={() => {
-                    setIsGenerateDropdownOpen(false);
-                    if (canUseA1111) {
-                      onOpenA1111Generate?.();
-                    } else {
-                      showProModal('a1111');
-                    }
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-between group"
-                  title={!canUseA1111 && initialized ? 'Pro feature - start trial' : undefined}
-                >
-                  <span className="font-medium">with A1111 WebUI</span>
-                  {!canUseA1111 && initialized && <Crown className="w-3 h-3 text-amber-400 opacity-70 group-hover:opacity-100" />}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsGenerateDropdownOpen(false);
-                    if (canUseComfyUI) {
-                      onOpenComfyUIGenerate?.();
-                    } else {
-                      showProModal('comfyui');
-                    }
-                  }}
-                  className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-between group"
-                  title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : undefined}
-                >
-                  <span className="font-medium">with ComfyUI</span>
-                  {!canUseComfyUI && initialized && <Crown className="w-3 h-3 text-amber-400 opacity-70 group-hover:opacity-100" />}
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={handleLaunchGenerator}
+            className={`px-3 py-1.5 rounded-lg transition-all duration-300 text-xs font-bold text-white shadow-md border flex items-center gap-2 ${
+              hasLaunchCommand
+                ? 'hover:bg-blue-500 bg-blue-600 shadow-blue-900/20 border-blue-500/50'
+                : 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+            }`}
+            title={hasLaunchCommand ? 'Run the saved generator launch command' : 'Add a launch command in Settings > Integrations'}
+          >
+            <Sparkles size={14} className="text-white/90 transition-colors" />
+            Launch Generator
+          </button>
           
           {/* Discreet Get Pro link - Unified Amber Theme */}
           {!isPro && (

@@ -1527,8 +1527,6 @@ export default function App() {
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenLicense={handleOpenLicenseSettings}
-          onOpenA1111Generate={() => setIsA1111GenerateModalOpen(true)}
-          onOpenComfyUIGenerate={() => setIsComfyUIGenerateModalOpen(true)}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
         />
