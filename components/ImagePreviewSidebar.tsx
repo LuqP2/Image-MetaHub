@@ -192,6 +192,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [showPerformance, setShowPerformance] = useState(true);
+  const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -928,6 +929,23 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
               )}
             </div>
             )}
+
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-semibold text-gray-700 dark:text-gray-300">Generation Parameters</h3>
+                <button
+                  onClick={() => setShowRawMetadata(!showRawMetadata)}
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline"
+                >
+                  {showRawMetadata ? 'Show Parsed' : 'Show JSON'}
+                </button>
+              </div>
+              {showRawMetadata && (
+                <pre className="bg-black/50 p-2 rounded-lg text-xs text-gray-300 whitespace-pre-wrap break-all max-h-64 overflow-y-auto mt-2">
+                  {JSON.stringify(activeImage.metadata, null, 2)}
+                </pre>
+              )}
+            </div>
 
           </>
         ) : (

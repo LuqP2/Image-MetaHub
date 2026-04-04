@@ -9,25 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Workflow-Native ComfyUI Generation**: Added an `Original workflow` mode that reuses and patches embedded executable ComfyUI prompt graphs when available, alongside the existing `Simple rebuild` fallback for metadata-only images.
 - **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside the ComfyUI generation modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
+- **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library, and Model View, with searchable exact node-type catalogs, per-node result counts, and multi-select OR filtering for images that contain embedded ComfyUI workflows.
 - **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
+- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
 - **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
 - **Image Ratings**: Added persistent 1-5 ratings for images, including star controls in the viewer, badges in the library views, bulk rating actions, and multi-select rating filters in the sidebar and advanced filters.
 - **Startup Verification Modes**: Added configurable startup verification modes for saved folders, so the app can now open from cache only, reconcile in the background, or verify folders strictly before startup completes.
-- **MetaHub Save Node Lineage Metadata**: Extended the companion ComfyUI MetaHub Save Node to persist explicit `generation_type` and `source_image` metadata, creating a stronger base for future multi-step transformation chains.
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
-- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
-- **Analytics Summary Strip**: Added a dismissible analytics banner above the library that highlights current-scope coverage, telemetry adoption, and a direct entry point into the full Analytics Explorer.
+- **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
+- **Manual Metadata Recovery**: Added `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
 - **Expanded Compare View**: Added support for comparing up to 4 images at once, with new `Side Strip` and `2x2 Grid` layouts for 3-4 image sets, plus improved Compare integration with the windowed viewer workflow.
 
 ### Improved
 
+- **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
 - **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
+- **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
+- **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
+- **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
 - **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, and generation queue can now be resized by dragging their edges, with widths preserved between sessions for a more adaptable workspace.
-- **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
 - **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
 - **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
@@ -35,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Task-Based Settings Navigation**: Reorganized the Settings modal into focused Library, Viewer, Integrations, Appearance, Privacy, and Shortcuts panels with sidebar navigation and compatibility for legacy deep links.
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 - **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
-- **Keyboard Navigation Across Areas**: Folder tree and grid navigation now behave more consistently with keyboard input, including better arrow-key handling, page navigation, and a less fragile dependence on exact DOM focus.
+- **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
 
 ### Fixed
 
@@ -60,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Directory Load Feedback**: Added a "Loading Library" progress bar with per-folder progress directly in the directory list, including a scanning state while totals are still being determined.
 - **Directory Discovery Speed**: Greatly reduced the delay before indexing starts on large folders by parallelizing Electron-side file stat collection during directory scanning.
 - **Viewer Responsiveness**: Improved Image Modal loading behavior so the full-resolution image is prioritized over background thumbnail warmup, reducing the delay after the thumbnail preview appears.
+- **Viewer Generate Actions**: Added per-provider viewer toggles in Settings so Automatic1111 and ComfyUI actions can be hidden independently in Image Modal and Image Preview Sidebar, with single-provider labels simplified to `Generate`.
 - **ComfyUI Metadata Compatibility**: Improved parsing for prompt-only ComfyUI graph payloads, added support for `smZ CLIPTextEncode`, and normalized prompt whitespace for cleaner imported prompts.
 
 ### Fixed
