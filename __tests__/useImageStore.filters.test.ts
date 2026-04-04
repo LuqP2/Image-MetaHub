@@ -73,6 +73,31 @@ const imageD = createImage({
   isFavorite: false,
 });
 
+const imageE = createImage({
+  name: 'e.png',
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090', generation_time_ms: 4200, steps_per_second: 9.5, vram_peak_mb: 6144 } } } as any,
+});
+
+const imageF = createImage({
+  name: 'f.png',
+  metadata: { normalizedMetadata: { generator: 'InvokeAI', _analytics: { gpu_device: 'RTX 3060', generation_time_ms: 900, steps_per_second: 3.2, vram_peak_mb: 3072 } } } as any,
+});
+
+const imageG = createImage({
+  name: 'g.png',
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4070' } } } as any,
+});
+
+const imageH = createImage({
+  name: 'h.png',
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { generation_time_ms: 5000, steps_per_second: 20, vram_peak_mb: 4096 } } } as any,
+});
+
+const imageI = createImage({
+  name: 'i.png',
+  lastModified: new Date(2026, 3, 3, 22, 0, 0, 0).getTime(),
+});
+
 const seedStore = () => {
   useSettingsStore.setState({
     enableSafeMode: false,
@@ -83,8 +108,8 @@ const seedStore = () => {
   useImageStore.getState().resetState();
   useImageStore.setState({
     directories: [directory],
-    images: [imageA, imageB, imageC, imageD],
-    filteredImages: [imageA, imageB, imageC, imageD],
+    images: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH, imageI],
+    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH, imageI],
     sortOrder: 'asc',
   });
   useImageStore.getState().filterAndSortImages();
@@ -100,7 +125,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
 
     useImageStore.getState().setFavoriteFilterMode('exclude');
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('supports include and exclude for tags and auto-tags', () => {
@@ -151,7 +176,7 @@ describe('useImageStore tri-state filters', () => {
       excludedSamplers: ['dpmpp_2m'],
     });
 
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('sanitizes malformed facet values during silent append', () => {
@@ -295,7 +320,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
     useImageStore.getState().setSelectedRatings([]);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('sets and bulk updates ratings without affecting favorites or tags', async () => {
@@ -311,5 +336,69 @@ describe('useImageStore tri-state filters', () => {
     const updatedImages = useImageStore.getState().images.filter((image) => [imageB.id, imageD.id].includes(image.id));
     expect(updatedImages.map((image) => image.rating)).toEqual([2, 2]);
     expect(useImageStore.getState().images.find((image) => image.id === imageB.id)?.tags).toEqual(['portrait']);
+  });
+
+  it('filters by generator, gpu, and analytics numeric ranges', () => {
+    useImageStore.getState().setSelectedFilters({
+      generators: ['ComfyUI'],
+      gpuDevices: ['RTX 4090'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      generators: [],
+      gpuDevices: [],
+    });
+    useImageStore.getState().setAdvancedFilters({
+      generationTimeMs: { min: 1000, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png', 'h.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      stepsPerSecond: { min: 3, max: 4 },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['f.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      vramPeakMb: { min: 5000, max: null },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+  });
+
+  it('filters by telemetry presence and absence consistently', () => {
+    useImageStore.getState().setAdvancedFilters({
+      telemetryState: 'present',
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png', 'f.png', 'g.png', 'h.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      telemetryState: 'missing',
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'i.png']);
+  });
+
+  it('honors exclusive upper bounds for analytics bucket filters', () => {
+    useImageStore.getState().setAdvancedFilters({
+      generationTimeMs: { min: 1000, max: 5000, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      stepsPerSecond: { min: 10, max: 20, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual([]);
+
+    useImageStore.getState().setAdvancedFilters({
+      vramPeakMb: { min: 3072, max: 4096, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['f.png']);
+  });
+
+  it('treats plain date filters as local calendar days', () => {
+    useImageStore.getState().setAdvancedFilters({
+      date: { from: '2026-04-03', to: '2026-04-03' },
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toContain('i.png');
   });
 });

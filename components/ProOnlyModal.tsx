@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Crown, Sparkles, GitCompare, BarChart3, CheckCircle2, Download, Tag } from 'lucide-react';
 import { ProFeature } from '../hooks/useFeatureAccess';
 import { TRIAL_DURATION_DAYS } from '../store/useLicenseStore';
@@ -144,8 +145,8 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
   })();
   const showBatchExportLimitNote = feature === 'batch_export' && !isPro && !isTrialActive;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+  const modalContent = (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg mx-4 border border-gray-700">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
@@ -234,6 +235,12 @@ const ProOnlyModal: React.FC<ProOnlyModalProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 };
 
 export default ProOnlyModal;

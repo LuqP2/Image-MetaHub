@@ -1,6 +1,22 @@
 import React from 'react';
 import { Calendar, CheckCircle, Settings, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
+import type { AdvancedFilters, NumericRangeFilter } from '../types';
+
+const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = '') => {
+  if (!range) {
+    return label;
+  }
+
+  const min = range.min ?? '...';
+  const max = range.max === null || range.max === undefined
+    ? '...'
+    : range.maxExclusive
+      ? `<${range.max}`
+      : range.max;
+
+  return `${label} ${min}-${max}${suffix}`;
+};
 
 const ActiveFilters: React.FC = () => {
   const selectedModels = useImageStore((state) => state.selectedModels);
@@ -11,6 +27,10 @@ const ActiveFilters: React.FC = () => {
   const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -39,6 +59,10 @@ const ActiveFilters: React.FC = () => {
     excludedSamplers.length > 0 ||
     selectedSchedulers.length > 0 ||
     excludedSchedulers.length > 0 ||
+    selectedGenerators.length > 0 ||
+    excludedGenerators.length > 0 ||
+    selectedGpuDevices.length > 0 ||
+    excludedGpuDevices.length > 0 ||
     selectedTags.length > 0 ||
     excludedTags.length > 0 ||
     selectedAutoTags.length > 0 ||
@@ -55,7 +79,7 @@ const ActiveFilters: React.FC = () => {
   const chipClass =
     'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium';
 
-  const removeAdvancedFilter = (key: string) => {
+  const removeAdvancedFilter = (key: keyof AdvancedFilters) => {
     const nextFilters = { ...advancedFilters };
     delete nextFilters[key];
     setAdvancedFilters(nextFilters);
@@ -109,8 +133,28 @@ const ActiveFilters: React.FC = () => {
         {advancedFilters?.hasVerifiedTelemetry && (
           <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
             <CheckCircle size={12} />
-            <span>Verified telemetry</span>
+            <span>Verified metrics</span>
             <button onClick={() => removeAdvancedFilter('hasVerifiedTelemetry')} className="rounded p-0.5 hover:bg-emerald-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.telemetryState === 'present' && (
+          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+            <CheckCircle size={12} />
+            <span>Has telemetry</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-cyan-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.telemetryState === 'missing' && (
+          <div className={`${chipClass} border-gray-700/50 bg-gray-900/70 text-gray-200`}>
+            <CheckCircle size={12} />
+            <span>Missing telemetry</span>
+            <button onClick={() => removeAdvancedFilter('telemetryState')} className="rounded p-0.5 hover:bg-gray-800/70">
               <X size={12} />
             </button>
           </div>
@@ -129,7 +173,7 @@ const ActiveFilters: React.FC = () => {
         {advancedFilters?.steps && (
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
-            <span>Steps {advancedFilters.steps.min}-{advancedFilters.steps.max}</span>
+            <span>{formatRangeLabel('Steps', advancedFilters.steps)}</span>
             <button onClick={() => removeAdvancedFilter('steps')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
@@ -139,7 +183,7 @@ const ActiveFilters: React.FC = () => {
         {advancedFilters?.cfg && (
           <div className={`${chipClass} border-indigo-700/50 bg-indigo-950/50 text-indigo-200`}>
             <Settings size={12} />
-            <span>CFG {advancedFilters.cfg.min}-{advancedFilters.cfg.max}</span>
+            <span>{formatRangeLabel('CFG', advancedFilters.cfg)}</span>
             <button onClick={() => removeAdvancedFilter('cfg')} className="rounded p-0.5 hover:bg-indigo-900/70">
               <X size={12} />
             </button>
@@ -151,6 +195,36 @@ const ActiveFilters: React.FC = () => {
             <Calendar size={12} />
             <span>{advancedFilters.date.from || '...'} - {advancedFilters.date.to || '...'}</span>
             <button onClick={() => removeAdvancedFilter('date')} className="rounded p-0.5 hover:bg-indigo-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.generationTimeMs && (
+          <div className={`${chipClass} border-emerald-700/50 bg-emerald-950/50 text-emerald-200`}>
+            <Settings size={12} />
+            <span>{formatRangeLabel('Gen time', advancedFilters.generationTimeMs, 'ms')}</span>
+            <button onClick={() => removeAdvancedFilter('generationTimeMs')} className="rounded p-0.5 hover:bg-emerald-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.stepsPerSecond && (
+          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+            <Settings size={12} />
+            <span>{formatRangeLabel('Speed', advancedFilters.stepsPerSecond, ' it/s')}</span>
+            <button onClick={() => removeAdvancedFilter('stepsPerSecond')} className="rounded p-0.5 hover:bg-cyan-900/70">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        {advancedFilters?.vramPeakMb && (
+          <div className={`${chipClass} border-cyan-700/50 bg-cyan-950/50 text-cyan-200`}>
+            <Settings size={12} />
+            <span>{formatRangeLabel('VRAM', advancedFilters.vramPeakMb, ' MB')}</span>
+            <button onClick={() => removeAdvancedFilter('vramPeakMb')} className="rounded p-0.5 hover:bg-cyan-900/70">
               <X size={12} />
             </button>
           </div>
@@ -182,6 +256,20 @@ const ActiveFilters: React.FC = () => {
         ))}
         {excludedSchedulers.map((value) => (
           <FacetChip key={`scheduler-ex-${value}`} label="Exclude scheduler" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedSchedulers: excludedSchedulers.filter((item) => item !== value) })} />
+        ))}
+
+        {selectedGenerators.map((value) => (
+          <FacetChip key={`generator-${value}`} label="Generator" value={value} tone="gray" onRemove={() => setSelectedFilters({ generators: selectedGenerators.filter((item) => item !== value) })} />
+        ))}
+        {excludedGenerators.map((value) => (
+          <FacetChip key={`generator-ex-${value}`} label="Exclude generator" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGenerators: excludedGenerators.filter((item) => item !== value) })} />
+        ))}
+
+        {selectedGpuDevices.map((value) => (
+          <FacetChip key={`gpu-${value}`} label="GPU" value={value} tone="sky" onRemove={() => setSelectedFilters({ gpuDevices: selectedGpuDevices.filter((item) => item !== value) })} />
+        ))}
+        {excludedGpuDevices.map((value) => (
+          <FacetChip key={`gpu-ex-${value}`} label="Exclude GPU" value={value} tone="rose" onRemove={() => setSelectedFilters({ excludedGpuDevices: excludedGpuDevices.filter((item) => item !== value) })} />
         ))}
 
         {selectedTags.map((value) => (

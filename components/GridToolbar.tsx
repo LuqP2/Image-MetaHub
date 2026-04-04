@@ -231,6 +231,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const excludedSamplers = useImageStore((state) => state.excludedSamplers);
   const selectedSchedulers = useImageStore((state) => state.selectedSchedulers);
   const excludedSchedulers = useImageStore((state) => state.excludedSchedulers);
+  const selectedGenerators = useImageStore((state) => state.selectedGenerators);
+  const excludedGenerators = useImageStore((state) => state.excludedGenerators);
+  const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
+  const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -250,6 +254,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       excludedSamplers.length > 0 ||
       selectedSchedulers.length > 0 ||
       excludedSchedulers.length > 0 ||
+      selectedGenerators.length > 0 ||
+      excludedGenerators.length > 0 ||
+      selectedGpuDevices.length > 0 ||
+      excludedGpuDevices.length > 0 ||
       selectedTags.length > 0 ||
       excludedTags.length > 0 ||
       selectedAutoTags.length > 0 ||

@@ -32,6 +32,7 @@ import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import NodeView from './components/NodeView';
 import GridToolbar from './components/GridToolbar';
+import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
@@ -146,6 +147,7 @@ export default function App() {
 
   // --- Zustand Store State (Granular Selectors for Performance) ---
   // Data selectors
+  const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
@@ -231,6 +233,7 @@ export default function App() {
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
 
+  const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
   const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
@@ -412,6 +415,7 @@ export default function App() {
     isExpired,
     isFree,
     isPro,
+    canUseAnalytics,
     canUseBatchExport,
     showProModal,
     startTrial,
@@ -1450,6 +1454,10 @@ export default function App() {
               excludedSamplers: [],
               schedulers: [],
               excludedSchedulers: [],
+              generators: [],
+              excludedGenerators: [],
+              gpuDevices: [],
+              excludedGpuDevices: [],
             });
             setSelectedTags([]);
             setExcludedTags([]);
@@ -1573,6 +1581,19 @@ export default function App() {
 
           {hasDirectories && (
             <>
+                {libraryView === 'library' && (
+                  <AnalyticsSummaryStrip
+                    images={safeFilteredImages}
+                    allImages={safeImages}
+                    onOpenAnalytics={() => {
+                      if (canUseAnalytics) {
+                        setIsAnalyticsOpen(true);
+                        return;
+                      }
+                      showProModal('analytics');
+                    }}
+                  />
+                )}
                 {(libraryView === 'library' || libraryView === 'node') && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
