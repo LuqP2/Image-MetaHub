@@ -476,23 +476,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
             {/* Tags Pills */}
             <div className="flex-1 space-y-2">
-              {/* Current Tags */}
-              {activeImage.tags && activeImage.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {activeImage.tags.map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => handleRemoveTag(tag)}
-                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
-                      title="Click to remove"
-                    >
-                      {tag}
-                      <X size={12} />
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* Add Tag Input */}
               <div className="relative">
                 <input
@@ -538,6 +521,23 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Current Tags */}
+              {activeImage.tags && activeImage.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {activeImage.tags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleRemoveTag(tag)}
+                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                      title="Click to remove"
+                    >
+                      {tag}
+                      <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Tag Suggestions */}
               {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (

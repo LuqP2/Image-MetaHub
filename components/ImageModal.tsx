@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC, useCallback, useRef } from 'react';
+import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -551,6 +551,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
   // Zoom and pan states
@@ -612,6 +613,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentRating = liveImage.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
+  const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
@@ -1529,6 +1531,25 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [clearMediaOverlayHideTimer]);
 
+  useEffect(() => {
+    if (!isRenaming) {
+      setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+    }
+  }, [image.name, isRenaming]);
+
+  useEffect(() => {
+    if (!isRenaming) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [isRenaming]);
+
   const confirmRename = async () => {
     if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {
       alert('Invalid filename.');
@@ -1618,15 +1639,88 @@ const ImageModal: React.FC<ImageModalProps> = ({
             onDoubleClick={toggleWindowMaximize}
           >
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
-                {image.name}
-              </div>
-              <div className="truncate text-[11px] text-gray-500" title={imageFullPath}>
-                {imageFullPath}
+              {isRenaming ? (
+                <div
+                  className="flex items-center gap-2"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={newName}
+                    onChange={(event) => setNewName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        void confirmRename();
+                      } else if (event.key === 'Escape') {
+                        setIsRenaming(false);
+                        setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-600 bg-gray-900 px-2 py-1 text-sm font-semibold text-white outline-none transition-colors focus:border-blue-500"
+                    aria-label="Rename image"
+                  />
+                  <button
+                    onClick={() => void confirmRename()}
+                    className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-green-500"
+                    title="Save rename"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsRenaming(false);
+                      setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                    }}
+                    className="rounded-lg bg-gray-700 px-2.5 py-1 text-xs font-medium text-gray-100 transition-colors hover:bg-gray-600"
+                    title="Cancel rename"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+                  {image.name}
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                <span className="min-w-0 truncate" title={imageFullPath}>
+                  {imageFullPath}
+                </span>
+                {hasVerifiedTelemetry(liveImage) && (
+                  <span
+                    className="shrink-0 rounded-full border border-green-500/20 bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-green-400"
+                    title="MetaHub Save Node"
+                  >
+                    MetaHub Save Node
+                  </span>
+                )}
+                <span className="shrink-0 text-[10px] text-gray-500" title={createdAtLabel}>
+                  {createdAtLabel}
+                </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleDelete}
+                onPointerDown={(event) => event.stopPropagation()}
+                disabled={isIndexing}
+                className="rounded-lg border border-red-500/30 bg-red-500/10 p-1.5 text-red-400 transition-colors hover:border-red-500/50 hover:bg-red-500/15 hover:text-red-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
+                title={isIndexing ? 'Cannot delete during indexing' : 'Delete image'}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setIsRenaming(true)}
+                onPointerDown={(event) => event.stopPropagation()}
+                disabled={isIndexing}
+                className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-orange-300 disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-gray-900 disabled:text-gray-600"
+                title={isIndexing ? 'Cannot rename during indexing' : 'Rename image'}
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={onMinimize}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -1827,49 +1921,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
           } p-6 overflow-y-auto space-y-4`}
           onContextMenu={handleSelectionContextMenu}
         >
-          <div>
-            {isRenaming ? (
-              <div className="flex gap-2">
-                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} className="bg-gray-900 text-white border border-gray-600 rounded-lg px-2 py-1 w-full" autoFocus onKeyDown={e => e.key === 'Enter' && confirmRename()}/>
-                <button onClick={confirmRename} className="bg-green-600 text-white px-3 py-1 rounded-lg">Save</button>
-                <button onClick={() => setIsRenaming(false)} className="bg-gray-600 text-white px-3 py-1 rounded-lg">Cancel</button>
-              </div>
-            ) : (
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {hasVerifiedTelemetry(image) && (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border border-green-500/30 shadow-sm shadow-green-500/20"
-                      title="MetaHub Save Node - Includes accurate performance metrics: generation time, VRAM usage, GPU device, and software versions."
-                    >
-                      <CheckCircle size={14} className="flex-shrink-0" />
-                      <span className="whitespace-nowrap">MetaHub Save Node</span>
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setIsRenaming(true)}
-                    disabled={isIndexing}
-                    className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-orange-400'}`}
-                    title={isIndexing ? "Cannot rename during indexing" : "Rename image"}
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={isIndexing}
-                    className={`p-1 ${isIndexing ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400'}`}
-                    title={isIndexing ? "Cannot delete during indexing" : "Delete image"}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
-            <p className="text-xs text-blue-400 font-mono break-all">{new Date(image.lastModified).toLocaleString()}</p>
-          </div>
-
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite and Tags Row */}
@@ -1892,23 +1943,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
               {/* Tags Pills */}
               <div className="flex-1 space-y-2">
-                {/* Current Tags */}
-                {currentTags && currentTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {currentTags.map(tag => (
-                      <button
-                        key={tag}
-                        onClick={() => handleRemoveTag(tag)}
-                        className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
-                        title="Click to remove"
-                      >
-                        {tag}
-                        <X size={12} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
                 {/* Add Tag Input */}
                 <div className="relative">
                   <input
@@ -1955,6 +1989,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Current Tags */}
+                {currentTags && currentTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {currentTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => handleRemoveTag(tag)}
+                        className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                        title="Click to remove"
+                      >
+                        {tag}
+                        <X size={12} />
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Tag Suggestions */}
                 {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (
