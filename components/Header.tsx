@@ -8,6 +8,7 @@ interface HeaderProps {
     onOpenSettings: () => void;
     onOpenAnalytics: () => void;
     onOpenLicense: () => void;
+    onGeneratorSetupNeeded?: () => void;
     libraryView?: 'library' | 'smart' | 'model' | 'node';
     onLibraryViewChange?: (view: 'library' | 'smart' | 'model' | 'node') => void;
 }
@@ -16,6 +17,7 @@ const Header: React.FC<HeaderProps> = ({
     onOpenSettings, 
     onOpenAnalytics, 
     onOpenLicense, 
+    onGeneratorSetupNeeded,
     libraryView,
     onLibraryViewChange
 }) => {
@@ -73,7 +75,7 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     if (!hasLaunchCommand) {
-      setError('Add a launch command in Settings > Integrations first.');
+      onGeneratorSetupNeeded?.();
       return;
     }
 

@@ -269,6 +269,7 @@ export default function App() {
     theme,
     setLastViewedVersion,
     globalAutoWatch,
+    generatorLaunchCommand,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -277,6 +278,7 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
   const [settingsSection, setSettingsSection] = useState<SettingsFocusSection>(null);
+  const [showGeneratorSetupNotice, setShowGeneratorSetupNotice] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => {
     if (typeof window === 'undefined') {
@@ -436,6 +438,15 @@ export default function App() {
     handleOpenSettings('license', 'license');
   };
 
+  const handleGeneratorSetupNeeded = () => {
+    setShowGeneratorSetupNotice(true);
+  };
+
+  const handleOpenGeneratorIntegrations = () => {
+    setShowGeneratorSetupNotice(false);
+    handleOpenSettings('integrations');
+  };
+
   // Create a dummy image for generation from scratch (no base image)
   const createDummyImage = (): IndexedImage => {
     return {
@@ -462,6 +473,12 @@ export default function App() {
       }
     };
   };
+
+  useEffect(() => {
+    if (generatorLaunchCommand.trim()) {
+      setShowGeneratorSetupNotice(false);
+    }
+  }, [generatorLaunchCommand]);
 
   useEffect(() => {
     if (!isFolderSelectionLoaded) {
@@ -1527,11 +1544,37 @@ export default function App() {
           onOpenSettings={() => handleOpenSettings()}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenLicense={handleOpenLicenseSettings}
+          onGeneratorSetupNeeded={handleGeneratorSetupNeeded}
           libraryView={libraryView}
           onLibraryViewChange={setLibraryView}
         />
 
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
+          {showGeneratorSetupNotice && (
+            <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
+              <div className="flex-1 text-sm">
+                <span className="font-medium">Launch Generator isn&apos;t set up yet.</span>{' '}
+                Add a launch command in Settings &gt; Integrations.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenGeneratorIntegrations}
+                  className="rounded-md bg-blue-500/20 px-3 py-1.5 text-sm font-medium text-blue-100 transition-colors hover:bg-blue-500/30"
+                >
+                  Open Integrations
+                </button>
+                <button
+                  onClick={() => setShowGeneratorSetupNotice(false)}
+                  className="rounded p-1 transition-colors hover:bg-blue-800/40"
+                  title="Dismiss message"
+                  aria-label="Dismiss generator setup notice"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-900/50 text-red-300 p-3 rounded-lg my-4 flex items-center justify-between">
               <span>{error}</span>
