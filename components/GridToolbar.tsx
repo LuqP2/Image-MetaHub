@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Copy,
   Folder,
@@ -8,7 +8,8 @@ import {
   Sparkles,
   Trash2,
   ChevronDown,
-  Tag
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -19,6 +20,7 @@ import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
 import { getBulkRatingTargetIds } from '../utils/ratingSelection';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 
 interface GridToolbarProps {
 
@@ -62,12 +64,24 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
 
   // ... (rest of the file)
 
   const selectedCount = selectedImages.size;
-  const selectedImagesList = images.filter(img => selectedImages.has(img.id));
+  const selectedImagesList = useMemo(() => {
+    if (selectedImages.size === 0) {
+      return [];
+    }
+
+    const pageLookup = new Map(images.map((image) => [image.id, image]));
+    const storeImages = useImageStore.getState().images;
+
+    return Array.from(selectedImages)
+      .map((imageId) => pageLookup.get(imageId) ?? storeImages.find((image) => image.id === imageId))
+      .filter((image): image is IndexedImage => Boolean(image));
+  }, [images, selectedImages]);
   const firstSelectedImage = selectedImagesList[0];
   // Check if all selected images are favorites
   const allFavorites = selectedImagesList.length > 0 && selectedImagesList.every(img => img.isFavorite);
@@ -188,10 +202,25 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     setIsTagModalOpen(true);
   };
 
-  const handleSetRating = (rating: 1 | 2 | 3 | 4 | 5 | null) => {
-    const imageIds = getBulkRatingTargetIds(selectedImages);
-    bulkSetImageRating(imageIds, rating);
+  const handleSetRating = async (rating: 1 | 2 | 3 | 4 | 5 | null) => {
+    const imageIds = selectedImagesList.map((image) => image.id);
+    if (imageIds.length === 0) {
+      setRatingDropdownOpen(false);
+      showNotification('Select at least one image first.', 'error');
+      return;
+    }
+
+    await bulkSetImageRating(imageIds, rating);
     setRatingDropdownOpen(false);
+    showNotification(rating === null ? 'Rating cleared.' : `Rating ${rating} applied.`);
+  };
+
+  const handleReparseSelected = async () => {
+    if (selectedImagesList.length === 0) {
+      return;
+    }
+
+    await reparseImages(selectedImagesList);
   };
 
   const selectedModels = useImageStore((state) => state.selectedModels);
@@ -331,6 +360,19 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
                 {/* Divider */}
                 <div className="w-px h-4 bg-gray-700 mx-1" />
+
+                <button
+                  onClick={handleReparseSelected}
+                  className={`p-1.5 rounded transition-colors ${
+                    isReparsing
+                      ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
+                      : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
+                  }`}
+                  title={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
+                  disabled={selectedCount === 0 || isReparsing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+                </button>
 
                  {/* Tagging */}
                  <button

@@ -24,7 +24,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
+const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
 
 // Get platform-specific icon
 function getIconPath() {
@@ -336,6 +336,20 @@ async function getCacheRootPath() {
     return settings.cachePath;
   }
   return app.getPath('userData');
+}
+
+function logRendererCrash(details = {}) {
+  try {
+    const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
+    const payload = {
+      timestamp: new Date().toISOString(),
+      ...details,
+    };
+
+    fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
+  } catch (error) {
+    console.error('Failed to write renderer crash log:', error);
+  }
 }
 // --- End Settings Management ---
 
@@ -810,6 +824,7 @@ async function createWindow(startupDirectory = null) {
       contextIsolation: true,
       enableRemoteModule: false,
       webSecurity: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',
@@ -973,6 +988,22 @@ async function createWindow(startupDirectory = null) {
       }
     }
   });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('Renderer process gone:', details);
+    logRendererCrash({
+      kind: 'render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+    });
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('Renderer became unresponsive');
+    logRendererCrash({
+      kind: 'unresponsive',
+    });
+  });
 }
 
 // App event handlers
@@ -1074,6 +1105,24 @@ async function statMediaEntries(directory, entries, baseDirectory) {
   return fileRecords.filter(Boolean);
 }
 
+const IGNORED_SCAN_DIRECTORY_NAMES = new Set([
+  'thumbnails',
+  '.thumbnails',
+  '.cache',
+  'node_modules',
+  '.git',
+]);
+
+function shouldIgnoreScanDirectory(fullPath, baseDirectory) {
+  const relativePath = path.relative(baseDirectory, fullPath).replace(/\\/g, '/');
+  if (!relativePath || relativePath === '.') {
+    return false;
+  }
+
+  const segments = relativePath.split('/').filter(Boolean);
+  return segments.some((segment) => IGNORED_SCAN_DIRECTORY_NAMES.has(segment.toLowerCase()));
+}
+
 async function getFilesRecursively(directory, baseDirectory) {
   const files = [];
   const directoriesToVisit = [directory];
@@ -1084,11 +1133,18 @@ async function getFilesRecursively(directory, baseDirectory) {
       continue;
     }
 
+    if (shouldIgnoreScanDirectory(currentDirectory, baseDirectory)) {
+      continue;
+    }
+
     try {
       const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          directoriesToVisit.push(path.join(currentDirectory, entry.name));
+          const nextDirectory = path.join(currentDirectory, entry.name);
+          if (!shouldIgnoreScanDirectory(nextDirectory, baseDirectory)) {
+            directoriesToVisit.push(nextDirectory);
+          }
         }
       }
 
@@ -1257,6 +1313,29 @@ function setupFileOperationHandlers() {
       if (error.code === 'ENOENT') {
         return { success: true, data: null };
       }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-json-cache-data', async (event, cacheId) => {
+    const filePath = await getCacheFilePath(cacheId);
+    try {
+      const data = await fs.readFile(filePath, 'utf-8');
+      return { success: true, data: JSON.parse(data) };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true, data: null };
+      }
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-json-cache-data', async (event, { cacheId, data }) => {
+    try {
+      const filePath = await getCacheFilePath(cacheId);
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+      return { success: true };
+    } catch (error) {
       return { success: false, error: error.message };
     }
   });

@@ -4,7 +4,7 @@ import { type IndexedImage } from '../types';
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 5; // v5: Persist contentModifiedMs separately from UI sort date
+export const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {
@@ -25,6 +25,7 @@ export interface CacheImageMetadata {
   steps?: number;
   seed?: number;
   dimensions?: string;
+  workflowNodes?: string[];
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
@@ -76,6 +77,7 @@ function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
     steps: img.steps,
     seed: img.seed,
     dimensions: img.dimensions,
+    workflowNodes: img.workflowNodes,
     enrichmentState: img.enrichmentState,
     fileSize: img.fileSize,
     fileType: img.fileType,
@@ -263,6 +265,7 @@ class IncrementalCacheWriter {
       lastScan: Date.now(),
       imageCount: this.totalImages,
       chunkCount: this.chunkIndex,
+      parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
 
     const result = await window.electronAPI?.finalizeCacheWrite?.({ cacheId: this.cacheId, record });
@@ -328,9 +331,39 @@ class CacheManager {
       imageCount: summary.imageCount,
       metadata,
       chunkCount: summary.chunkCount,
+      parserVersion: summary.parserVersion,
     };
 
     return cacheEntry;
+  }
+
+  async getCacheSummary(
+    directoryPath: string,
+    scanSubfolders: boolean,
+  ): Promise<Pick<CacheEntry, 'id' | 'directoryPath' | 'directoryName' | 'lastScan' | 'imageCount' | 'chunkCount' | 'parserVersion'> | null> {
+    if (!this.isElectron) return null;
+
+    const cacheId = `${directoryPath}-${scanSubfolders ? 'recursive' : 'flat'}`;
+    const summaryFn = window.electronAPI.getCacheSummary ?? window.electronAPI.getCachedData;
+    const result = await summaryFn(cacheId);
+
+    if (!result.success || !result.data) {
+      if (!result.success) {
+        console.error('Failed to get cache summary:', result.error);
+      }
+      return null;
+    }
+
+    const summary = result.data;
+    return {
+      id: summary.id,
+      directoryPath: summary.directoryPath,
+      directoryName: summary.directoryName,
+      lastScan: summary.lastScan,
+      imageCount: summary.imageCount,
+      chunkCount: summary.chunkCount,
+      parserVersion: summary.parserVersion,
+    };
   }
 
   // (No-op) - This functionality is now implicit in getCachedData
@@ -389,6 +422,7 @@ class CacheManager {
       lastScan: Date.now(),
       imageCount: images.length,
       metadata: metadata,
+      parserVersion: PARSER_VERSION,
     };
     
     const result = await window.electronAPI.cacheData({ cacheId, data: cacheEntry });
@@ -442,6 +476,7 @@ class CacheManager {
       lastScan: Date.now(),
       imageCount: (summary.imageCount ?? 0) + images.length,
       chunkCount: chunkIndex,
+      parserVersion: PARSER_VERSION,
     } satisfies Omit<CacheEntry, 'metadata'>;
 
     const finalizeResult = await window.electronAPI.finalizeCacheWrite({ cacheId, record });
@@ -467,6 +502,51 @@ class CacheManager {
 
     await writer.initialize();
     return writer;
+  }
+
+  async updateCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron || !images || images.length === 0) return;
+
+    const updates = new Map(
+      sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true }).map((image) => [image.id, image])
+    );
+
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    for (const mode of candidateModes) {
+      const existing = await this.getCachedData(directoryPath, mode);
+      if (!existing) {
+        continue;
+      }
+
+      const metadata = existing.metadata.map((entry) => updates.get(entry.id) ?? entry);
+      const didChange = metadata.some((entry, index) => entry !== existing.metadata[index]);
+      if (!didChange) {
+        continue;
+      }
+
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: existing.id,
+          directoryPath,
+          directoryName: existing.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+
+      if (!result.success) {
+        console.error('Failed to update cached images:', result.error);
+      }
+    }
   }
 
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {

@@ -10,11 +10,22 @@ import {
   renameManualTag,
   deleteManualTag,
 } from '../services/imageAnnotationsStorage';
+import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
+import {
+    type LineageBuildState,
+    type LineageDirectorySignature,
+    type LineageRegistrySnapshot,
+    type ResolvedLineageEntry,
+    buildLineageLibrarySignature,
+    createLineageDirectoryPathMap,
+    toLightweightLineageImage,
+} from '../services/lineageRegistry';
+import { loadLineageRegistrySnapshot, saveLineageRegistrySnapshot } from '../services/lineageRegistryCache';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = 12;
@@ -31,6 +42,25 @@ type DirectoryProgressState = {
     current: number;
     total: number;
 };
+
+const DEFAULT_LINEAGE_BUILD_STATE: LineageBuildState = {
+    status: 'idle',
+    processed: 0,
+    total: 0,
+    message: '',
+    dirty: false,
+    source: 'none',
+    lastBuiltAt: null,
+};
+
+const markLineageBuildStateDirty = (state: LineageBuildState): LineageBuildState => ({
+    ...state,
+    dirty: true,
+    status: state.status === 'building' ? 'building' : 'scheduled',
+    message: state.status === 'building'
+        ? state.message
+        : 'Lineage registry needs refresh.',
+});
 
 const loadRecentTags = (): string[] => {
     if (typeof window === 'undefined') {
@@ -244,35 +274,40 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
 
     const segments: string[] = [];
     if (image.metadataString) {
-        segments.push(image.metadataString.toLowerCase());
+        segments.push(String(image.metadataString).toLowerCase());
     }
     if (image.prompt) {
-        segments.push(image.prompt.toLowerCase());
+        segments.push(String(image.prompt).toLowerCase());
     }
     if (image.negativePrompt) {
-        segments.push(image.negativePrompt.toLowerCase());
+        segments.push(String(image.negativePrompt).toLowerCase());
     }
     if (image.models?.length) {
-        segments.push(image.models.filter(model => typeof model === 'string').map(model => model.toLowerCase()).join(' '));
+        segments.push(
+            image.models
+                .map(model => normalizeFacetValue(model))
+                .filter((model): model is string => Boolean(model))
+                .map(model => model.toLowerCase())
+                .join(' ')
+        );
     }
     if (image.loras?.length) {
         const loraNames = image.loras.map(lora => {
-            if (typeof lora === 'string') {
-                return lora.toLowerCase();
-            } else if (lora && typeof lora === 'object' && lora.name) {
-                return lora.name.toLowerCase();
-            }
-            return '';
+            const normalized = normalizeFacetValue(lora);
+            return normalized ? normalized.toLowerCase() : '';
         }).filter(Boolean);
         if (loraNames.length > 0) {
             segments.push(loraNames.join(' '));
         }
     }
     if (image.scheduler) {
-        segments.push(image.scheduler.toLowerCase());
+        const normalized = normalizeFacetValue(image.scheduler);
+        if (normalized) {
+            segments.push(normalized.toLowerCase());
+        }
     }
     if (image.board) {
-        segments.push(image.board.toLowerCase());
+        segments.push(String(image.board).toLowerCase());
     }
 
     return segments.join(' ');
@@ -282,6 +317,10 @@ interface ImageState {
   // Core Data
   images: IndexedImage[];
   filteredImages: IndexedImage[];
+  lineageResolvedByImageId: Record<string, ResolvedLineageEntry>;
+  lineageDerivedIdsBySourceId: Record<string, string[]>;
+  lineageBuildState: LineageBuildState;
+  lineageDirectorySignatures: Record<string, LineageDirectorySignature>;
   thumbnailEntries: Record<string, ThumbnailEntryState>;
   selectionTotalImages: number;
   selectionDirectoryCount: number;
@@ -302,6 +341,7 @@ interface ImageState {
   transferProgress: IndexedImageTransferProgress | null;
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
+  activeImageScope: IndexedImage[] | null;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
   isStackingEnabled: boolean;
@@ -371,6 +411,8 @@ interface ImageState {
   autoTaggingProgress: { current: number; total: number; message: string } | null;
   autoTaggingWorker: Worker | null;
   isAutoTagging: boolean;
+  lineageWorker: Worker | null;
+  isLineageRebuildSuspended: boolean;
 
   // Actions
   addDirectory: (directory: Directory) => void;
@@ -396,7 +438,9 @@ interface ImageState {
   setImages: (images: IndexedImage[]) => void;
   addImages: (newImages: IndexedImage[]) => void;
   appendImagesSilently: (newImages: IndexedImage[]) => void;
+  appendImagesRaw: (newImages: IndexedImage[]) => void;
   replaceDirectoryImages: (directoryId: string, newImages: IndexedImage[]) => void;
+  replaceDirectoryImagesRaw: (directoryId: string, newImages: IndexedImage[]) => void;
   mergeImages: (updatedImages: IndexedImage[]) => void;
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
@@ -420,10 +464,12 @@ interface ImageState {
   reshuffle: () => void;
   setAdvancedFilters: (filters: AdvancedFilters) => void;
   filterAndSortImages: () => void;
+  recomputeDerivedState: () => void;
 
   // Selection Actions
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
+  setActiveImageScope: (images: IndexedImage[] | null) => void;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -486,6 +532,12 @@ interface ImageState {
   setDirectoryRefreshing: (directoryId: string, isRefreshing: boolean) => void;
   setImageRating: (imageId: string, rating: ImageRating | null) => Promise<void>;
   bulkSetImageRating: (imageIds: string[], rating: ImageRating | null) => Promise<void>;
+  setLineageDirectorySignature: (directoryId: string, signature: LineageDirectorySignature | null) => void;
+  setLineageRebuildSuspended: (suspended: boolean) => void;
+  hydratePersistedLineageSnapshot: () => Promise<boolean>;
+  scheduleLineageRebuild: (delayMs?: number) => void;
+  getResolvedLineage: (imageId: string) => ResolvedLineageEntry | null;
+  getDerivedImages: (imageId: string, limit?: number) => IndexedImage[];
 
   // Navigation Actions
   handleNavigateNext: () => void;
@@ -512,6 +564,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     let pendingImagesQueue: IndexedImage[] = [];
     let pendingFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const FLUSH_INTERVAL_MS = 100;
+    const MAX_PENDING_IMAGES_PER_FLUSH = 1200;
+    const FORCE_FLUSH_PENDING_IMAGES_THRESHOLD = 2400;
     let pendingMergeQueue: IndexedImage[] = [];
     let pendingMergeTimer: ReturnType<typeof setTimeout> | null = null;
     let pendingFilterRecomputeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -538,13 +592,17 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
     };
 
-    const flushPendingImages = () => {
+    const flushPendingImages = (drainAll: boolean = false) => {
         if (pendingImagesQueue.length === 0) {
             return;
         }
 
-        const imagesToAdd = pendingImagesQueue;
-        pendingImagesQueue = [];
+        const imagesToAdd = drainAll
+            ? pendingImagesQueue
+            : pendingImagesQueue.slice(0, MAX_PENDING_IMAGES_PER_FLUSH);
+        pendingImagesQueue = drainAll
+            ? []
+            : pendingImagesQueue.slice(imagesToAdd.length);
         if (pendingFlushTimer) {
             clearTimeout(pendingFlushTimer);
             pendingFlushTimer = null;
@@ -576,6 +634,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             } else {
                 queueMetadataTagImports(addedImages);
             }
+            maybeQueueLineageBuild(700);
+        }
+
+        if (pendingImagesQueue.length > 0) {
+            scheduleFlush();
         }
     };
 
@@ -686,12 +749,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                     filteredImages: nextFilteredImages,
                     selectionTotalImages: merged.length,
                     selectionDirectoryCount: state.directories.length,
+                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
                     ...availableFiltersUpdate,
                 };
             }
 
             return _updateState(state, merged);
         });
+
+        maybeQueueLineageBuild(700);
     };
 
     const scheduleMergeFlush = () => {
@@ -747,6 +813,209 @@ export const useImageStore = create<ImageState>((set, get) => {
         return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
     };
 
+    let lineageBuildTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearLineageBuildTimer = () => {
+        if (lineageBuildTimer) {
+            clearTimeout(lineageBuildTimer);
+            lineageBuildTimer = null;
+        }
+    };
+
+    const getCurrentLineageLibrarySignature = (state: ImageState): string | null => {
+        if (state.directories.length === 0) {
+            return null;
+        }
+
+        const signatures = state.directories
+            .map(directory => state.lineageDirectorySignatures[directory.id])
+            .filter((signature): signature is LineageDirectorySignature => Boolean(signature));
+
+        if (signatures.length !== state.directories.length) {
+            return null;
+        }
+
+        return buildLineageLibrarySignature(signatures, state.scanSubfolders);
+    };
+
+    const persistLineageSnapshot = async (
+        snapshot: LineageRegistrySnapshot,
+        state: ImageState
+    ): Promise<void> => {
+        const directoryPaths = state.directories.map(directory => directory.path);
+        if (!snapshot.librarySignature || directoryPaths.length === 0) {
+            return;
+        }
+
+        await saveLineageRegistrySnapshot(directoryPaths, state.scanSubfolders, snapshot);
+    };
+
+    const scheduleLineageBuildInternal = (delayMs: number = 600) => {
+        if (typeof Worker === 'undefined') {
+            return;
+        }
+
+        const state = get();
+        if (!state.lineageBuildState.dirty || state.isLineageRebuildSuspended) {
+            return;
+        }
+
+        if (state.indexingState === 'indexing' || state.indexingState === 'paused') {
+            return;
+        }
+
+        clearLineageBuildTimer();
+        lineageBuildTimer = setTimeout(() => {
+            lineageBuildTimer = null;
+            void startLineageBuildInternal();
+        }, delayMs);
+
+        set(currentState => ({
+            lineageBuildState: {
+                ...currentState.lineageBuildState,
+                status: 'scheduled',
+                message: currentState.lineageBuildState.message || 'Lineage registry queued.',
+            },
+        }));
+    };
+
+    const maybeQueueLineageBuild = (delayMs: number = 600) => {
+        const state = get();
+        if (!state.lineageBuildState.dirty || state.isLineageRebuildSuspended) {
+            return;
+        }
+
+        if (state.indexingState === 'indexing' || state.indexingState === 'paused') {
+            return;
+        }
+
+        scheduleLineageBuildInternal(delayMs);
+    };
+
+    const startLineageBuildInternal = async () => {
+        clearLineageBuildTimer();
+
+        const state = get();
+        if (state.isLineageRebuildSuspended || (state.indexingState === 'indexing' || state.indexingState === 'paused')) {
+            return;
+        }
+
+        if (!state.lineageBuildState.dirty && state.lineageBuildState.status === 'ready') {
+            return;
+        }
+
+        if (state.images.length === 0) {
+            state.lineageWorker?.terminate();
+            set({
+                lineageWorker: null,
+                lineageResolvedByImageId: {},
+                lineageDerivedIdsBySourceId: {},
+                lineageBuildState: { ...DEFAULT_LINEAGE_BUILD_STATE },
+            });
+            return;
+        }
+
+        if (typeof Worker === 'undefined') {
+            set(currentState => ({
+                lineageBuildState: {
+                    ...currentState.lineageBuildState,
+                    status: 'scheduled',
+                    message: 'Lineage registry scheduled.',
+                    dirty: true,
+                },
+            }));
+            return;
+        }
+
+        const existingWorker = state.lineageWorker;
+        if (existingWorker) {
+            existingWorker.terminate();
+        }
+
+        const directoryPathMap = createLineageDirectoryPathMap(state.directories);
+        const lightweightImages = state.images.map(image => toLightweightLineageImage(image, directoryPathMap));
+        const librarySignature = getCurrentLineageLibrarySignature(state) || '';
+        const worker = new Worker(
+            new URL('../services/workers/lineageWorker.ts', import.meta.url),
+            { type: 'module' }
+        );
+
+        set(currentState => ({
+            lineageWorker: worker,
+            lineageBuildState: {
+                ...currentState.lineageBuildState,
+                status: 'building',
+                processed: 0,
+                total: Math.max(lightweightImages.length * 2, 1),
+                message: 'Building lineage registry...',
+                dirty: true,
+                source: 'worker',
+            },
+        }));
+
+        worker.onmessage = (event: MessageEvent) => {
+            const { type, payload } = event.data;
+
+            switch (type) {
+                case 'progress':
+                    set(currentState => ({
+                        lineageBuildState: {
+                            ...currentState.lineageBuildState,
+                            status: 'building',
+                            processed: payload.current,
+                            total: payload.total,
+                            message: payload.message,
+                            source: 'worker',
+                        },
+                    }));
+                    break;
+
+                case 'complete':
+                    worker.terminate();
+                    set(currentState => ({
+                        lineageWorker: null,
+                        lineageResolvedByImageId: payload.snapshot.resolvedByImageId,
+                        lineageDerivedIdsBySourceId: payload.snapshot.derivedIdsBySourceId,
+                        lineageBuildState: {
+                            status: 'ready',
+                            processed: payload.snapshot.imageCount,
+                            total: payload.snapshot.imageCount,
+                            message: 'Lineage registry ready.',
+                            dirty: false,
+                            source: 'worker',
+                            lastBuiltAt: payload.snapshot.builtAt,
+                        },
+                    }));
+
+                    void persistLineageSnapshot(payload.snapshot, get());
+                    break;
+
+                case 'error':
+                    worker.terminate();
+                    console.error('Lineage build failed:', payload.error);
+                    set(currentState => ({
+                        lineageWorker: null,
+                        lineageBuildState: {
+                            ...currentState.lineageBuildState,
+                            status: 'error',
+                            message: `Lineage build failed: ${payload.error}`,
+                            source: 'worker',
+                            dirty: true,
+                        },
+                    }));
+                    break;
+            }
+        };
+
+        worker.postMessage({
+            type: 'build',
+            payload: {
+                images: lightweightImages,
+                librarySignature,
+            },
+        });
+    };
+
     // --- Helper function to recalculate available filters from visible images ---
     const recalculateAvailableFilters = (visibleImages: IndexedImage[]) => {
         const models = new Set<string>();
@@ -758,25 +1027,32 @@ export const useImageStore = create<ImageState>((set, get) => {
         const dimensions = new Set<string>();
 
         for (const image of visibleImages) {
-            image.models?.forEach(model => { if(typeof model === 'string' && model) models.add(model) });
-            image.loras?.forEach(lora => {
-                if (typeof lora === 'string' && lora) {
-                    loras.add(lora);
-                } else if (lora && typeof lora === 'object' && lora.name) {
-                    loras.add(lora.name);
+            image.models?.forEach(model => {
+                const normalized = normalizeFacetValue(model);
+                if (normalized) {
+                    models.add(normalized);
                 }
             });
-            if (image.sampler) samplers.add(image.sampler);
-            if (image.scheduler) schedulers.add(image.scheduler);
+            image.loras?.forEach(lora => {
+                const normalized = normalizeFacetValue(lora);
+                if (normalized) {
+                    loras.add(normalized);
+                }
+            });
+            const sampler = normalizeFacetValue(image.sampler);
+            if (sampler) samplers.add(sampler);
+            const scheduler = normalizeFacetValue(image.scheduler);
+            if (scheduler) schedulers.add(scheduler);
             generators.add(getImageGenerator(image));
             const gpuDevice = getImageGpuDevice(image);
             if (gpuDevice) gpuDevices.add(gpuDevice);
-            if (image.dimensions && image.dimensions !== '0x0') dimensions.add(image.dimensions);
+            const dimension = normalizeFacetValue(image.dimensions);
+            if (dimension && dimension !== '0x0') dimensions.add(dimension);
         }
 
         // Case-insensitive alphabetical comparator
         const caseInsensitiveSort = (a: string, b: string) => {
-            return a.toLowerCase().localeCompare(b.toLowerCase());
+            return a.localeCompare(b, undefined, { sensitivity: 'accent' });
         };
 
         return {
@@ -825,8 +1101,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for recalculating all derived state ---
     const _updateState = (currentState: ImageState, newImages: IndexedImage[]) => {
+        const sanitizedImages = newImages.map(sanitizeIndexedImageFacets);
+
         // Apply annotations to new images
-        const imagesWithAnnotations = applyAnnotationsToImages(newImages, currentState.annotations);
+        const imagesWithAnnotations = applyAnnotationsToImages(sanitizedImages, currentState.annotations);
 
         // Early return if images didn't change (prevents unnecessary recalculations)
         if (imagesWithAnnotations === currentState.images) {
@@ -849,6 +1127,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             ...combinedState,
             ...filteredResult,
             ...availableFilters,
+            ...(imagesWithAnnotations.length === 0
+                ? {
+                    lineageResolvedByImageId: {},
+                    lineageDerivedIdsBySourceId: {},
+                    lineageBuildState: { ...DEFAULT_LINEAGE_BUILD_STATE },
+                }
+                : {
+                    lineageBuildState: markLineageBuildStateDirty(combinedState.lineageBuildState),
+                }),
         };
     };
 
@@ -1159,6 +1446,32 @@ export const useImageStore = create<ImageState>((set, get) => {
                     return true;
                 });
             }
+            if (Array.isArray(advancedFilters.generationModes) && advancedFilters.generationModes.length > 0) {
+                results = results.filter(image => {
+                    const normalizedMetadata = image.metadata?.normalizedMetadata;
+                    const explicitGenerationType = normalizedMetadata?.generationType;
+                    if (typeof explicitGenerationType === 'string') {
+                        return advancedFilters.generationModes.includes(explicitGenerationType);
+                    }
+
+                    const isVideo =
+                        normalizedMetadata?.media_type === 'video' ||
+                        (image.fileType ?? '').startsWith('video/');
+
+                    return !isVideo && advancedFilters.generationModes.includes('txt2img');
+                });
+            }
+            if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
+                results = results.filter(image => {
+                    const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+                    const fileType = image.fileType ?? '';
+                    const resolvedMediaType =
+                        metadataMediaType === 'video' || fileType.startsWith('video/')
+                            ? 'video'
+                            : 'image';
+                    return advancedFilters.mediaTypes.includes(resolvedMediaType);
+                });
+            }
             if (advancedFilters.hasVerifiedTelemetry === true) {
                 results = results.filter(image => hasVerifiedTelemetry(image));
             }
@@ -1293,6 +1606,10 @@ export const useImageStore = create<ImageState>((set, get) => {
         // Initial State
         images: [],
         filteredImages: [],
+        lineageResolvedByImageId: {},
+        lineageDerivedIdsBySourceId: {},
+        lineageBuildState: { ...DEFAULT_LINEAGE_BUILD_STATE },
+        lineageDirectorySignatures: {},
         thumbnailEntries: {},
         selectionTotalImages: 0,
         selectionDirectoryCount: 0,
@@ -1312,6 +1629,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImage: null,
         previewImage: null,
         selectedImages: new Set(),
+        activeImageScope: null,
         focusedImageIndex: null,
         isStackingEnabled: false,
         searchQuery: '',
@@ -1371,6 +1689,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         autoTaggingProgress: null,
         autoTaggingWorker: null,
         isAutoTagging: false,
+        lineageWorker: null,
+        isLineageRebuildSuspended: false,
 
         // --- ACTIONS ---
 
@@ -1572,11 +1892,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             set(state => {
                 const nextDirectoryProgress = { ...state.directoryProgress };
                 delete nextDirectoryProgress[directoryId];
+                const nextLineageSignatures = { ...state.lineageDirectorySignatures };
+                delete nextLineageSignatures[directoryId];
                 const baseState = {
                     ...state,
                     directories: newDirectories,
                     selectedFolders: updatedSelection,
                     directoryProgress: nextDirectoryProgress,
+                    lineageDirectorySignatures: nextLineageSignatures,
                 };
                 return _updateState(baseState, newImages);
             });
@@ -1584,6 +1907,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             saveSelectedFolders(Array.from(updatedSelection)).catch((error) => {
                 console.error('Failed to persist folder selection state', error);
             });
+
+            maybeQueueLineageBuild(500);
         },
 
         setLoading: (loading) => set({ isLoading: loading }),
@@ -1597,22 +1922,127 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             return { directoryProgress: nextDirectoryProgress };
         }),
-        setEnrichmentProgress: (progress) => set({ enrichmentProgress: progress }),
+        setEnrichmentProgress: (progress) => set((state) => {
+            const current = state.enrichmentProgress;
+            if (current === progress) {
+                return state;
+            }
+
+            if (
+                current?.processed === progress?.processed &&
+                current?.total === progress?.total
+            ) {
+                return state;
+            }
+
+            return { enrichmentProgress: progress };
+        }),
         setIndexingState: (indexingState) => {
             if (indexingState !== 'indexing') {
                 flushPendingMerges(true);
             }
             set({ indexingState });
+            if (indexingState !== 'indexing' && indexingState !== 'paused') {
+                maybeQueueLineageBuild(800);
+            }
         },
         setError: (error) => set({ error, success: null }),
         setSuccess: (success) => set({ success, error: null }),
         setTransferProgress: (transferProgress) => set({ transferProgress }),
+        setLineageDirectorySignature: (directoryId, signature) => set(state => {
+            const nextSignatures = { ...state.lineageDirectorySignatures };
+            if (signature) {
+                nextSignatures[directoryId] = signature;
+            } else {
+                delete nextSignatures[directoryId];
+            }
+
+            return {
+                lineageDirectorySignatures: nextSignatures,
+            };
+        }),
+        setLineageRebuildSuspended: (suspended) => {
+            if (suspended) {
+                clearLineageBuildTimer();
+            }
+
+            set({ isLineageRebuildSuspended: suspended });
+        },
+        hydratePersistedLineageSnapshot: async () => {
+            const state = get();
+            const librarySignature = getCurrentLineageLibrarySignature(state);
+            if (!librarySignature) {
+                return false;
+            }
+
+            const directoryPaths = state.directories.map(directory => directory.path);
+            const snapshot = await loadLineageRegistrySnapshot(directoryPaths, state.scanSubfolders, librarySignature);
+            if (!snapshot) {
+                return false;
+            }
+
+            set({
+                lineageResolvedByImageId: snapshot.resolvedByImageId,
+                lineageDerivedIdsBySourceId: snapshot.derivedIdsBySourceId,
+                lineageBuildState: {
+                    status: 'ready',
+                    processed: snapshot.imageCount,
+                    total: snapshot.imageCount,
+                    message: 'Lineage loaded from cache.',
+                    dirty: false,
+                    source: 'cache',
+                    lastBuiltAt: snapshot.builtAt,
+                },
+            });
+            return true;
+        },
+        scheduleLineageRebuild: (delayMs = 600) => {
+            scheduleLineageBuildInternal(delayMs);
+        },
+        getResolvedLineage: (imageId) => {
+            return get().lineageResolvedByImageId[imageId] ?? null;
+        },
+        getDerivedImages: (imageId, limit = 4) => {
+            const state = get();
+            const derivedIds = state.lineageDerivedIdsBySourceId[imageId] || [];
+            if (derivedIds.length === 0) {
+                return [];
+            }
+
+            const neededIds = new Set(derivedIds.slice(0, limit));
+            const matches: IndexedImage[] = [];
+            const order = new Map(Array.from(neededIds).map((id, index) => [id, index]));
+
+            for (const candidate of state.images) {
+                if (neededIds.has(candidate.id)) {
+                    matches.push(candidate);
+                    if (matches.length >= neededIds.size) {
+                        break;
+                    }
+                }
+            }
+
+            if (matches.length < neededIds.size) {
+                for (const candidate of state.filteredImages) {
+                    if (neededIds.has(candidate.id) && !matches.some(match => match.id === candidate.id)) {
+                        matches.push(candidate);
+                    }
+                    if (matches.length >= neededIds.size) {
+                        break;
+                    }
+                }
+            }
+
+            return matches.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
+        },
 
         filterAndSortImages: () => set(state => filterAndSort(state)),
+        recomputeDerivedState: () => set(state => _updateState(state, state.images)),
 
         setImages: (images) => {
             clearPendingQueue();
             set(state => _updateState(state, images));
+            maybeQueueLineageBuild(500);
         },
 
         addImages: (newImages) => {
@@ -1620,6 +2050,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
             pendingImagesQueue.push(...newImages);
+            if (pendingImagesQueue.length >= FORCE_FLUSH_PENDING_IMAGES_THRESHOLD) {
+                flushPendingImages();
+                return;
+            }
             scheduleFlush();
         },
 
@@ -1646,6 +2080,34 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const allImages = [...state.images, ...uniqueNewImages];
                 return _updateState(state, allImages);
             });
+
+            maybeQueueLineageBuild(700);
+        },
+
+        appendImagesRaw: (newImages) => {
+            if (!newImages || newImages.length === 0) {
+                return;
+            }
+
+            set(state => {
+                const deduped = new Map<string, IndexedImage>();
+                for (const img of newImages) {
+                    if (img?.id && !deduped.has(img.id)) {
+                        deduped.set(img.id, img);
+                    }
+                }
+
+                const queuedUnique = Array.from(deduped.values());
+                const existingIds = new Set(state.images.map(img => img.id));
+                const uniqueNewImages = queuedUnique.filter(img => !existingIds.has(img.id));
+                if (uniqueNewImages.length === 0) {
+                    return state;
+                }
+
+                return {
+                    images: [...state.images, ...uniqueNewImages],
+                };
+            });
         },
 
         replaceDirectoryImages: (directoryId, newImages) => {
@@ -1656,6 +2118,18 @@ export const useImageStore = create<ImageState>((set, get) => {
                 // Add new images for this directory
                 const allImages = [...otherImages, ...newImages];
                 return _updateState(state, allImages);
+            });
+
+            maybeQueueLineageBuild(700);
+        },
+
+        replaceDirectoryImagesRaw: (directoryId, newImages) => {
+            clearPendingQueue();
+            set(state => {
+                const otherImages = state.images.filter(img => img.directoryId !== directoryId);
+                return {
+                    images: [...otherImages, ...newImages],
+                };
             });
         },
 
@@ -1671,16 +2145,19 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            flushPendingImages();
+            flushPendingImages(true);
             flushPendingMerges();
             set(state => {
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
                 const merged = state.images.map(img => updates.get(img.id) ?? img);
                 return _updateState(state, merged);
             });
+
+            maybeQueueLineageBuild(700);
         },
 
-        clearImages: (directoryId?: string) => set(state => {
+        clearImages: (directoryId?: string) => {
+            set(state => {
             clearPendingQueue();
             if (directoryId) {
                 const newImages = state.images.filter(img => img.directoryId !== directoryId);
@@ -1688,31 +2165,42 @@ export const useImageStore = create<ImageState>((set, get) => {
             } else {
                 return _updateState(state, []);
             }
-        }),
+            });
+
+            maybeQueueLineageBuild(500);
+        },
 
         removeImages: (imageIds) => {
             const idsToRemove = new Set(imageIds);
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
             });
+            maybeQueueLineageBuild(500);
         },
 
         removeImage: (imageId) => {
-            flushPendingImages();
+            flushPendingImages(true);
             set(state => {
                 const remainingImages = state.images.filter(img => img.id !== imageId);
                 return _updateState(state, remainingImages);
             });
+            maybeQueueLineageBuild(500);
         },
 
         updateImage: (imageId, newName) => {
             set(state => {
                 const updatedImages = state.images.map(img => img.id === imageId ? { ...img, name: newName } : img);
                 // No need to recalculate filters for a simple name change
-                return { ...state, ...filterAndSort({ ...state, images: updatedImages }), images: updatedImages };
+                return {
+                    ...state,
+                    ...filterAndSort({ ...state, images: updatedImages }),
+                    images: updatedImages,
+                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
+                };
             });
+            maybeQueueLineageBuild(500);
         },
 
         setImageThumbnail: (imageId, data) => {
@@ -1900,6 +2388,12 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setPreviewImage: (image) => set({ previewImage: image }),
         setSelectedImage: (image) => set({ selectedImage: image }),
+        setActiveImageScope: (images) => set((state) => {
+            if (state.activeImageScope === images) {
+                return state;
+            }
+            return { activeImageScope: images };
+        }),
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
@@ -2019,7 +2513,35 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         setClusteringProgress: (progress) => set({ clusteringProgress: progress }),
 
-        setClusterNavigationContext: (images) => set({ clusterNavigationContext: images }),
+        setClusterNavigationContext: (images) => set((state) => {
+            const current = state.clusterNavigationContext;
+            if (current === images) {
+                return state;
+            }
+
+            if (current === null || images === null) {
+                if (current === images) {
+                    return state;
+                }
+                return { clusterNavigationContext: images };
+            }
+
+            if (current.length === images.length) {
+                let isSame = true;
+                for (let index = 0; index < current.length; index += 1) {
+                    if (current[index]?.id !== images[index]?.id) {
+                        isSame = false;
+                        break;
+                    }
+                }
+
+                if (isSame) {
+                    return state;
+                }
+            }
+
+            return { clusterNavigationContext: images };
+        }),
 
         handleClusterImageDeletion: (deletedImageIds: string[]) => {
             const { clusters } = get();
@@ -2926,7 +3448,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
 
         selectAllImages: () => set(state => {
-            const allImageIds = new Set(state.filteredImages.map(img => img.id));
+            const selectionScope = state.activeImageScope ?? state.filteredImages;
+            const allImageIds = new Set(selectionScope.map(img => img.id));
             return { selectedImages: allImageIds };
         }),
 
@@ -2945,8 +3468,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            // Use cluster context if available, otherwise use filtered images
-            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex < imagesToNavigate.length - 1) {
@@ -2959,8 +3481,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const state = get();
             if (!state.selectedImage) return;
 
-            // Use cluster context if available, otherwise use filtered images
-            const imagesToNavigate = state.clusterNavigationContext || state.filteredImages;
+            const imagesToNavigate = state.clusterNavigationContext || state.activeImageScope || state.filteredImages;
             const currentIndex = imagesToNavigate.findIndex(img => img.id === state.selectedImage!.id);
 
             if (currentIndex > 0) {
@@ -2971,9 +3492,16 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         resetState: () => {
             pendingMetadataTagImportMap.clear();
+            clearLineageBuildTimer();
+            const { lineageWorker } = get();
+            lineageWorker?.terminate();
             set({
             images: [],
             filteredImages: [],
+            lineageResolvedByImageId: {},
+            lineageDerivedIdsBySourceId: {},
+            lineageBuildState: { ...DEFAULT_LINEAGE_BUILD_STATE },
+            lineageDirectorySignatures: {},
             thumbnailEntries: {},
             selectionTotalImages: 0,
             selectionDirectoryCount: 0,
@@ -2988,6 +3516,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             success: null,
             selectedImage: null,
             selectedImages: new Set(),
+            activeImageScope: null,
             searchQuery: '',
             availableModels: [],
             availableLoras: [],
@@ -3040,6 +3569,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             autoTaggingProgress: null,
             autoTaggingWorker: null,
             isAutoTagging: false,
+            lineageWorker: null,
+            isLineageRebuildSuspended: false,
         });
         },
 

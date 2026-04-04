@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronDown, Star, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
@@ -19,29 +19,28 @@ type RenameDialogState = {
 };
 
 const TagsAndFavorites: React.FC = () => {
-  const {
-    favoriteFilterMode,
-    setFavoriteFilterMode,
-    selectedRatings,
-    setSelectedRatings,
-    availableTags,
-    availableAutoTags,
-    selectedTags,
-    excludedTags,
-    selectedAutoTags,
-    excludedAutoTags,
-    setSelectedTags,
-    setExcludedTags,
-    setSelectedAutoTags,
-    setExcludedAutoTags,
-    renameTag,
-    clearTag,
-    deleteTag,
-    purgeTag,
-    refreshAvailableAutoTags,
-    filteredImages,
-    images, // All images in current folder(s)
-  } = useImageStore();
+  const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const setFavoriteFilterMode = useImageStore((state) => state.setFavoriteFilterMode);
+  const selectedRatings = useImageStore((state) => state.selectedRatings);
+  const setSelectedRatings = useImageStore((state) => state.setSelectedRatings);
+  const availableTags = useImageStore((state) => state.availableTags);
+  const availableAutoTags = useImageStore((state) => state.availableAutoTags);
+  const selectedTags = useImageStore((state) => state.selectedTags);
+  const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
+  const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
+  const setSelectedTags = useImageStore((state) => state.setSelectedTags);
+  const setExcludedTags = useImageStore((state) => state.setExcludedTags);
+  const setSelectedAutoTags = useImageStore((state) => state.setSelectedAutoTags);
+  const setExcludedAutoTags = useImageStore((state) => state.setExcludedAutoTags);
+  const renameTag = useImageStore((state) => state.renameTag);
+  const clearTag = useImageStore((state) => state.clearTag);
+  const deleteTag = useImageStore((state) => state.deleteTag);
+  const purgeTag = useImageStore((state) => state.purgeTag);
+  const refreshAvailableAutoTags = useImageStore((state) => state.refreshAvailableAutoTags);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const images = useImageStore((state) => state.images);
+  const indexingState = useImageStore((state) => state.indexingState);
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -94,19 +93,29 @@ const TagsAndFavorites: React.FC = () => {
     return () => window.clearTimeout(timeout);
   }, [renameDialog.isOpen]);
 
-  // Count favorites in ALL current images (not just filtered)
-  const totalFavoriteCount = images.filter(img => img.isFavorite).length;
-
-  // Count favorites in filtered set (for display)
-  const favoriteCount = filteredImages.filter(img => img.isFavorite).length;
+  const isIndexing = indexingState === 'indexing';
+  const totalFavoriteCount = useMemo(
+    () => (isIndexing ? 0 : images.filter((img) => img.isFavorite).length),
+    [images, isIndexing]
+  );
+  const favoriteCount = useMemo(
+    () => (isIndexing ? 0 : filteredImages.filter((img) => img.isFavorite).length),
+    [filteredImages, isIndexing]
+  );
   const favoriteBadgeCount = favoriteFilterMode === 'include' ? favoriteCount : totalFavoriteCount;
-  const totalRatedCount = images.filter(img => (img.rating ?? 0) > 0).length;
+  const totalRatedCount = useMemo(
+    () => (isIndexing ? 0 : images.filter((img) => (img.rating ?? 0) > 0).length),
+    [images, isIndexing]
+  );
   const quickRatingOptions = [1, 2, 3, 4, 5] as const;
-  const quickRatingCounts = new Map(
-    quickRatingOptions.map((value) => [
-      value,
-      images.filter(img => img.rating === value).length,
-    ]),
+  const quickRatingCounts = useMemo(
+    () => new Map(
+      quickRatingOptions.map((value) => [
+        value,
+        isIndexing ? 0 : images.filter((img) => img.rating === value).length,
+      ]),
+    ),
+    [images, isIndexing]
   );
 
   const toggleSelectedRating = (value: typeof quickRatingOptions[number]) => {
@@ -340,7 +349,7 @@ const TagsAndFavorites: React.FC = () => {
         <div className="flex items-center space-x-2">
           <span className="text-gray-300 font-medium">Ratings, Favorites & Tags</span>
           {(selectedRatings.length > 0 || favoriteFilterMode !== 'neutral' || selectedTags.length > 0 || excludedTags.length > 0 || selectedAutoTags.length > 0 || excludedAutoTags.length > 0) && (
-            <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+            <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
               active
             </span>
           )}
@@ -365,7 +374,7 @@ const TagsAndFavorites: React.FC = () => {
                     <Star className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
                     {selectedRatings.length > 0 && (
-                      <span className="text-xs bg-amber-900/40 text-amber-300 px-2 py-0.5 rounded border border-amber-700/50">
+                      <span className="rounded border border-amber-700/50 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
                         {selectedRatings.join(', ')}
                       </span>
                     )}
@@ -381,9 +390,6 @@ const TagsAndFavorites: React.FC = () => {
                     </button>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-500">
-                  Toggle one or more ratings. Clicking 1 and 3 shows images rated 1 or 3.
-                </p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -448,12 +454,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Tags</span>
                       {selectedTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
                           {selectedTags.length} include
                         </span>
                       )}
                       {excludedTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
                           {excludedTags.length} exclude
                         </span>
                       )}
@@ -480,10 +486,6 @@ const TagsAndFavorites: React.FC = () => {
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click a tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">
@@ -530,12 +532,12 @@ const TagsAndFavorites: React.FC = () => {
                       <Tag className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-400 font-medium">Auto Tags</span>
                       {selectedAutoTags.length > 0 && (
-                        <span className="text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded border border-blue-700/50">
+                        <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
                           {selectedAutoTags.length} include
                         </span>
                       )}
                       {excludedAutoTags.length > 0 && (
-                        <span className="text-xs bg-red-900/40 text-red-300 px-2 py-0.5 rounded border border-red-700/50">
+                        <span className="rounded border border-red-700/50 bg-red-900/40 px-2 py-0.5 text-xs text-red-300">
                           {excludedAutoTags.length} exclude
                         </span>
                       )}
@@ -561,10 +563,6 @@ const TagsAndFavorites: React.FC = () => {
                       className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 placeholder-gray-500"
                     />
                   )}
-
-                  <p className="text-[11px] text-gray-500">
-                    Click an auto-tag to cycle include, exclude, and off.
-                  </p>
 
                   {/* Auto-Tags List */}
                   <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1">

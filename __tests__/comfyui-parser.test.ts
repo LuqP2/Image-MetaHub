@@ -352,8 +352,16 @@ describe('ComfyUI Parser - Error Handling', () => {
     };
     
     const result = resolvePromptFromGraph(emptyFixture.workflow, emptyFixture.prompt);
-    
+
     expect(result._telemetry).toBeDefined();
     expect(result._telemetry.warnings).toContain('No terminal node found');
+  });
+
+  it('should handle missing workflow and prompt payloads without throwing', () => {
+    const result = resolvePromptFromGraph(undefined, undefined);
+
+    expect(result._telemetry).toBeDefined();
+    expect(result._telemetry.warnings).toContain('No terminal node found');
+    expect(result.comfyui_version).toBeUndefined();
   });
 });

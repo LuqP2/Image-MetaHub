@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play, Star } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -14,6 +14,7 @@ import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, getRatingBadgeClasses, getRatingChipClasses } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -64,9 +65,11 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [transferMode, setTransferMode] = useState<'copy' | 'move' | null>(null);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
     contextMenu,
@@ -81,6 +84,12 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     exportImage,
     copyRawMetadata
   } = useContextMenu();
+
+  useEffect(() => {
+    if (!contextMenu.visible && isCopySubmenuOpen) {
+      setIsCopySubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isCopySubmenuOpen]);
 
   const selectedCount = selectedImages.size;
 
@@ -116,6 +125,17 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
   }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
+
+  const handleReparseMetadata = useCallback(async () => {
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+
+    hideContextMenu();
+    await reparseImages(targetImages);
+  }, [getContextTargetImages, hideContextMenu, reparseImages]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -376,38 +396,53 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
 
           <div className="border-t border-gray-600 my-1"></div>
 
-          <button
-            onClick={copyPrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.prompt}
+          <div
+            className="relative"
+            onMouseEnter={() => setIsCopySubmenuOpen(true)}
+            onMouseLeave={() => setIsCopySubmenuOpen(false)}
           >
-            <Copy className="w-4 h-4" />
-            Copy Prompt
-          </button>
-          <button
-            onClick={copyNegativePrompt}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.negativePrompt}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Negative Prompt
-          </button>
-          <button
-            onClick={copySeed}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.seed}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Seed
-          </button>
-          <button
-            onClick={copyModel}
-            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
-            disabled={!contextMenu.image?.models?.[0]}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Model
-          </button>
+            <button
+              onClick={() => setIsCopySubmenuOpen((open) => !open)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="flex-1">Copy</span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isCopySubmenuOpen && (
+              <div className="absolute left-full top-0 ml-1 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                <button
+                  onClick={copyPrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.prompt}
+                >
+                  Prompt
+                </button>
+                <button
+                  onClick={copyNegativePrompt}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.negativePrompt}
+                >
+                  Negative Prompt
+                </button>
+                <button
+                  onClick={copySeed}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.seed}
+                >
+                  Seed
+                </button>
+                <button
+                  onClick={copyModel}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  disabled={!contextMenu.image?.models?.[0]}
+                >
+                  Checkpoint
+                </button>
+              </div>
+            )}
+          </div>
 
           <div className="border-t border-gray-600 my-1"></div>
 
@@ -442,6 +477,15 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
               <Copy className="w-4 h-4" />
               Copy Raw Metadata
             </button>
+
+          <button
+            onClick={handleReparseMetadata}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            disabled={isReparsing}
+          >
+            <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+            {getContextTargetImages().length > 1 ? `Reparse Selected (${getContextTargetImages().length})` : 'Reparse Metadata'}
+          </button>
 
           <div className="border-t border-gray-600 my-1"></div>
 

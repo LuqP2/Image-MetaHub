@@ -10,24 +10,64 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 
+type ThrottledFunction<T extends (...args: any[]) => any> = T & {
+  cancel: () => void;
+  flush: () => void;
+};
+
 // Simple throttle utility to avoid excessive progress updates
-function throttle<T extends (...args: any[]) => any>(func: T, delay: number): T {
+function throttle<T extends (...args: any[]) => any>(func: T, delay: number): ThrottledFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let lastCall = 0;
+  let pendingArgs: Parameters<T> | null = null;
 
-  return ((...args: any[]) => {
+  const invoke = (args: Parameters<T>) => {
+    lastCall = Date.now();
+    pendingArgs = null;
+    func(...args);
+  };
+
+  const throttled = ((...args: Parameters<T>) => {
     const now = Date.now();
+    pendingArgs = args;
     if (now - lastCall >= delay) {
-      lastCall = now;
-      func(...args);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      invoke(args);
     } else {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        func(...args);
+        timeoutId = null;
+        if (pendingArgs) {
+          invoke(pendingArgs);
+        }
       }, delay - (now - lastCall));
     }
-  }) as T;
+  }) as ThrottledFunction<T>;
+
+  throttled.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    pendingArgs = null;
+  };
+
+  throttled.flush = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (pendingArgs) {
+      invoke(pendingArgs);
+    }
+  };
+
+  return throttled;
 }
 
 // Extended FileSystemFileHandle interface for Electron compatibility
@@ -54,6 +94,7 @@ import { parseDreamStudioMetadata } from './parsers/dreamStudioParser';
 import { parseDrawThingsMetadata } from './parsers/drawThingsParser';
 import { parseFooocusMetadata } from './parsers/fooocusParser';
 import { parseSDNextMetadata } from './parsers/sdNextParser';
+import { extractWorkflowNodeTypes, extractWorkflowNodeTypesFromMetadata } from './comfyUIWorkflowNodes';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -1387,8 +1428,6 @@ if (rawMetadata) {
   if (!normalizedMetadata) {
     // Unknown metadata format, no parser applied
   }
-}
-
   if (!normalizedMetadata && isVideo && videoInfo) {
     normalizedMetadata = {
       prompt: '',
@@ -1412,6 +1451,7 @@ if (rawMetadata) {
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
+}
 
 // ==============================================================================
 // FIM DA SUBSTITUIÇÃO - O código seguinte (Read actual image dimensions) 
@@ -1436,6 +1476,8 @@ if (rawMetadata) {
     if (profile) {
       profile.dimensionsMs = performance.now() - dimensionsStart;
     }
+
+    const workflowNodes = extractWorkflowNodeTypesFromMetadata(rawMetadata);
 
     // Determine the best date for sorting (generation date vs file date)
     const sortDate = fileEntry.birthtimeMs ?? fileEntry.lastModified ?? Date.now();
@@ -1466,6 +1508,7 @@ if (rawMetadata) {
       steps: normalizedMetadata?.steps || null,
       seed: normalizedMetadata?.seed || null,
       dimensions: normalizedMetadata?.dimensions || `${normalizedMetadata?.width || 0}x${normalizedMetadata?.height || 0}`,
+      workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
     } as IndexedImage;
@@ -1473,6 +1516,56 @@ if (rawMetadata) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
     return null;
   }
+}
+
+export async function reparseIndexedImage(
+  image: IndexedImage,
+  directoryPath: string
+): Promise<IndexedImage | null> {
+  if (!window.electronAPI?.joinPaths || !window.electronAPI?.readFile) {
+    throw new Error('Metadata reparsing is only available in the desktop app.');
+  }
+
+  const [, relativePath = image.name] = image.id.split('::');
+  const joined = await window.electronAPI.joinPaths(directoryPath, relativePath);
+  if (!joined.success || !joined.path) {
+    throw new Error(joined.error || 'Failed to resolve the image path.');
+  }
+
+  const absolutePath = joined.path;
+  const readResult = await window.electronAPI.readFile(absolutePath);
+  if (!readResult.success || !readResult.data) {
+    throw new Error(readResult.error || 'Failed to read the image file.');
+  }
+
+  const statsResult = window.electronAPI.getFileStats
+    ? await window.electronAPI.getFileStats(absolutePath)
+    : { success: false } as { success: boolean; stats?: any; error?: string };
+  const stats = statsResult.success ? statsResult.stats : undefined;
+  const bytes = new Uint8Array(readResult.data);
+  const fileData = bytes.slice().buffer;
+
+  const fileEntry: CatalogFileEntry = {
+    handle: {
+      name: image.name,
+      kind: 'file',
+      _filePath: absolutePath,
+    } as ElectronFileHandle,
+    path: relativePath,
+    lastModified: typeof stats?.mtimeMs === 'number' ? stats.mtimeMs : image.lastModified,
+    contentModifiedMs: typeof stats?.mtimeMs === 'number'
+      ? stats.mtimeMs
+      : (image.contentModifiedMs ?? image.lastModified),
+    size: typeof stats?.size === 'number' ? stats.size : image.fileSize,
+    type: image.fileType ?? inferMimeTypeFromName(image.name),
+    birthtimeMs: typeof stats?.birthtimeMs === 'number' ? stats.birthtimeMs : undefined,
+  };
+
+  return processSingleFileOptimized(
+    fileEntry,
+    image.directoryId || image.id.split('::')[0] || '',
+    fileData
+  );
 }
 
 /**
@@ -1552,6 +1645,7 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     steps: image.steps,
     seed: image.seed,
     dimensions: image.dimensions,
+    workflowNodes: image.workflowNodes,
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
@@ -1635,19 +1729,30 @@ export async function processFiles(
   const enrichmentQueue: CatalogEntryState[] = [];
   const chunkBuffer: IndexedImage[] = [];
   const uiBatch: IndexedImage[] = [];
-  const BATCH_SIZE = 50;
-  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
-  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   const totalPhaseAFiles = (options.preloadedImages?.length ?? 0) + fileEntries.length;
   const totalNewFiles = fileEntries.length;
+  const PHASE_A_UI_BATCH_SIZE =
+    totalPhaseAFiles >= 50_000
+      ? 240
+      : totalPhaseAFiles >= 20_000
+        ? 120
+        : 50;
+  const MAX_CACHE_CHUNK_BYTES = 8_000_000;
+  const CACHE_CHUNK_OVERHEAD_BYTES = 512;
   let processedNew = 0;
   let nextPhaseALog = 5000;
+  const throttledPhaseAProgress = throttle(
+    (progress: { current: number; total: number }) => {
+      setProgress(progress);
+    },
+    250
+  );
 
   const pushUiBatch = async (force = false) => {
     if (uiBatch.length === 0) {
       return;
     }
-    if (!force && uiBatch.length < BATCH_SIZE) {
+    if (!force && uiBatch.length < PHASE_A_UI_BATCH_SIZE) {
       return;
     }
     onBatchProcessed([...uiBatch]);
@@ -1821,7 +1926,7 @@ export async function processFiles(
 
     if (countTowardsProgress) {
       processedNew += 1;
-      setProgress({ current: processedNew, total: totalNewFiles });
+      throttledPhaseAProgress({ current: processedNew, total: totalNewFiles });
     }
 
     if (emitToUi) {
@@ -1875,6 +1980,7 @@ export async function processFiles(
       steps: undefined,
       seed: undefined,
       dimensions: undefined,
+      workflowNodes: [],
       enrichmentState: needsEnrichment ? 'catalog' : 'enriched',
       fileSize,
       fileType: inferredType,
@@ -1962,6 +2068,7 @@ export async function processFiles(
       steps: enriched.steps,
       seed: enriched.seed,
       dimensions: enriched.dimensions,
+      workflowNodes: enriched.workflowNodes,
       enrichmentState: 'enriched',
     };
 
@@ -2012,6 +2119,7 @@ export async function processFiles(
     detail: { elapsedMs: performance.now() - phaseAStats.startTime, files: phaseAStats.processed }
   });
 
+  throttledPhaseAProgress.cancel();
   if (totalNewFiles > 0) {
     setProgress({ current: totalNewFiles, total: totalNewFiles });
   }
@@ -2330,6 +2438,10 @@ export async function processFiles(
         steps: normalizedMetadata.steps || null,
         seed: normalizedMetadata.seed || null,
         dimensions: normalizedMetadata.dimensions || `${normalizedMetadata.width || 0}x${normalizedMetadata.height || 0}`,
+        workflowNodes: extractWorkflowNodeTypes({
+          workflow: (metaHubData as Record<string, unknown>)?.workflow,
+          prompt: (metaHubData as Record<string, unknown>)?.prompt_api ?? (metaHubData as Record<string, unknown>)?.prompt,
+        }),
         contentModifiedMs: image.contentModifiedMs,
       } as IndexedImage;
     };

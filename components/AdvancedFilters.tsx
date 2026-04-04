@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle, ChevronDown, Settings, Star, X } from 'lucide-react';
+import { Calendar, CheckCircle, ChevronDown, Star, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AdvancedFilters, ImageRating } from '../types';
 import { getRatingChipClasses, RATING_VALUES } from './RatingStars';
@@ -63,6 +63,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         if (minMissing && maxMissing) {
           delete nextFilters[key];
         }
+        return;
+      }
+
+      if ((key === 'generationModes' || key === 'mediaTypes') && Array.isArray(value) && value.length === 0) {
+        delete nextFilters[key];
       }
     });
 
@@ -108,9 +113,25 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const metaHubSummary = localFilters.hasVerifiedTelemetry
     ? 'Only images with verified metrics.'
     : 'MetaHub-specific metadata filters.';
+  const generationModes = Array.isArray(localFilters.generationModes) ? localFilters.generationModes : [];
+  const mediaTypes = Array.isArray(localFilters.mediaTypes) ? localFilters.mediaTypes : [];
   const ratingSummary = selectedRatings.length > 0
     ? `Matching ratings ${selectedRatings.join(', ')}.`
     : 'Toggle one or more ratings.';
+
+  const metadataSummary = [
+    generationModes.length > 0 ? generationModes.join(' + ') : null,
+    mediaTypes.length > 0 ? mediaTypes.join(' + ') : null,
+  ].filter(Boolean).join(' • ') || 'Generation mode and media-type filters.';
+
+  const toggleMultiSelectFilter = (key: 'generationModes' | 'mediaTypes', value: string) => {
+    const currentValues = Array.isArray(localFilters[key]) ? localFilters[key] : [];
+    const nextValues = currentValues.includes(value)
+      ? currentValues.filter((item: string) => item !== value)
+      : [...currentValues, value];
+
+    updateFilter(key, nextValues);
+  };
 
   const renderNumberRange = (
     label: string,
@@ -195,7 +216,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           className="flex-1 flex items-center justify-between hover:bg-gray-800/50 transition-colors -m-4 p-4"
         >
           <div className="flex items-center space-x-2">
-            <Settings className="h-4 w-4 text-gray-400" />
             <span className="text-gray-200 font-medium">Metadata & File Filters</span>
             {hasActiveFilters && (
               <span className="rounded border border-blue-700/50 bg-blue-900/40 px-2 py-0.5 text-xs text-blue-300">
@@ -286,7 +306,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <Calendar className="h-4 w-4 text-blue-400" />
                       File
                     </h3>
                     <p className="mt-1 text-xs text-gray-500">{fileSummary}</p>
@@ -321,6 +341,76 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                     })}
                     className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none transition-colors focus:border-blue-500"
                   />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
+                      <CheckCircle className="h-4 w-4 text-gray-400" />
+                      Metadata & File Type
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">{metadataSummary}</p>
+                  </div>
+                  {(generationModes.length > 0 || mediaTypes.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setLocalFilters((prev: Record<string, any>) => normalizeFilters({
+                        ...prev,
+                        generationModes: [],
+                        mediaTypes: [],
+                      }))}
+                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
+                      title="Clear metadata and file type filters"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
+                    <h4 className="text-sm font-semibold text-gray-100">Generation Mode</h4>
+                    <p className="mt-1 text-xs text-gray-500">Match txt2img or img2img outputs.</p>
+                    <div className="mt-3 space-y-2">
+                      {[
+                        ['txt2img', 'txt2img'],
+                        ['img2img', 'img2img'],
+                      ].map(([value, label]) => (
+                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={generationModes.includes(value)}
+                            onChange={() => toggleMultiSelectFilter('generationModes', value)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                          />
+                          <div className="text-sm text-gray-200">{label}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
+                    <h4 className="text-sm font-semibold text-gray-100">Media Type</h4>
+                    <p className="mt-1 text-xs text-gray-500">Restrict results to images or videos.</p>
+                    <div className="mt-3 space-y-2">
+                      {[
+                        ['image', 'Images'],
+                        ['video', 'Videos'],
+                      ].map(([value, label]) => (
+                        <label key={value} className="flex items-start gap-3 rounded-lg border border-gray-800 bg-gray-950/30 p-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={mediaTypes.includes(value)}
+                            onChange={() => toggleMultiSelectFilter('mediaTypes', value)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                          />
+                          <div className="text-sm text-gray-200">{label}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 

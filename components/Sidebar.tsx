@@ -1,6 +1,6 @@
 
-import React, { useMemo } from 'react';
-import { ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, ChevronLeft, Plus, RefreshCw } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
@@ -8,6 +8,19 @@ import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
+
+const toFacetLabel = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return null;
+};
 
 interface SidebarProps {
   searchQuery: string;
@@ -82,11 +95,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSortOrderChange,
   onReshuffle
 }) => {
+  const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
+  const allImages = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
@@ -98,6 +113,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const countFacetValues = useMemo(() => {
+    if (isIndexing) {
+      return {
+        modelCounts: new Map<string, number>(),
+        loraCounts: new Map<string, number>(),
+        samplerCounts: new Map<string, number>(),
+        schedulerCounts: new Map<string, number>(),
+      };
+    }
+
     const modelCounts = new Map<string, number>();
     const loraCounts = new Map<string, number>();
     const samplerCounts = new Map<string, number>();
@@ -123,7 +147,43 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
-  }, [filteredImages]);
+  }, [filteredImages, isIndexing]);
+
+  const facetUniverse = useMemo(() => {
+    const models = new Set<string>();
+    const loras = new Set<string>();
+    const samplers = new Set<string>();
+    const schedulers = new Set<string>();
+
+    for (const image of allImages) {
+      image.models?.forEach((value) => {
+        const label = toFacetLabel(value);
+        if (label) models.add(label);
+      });
+
+      image.loras?.forEach((value) => {
+        const label = toFacetLabel(typeof value === 'string' ? value : value?.name);
+        if (label) loras.add(label);
+      });
+
+      const samplerLabel = toFacetLabel(image.sampler);
+      if (samplerLabel) {
+        samplers.add(samplerLabel);
+      }
+
+      const schedulerLabel = toFacetLabel(image.scheduler);
+      if (schedulerLabel) {
+        schedulers.add(schedulerLabel);
+      }
+    }
+
+    return {
+      models: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      loras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      samplers: Array.from(samplers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      schedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    };
+  }, [allImages]);
 
   const toggleExplicitFacet = (
     value: string,
@@ -152,7 +212,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const generationFacets = [
     {
       title: 'Checkpoints',
-      items: availableModels,
+      items: facetUniverse.models,
       selectedValues: selectedModels,
       excludedValues: excludedModels,
       counts: countFacetValues.modelCounts,
@@ -162,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'LoRAs',
-      items: availableLoras,
+      items: facetUniverse.loras,
       selectedValues: selectedLoras,
       excludedValues: excludedLoras,
       counts: countFacetValues.loraCounts,
@@ -172,7 +232,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'Samplers',
-      items: availableSamplers,
+      items: facetUniverse.samplers,
       selectedValues: selectedSamplers,
       excludedValues: excludedSamplers,
       counts: countFacetValues.samplerCounts,
@@ -182,7 +242,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       title: 'Schedulers',
-      items: availableSchedulers,
+      items: facetUniverse.schedulers,
       selectedValues: selectedSchedulers,
       excludedValues: excludedSchedulers,
       counts: countFacetValues.schedulerCounts,
@@ -286,12 +346,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-[10px] font-mono font-normal text-gray-500">v0.14.0</span>
             </div>
         </div>
-
         <div className="flex items-center justify-between px-4 pb-3 pt-1">
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Faceted Filters</h2>
           <button
             onClick={onToggleCollapse}
-            className="text-gray-400 hover:text-white transition-all duration-200 hover:shadow-lg hover:shadow-purple-500/20 bg-gray-800/40 hover:bg-gray-700/60 rounded-lg p-1.5"
+            className="ml-auto rounded-lg border border-gray-700 bg-gray-800/40 p-1.5 text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-white hover:shadow-lg hover:shadow-blue-500/20"
             title="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -348,7 +406,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               disabled={isIndexing}
               className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
                 isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed' 
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
                   : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
               }`}
               title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
@@ -376,28 +434,34 @@ const Sidebar: React.FC<SidebarProps> = ({
         <TagsAndFavorites />
 
         {generationFacets.length > 0 && (
-          <section className="border-y border-gray-800/80 bg-gray-950/20 px-4 py-4">
-            <div className="mb-4 flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-gray-400" />
-              <div>
-                <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
+          <section className="border-y border-gray-800/80 bg-gray-950/20">
+            <button
+              type="button"
+              onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
+            >
+              <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
+              <ChevronDown
+                className={`h-4 w-4 text-gray-500 transition-transform ${isGenerationParametersExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isGenerationParametersExpanded && (
+              <div className="space-y-3 px-4 pb-4">
+                {generationFacets.map((facet) => (
+                  <FacetFilterSection
+                    key={facet.title}
+                    title={facet.title}
+                    items={facet.items}
+                    counts={facet.counts}
+                    selectedValues={facet.selectedValues}
+                    excludedValues={facet.excludedValues}
+                    onIncludeToggle={facet.onIncludeToggle}
+                    onExcludeToggle={facet.onExcludeToggle}
+                    onClear={facet.onClear}
+                  />
+                ))}
               </div>
-            </div>
-            <div className="space-y-3">
-              {generationFacets.map((facet) => (
-                <FacetFilterSection
-                  key={facet.title}
-                  title={facet.title}
-                  items={facet.items}
-                  counts={facet.counts}
-                  selectedValues={facet.selectedValues}
-                  excludedValues={facet.excludedValues}
-                  onIncludeToggle={facet.onIncludeToggle}
-                  onExcludeToggle={facet.onExcludeToggle}
-                  onClear={facet.onClear}
-                />
-              ))}
-            </div>
+            )}
           </section>
         )}
 
