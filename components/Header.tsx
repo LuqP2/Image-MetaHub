@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Boxes } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
+import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -36,6 +37,9 @@ const Header: React.FC<HeaderProps> = ({
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
   const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
+  const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
+  const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
+  const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const viewingStackPrompt = useImageStore((state) => state.viewingStackPrompt);
@@ -57,6 +61,9 @@ const Header: React.FC<HeaderProps> = ({
   const hasDirectories = directories.length > 0;
   const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
   const hasLaunchCommand = generatorLaunchCommand.trim().length > 0;
+  const hasComfyServerUrl = comfyUIServerUrl.trim().length > 0;
+  const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
+  const launchPollingDeadlineRef = useRef<number | null>(null);
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;
@@ -68,9 +75,34 @@ const Header: React.FC<HeaderProps> = ({
     startAutoTagging(primaryPath, scanSubfolders);
   };
 
+  const checkComfyUIStatus = useCallback(async () => {
+    if (!hasComfyServerUrl) {
+      setComfyUIConnectionStatus('unknown');
+      return false;
+    }
+
+    const client = new ComfyUIApiClient({
+      serverUrl: comfyUIServerUrl,
+      timeout: isLaunchingGenerator ? 2500 : 1500,
+    });
+    const result = await client.testConnection();
+    setComfyUIConnectionStatus(result.success ? 'connected' : 'error');
+    return result.success;
+  }, [comfyUIServerUrl, hasComfyServerUrl, isLaunchingGenerator, setComfyUIConnectionStatus]);
+
   const handleLaunchGenerator = async () => {
     if (!window.electronAPI?.launchGenerator) {
       setError('Launch Generator is only available in the desktop app.');
+      return;
+    }
+
+    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+      const openResult = await (window.electronAPI.openExternalUrl
+        ? window.electronAPI.openExternalUrl(comfyUIServerUrl)
+        : Promise.resolve({ success: false, error: 'Cannot open ComfyUI from this environment.' }));
+      if (!openResult.success) {
+        setError(openResult.error || 'Failed to open ComfyUI.');
+      }
       return;
     }
 
@@ -79,14 +111,109 @@ const Header: React.FC<HeaderProps> = ({
       return;
     }
 
+    setIsLaunchingGenerator(true);
+    launchPollingDeadlineRef.current = Date.now() + 30000;
+    setComfyUIConnectionStatus('unknown');
     const result = await window.electronAPI.launchGenerator(generatorLaunchCommand);
     if (result.success) {
-      setSuccess('Generator launch command started.');
+      setSuccess('Generator launch command started. Checking ComfyUI...');
       return;
     }
 
+    setIsLaunchingGenerator(false);
     setError(result.error || 'Failed to launch generator.');
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const runStatusCheck = async () => {
+      try {
+        const isConnected = await checkComfyUIStatus();
+        if (cancelled) {
+          return;
+        }
+
+        if (isConnected && isLaunchingGenerator) {
+          setIsLaunchingGenerator(false);
+          launchPollingDeadlineRef.current = null;
+          setSuccess('ComfyUI is running.');
+          return;
+        }
+
+        if (
+          isLaunchingGenerator &&
+          launchPollingDeadlineRef.current &&
+          Date.now() >= launchPollingDeadlineRef.current
+        ) {
+          setIsLaunchingGenerator(false);
+          launchPollingDeadlineRef.current = null;
+        }
+      } catch {
+        if (
+          !cancelled &&
+          isLaunchingGenerator &&
+          launchPollingDeadlineRef.current &&
+          Date.now() >= launchPollingDeadlineRef.current
+        ) {
+          setIsLaunchingGenerator(false);
+          launchPollingDeadlineRef.current = null;
+        }
+      }
+    };
+
+    void runStatusCheck();
+    const intervalId = window.setInterval(runStatusCheck, isLaunchingGenerator ? 2000 : 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [checkComfyUIStatus, isLaunchingGenerator, setSuccess]);
+
+  const generatorButtonLabel = useMemo(() => {
+    if (isLaunchingGenerator) {
+      return 'Starting...';
+    }
+
+    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+      return 'Open ComfyUI';
+    }
+
+    return 'Launch Generator';
+  }, [comfyUILastConnectionStatus, hasComfyServerUrl, isLaunchingGenerator]);
+
+  const generatorButtonClassName = useMemo(() => {
+    if (isLaunchingGenerator) {
+      return 'bg-amber-600 border-amber-500/60 shadow-amber-900/20 cursor-wait';
+    }
+
+    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+      return 'hover:bg-emerald-500 bg-emerald-600 shadow-emerald-900/20 border-emerald-500/50';
+    }
+
+    if (hasLaunchCommand) {
+      return 'hover:bg-blue-500 bg-blue-600 shadow-blue-900/20 border-blue-500/50';
+    }
+
+    return 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600';
+  }, [comfyUILastConnectionStatus, hasComfyServerUrl, hasLaunchCommand, isLaunchingGenerator]);
+
+  const generatorButtonTitle = useMemo(() => {
+    if (isLaunchingGenerator) {
+      return 'Waiting for ComfyUI to come online';
+    }
+
+    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+      return 'Open ComfyUI in your browser';
+    }
+
+    if (hasLaunchCommand) {
+      return 'Run the saved generator launch command';
+    }
+
+    return 'Add a launch command in Settings > Integrations';
+  }, [comfyUILastConnectionStatus, hasComfyServerUrl, hasLaunchCommand, isLaunchingGenerator]);
 
   const statusConfig = (() => {
     if (!initialized) {
@@ -289,15 +416,12 @@ const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={handleLaunchGenerator}
-            className={`px-3 py-1.5 rounded-lg transition-all duration-300 text-xs font-bold text-white shadow-md border flex items-center gap-2 ${
-              hasLaunchCommand
-                ? 'hover:bg-blue-500 bg-blue-600 shadow-blue-900/20 border-blue-500/50'
-                : 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-            }`}
-            title={hasLaunchCommand ? 'Run the saved generator launch command' : 'Add a launch command in Settings > Integrations'}
+            disabled={isLaunchingGenerator}
+            className={`px-3 py-1.5 rounded-lg transition-all duration-300 text-xs font-bold text-white shadow-md border flex items-center gap-2 ${generatorButtonClassName}`}
+            title={generatorButtonTitle}
           >
-            <Sparkles size={14} className="text-white/90 transition-colors" />
-            Launch Generator
+            <Sparkles size={14} className={`text-white/90 transition-colors ${isLaunchingGenerator ? 'animate-pulse' : ''}`} />
+            {generatorButtonLabel}
           </button>
           
           {/* Discreet Get Pro link - Unified Amber Theme */}

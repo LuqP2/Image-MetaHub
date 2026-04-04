@@ -1316,6 +1316,20 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('open-external-url', async (event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Only http and https URLs are supported.');
+      }
+
+      await shell.openExternal(parsed.toString());
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to open external URL.' };
+    }
+  });
+
   ipcMain.handle('get-default-cache-path', () => {
     try {
       // Define a specific subfolder for the cache

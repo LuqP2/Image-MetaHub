@@ -33,6 +33,7 @@ describe('Header launch generator', () => {
 
     useSettingsStore.setState({
       generatorLaunchCommand: '@echo off\necho hello',
+      comfyUIServerUrl: '',
     });
 
     render(
@@ -48,5 +49,37 @@ describe('Header launch generator', () => {
     await waitFor(() => {
       expect(launchGenerator).toHaveBeenCalledWith('@echo off\necho hello');
     });
+  });
+
+  it('opens ComfyUI when the service is already running', async () => {
+    const launchGenerator = vi.fn();
+    const openExternalUrl = vi.fn().mockResolvedValue({ success: true });
+    window.electronAPI = {
+      ...(window.electronAPI ?? {}),
+      launchGenerator,
+      openExternalUrl,
+    } as any;
+
+    useSettingsStore.setState({
+      generatorLaunchCommand: '@echo off\necho hello',
+      comfyUIServerUrl: 'http://127.0.0.1:8188',
+      comfyUILastConnectionStatus: 'connected',
+    });
+
+    render(
+      <Header
+        onOpenSettings={() => {}}
+        onOpenAnalytics={() => {}}
+        onOpenLicense={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /open comfyui/i }));
+
+    await waitFor(() => {
+      expect(openExternalUrl).toHaveBeenCalledWith('http://127.0.0.1:8188');
+    });
+
+    expect(launchGenerator).not.toHaveBeenCalled();
   });
 });
