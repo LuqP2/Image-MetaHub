@@ -6,7 +6,7 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack } from
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,
+import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square,
   Archive,
   ChevronRight,
   CheckSquare,
@@ -23,10 +23,11 @@ import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
+import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
-import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
+import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
@@ -402,14 +403,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
         <button
           onClick={handleFavoriteClick}
-          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:opacity-100 ${
+          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-rose-500 focus:opacity-100 ${
             image.isFavorite
-              ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
-              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
+              ? 'bg-rose-500/85 text-white opacity-100 hover:bg-rose-600'
+              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-rose-500'
           }`}
           title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
-          <Star className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+          <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
         </button>
         <button
           onClick={handleCopyClick}
@@ -530,7 +531,7 @@ interface CellData {
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
-  comparisonFirstImage: IndexedImage | null;
+  comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
   markedBestIds?: Set<string>;
   markedArchivedIds?: Set<string>;
@@ -551,7 +552,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     imageSize,
     handleImageLoad,
     handleContextMenu,
-    comparisonFirstImage,
+    comparisonFirstImageId,
     createCardRef,
     markedBestIds,
     markedArchivedIds,
@@ -653,7 +654,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         onImageLoad={handleImageLoad}
         onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
         baseWidth={imageSize}
-        isComparisonFirst={comparisonFirstImage?.id === image.id}
+        isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
         isMarkedBest={markedBestIds?.has(image.id)}
         isMarkedArchived={markedArchivedIds?.has(image.id)}
@@ -723,9 +724,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
-  const [comparisonFirstImage, setComparisonFirstImage] = useState<IndexedImage | null>(null);
-  const setComparisonImages = useImageStore((state) => state.setComparisonImages);
-  const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
@@ -756,6 +754,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI } = useGenerateWithComfyUI();
   const { isReparsing, reparseImages } = useReparseMetadata();
+  const {
+    comparisonImages: queuedComparisonImages,
+    comparisonCount,
+    addImage: addImageToComparison
+  } = useImageComparison();
 
   const {
     contextMenu,
@@ -778,6 +781,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       setIsCopySubmenuOpen(false);
     }
   }, [contextMenu.visible, isCopySubmenuOpen]);
+
+  const queuedComparisonFirstImageId = queuedComparisonImages[0]?.id;
 
   const handleAddTag = useCallback(() => {
     // Calculate effective target count
@@ -829,28 +834,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       return;
     }
 
-    if (!comparisonFirstImage) {
-      // First image selected
-      setComparisonFirstImage(contextMenu.image);
-      // Show notification
+    const added = addImageToComparison(contextMenu.image);
+    if (added && comparisonCount === 0) {
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-      notification.textContent = 'Image 1 selected. Right-click another image to compare.';
+      notification.textContent = 'Image added to comparison. Add one more image to open compare.';
       document.body.appendChild(notification);
       setTimeout(() => {
         if (document.body.contains(notification)) {
           document.body.removeChild(notification);
         }
       }, 3000);
-    } else {
-      // Second image selected - start comparison
-      setComparisonImages([comparisonFirstImage, contextMenu.image]);
-      openComparisonModal();
-      setComparisonFirstImage(null);
     }
 
     hideContextMenu();
-  }, [contextMenu.image, comparisonFirstImage, setComparisonImages, openComparisonModal, hideContextMenu, canUseComparison, showProModal]);
+  }, [contextMenu.image, hideContextMenu, canUseComparison, showProModal, addImageToComparison, comparisonCount]);
 
   const handleBatchExport = useCallback(() => {
     hideContextMenu();
@@ -1322,9 +1320,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                  className={`rounded-md border px-2 py-1 transition-colors ${getRatingChipClasses(value, false)}`}
+                  title={`Set ${getRatingLabel(value)}`}
+                  aria-label={`Set ${getRatingLabel(value)}`}
                 >
-                  {value}
+                  <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                 </button>
               ))}
               <button
@@ -1395,7 +1395,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
           >
             <GitCompare className="w-4 h-4" />
             <span className="flex-1">
-              {comparisonFirstImage ? 'Compare with this' : 'Select for Comparison'}
+              Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
             </span>
             {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
@@ -1709,7 +1709,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
-                    comparisonFirstImage,
+                    comparisonFirstImageId: queuedComparisonFirstImageId,
                     createCardRef,
                     markedBestIds,
                     markedArchivedIds,
@@ -1732,6 +1732,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     outerRef={gridRef}
                     className="no-scrollbar-if-needed"
                     itemData={cellData}
+                    itemKey={({ columnIndex, rowIndex, data }) => {
+                      const itemIndex = rowIndex * safeColumnCount + columnIndex;
+                      const item = data.items[itemIndex];
+                      return item ? item.id : `empty-${rowIndex}-${columnIndex}`;
+                    }}
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
                     onItemsRendered={({ visibleColumnStartIndex, visibleColumnStopIndex, visibleRowStartIndex, visibleRowStopIndex, overscanRowStopIndex }) => {
@@ -1881,7 +1886,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
                 baseWidth={imageSize}
-                isComparisonFirst={comparisonFirstImage?.id === image.id}
+                isComparisonFirst={queuedComparisonFirstImageId === image.id}
                 cardRef={createCardRef(image.id)}
                 isMarkedBest={markedBestIds?.has(image.id)}
                 isMarkedArchived={markedArchivedIds?.has(image.id)}

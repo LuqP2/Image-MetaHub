@@ -470,8 +470,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           onAdvancedFiltersChange={onAdvancedFiltersChange}
           onClearAdvancedFilters={onClearAdvancedFilters}
           availableDimensions={availableDimensions}
-          selectedRatings={selectedRatings}
-          onSelectedRatingsChange={onSelectedRatingsChange}
         />
       </div>
 

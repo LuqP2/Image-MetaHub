@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -463,12 +463,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 onClick={handleToggleFavorite}
                 className={`p-1 rounded transition-all ${
                   activeImage.isFavorite
-                    ? 'text-yellow-400 hover:text-yellow-300'
-                    : 'text-gray-500 hover:text-yellow-400'
+                    ? 'text-rose-400 hover:text-rose-300'
+                    : 'text-gray-500 hover:text-rose-400'
                 }`}
                 title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               >
-                <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
+                <Heart className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
               </button>
               <div className="h-5 w-px bg-gray-300/80 dark:bg-gray-700/70" />
               <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />
@@ -476,23 +476,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
             {/* Tags Pills */}
             <div className="flex-1 space-y-2">
-              {/* Current Tags */}
-              {activeImage.tags && activeImage.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {activeImage.tags.map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => handleRemoveTag(tag)}
-                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
-                      title="Click to remove"
-                    >
-                      {tag}
-                      <X size={12} />
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* Add Tag Input */}
               <div className="relative">
                 <input
@@ -538,6 +521,23 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* Current Tags */}
+              {activeImage.tags && activeImage.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {activeImage.tags.map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => handleRemoveTag(tag)}
+                      className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full text-xs hover:bg-red-600/20 hover:border-red-500/50 hover:text-red-300 transition-all"
+                      title="Click to remove"
+                    >
+                      {tag}
+                      <X size={12} />
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Tag Suggestions */}
               {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (

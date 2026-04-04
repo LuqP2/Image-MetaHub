@@ -781,6 +781,7 @@ export interface TagInfo {
 }
 
 export type InclusionFilterMode = 'neutral' | 'include' | 'exclude';
+export type TagMatchMode = 'any' | 'all';
 
 export interface Directory {
   id: string; // A unique identifier for the directory (e.g., a UUID or a hash of the path)
@@ -821,7 +822,7 @@ declare global {
 
 // Image Comparison Types
 export interface ComparisonState {
-  images: [IndexedImage | null, IndexedImage | null];
+  images: IndexedImage[];
   isModalOpen: boolean;
 }
 
@@ -832,14 +833,16 @@ export interface ZoomState {
 }
 
 export type ComparisonViewMode = 'side-by-side' | 'slider' | 'hover';
+export type ComparisonLayoutMode = 'strip' | 'grid';
 
 export interface ComparisonPaneProps {
   image: IndexedImage;
   directoryPath: string;
-  position: 'left' | 'right';
   syncEnabled: boolean;
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
+  className?: string;
+  imageLabel?: string;
 }
 
 export interface ComparisonModalProps {
@@ -853,6 +856,8 @@ export interface ComparisonMetadataPanelProps {
   onToggleExpanded: () => void;
   viewMode?: 'standard' | 'diff';
   otherImageMetadata?: BaseMetadata | null;
+  className?: string;
+  compareLabel?: string;
 }
 
 // ===== Smart Clustering & Auto-Tagging Types =====

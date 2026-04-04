@@ -108,7 +108,7 @@ In Electron, this store persists through the settings IPC bridge rather than pla
 Owns the offline license and trial state:
 
 * free / trial / expired / pro / lifetime status
-* 7-day trial activation
+* 3-day trial activation
 * offline license key validation
 
 **`store/useGenerationQueueStore.ts`**

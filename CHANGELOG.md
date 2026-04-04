@@ -19,11 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
 - **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
 - **Manual Metadata Recovery**: Added `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
+- **Expanded Compare View**: Added support for comparing up to 4 images at once, with new `Side Strip` and `2x2 Grid` layouts for 3-4 image sets, plus improved Compare integration with the windowed viewer workflow.
 
 ### Improved
 
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
+- **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
+- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
 - **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
 - **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
 - **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.

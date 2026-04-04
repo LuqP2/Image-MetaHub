@@ -3,7 +3,7 @@ import {
   Copy,
   Folder,
   Download,
-  Star,
+  Heart,
   GitCompare,
   Sparkles,
   Trash2,
@@ -28,7 +28,7 @@ interface GridToolbarProps {
   onDeleteSelected: () => void;
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
-  onCompare: (images: [IndexedImage, IndexedImage]) => void;
+  onCompare: (images: IndexedImage[]) => void;
   onBatchExport: () => void;
 }
 
@@ -157,8 +157,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       showProModal('comparison');
       return;
     }
-    if (selectedImagesList.length === 2) {
-      onCompare([selectedImagesList[0], selectedImagesList[1]]);
+    if (selectedImagesList.length >= 2 && selectedImagesList.length <= 4) {
+      onCompare(selectedImagesList.slice(0, 4));
     }
   };
 
@@ -294,12 +294,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   onClick={handleToggleFavorites}
                   className={`p-1.5 rounded transition-colors ${
                     allFavorites
-                      ? 'text-yellow-400 hover:text-yellow-300 hover:bg-gray-700'
-                      : 'text-gray-400 hover:text-yellow-400 hover:bg-gray-700'
+                      ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
                   }`}
                   title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
                 >
-                  <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
+                  <Heart className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
                 </button>
 
                 <button
@@ -327,16 +327,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 {/* Divider */}
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
-                {/* Compare (only with exactly 2 images) */}
+                {/* Compare */}
                 <button
                   onClick={handleCompare}
                   className={`p-1.5 rounded transition-colors ${
-                    selectedCount === 2
+                    selectedCount >= 2 && selectedCount <= 4
                       ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
                       : 'text-gray-600 cursor-not-allowed'
                   }`}
-                  title={selectedCount === 2 ? 'Compare Images' : 'Select exactly 2 images to compare'}
-                  disabled={selectedCount !== 2}
+                  title={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
+                  disabled={selectedCount < 2 || selectedCount > 4}
                 >
                   <GitCompare className="w-4 h-4" />
                 </button>

@@ -239,7 +239,7 @@ export default function DirectoryList({
           <div
             className={`flex items-center cursor-pointer rounded px-2 py-1 transition-colors group ${
               isSelected
-                ? 'bg-gray-800 hover:bg-gray-700/70'
+                ? 'bg-blue-500/15 ring-1 ring-blue-500/30 hover:bg-blue-500/20'
                 : 'hover:bg-gray-700/50'
             }`}
             onClick={(e) => handleFolderClick(child.path, e)}
@@ -262,8 +262,8 @@ export default function DirectoryList({
               <div className="w-4 mr-1 flex-shrink-0" /> // Spacer
             )}
             
-            <Folder className={`w-3 h-3 mr-2 ${isExcluded ? 'text-gray-600' : 'text-gray-400'}`} />
-            <span className={`text-sm truncate flex-1 ${isExcluded ? 'text-gray-500 line-through' : 'text-gray-300'}`}>{child.name}</span>
+            <Folder className={`w-3 h-3 mr-2 ${isExcluded ? 'text-gray-600' : isSelected ? 'text-blue-300' : 'text-gray-400'}`} />
+            <span className={`text-sm truncate flex-1 ${isExcluded ? 'text-gray-500 line-through' : isSelected ? 'text-blue-100' : 'text-gray-300'}`}>{child.name}</span>
             
             {/* Action Buttons (Visible on Hover) */}
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
@@ -614,17 +614,17 @@ export default function DirectoryList({
                   <div
                     className={`relative overflow-hidden flex items-center justify-between p-2 rounded-md transition-colors ${
                       isRootSelected
-                        ? 'bg-gray-800 hover:bg-gray-700/70'
+                        ? 'bg-blue-500/15 ring-1 ring-blue-500/30 hover:bg-blue-500/20'
                         : 'bg-gray-800 hover:bg-gray-700/50'
                     }`}
                   >
                     {progressEntry && (
                       <div className="absolute inset-0 pointer-events-none">
                         {isScanning ? (
-                          <div className="absolute inset-0 bg-gray-200/5 animate-pulse" />
+                          <div className="absolute inset-0 bg-blue-400/8 animate-pulse" />
                         ) : (
                           <div
-                            className="absolute inset-y-0 left-0 bg-gray-200/10 transition-[width] duration-300 ease-out"
+                            className="absolute inset-y-0 left-0 bg-blue-400/12 transition-[width] duration-300 ease-out"
                             style={{ width: `${progressPercent}%` }}
                           />
                         )}
@@ -646,12 +646,12 @@ export default function DirectoryList({
                         <div className="w-4 h-4 ml-1 flex-shrink-0" /> // Spacer
                       )}
                       
-                      <FolderOpen className="w-4 h-4 text-gray-400 flex-shrink-0 ml-1" />
+                      <FolderOpen className={`w-4 h-4 flex-shrink-0 ml-1 ${isRootSelected ? 'text-blue-300' : 'text-gray-400'}`} />
                       <button
                         onClick={(e) => handleFolderClick(dir.path, e)}
                         onContextMenu={(e) => handleContextMenu(e, dir.path)}
                         className={`ml-2 text-sm truncate text-left transition-colors flex-1 ${
-                          isRootSelected ? 'text-white' : 'text-gray-300 hover:text-gray-100'
+                          isRootSelected ? 'text-blue-100' : 'text-gray-300 hover:text-gray-100'
                         }`}
                         title={`Select folder: ${dir.path}`}
                       >

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Star } from 'lucide-react';
 import type { ImageRating } from '../types';
 
 interface RatingStarsProps {
@@ -47,17 +48,43 @@ export const getRatingChipClasses = (value: ImageRating, active: boolean) => {
 export const getRatingBadgeClasses = (value: ImageRating) =>
   `border ${RATING_TONES[value].active}`;
 
+export const getRatingLabel = (value: ImageRating) => `${value} star${value === 1 ? '' : 's'}`;
+
+interface RatingValueIconsProps {
+  value: ImageRating;
+  size?: number;
+  className?: string;
+  starClassName?: string;
+}
+
+export const RatingValueIcons: React.FC<RatingValueIconsProps> = ({
+  value,
+  size = 12,
+  className = '',
+  starClassName = 'fill-current',
+}) => (
+  <span className={`inline-flex items-center gap-0.5 ${className}`.trim()} aria-label={getRatingLabel(value)}>
+    {Array.from({ length: value }, (_, index) => (
+      <Star
+        key={`${value}-${index}`}
+        size={size}
+        className={starClassName}
+        strokeWidth={1.9}
+      />
+    ))}
+  </span>
+);
+
 const RatingStars: React.FC<RatingStarsProps> = ({
   rating = null,
   onChange,
-  size = 16,
+  size = 18,
   className = '',
   disabled = false,
 }) => {
   const [hoverRating, setHoverRating] = useState<ImageRating | null>(null);
   const previewRating = useMemo(() => hoverRating ?? rating ?? null, [hoverRating, rating]);
   const isInteractive = !disabled && typeof onChange === 'function';
-  const compact = size <= 16;
 
   return (
     <div
@@ -66,7 +93,7 @@ const RatingStars: React.FC<RatingStarsProps> = ({
       aria-label={rating ? `Rating ${rating} of 5` : 'Unrated'}
     >
       {RATING_VALUES.map((value) => {
-        const active = value === previewRating;
+        const active = previewRating !== null && value <= previewRating;
         return (
           <button
             key={value}
@@ -83,13 +110,17 @@ const RatingStars: React.FC<RatingStarsProps> = ({
               }
               onChange(value === rating ? null : value);
             }}
-            className={`inline-flex items-center justify-center rounded-md border text-center font-semibold tabular-nums leading-none transition-all ${
-              compact ? 'h-6 w-6 text-[11px]' : 'h-7 w-7 text-xs'
-            } ${getRatingChipClasses(value, active)} ${!isInteractive ? 'cursor-default opacity-90' : ''}`.trim()}
+            className={`inline-flex items-center justify-center rounded-md transition-all ${
+              size <= 16 ? 'h-6 w-6' : 'h-7 w-7'
+            } ${
+              active
+                ? 'text-amber-400'
+                : 'text-gray-500 hover:bg-gray-800/60 hover:text-amber-300'
+            } ${!isInteractive ? 'cursor-default opacity-90' : ''}`.trim()}
             title={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
             aria-label={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
           >
-            {value}
+            <Star size={size} className={active ? 'fill-current' : ''} strokeWidth={1.9} />
           </button>
         );
       })}

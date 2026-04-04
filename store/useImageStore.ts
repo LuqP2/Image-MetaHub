@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -351,7 +351,7 @@ interface ImageState {
   isFullscreenMode: boolean;
 
   // Comparison State
-  comparisonImages: [IndexedImage | null, IndexedImage | null];
+  comparisonImages: IndexedImage[];
   isComparisonModalOpen: boolean;
 
   // Filter & Sort State
@@ -386,6 +386,7 @@ interface ImageState {
   recentTags: string[];
   selectedTags: string[];
   excludedTags: string[];
+  selectedTagsMatchMode: TagMatchMode;
   selectedAutoTags: string[]; // Filter by auto-tags
   excludedAutoTags: string[];
   favoriteFilterMode: InclusionFilterMode;
@@ -498,9 +499,9 @@ interface ImageState {
   setAutoTaggingProgress: (progress: { current: number; total: number; message: string } | null) => void;
 
   // Comparison Actions
-  setComparisonImages: (images: [IndexedImage | null, IndexedImage | null]) => void;
+  setComparisonImages: (images: IndexedImage[]) => void;
   addImageToComparison: (image: IndexedImage) => void;
-  removeImageFromComparison: (index: 0 | 1) => void;
+  removeImageFromComparison: (index: number) => void;
   swapComparisonImages: () => void;
   clearComparison: () => void;
   openComparisonModal: () => void;
@@ -521,6 +522,7 @@ interface ImageState {
   purgeTag: (tag: string) => Promise<void>;
   setSelectedTags: (tags: string[]) => void;
   setExcludedTags: (tags: string[]) => void;
+  setSelectedTagsMatchMode: (mode: TagMatchMode) => void;
   setSelectedAutoTags: (tags: string[]) => void;
   setExcludedAutoTags: (tags: string[]) => void;
   setFavoriteFilterMode: (mode: InclusionFilterMode) => void;
@@ -1251,7 +1253,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         if (state.selectedTags && state.selectedTags.length > 0) {
             results = results.filter(img => {
                 if (!img.tags || img.tags.length === 0) return false;
-                // Match ANY selected tag (OR logic)
+                if (state.selectedTagsMatchMode === 'all') {
+                    return state.selectedTags.every(tag => img.tags!.includes(tag));
+                }
                 return state.selectedTags.some(tag => img.tags!.includes(tag));
             });
         }
@@ -1666,7 +1670,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         scanSubfolders: localStorage.getItem('image-metahub-scan-subfolders') !== 'false', // Default to true
         viewingStackPrompt: null,
         isFullscreenMode: false,
-        comparisonImages: [null, null],
+        comparisonImages: [],
         isComparisonModalOpen: false,
 
         // Annotations initial values
@@ -1676,6 +1680,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         recentTags: loadRecentTags(),
         selectedTags: [],
         excludedTags: [],
+        selectedTagsMatchMode: 'any',
         selectedAutoTags: [],
         excludedAutoTags: [],
         favoriteFilterMode: 'neutral',
@@ -2679,33 +2684,42 @@ export const useImageStore = create<ImageState>((set, get) => {
         setAutoTaggingProgress: (progress) => set({ autoTaggingProgress: progress }),
 
         // Comparison Actions
-        setComparisonImages: (images) => set({ comparisonImages: images }),
+        setComparisonImages: (images) => set({
+            comparisonImages: images
+                .filter((image): image is IndexedImage => Boolean(image))
+                .filter((image, index, arr) => arr.findIndex((candidate) => candidate.id === image.id) === index)
+                .slice(0, 4)
+        }),
 
         addImageToComparison: (image) => set(state => {
-            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
-
-            // Find first empty slot
-            const emptyIndex = newImages.findIndex(img => img === null);
-            if (emptyIndex !== -1) {
-                newImages[emptyIndex] = image;
+            if (state.comparisonImages.some(existing => existing.id === image.id) || state.comparisonImages.length >= 4) {
+                return state;
             }
 
-            return { comparisonImages: newImages };
+            return { comparisonImages: [...state.comparisonImages, image] };
         }),
 
         removeImageFromComparison: (index) => set(state => {
-            const newImages: [IndexedImage | null, IndexedImage | null] = [...state.comparisonImages];
-            newImages[index] = null;
-            return { comparisonImages: newImages };
+            if (index < 0 || index >= state.comparisonImages.length) {
+                return state;
+            }
+
+            return {
+                comparisonImages: state.comparisonImages.filter((_, imageIndex) => imageIndex !== index)
+            };
         }),
 
         swapComparisonImages: () => set(state => {
-            const [left, right] = state.comparisonImages;
-            return { comparisonImages: [right, left] };
+            if (state.comparisonImages.length < 2) {
+                return state;
+            }
+
+            const [first, second, ...rest] = state.comparisonImages;
+            return { comparisonImages: [second, first, ...rest] };
         }),
 
         clearComparison: () => set({
-            comparisonImages: [null, null],
+            comparisonImages: [],
             isComparisonModalOpen: false
         }),
 
@@ -3305,6 +3319,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             return { ...newState, ...filterAndSort(newState) };
         }),
 
+        setSelectedTagsMatchMode: (mode) => set(state => {
+            const newState = { ...state, selectedTagsMatchMode: mode };
+            return { ...newState, ...filterAndSort(newState) };
+        }),
+
         setFavoriteFilterMode: (mode) => set(state => {
             const newState = { ...state, favoriteFilterMode: mode };
             return { ...newState, ...filterAndSort(newState) };
@@ -3553,7 +3572,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             viewingStackPrompt: null,
             sortOrder: 'desc',
             isFullscreenMode: false,
-            comparisonImages: [null, null],
+            comparisonImages: [],
             isComparisonModalOpen: false,
             annotations: new Map(),
             availableTags: [],
@@ -3561,6 +3580,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             recentTags: loadRecentTags(),
             selectedTags: [],
             excludedTags: [],
+            selectedTagsMatchMode: 'any',
             selectedAutoTags: [],
             excludedAutoTags: [],
             favoriteFilterMode: 'neutral',

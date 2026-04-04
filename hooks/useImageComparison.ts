@@ -3,6 +3,8 @@ import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from './useFeatureAccess';
 import { IndexedImage } from '../types';
 
+export const comparisonWillAutoOpen = (comparisonCount: number) => comparisonCount + 1 >= 2;
+
 export const useImageComparison = () => {
   const {
     comparisonImages,
@@ -18,11 +20,11 @@ export const useImageComparison = () => {
   const { canUseComparison, showProModal } = useFeatureAccess();
 
   const canCompare = useMemo(() => {
-    return comparisonImages[0] !== null && comparisonImages[1] !== null;
+    return comparisonImages.length >= 2;
   }, [comparisonImages]);
 
   const comparisonCount = useMemo(() => {
-    return comparisonImages.filter(img => img !== null).length;
+    return comparisonImages.length;
   }, [comparisonImages]);
 
   const handleAddImage = useCallback((image: IndexedImage) => {
@@ -32,21 +34,21 @@ export const useImageComparison = () => {
       return false;
     }
 
-    if (comparisonCount >= 2) {
-      alert('Maximum 2 images can be compared. Remove one first.');
+    if (comparisonCount >= 4) {
+      alert('Maximum 4 images can be compared. Remove one first.');
       return false;
     }
 
     // Check if image already in comparison
-    if (comparisonImages.some(img => img?.id === image.id)) {
+    if (comparisonImages.some(img => img.id === image.id)) {
       alert('This image is already in comparison');
       return false;
     }
 
     addImageToComparison(image);
 
-    // If we now have 2 images, open modal
-    if (comparisonCount === 1) {
+    // Open comparison as soon as we have at least two images queued
+    if (comparisonWillAutoOpen(comparisonCount)) {
       openComparisonModal();
     }
 
@@ -54,12 +56,12 @@ export const useImageComparison = () => {
   }, [comparisonImages, comparisonCount, addImageToComparison, openComparisonModal, canUseComparison, showProModal]);
 
   const handleStartComparison = useCallback((images: IndexedImage[]) => {
-    if (images.length !== 2) {
-      alert('Please select exactly 2 images to compare');
+    if (images.length < 2 || images.length > 4) {
+      alert('Please select between 2 and 4 images to compare');
       return false;
     }
 
-    setComparisonImages([images[0], images[1]]);
+    setComparisonImages(images);
     openComparisonModal();
     return true;
   }, [setComparisonImages, openComparisonModal]);

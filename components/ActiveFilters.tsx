@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, CheckCircle, Settings, X } from 'lucide-react';
+import { Calendar, CheckCircle, Heart, Settings, X } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters, NumericRangeFilter } from '../types';
+import { RatingValueIcons } from './RatingStars';
 
 const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = '') => {
   if (!range) {
@@ -33,6 +34,7 @@ const ActiveFilters: React.FC = () => {
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
+  const selectedTagsMatchMode = useImageStore((state) => state.selectedTagsMatchMode);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const searchQuery = useImageStore((state) => state.searchQuery);
@@ -105,6 +107,7 @@ const ActiveFilters: React.FC = () => {
 
         {favoriteFilterMode === 'include' && (
           <div className={`${chipClass} border-yellow-700/50 bg-yellow-950/50 text-yellow-200`}>
+            <Heart size={12} className="fill-current" />
             <span>Favorites only</span>
             <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-yellow-900/70">
               <X size={12} />
@@ -114,6 +117,7 @@ const ActiveFilters: React.FC = () => {
 
         {favoriteFilterMode === 'exclude' && (
           <div className={`${chipClass} border-rose-700/50 bg-rose-950/50 text-rose-200`}>
+            <Heart size={12} />
             <span>Exclude favorites</span>
             <button onClick={() => setFavoriteFilterMode('neutral')} className="rounded p-0.5 hover:bg-rose-900/70">
               <X size={12} />
@@ -123,7 +127,7 @@ const ActiveFilters: React.FC = () => {
 
         {selectedRatings.map((rating) => (
           <div key={`rating-${rating}`} className={`${chipClass} border-amber-700/50 bg-amber-950/50 text-amber-200`}>
-            <span>Rating {rating}</span>
+            <RatingValueIcons value={rating} size={11} starClassName="fill-current" />
             <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-amber-900/70">
               <X size={12} />
             </button>
@@ -273,7 +277,7 @@ const ActiveFilters: React.FC = () => {
         ))}
 
         {selectedTags.map((value) => (
-          <FacetChip key={`tag-${value}`} label="Tag" value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
+          <FacetChip key={`tag-${value}`} label={selectedTagsMatchMode === 'all' ? 'Tag (all)' : 'Tag'} value={value} tone="gray" onRemove={() => setSelectedTags(selectedTags.filter((item) => item !== value))} />
         ))}
         {excludedTags.map((value) => (
           <FacetChip key={`tag-ex-${value}`} label="Exclude tag" value={value} tone="rose" onRemove={() => setExcludedTags(excludedTags.filter((item) => item !== value))} />
