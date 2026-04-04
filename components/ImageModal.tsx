@@ -625,7 +625,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
   const showSidebarOnRight = showSidebar && detailsPlacement === 'right';
-  const imageFullPath = `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`;
+  const imageFullPath = directoryPath
+    ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
+    : image.name;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
@@ -657,7 +659,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     if (window.electronAPI?.toggleFullscreen) {
       const result = await window.electronAPI.toggleFullscreen();
       if (result.success) {
-        setIsFullscreen(result.isFullscreen);
+        setIsFullscreen(result.isFullscreen ?? false);
       }
     }
   }, []);
@@ -693,12 +695,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
     const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
-      setIsFullscreen(data.isFullscreen);
+      setIsFullscreen(data.isFullscreen ?? false);
     });
 
     // Listen for fullscreen-state-check events (periodic check for state changes)
     const unsubscribeFullscreenStateCheck = window.electronAPI?.onFullscreenStateCheck?.((data) => {
-      setIsFullscreen(data.isFullscreen);
+      setIsFullscreen(data.isFullscreen ?? false);
     });
 
     return () => {
@@ -720,7 +722,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         if (window.electronAPI?.toggleFullscreen) {
           window.electronAPI.toggleFullscreen().then((result) => {
             if (result?.success) {
-              setIsFullscreen(result.isFullscreen);
+              setIsFullscreen(result.isFullscreen ?? false);
             }
           });
         }
@@ -1189,7 +1191,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     } catch (error) {
       console.error('Export error:', error);
-      alert(`An unexpected error occurred during export: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`An unexpected error occurred during export: ${errorMessage}`);
     }
   };
 
