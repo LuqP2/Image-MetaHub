@@ -54,7 +54,7 @@ const ClusterUpgradeBanner: React.FC<ClusterUpgradeBannerProps> = ({
 
           {canStartTrial && (
             <p className="text-xs text-gray-400 mt-2">
-              💡 Start your 7-day trial to test unlimited clustering
+              💡 Start your 3-day trial to test unlimited clustering
             </p>
           )}
         </div>

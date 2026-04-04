@@ -28,7 +28,7 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 
 ## Free vs Pro
 
-The repository is MPL 2.0 and the core app remains open-source. Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 7-day trial.
+The repository is MPL 2.0 and the core app remains open-source. Some workflow-heavy features are unlocked through the desktop app's offline Pro license or 3-day trial.
 
 **Core app includes:**
 
