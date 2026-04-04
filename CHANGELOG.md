@@ -9,17 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Workflow-Native ComfyUI Generation**: Added an `Original workflow` mode that reuses and patches embedded executable ComfyUI prompt graphs when available, alongside the existing `Simple rebuild` fallback for metadata-only images.
 - **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside the ComfyUI generation modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
 - **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library, and Model View, with searchable exact node-type catalogs, per-node result counts, and multi-select OR filtering for images that contain embedded ComfyUI workflows.
 - **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
+- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
 - **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
 - **Image Ratings**: Added persistent 1-5 ratings for images, including star controls in the viewer, badges in the library views, bulk rating actions, and multi-select rating filters in the sidebar and advanced filters.
 - **Startup Verification Modes**: Added configurable startup verification modes for saved folders, so the app can now open from cache only, reconcile in the background, or verify folders strictly before startup completes.
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
 - **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
-- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
-- **Manual Metadata Recovery**: Added always-available `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
+- **Manual Metadata Recovery**: Added `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
 
 ### Improved
 
