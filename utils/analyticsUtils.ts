@@ -1,4 +1,5 @@
 import { IndexedImage } from '../types';
+import { formatLocalDateKey } from './dateFilterUtils';
 
 export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
 
@@ -953,8 +954,7 @@ const buildTimelinePoints = (images: IndexedImage[]): AnalyticsTimelinePoint[] =
   const counts = new Map<string, number>();
 
   images.forEach((image) => {
-    const date = new Date(image.lastModified);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const key = formatLocalDateKey(image.lastModified);
     counts.set(key, (counts.get(key) || 0) + 1);
   });
 

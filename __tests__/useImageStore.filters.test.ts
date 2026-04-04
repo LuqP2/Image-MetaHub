@@ -93,6 +93,11 @@ const imageH = createImage({
   metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { generation_time_ms: 5000, steps_per_second: 20, vram_peak_mb: 4096 } } } as any,
 });
 
+const imageI = createImage({
+  name: 'i.png',
+  lastModified: new Date(2026, 3, 3, 22, 0, 0, 0).getTime(),
+});
+
 const seedStore = () => {
   useSettingsStore.setState({
     enableSafeMode: false,
@@ -103,8 +108,8 @@ const seedStore = () => {
   useImageStore.getState().resetState();
   useImageStore.setState({
     directories: [directory],
-    images: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH],
-    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH],
+    images: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH, imageI],
+    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH, imageI],
     sortOrder: 'asc',
   });
   useImageStore.getState().filterAndSortImages();
@@ -120,7 +125,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
 
     useImageStore.getState().setFavoriteFilterMode('exclude');
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('supports include and exclude for tags and auto-tags', () => {
@@ -171,7 +176,7 @@ describe('useImageStore tri-state filters', () => {
       excludedSamplers: ['dpmpp_2m'],
     });
 
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('sanitizes malformed facet values during silent append', () => {
@@ -315,7 +320,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
     useImageStore.getState().setSelectedRatings([]);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png', 'i.png']);
   });
 
   it('sets and bulk updates ratings without affecting favorites or tags', async () => {
@@ -369,7 +374,7 @@ describe('useImageStore tri-state filters', () => {
     useImageStore.getState().setAdvancedFilters({
       telemetryState: 'missing',
     });
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'i.png']);
   });
 
   it('honors exclusive upper bounds for analytics bucket filters', () => {
@@ -387,5 +392,13 @@ describe('useImageStore tri-state filters', () => {
       vramPeakMb: { min: 3072, max: 4096, maxExclusive: true },
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['f.png']);
+  });
+
+  it('treats plain date filters as local calendar days', () => {
+    useImageStore.getState().setAdvancedFilters({
+      date: { from: '2026-04-03', to: '2026-04-03' },
+    });
+
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toContain('i.png');
   });
 });

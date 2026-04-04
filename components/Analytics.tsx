@@ -14,6 +14,7 @@ import {
   type AnalyticsNumericBucket,
   type AnalyticsScopeMode,
 } from '../utils/analyticsUtils';
+import { formatLocalDateKey } from '../utils/dateFilterUtils';
 
 interface AnalyticsProps {
   isOpen: boolean;
@@ -268,7 +269,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
     setAdvancedFilters(next);
   };
   const clickDay = (day: string) => setAdvancedFilters({ ...filterState.advancedFilters, date: { from: day, to: day } });
-  const clickSession = (session: AnalyticsExplorerData['time']['sessions'][number]) => setAdvancedFilters({ ...filterState.advancedFilters, date: { from: new Date(session.start).toISOString().slice(0, 10), to: new Date(session.end).toISOString().slice(0, 10) } });
+  const clickSession = (session: AnalyticsExplorerData['time']['sessions'][number]) => setAdvancedFilters({ ...filterState.advancedFilters, date: { from: formatLocalDateKey(session.start), to: formatLocalDateKey(session.end) } });
   const promoteCompare = (key: string) => {
     switch (compareDimension) {
       case 'generator': setSelectedFilters({ generators: [key], excludedGenerators: [] }); break;

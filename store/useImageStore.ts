@@ -11,6 +11,7 @@ import {
   deleteManualTag,
 } from '../services/imageAnnotationsStorage';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
+import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
 import { useLicenseStore } from './useLicenseStore';
@@ -1431,15 +1432,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                     
                     // Check "from" date if provided
                     if (advancedFilters.date!.from) {
-                        const fromTime = new Date(advancedFilters.date!.from).getTime();
+                        const fromTime = parseLocalDateFilterStart(advancedFilters.date!.from);
                         if (imageTime < fromTime) return false;
                     }
                     
                     // Check "to" date if provided
                     if (advancedFilters.date!.to) {
-                        const toDate = new Date(advancedFilters.date!.to);
-                        toDate.setDate(toDate.getDate() + 1); // Include full end date
-                        const toTime = toDate.getTime();
+                        const toTime = parseLocalDateFilterEndExclusive(advancedFilters.date!.to);
                         if (imageTime >= toTime) return false;
                     }
                     
