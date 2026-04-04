@@ -3,6 +3,8 @@ import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from './useFeatureAccess';
 import { IndexedImage } from '../types';
 
+export const comparisonWillAutoOpen = (comparisonCount: number) => comparisonCount + 1 >= 2;
+
 export const useImageComparison = () => {
   const {
     comparisonImages,
@@ -46,7 +48,7 @@ export const useImageComparison = () => {
     addImageToComparison(image);
 
     // Open comparison as soon as we have at least two images queued
-    if (comparisonCount + 1 >= 2) {
+    if (comparisonWillAutoOpen(comparisonCount)) {
       openComparisonModal();
     }
 

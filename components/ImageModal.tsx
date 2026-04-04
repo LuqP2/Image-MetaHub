@@ -7,7 +7,7 @@ import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
-import { useImageComparison } from '../hooks/useImageComparison';
+import { comparisonWillAutoOpen, useImageComparison } from '../hooks/useImageComparison';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -2261,7 +2261,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   return;
                 }
                 const added = addImage(image);
-                if (added && comparisonCount === 1) {
+                if (added && comparisonWillAutoOpen(comparisonCount)) {
                   onClose(); // Close ImageModal, ComparisonModal will auto-open
                 }
               }}
