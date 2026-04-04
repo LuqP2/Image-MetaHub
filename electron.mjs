@@ -11,10 +11,15 @@ import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
+import {
+  buildLauncherScriptContent,
+  normalizeLauncherCommand,
+  resolveLauncherWorkingDirectory,
+} from './utils/generatorLauncher.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -352,6 +357,72 @@ function logRendererCrash(details = {}) {
   }
 }
 // --- End Settings Management ---
+
+const launcherScriptsPath = path.join(app.getPath('userData'), 'launchers');
+async function writeLauncherScript(command) {
+  const normalizedCommand = normalizeLauncherCommand(command);
+  if (!normalizedCommand) {
+    throw new Error('No launch command configured. Add one in Settings > Integrations.');
+  }
+
+  await fs.mkdir(launcherScriptsPath, { recursive: true });
+  const extension = process.platform === 'win32' ? '.cmd' : '.sh';
+  const scriptPath = path.join(launcherScriptsPath, `generator-launcher${extension}`);
+  const scriptContent = buildLauncherScriptContent(normalizedCommand, process.platform);
+
+  await fs.writeFile(scriptPath, scriptContent, 'utf8');
+
+  if (process.platform !== 'win32') {
+    await fs.chmod(scriptPath, 0o755);
+  }
+
+  return scriptPath;
+}
+
+async function resolveExistingLauncherWorkingDirectory(command, workingDirectory) {
+  const resolvedWorkingDirectory = resolveLauncherWorkingDirectory({
+    command,
+    workingDirectory,
+    platform: process.platform,
+  });
+
+  if (!resolvedWorkingDirectory) {
+    return '';
+  }
+
+  const directoryStats = await fs.stat(resolvedWorkingDirectory).catch(() => null);
+  if (!directoryStats?.isDirectory()) {
+    throw new Error(`Launcher working directory was not found: ${resolvedWorkingDirectory}`);
+  }
+
+  return resolvedWorkingDirectory;
+}
+
+async function launchGeneratorCommand({ command, workingDirectory }) {
+  const scriptPath = await writeLauncherScript(command);
+  const launchWorkingDirectory = await resolveExistingLauncherWorkingDirectory(command, workingDirectory);
+  const spawnCwd = launchWorkingDirectory || path.dirname(scriptPath);
+
+  if (process.platform === 'win32') {
+    const child = spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', 'cmd.exe', '/k', scriptPath], {
+      cwd: spawnCwd,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: false,
+    });
+    child.unref();
+    return { scriptPath };
+  }
+
+  const child = spawn(scriptPath, {
+    cwd: spawnCwd,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  return { scriptPath };
+}
 
 // --- Application Menu ---
 function createApplicationMenu() {
@@ -1248,6 +1319,31 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to save settings.' };
+    }
+  });
+
+  ipcMain.handle('launch-generator', async (event, payload) => {
+    try {
+      const command = typeof payload === 'string' ? payload : payload?.command;
+      const workingDirectory = typeof payload === 'string' ? '' : payload?.workingDirectory;
+      const result = await launchGeneratorCommand({ command, workingDirectory });
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to launch generator.' };
+    }
+  });
+
+  ipcMain.handle('open-external-url', async (event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Only http and https URLs are supported.');
+      }
+
+      await shell.openExternal(parsed.toString());
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to open external URL.' };
     }
   });
 
