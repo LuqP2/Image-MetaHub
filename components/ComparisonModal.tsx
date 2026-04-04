@@ -1,10 +1,23 @@
 import React, { useState, useEffect, FC, useMemo } from 'react';
 import { X, Repeat, ArrowLeft } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
-import { ComparisonLayoutMode, ComparisonModalProps, ZoomState, ComparisonViewMode } from '../types';
+import { BaseMetadata, ComparisonLayoutMode, ComparisonModalProps, IndexedImage, ZoomState, ComparisonViewMode } from '../types';
 import ComparisonPane from './ComparisonPane';
 import ComparisonMetadataPanel from './ComparisonMetadataPanel';
 import ComparisonOverlayView from './ComparisonOverlayView';
+
+export const getComparisonMetadataReference = (
+  comparisonImages: IndexedImage[],
+  index: number,
+  metadataReference: BaseMetadata | null,
+): BaseMetadata | null => {
+  if (comparisonImages.length === 2) {
+    const counterpartIndex = index === 0 ? 1 : 0;
+    return comparisonImages[counterpartIndex]?.metadata?.normalizedMetadata ?? null;
+  }
+
+  return index === 0 ? null : metadataReference;
+};
 
 const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   const comparisonImages = useImageStore((state) => state.comparisonImages);
@@ -316,7 +329,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
         <div className={`grid gap-4 max-w-7xl mx-auto ${imageCount > 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
           {comparisonImages.map((image, index) => {
             const isOddLastGridItem = imageCount > 2 && imageCount % 2 === 1 && index === imageCount - 1;
-            const otherImageMetadata = index === 0 ? null : metadataReference;
+            const otherImageMetadata = getComparisonMetadataReference(comparisonImages, index, metadataReference);
 
             return (
               <ComparisonMetadataPanel
