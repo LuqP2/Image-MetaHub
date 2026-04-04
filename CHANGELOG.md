@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
 - **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
 - **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
+- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
+- **Analytics Summary Strip**: Added a dismissible analytics banner above the library that highlights current-scope coverage and a direct entry point into the full Analytics Explorer.
 
 ### Improved
 
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
 - **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
 - **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
+- **Analytics Cohorts & Coverage**: Analytics summaries now account for favorites, ratings, GPU devices, telemetry presence, and bucketed performance ranges more accurately, making curation and performance comparisons more useful on mixed libraries.
 - **Task-Based Settings Navigation**: Reorganized the Settings modal into focused Library, Viewer, Integrations, Appearance, Privacy, and Shortcuts panels with sidebar navigation and compatibility for legacy deep links.
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 - **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
