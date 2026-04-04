@@ -225,6 +225,55 @@ const installFakeIndexedDb = () => {
   });
 };
 
+const installAlwaysFailingIndexedDb = (errorName: string) => {
+  Object.defineProperty(globalThis, 'indexedDB', {
+    value: {
+      open: () => {
+        const request = {
+          result: undefined,
+          error: null as unknown,
+          onsuccess: null as ((event: Event) => void) | null,
+          onerror: null as ((event: Event) => void) | null,
+          onupgradeneeded: null as ((event: IDBVersionChangeEvent) => void) | null,
+          transaction: null as IDBTransaction | null,
+          readyState: 'pending' as IDBRequestReadyState,
+        } as unknown as IDBOpenDBRequest & IDBRequest<IDBDatabase>;
+
+        queueMicrotask(() => {
+          const error = new Error(errorName) as Error & { name: string };
+          error.name = errorName;
+          request.error = error;
+          request.readyState = 'done';
+          request.onerror?.(new Event('error'));
+        });
+
+        return request;
+      },
+      deleteDatabase: () => {
+        const request = {
+          result: undefined,
+          error: null as unknown,
+          onsuccess: null as ((event: Event) => void) | null,
+          onerror: null as ((event: Event) => void) | null,
+          onupgradeneeded: null as ((event: IDBVersionChangeEvent) => void) | null,
+          transaction: null as IDBTransaction | null,
+          readyState: 'pending' as IDBRequestReadyState,
+        } as unknown as IDBOpenDBRequest & IDBRequest<undefined>;
+
+        queueMicrotask(() => {
+          request.result = undefined;
+          request.readyState = 'done';
+          request.onsuccess?.(new Event('success'));
+        });
+
+        return request;
+      },
+    } as unknown as IDBFactory,
+    configurable: true,
+    writable: true,
+  });
+};
+
 describe('shared preferences IndexedDB', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -375,5 +424,70 @@ describe('shared preferences IndexedDB', () => {
 
     const manualTags = await imageStorage.getAllManualTagNames();
     expect(manualTags).toEqual(['seed-me']);
+  });
+
+  it('resets and reopens the shared preferences database on VersionError', async () => {
+    const indexedDb = globalThis.indexedDB as IDBFactory;
+
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDb.open('image-metahub-preferences', 7);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        db.createObjectStore('folderSelection', { keyPath: 'id' });
+        db.createObjectStore('imageAnnotations', { keyPath: 'imageId' });
+        db.createObjectStore('clusterPreferences', { keyPath: 'clusterId' });
+        db.createObjectStore('smartCollections', { keyPath: 'id' });
+        db.createObjectStore('shadowMetadata', { keyPath: 'imageId' });
+        db.createObjectStore('manualTags', { keyPath: 'name' });
+      };
+
+      request.onsuccess = () => {
+        request.result.close();
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const folderStorage = await import('../services/folderSelectionStorage');
+    const imageStorage = await import('../services/imageAnnotationsStorage');
+
+    await folderStorage.saveSelectedFolders(['D:/recovered']);
+    await imageStorage.saveAnnotation({
+      imageId: 'recovered-image',
+      isFavorite: true,
+      tags: ['recovered'],
+      addedAt: 1,
+      updatedAt: 1,
+    });
+
+    await expect(folderStorage.loadSelectedFolders()).resolves.toEqual(['D:/recovered']);
+    const annotations = await imageStorage.loadAllAnnotations();
+    expect(annotations.get('recovered-image')).toMatchObject({
+      isFavorite: true,
+      tags: ['recovered'],
+    });
+
+    expect(consoleErrorSpy.mock.calls.flat().map(String).join(' ')).not.toContain('Disabling persistence');
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('keeps excluded folders in memory when opening the shared preferences DB fails', async () => {
+    installAlwaysFailingIndexedDb('UnknownError');
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const folderStorage = await import('../services/folderSelectionStorage');
+
+    await folderStorage.saveExcludedFolders(['D:/images/excluded']);
+    await expect(folderStorage.loadExcludedFolders()).resolves.toEqual(['D:/images/excluded']);
+
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 });

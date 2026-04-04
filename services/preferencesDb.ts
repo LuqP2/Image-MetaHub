@@ -231,7 +231,11 @@ export async function openPreferencesDatabase({
   } catch (error) {
     const errorName = getIndexedDbErrorName(error);
 
-    if (allowReset && !hasResetAttempted && (errorName === 'UnknownError' || errorName === 'InvalidStateError')) {
+    if (
+      allowReset
+      && !hasResetAttempted
+      && (errorName === 'VersionError' || errorName === 'UnknownError' || errorName === 'InvalidStateError')
+    ) {
       console.warn(`Resetting shared preferences database due to IndexedDB error while handling ${context}:`, error);
       hasResetAttempted = true;
       const resetSuccessful = await deletePreferencesDatabase(context, disablePersistence);

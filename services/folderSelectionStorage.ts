@@ -177,7 +177,7 @@ export async function loadExcludedFolders(): Promise<string[]> {
 
   const db = await openDatabase();
   if (!db) {
-    return [];
+    return [...inMemoryExcludedFolders];
   }
 
   return new Promise((resolve) => {
