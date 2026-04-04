@@ -107,4 +107,47 @@ describe('Analytics Explorer', () => {
       maxExclusive: true,
     });
   });
+
+  it('counts gpu-only telemetry in coverage cards', () => {
+    const images = [
+      createImage({
+        id: 'gpu-only',
+        name: 'gpu-only.png',
+        models: ['Flux'],
+        metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090' } } } as any,
+      }),
+      createImage({
+        id: 'none',
+        name: 'none.png',
+        models: ['SDXL'],
+        metadata: { normalizedMetadata: { generator: 'InvokeAI' } } as any,
+      }),
+    ];
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      selectedGenerators: [],
+      excludedGenerators: [],
+      selectedGpuDevices: [],
+      excludedGpuDevices: [],
+      selectedModels: [],
+      excludedModels: [],
+      selectedLoras: [],
+      excludedLoras: [],
+      selectedSamplers: [],
+      excludedSamplers: [],
+      selectedSchedulers: [],
+      excludedSchedulers: [],
+      selectedRatings: [],
+      advancedFilters: {},
+      favoriteFilterMode: 'neutral',
+    });
+
+    render(<Analytics isOpen onClose={vi.fn()} />);
+
+    expect(screen.getByText('50%')).toBeTruthy();
+    expect(screen.getByText('1 images with performance data')).toBeTruthy();
+  });
 });

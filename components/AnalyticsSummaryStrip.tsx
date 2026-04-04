@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart3, CheckCircle2, Layers, X } from 'lucide-react';
 import type { IndexedImage } from '../types';
+import { hasTelemetryData } from '../utils/analyticsUtils';
 
 interface AnalyticsSummaryStripProps {
   images: IndexedImage[];
@@ -9,21 +10,6 @@ interface AnalyticsSummaryStripProps {
 }
 
 const DISMISS_KEY = 'analytics-summary-strip-dismissed';
-
-const hasTelemetry = (image: IndexedImage) => {
-  const analytics = image.metadata?.normalizedMetadata?.analytics ||
-    (image.metadata?.normalizedMetadata as { _analytics?: Record<string, unknown> } | undefined)?._analytics;
-
-  return Boolean(
-    analytics &&
-    (
-      typeof analytics.generation_time_ms === 'number' ||
-      typeof analytics.steps_per_second === 'number' ||
-      typeof analytics.vram_peak_mb === 'number' ||
-      typeof analytics.gpu_device === 'string'
-    )
-  );
-};
 
 const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
   images,
@@ -39,7 +25,7 @@ const AnalyticsSummaryStrip: React.FC<AnalyticsSummaryStripProps> = ({
     let telemetryCount = 0;
 
     for (const image of images) {
-      if (hasTelemetry(image)) {
+      if (hasTelemetryData(image)) {
         telemetryCount += 1;
       }
 

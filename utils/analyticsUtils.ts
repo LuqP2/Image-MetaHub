@@ -551,7 +551,7 @@ export function calculatePerformanceAverages(images: IndexedImage[]): Performanc
     }
   });
 
-  const imagesWithTelemetry = Math.max(speedCount, vramCount, timeCount);
+  const imagesWithTelemetry = images.filter((image) => hasTelemetryData(image)).length;
 
   return {
     avgStepsPerSecond: speedCount > 0 ? totalSpeed / speedCount : 0,
