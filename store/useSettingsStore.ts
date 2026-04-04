@@ -86,6 +86,7 @@ interface SettingsState {
   comfyUIServerUrl: string;
   comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
   generatorLaunchCommand: string;
+  generatorLaunchWorkingDirectory: string;
 
   // Actions
   setSortOrder: (order: 'asc' | 'desc') => void;
@@ -117,6 +118,7 @@ interface SettingsState {
   setComfyUIServerUrl: (url: string) => void;
   setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   setGeneratorLaunchCommand: (command: string) => void;
+  setGeneratorLaunchWorkingDirectory: (directory: string) => void;
   resetState: () => void;
 }
 
@@ -161,6 +163,7 @@ export const useSettingsStore = create<SettingsState>()(
       comfyUIServerUrl: 'http://127.0.0.1:8188',
       comfyUILastConnectionStatus: 'unknown',
       generatorLaunchCommand: '',
+      generatorLaunchWorkingDirectory: '',
 
       // Actions
       setSortOrder: (order) => set({ sortOrder: order }),
@@ -219,6 +222,7 @@ export const useSettingsStore = create<SettingsState>()(
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
       setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
       setGeneratorLaunchCommand: (command) => set({ generatorLaunchCommand: command }),
+      setGeneratorLaunchWorkingDirectory: (directory) => set({ generatorLaunchWorkingDirectory: directory }),
 
       resetState: () => set({
         sortOrder: 'desc',
@@ -249,6 +253,7 @@ export const useSettingsStore = create<SettingsState>()(
         comfyUIServerUrl: 'http://127.0.0.1:8188',
         comfyUILastConnectionStatus: 'unknown',
         generatorLaunchCommand: '',
+        generatorLaunchWorkingDirectory: '',
       }),
     }),
     {
@@ -315,6 +320,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.generatorLaunchCommand !== 'string') {
           state.generatorLaunchCommand = '';
+        }
+
+        if (state && typeof state.generatorLaunchWorkingDirectory !== 'string') {
+          state.generatorLaunchWorkingDirectory = '';
         }
       },
     }

@@ -71,7 +71,7 @@ export interface ElectronAPI {
   getUserDataPath: () => Promise<string>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
-  launchGenerator: (command: string) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
+  launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;

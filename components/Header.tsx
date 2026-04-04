@@ -39,6 +39,7 @@ const Header: React.FC<HeaderProps> = ({
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
   const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
+  const generatorLaunchWorkingDirectory = useSettingsStore((state) => state.generatorLaunchWorkingDirectory);
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const a1111LastConnectionStatus = useSettingsStore((state) => state.a1111LastConnectionStatus);
   const setA1111ConnectionStatus = useSettingsStore((state) => state.setA1111ConnectionStatus);
@@ -162,7 +163,10 @@ const Header: React.FC<HeaderProps> = ({
       }
     }
 
-    const result = await window.electronAPI.launchGenerator(generatorLaunchCommand);
+    const result = await window.electronAPI.launchGenerator({
+      command: generatorLaunchCommand,
+      workingDirectory: generatorLaunchWorkingDirectory,
+    });
     if (result.success) {
       setSuccess(
         shouldTrackStartup

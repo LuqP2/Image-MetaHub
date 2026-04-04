@@ -49,6 +49,7 @@ describe('Header launch generator', () => {
 
     useSettingsStore.setState({
       generatorLaunchCommand: '@echo off\necho hello',
+      generatorLaunchWorkingDirectory: 'D:\\ComfyUI',
       comfyUIServerUrl: '',
     });
 
@@ -63,7 +64,10 @@ describe('Header launch generator', () => {
     fireEvent.click(screen.getByRole('button', { name: /launch generator/i }));
 
     await waitFor(() => {
-      expect(launchGenerator).toHaveBeenCalledWith('@echo off\necho hello');
+      expect(launchGenerator).toHaveBeenCalledWith({
+        command: '@echo off\necho hello',
+        workingDirectory: 'D:\\ComfyUI',
+      });
     });
   });
 

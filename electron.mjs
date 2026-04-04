@@ -15,6 +15,11 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fileWatcher from './services/fileWatcher.mjs';
 import archiver from 'archiver';
+import {
+  buildLauncherScriptContent,
+  normalizeLauncherCommand,
+  resolveLauncherWorkingDirectory,
+} from './utils/generatorLauncher.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -354,15 +359,6 @@ function logRendererCrash(details = {}) {
 // --- End Settings Management ---
 
 const launcherScriptsPath = path.join(app.getPath('userData'), 'launchers');
-
-function normalizeLauncherCommand(command) {
-  if (typeof command !== 'string') {
-    return '';
-  }
-
-  return command.trim();
-}
-
 async function writeLauncherScript(command) {
   const normalizedCommand = normalizeLauncherCommand(command);
   if (!normalizedCommand) {
@@ -372,9 +368,7 @@ async function writeLauncherScript(command) {
   await fs.mkdir(launcherScriptsPath, { recursive: true });
   const extension = process.platform === 'win32' ? '.cmd' : '.sh';
   const scriptPath = path.join(launcherScriptsPath, `generator-launcher${extension}`);
-  const scriptContent = process.platform === 'win32'
-    ? normalizedCommand.replace(/\r?\n/g, '\r\n')
-    : `#!/bin/sh\n${normalizedCommand}\n`;
+  const scriptContent = buildLauncherScriptContent(normalizedCommand, process.platform);
 
   await fs.writeFile(scriptPath, scriptContent, 'utf8');
 
@@ -385,12 +379,33 @@ async function writeLauncherScript(command) {
   return scriptPath;
 }
 
-async function launchGeneratorCommand(command) {
+async function resolveExistingLauncherWorkingDirectory(command, workingDirectory) {
+  const resolvedWorkingDirectory = resolveLauncherWorkingDirectory({
+    command,
+    workingDirectory,
+    platform: process.platform,
+  });
+
+  if (!resolvedWorkingDirectory) {
+    return '';
+  }
+
+  const directoryStats = await fs.stat(resolvedWorkingDirectory).catch(() => null);
+  if (!directoryStats?.isDirectory()) {
+    throw new Error(`Launcher working directory was not found: ${resolvedWorkingDirectory}`);
+  }
+
+  return resolvedWorkingDirectory;
+}
+
+async function launchGeneratorCommand({ command, workingDirectory }) {
   const scriptPath = await writeLauncherScript(command);
+  const launchWorkingDirectory = await resolveExistingLauncherWorkingDirectory(command, workingDirectory);
+  const spawnCwd = launchWorkingDirectory || path.dirname(scriptPath);
 
   if (process.platform === 'win32') {
     const child = spawn('cmd.exe', ['/d', '/s', '/c', 'start', '""', 'cmd.exe', '/k', scriptPath], {
-      cwd: path.dirname(scriptPath),
+      cwd: spawnCwd,
       detached: true,
       stdio: 'ignore',
       windowsHide: false,
@@ -399,8 +414,8 @@ async function launchGeneratorCommand(command) {
     return { scriptPath };
   }
 
-  const child = spawn('/bin/sh', [scriptPath], {
-    cwd: path.dirname(scriptPath),
+  const child = spawn(scriptPath, {
+    cwd: spawnCwd,
     detached: true,
     stdio: 'ignore',
   });
@@ -1307,9 +1322,11 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('launch-generator', async (event, command) => {
+  ipcMain.handle('launch-generator', async (event, payload) => {
     try {
-      const result = await launchGeneratorCommand(command);
+      const command = typeof payload === 'string' ? payload : payload?.command;
+      const workingDirectory = typeof payload === 'string' ? '' : payload?.workingDirectory;
+      const result = await launchGeneratorCommand({ command, workingDirectory });
       return { success: true, ...result };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to launch generator.' };

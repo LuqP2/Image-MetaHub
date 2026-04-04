@@ -9,6 +9,8 @@ import { SettingSwitch } from './SettingSwitch';
 export const IntegrationsSettingsPanel: React.FC = () => {
   const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
   const setGeneratorLaunchCommand = useSettingsStore((state) => state.setGeneratorLaunchCommand);
+  const generatorLaunchWorkingDirectory = useSettingsStore((state) => state.generatorLaunchWorkingDirectory);
+  const setGeneratorLaunchWorkingDirectory = useSettingsStore((state) => state.setGeneratorLaunchWorkingDirectory);
   const a1111Enabled = useSettingsStore((state) => state.a1111Enabled);
   const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
   const a1111AutoStart = useSettingsStore((state) => state.a1111AutoStart);
@@ -107,6 +109,23 @@ export const IntegrationsSettingsPanel: React.FC = () => {
             />
             <p className="text-sm text-gray-400">
               You can paste a full `.bat` / `.cmd` script or any shell command sequence. `Launch Generator` in the Header will execute it.
+            </p>
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-gray-800 bg-gray-950/60 px-4 py-3">
+            <label className="text-sm font-medium text-gray-100" htmlFor="generator-launch-working-directory">
+              Working directory
+            </label>
+            <input
+              id="generator-launch-working-directory"
+              type="text"
+              value={generatorLaunchWorkingDirectory}
+              onChange={(event) => setGeneratorLaunchWorkingDirectory(event.target.value)}
+              placeholder="Optional: folder where the launcher command should run"
+              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+            <p className="text-sm text-gray-400">
+              Set this when your command uses relative paths such as `python main.py`, `./webui.sh`, or `venv/Scripts/python.exe`.
             </p>
           </div>
         </IntegrationCard>
