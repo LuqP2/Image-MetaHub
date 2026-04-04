@@ -997,24 +997,24 @@ export function useImageLoader() {
                 }
             }
 
-            const regeneratedCachedImages = diff.cachedImages.length > 0
-                ? await getFileHandles(
-                    directory.handle,
-                    directory.path,
-                    diff.cachedImages.map(img => ({
-                        name: img.name,
-                        lastModified: img.lastModified,
-                        size: fileStatsMap.get(img.name)?.size,
-                        type: fileStatsMap.get(img.name)?.type,
-                        contentModifiedMs: fileStatsMap.get(img.name)?.contentModifiedMs,
-                    }))
-                )
-                : [];
-
-            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
-
             let preloadedImages: IndexedImage[] = [];
             const shouldHydratePreloadedImages = !isUpdate || diff.needsFullRefresh;
+            const regeneratedCachedImages =
+                shouldHydratePreloadedImages && diff.cachedImages.length > 0
+                    ? await getFileHandles(
+                        directory.handle,
+                        directory.path,
+                        diff.cachedImages.map(img => ({
+                            name: img.name,
+                            lastModified: img.lastModified,
+                            size: fileStatsMap.get(img.name)?.size,
+                            type: fileStatsMap.get(img.name)?.type,
+                            contentModifiedMs: fileStatsMap.get(img.name)?.contentModifiedMs,
+                        }))
+                    )
+                    : [];
+
+            const handleMap = new Map(regeneratedCachedImages.map(h => [h.path, h.handle]));
 
             if (shouldHydratePreloadedImages) {
                 clearImages(directory.id);

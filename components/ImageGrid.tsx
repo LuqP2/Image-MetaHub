@@ -1732,6 +1732,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                     outerRef={gridRef}
                     className="no-scrollbar-if-needed"
                     itemData={cellData}
+                    itemKey={({ columnIndex, rowIndex, data }) => {
+                      const itemIndex = rowIndex * safeColumnCount + columnIndex;
+                      const item = data.items[itemIndex];
+                      return item ? item.id : `empty-${rowIndex}-${columnIndex}`;
+                    }}
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
                     onItemsRendered={({ visibleColumnStartIndex, visibleColumnStopIndex, visibleRowStartIndex, visibleRowStopIndex, overscanRowStopIndex }) => {
