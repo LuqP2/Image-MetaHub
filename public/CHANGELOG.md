@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
+- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
 - **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, and generation queue can now be resized by dragging their edges, with widths preserved between sessions for a more adaptable workspace.
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
