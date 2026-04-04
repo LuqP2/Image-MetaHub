@@ -3,7 +3,9 @@ import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
+import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
+import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -37,6 +39,9 @@ const Header: React.FC<HeaderProps> = ({
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const setEnableSafeMode = useSettingsStore((state) => state.setEnableSafeMode);
   const generatorLaunchCommand = useSettingsStore((state) => state.generatorLaunchCommand);
+  const a1111ServerUrl = useSettingsStore((state) => state.a1111ServerUrl);
+  const a1111LastConnectionStatus = useSettingsStore((state) => state.a1111LastConnectionStatus);
+  const setA1111ConnectionStatus = useSettingsStore((state) => state.setA1111ConnectionStatus);
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
   const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
@@ -61,9 +66,25 @@ const Header: React.FC<HeaderProps> = ({
   const hasDirectories = directories.length > 0;
   const DEFAULT_SIMILARITY_THRESHOLD = 0.88;
   const hasLaunchCommand = generatorLaunchCommand.trim().length > 0;
-  const hasComfyServerUrl = comfyUIServerUrl.trim().length > 0;
+  const detectedGenerator = useMemo(
+    () => detectGeneratorFromLaunchCommand(generatorLaunchCommand),
+    [generatorLaunchCommand]
+  );
   const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
   const launchPollingDeadlineRef = useRef<number | null>(null);
+  const relevantServerUrl =
+    detectedGenerator.runtimeFamily === 'comfyui'
+      ? comfyUIServerUrl
+      : detectedGenerator.runtimeFamily === 'a1111'
+      ? a1111ServerUrl
+      : '';
+  const hasRelevantServerUrl = relevantServerUrl.trim().length > 0;
+  const relevantConnectionStatus =
+    detectedGenerator.runtimeFamily === 'comfyui'
+      ? comfyUILastConnectionStatus
+      : detectedGenerator.runtimeFamily === 'a1111'
+      ? a1111LastConnectionStatus
+      : 'unknown';
 
   const handleGenerateClusters = () => {
     if (!primaryPath) return;
@@ -75,20 +96,39 @@ const Header: React.FC<HeaderProps> = ({
     startAutoTagging(primaryPath, scanSubfolders);
   };
 
-  const checkComfyUIStatus = useCallback(async () => {
-    if (!hasComfyServerUrl) {
-      setComfyUIConnectionStatus('unknown');
+  const checkGeneratorStatus = useCallback(async () => {
+    if (!hasRelevantServerUrl || detectedGenerator.runtimeFamily === 'none') {
       return false;
     }
 
-    const client = new ComfyUIApiClient({
-      serverUrl: comfyUIServerUrl,
-      timeout: isLaunchingGenerator ? 2500 : 1500,
-    });
-    const result = await client.testConnection();
-    setComfyUIConnectionStatus(result.success ? 'connected' : 'error');
+    const timeout = isLaunchingGenerator ? 2500 : 1500;
+    const result =
+      detectedGenerator.runtimeFamily === 'comfyui'
+        ? await new ComfyUIApiClient({
+            serverUrl: comfyUIServerUrl,
+            timeout,
+          }).testConnection()
+        : await new A1111ApiClient({
+            serverUrl: a1111ServerUrl,
+            timeout,
+          }).testConnection();
+
+    if (detectedGenerator.runtimeFamily === 'comfyui') {
+      setComfyUIConnectionStatus(result.success ? 'connected' : 'error');
+    } else {
+      setA1111ConnectionStatus(result.success ? 'connected' : 'error');
+    }
+
     return result.success;
-  }, [comfyUIServerUrl, hasComfyServerUrl, isLaunchingGenerator, setComfyUIConnectionStatus]);
+  }, [
+    a1111ServerUrl,
+    comfyUIServerUrl,
+    detectedGenerator.runtimeFamily,
+    hasRelevantServerUrl,
+    isLaunchingGenerator,
+    setA1111ConnectionStatus,
+    setComfyUIConnectionStatus,
+  ]);
 
   const handleLaunchGenerator = async () => {
     if (!window.electronAPI?.launchGenerator) {
@@ -96,12 +136,12 @@ const Header: React.FC<HeaderProps> = ({
       return;
     }
 
-    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+    if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
       const openResult = await (window.electronAPI.openExternalUrl
-        ? window.electronAPI.openExternalUrl(comfyUIServerUrl)
-        : Promise.resolve({ success: false, error: 'Cannot open ComfyUI from this environment.' }));
+        ? window.electronAPI.openExternalUrl(relevantServerUrl)
+        : Promise.resolve({ success: false, error: 'Cannot open the generator from this environment.' }));
       if (!openResult.success) {
-        setError(openResult.error || 'Failed to open ComfyUI.');
+        setError(openResult.error || `Failed to open ${detectedGenerator.displayName}.`);
       }
       return;
     }
@@ -111,12 +151,28 @@ const Header: React.FC<HeaderProps> = ({
       return;
     }
 
-    setIsLaunchingGenerator(true);
-    launchPollingDeadlineRef.current = Date.now() + 30000;
-    setComfyUIConnectionStatus('unknown');
+    const shouldTrackStartup = detectedGenerator.runtimeFamily !== 'none' && hasRelevantServerUrl;
+    if (shouldTrackStartup) {
+      setIsLaunchingGenerator(true);
+      launchPollingDeadlineRef.current = Date.now() + 30000;
+      if (detectedGenerator.runtimeFamily === 'comfyui') {
+        setComfyUIConnectionStatus('unknown');
+      } else {
+        setA1111ConnectionStatus('unknown');
+      }
+    }
+
     const result = await window.electronAPI.launchGenerator(generatorLaunchCommand);
     if (result.success) {
-      setSuccess('Generator launch command started. Checking ComfyUI...');
+      setSuccess(
+        shouldTrackStartup
+          ? `${detectedGenerator.displayName} launch command started. Checking status...`
+          : `${detectedGenerator.displayName} launch command started.`
+      );
+      if (!shouldTrackStartup) {
+        setIsLaunchingGenerator(false);
+        launchPollingDeadlineRef.current = null;
+      }
       return;
     }
 
@@ -129,7 +185,7 @@ const Header: React.FC<HeaderProps> = ({
 
     const runStatusCheck = async () => {
       try {
-        const isConnected = await checkComfyUIStatus();
+        const isConnected = await checkGeneratorStatus();
         if (cancelled) {
           return;
         }
@@ -137,7 +193,7 @@ const Header: React.FC<HeaderProps> = ({
         if (isConnected && isLaunchingGenerator) {
           setIsLaunchingGenerator(false);
           launchPollingDeadlineRef.current = null;
-          setSuccess('ComfyUI is running.');
+          setSuccess(`${detectedGenerator.displayName} is running.`);
           return;
         }
 
@@ -169,26 +225,32 @@ const Header: React.FC<HeaderProps> = ({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [checkComfyUIStatus, isLaunchingGenerator, setSuccess]);
+  }, [checkGeneratorStatus, detectedGenerator.displayName, hasRelevantServerUrl, isLaunchingGenerator, setSuccess]);
 
   const generatorButtonLabel = useMemo(() => {
     if (isLaunchingGenerator) {
-      return 'Starting...';
+      return detectedGenerator.id === 'unknown'
+        ? 'Starting...'
+        : `Starting ${detectedGenerator.displayName}...`;
     }
 
-    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
-      return 'Open ComfyUI';
+    if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
+      return detectedGenerator.id === 'unknown'
+        ? 'Open Generator'
+        : `Open ${detectedGenerator.displayName}`;
     }
 
-    return 'Launch Generator';
-  }, [comfyUILastConnectionStatus, hasComfyServerUrl, isLaunchingGenerator]);
+    return detectedGenerator.id === 'unknown'
+      ? 'Launch Generator'
+      : `Launch ${detectedGenerator.displayName}`;
+  }, [detectedGenerator.displayName, detectedGenerator.id, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus]);
 
   const generatorButtonClassName = useMemo(() => {
     if (isLaunchingGenerator) {
       return 'bg-amber-600 border-amber-500/60 shadow-amber-900/20 cursor-wait';
     }
 
-    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
+    if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
       return 'hover:bg-emerald-500 bg-emerald-600 shadow-emerald-900/20 border-emerald-500/50';
     }
 
@@ -197,15 +259,19 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     return 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600';
-  }, [comfyUILastConnectionStatus, hasComfyServerUrl, hasLaunchCommand, isLaunchingGenerator]);
+  }, [hasLaunchCommand, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus]);
 
   const generatorButtonTitle = useMemo(() => {
     if (isLaunchingGenerator) {
-      return 'Waiting for ComfyUI to come online';
+      return detectedGenerator.id === 'unknown'
+        ? 'Waiting for the generator to come online'
+        : `Waiting for ${detectedGenerator.displayName} to come online`;
     }
 
-    if (comfyUILastConnectionStatus === 'connected' && hasComfyServerUrl) {
-      return 'Open ComfyUI in your browser';
+    if (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) {
+      return detectedGenerator.id === 'unknown'
+        ? 'Open the generator in your browser'
+        : `Open ${detectedGenerator.displayName} in your browser`;
     }
 
     if (hasLaunchCommand) {
@@ -213,7 +279,7 @@ const Header: React.FC<HeaderProps> = ({
     }
 
     return 'Add a launch command in Settings > Integrations';
-  }, [comfyUILastConnectionStatus, hasComfyServerUrl, hasLaunchCommand, isLaunchingGenerator]);
+  }, [detectedGenerator.displayName, detectedGenerator.id, hasLaunchCommand, hasRelevantServerUrl, isLaunchingGenerator, relevantConnectionStatus]);
 
   const statusConfig = (() => {
     if (!initialized) {

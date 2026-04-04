@@ -5,6 +5,22 @@ import Header from '../components/Header';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
+vi.mock('../services/comfyUIApiClient', () => ({
+  ComfyUIApiClient: class {
+    async testConnection() {
+      return { success: true };
+    }
+  },
+}));
+
+vi.mock('../services/a1111ApiClient', () => ({
+  A1111ApiClient: class {
+    async testConnection() {
+      return { success: true };
+    }
+  },
+}));
+
 vi.mock('../hooks/useFeatureAccess', () => ({
   useFeatureAccess: () => ({
     canUseAnalytics: true,
@@ -51,7 +67,7 @@ describe('Header launch generator', () => {
     });
   });
 
-  it('opens ComfyUI when the service is already running', async () => {
+  it('opens A1111 when the detected service is already running', async () => {
     const launchGenerator = vi.fn();
     const openExternalUrl = vi.fn().mockResolvedValue({ success: true });
     window.electronAPI = {
@@ -61,9 +77,9 @@ describe('Header launch generator', () => {
     } as any;
 
     useSettingsStore.setState({
-      generatorLaunchCommand: '@echo off\necho hello',
-      comfyUIServerUrl: 'http://127.0.0.1:8188',
-      comfyUILastConnectionStatus: 'connected',
+      generatorLaunchCommand: 'webui-user.bat --api',
+      a1111ServerUrl: 'http://127.0.0.1:7860',
+      a1111LastConnectionStatus: 'connected',
     });
 
     render(
@@ -74,10 +90,10 @@ describe('Header launch generator', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /open comfyui/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open a1111/i }));
 
     await waitFor(() => {
-      expect(openExternalUrl).toHaveBeenCalledWith('http://127.0.0.1:8188');
+      expect(openExternalUrl).toHaveBeenCalledWith('http://127.0.0.1:7860');
     });
 
     expect(launchGenerator).not.toHaveBeenCalled();
