@@ -16,23 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
 - **Image Ratings**: Added persistent 1-5 ratings for images, including star controls in the viewer, badges in the library views, bulk rating actions, and multi-select rating filters in the sidebar and advanced filters.
 - **Startup Verification Modes**: Added configurable startup verification modes for saved folders, so the app can now open from cache only, reconcile in the background, or verify folders strictly before startup completes.
-- **MetaHub Save Node Lineage Metadata**: Extended the companion ComfyUI MetaHub Save Node to persist explicit `generation_type` and `source_image` metadata, creating a stronger base for future multi-step transformation chains.
 - **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
 - **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
-- **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
 - **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
-- **Analytics Summary Strip**: Added a dismissible analytics banner above the library that highlights current-scope coverage and a direct entry point into the full Analytics Explorer.
+- **Manual Metadata Recovery**: Added always-available `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
 
 ### Improved
 
+- **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
 - **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
 - **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
-- **Generation Parameter Filtering**: Generation facets now preserve the full option list while filtering, making it possible to combine multiple checkpoints, LoRAs, samplers, or schedulers without options disappearing mid-selection.
 - **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
 - **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, and generation queue can now be resized by dragging their edges, with widths preserved between sessions for a more adaptable workspace.
-- **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
-- **Manual Metadata Recovery**: Added always-available `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
 - **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
 - **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
 - **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
@@ -40,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Task-Based Settings Navigation**: Reorganized the Settings modal into focused Library, Viewer, Integrations, Appearance, Privacy, and Shortcuts panels with sidebar navigation and compatibility for legacy deep links.
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 - **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
-- **Keyboard Navigation Across Areas**: Folder tree and grid navigation now behave more consistently with keyboard input, including better arrow-key handling, page navigation, and a less fragile dependence on exact DOM focus.
+- **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
 
 ### Fixed
 
