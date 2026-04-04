@@ -125,7 +125,7 @@ describe('TagsAndFavorites manual tag browser', () => {
     });
 
     render(<TagsAndFavorites />);
-    fireEvent.click(screen.getByText('3'));
+    fireEvent.click(screen.getByLabelText('Toggle 3 stars filter'));
 
     expect(setSelectedRatings).toHaveBeenCalledWith([1, 3]);
   });

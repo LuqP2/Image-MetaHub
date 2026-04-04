@@ -6,7 +6,7 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack } from
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Star, Square,
+import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square,
   Archive,
   ChevronRight,
   CheckSquare,
@@ -27,7 +27,7 @@ import { useImageComparison } from '../hooks/useImageComparison';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
 import Toast from './Toast';
-import { RATING_VALUES, getRatingChipClasses } from './RatingStars';
+import { RATING_VALUES, RatingValueIcons, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
@@ -403,14 +403,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 
         <button
           onClick={handleFavoriteClick}
-          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:opacity-100 ${
+          className={`absolute top-2 right-2 z-10 p-1.5 rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-rose-500 focus:opacity-100 ${
             image.isFavorite
-              ? 'bg-yellow-500/80 text-white opacity-100 hover:bg-yellow-600'
-              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-yellow-500'
+              ? 'bg-rose-500/85 text-white opacity-100 hover:bg-rose-600'
+              : 'bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-rose-500'
           }`}
           title={image.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
-          <Star className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
+          <Heart className={`h-4 w-4 ${image.isFavorite ? 'fill-current' : ''}`} />
         </button>
         <button
           onClick={handleCopyClick}
@@ -1320,9 +1320,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                  className={`rounded-md border px-2 py-1 transition-colors ${getRatingChipClasses(value, false)}`}
+                  title={`Set ${getRatingLabel(value)}`}
+                  aria-label={`Set ${getRatingLabel(value)}`}
                 >
-                  {value}
+                  <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                 </button>
               ))}
               <button

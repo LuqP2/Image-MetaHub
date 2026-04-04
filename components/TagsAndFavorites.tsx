@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, Star, Tag, X } from 'lucide-react';
+import { ChevronDown, Heart, Star, Tag, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useImageStore } from '../store/useImageStore';
 import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
-import { getRatingChipClasses } from './RatingStars';
+import { getRatingChipClasses, getRatingLabel, RatingValueIcons } from './RatingStars';
 
 type TagContextMenuState = {
   x: number;
@@ -374,8 +374,15 @@ const TagsAndFavorites: React.FC = () => {
                     <Star className="w-4 h-4 text-amber-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
                     {selectedRatings.length > 0 && (
-                      <span className="rounded border border-amber-700/50 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
-                        {selectedRatings.join(', ')}
+                      <span className="inline-flex items-center gap-1 rounded border border-amber-700/50 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+                        {selectedRatings.map((rating) => (
+                          <RatingValueIcons
+                            key={`selected-rating-${rating}`}
+                            value={rating}
+                            size={10}
+                            starClassName="fill-current"
+                          />
+                        ))}
                       </span>
                     )}
                   </div>
@@ -407,10 +414,11 @@ const TagsAndFavorites: React.FC = () => {
                       key={value}
                       type="button"
                       onClick={() => toggleSelectedRating(value)}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, selectedRatings.includes(value))}`}
-                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${value}`}
+                      className={`inline-flex h-7 items-center justify-center rounded-md border px-1.5 transition-colors ${getRatingChipClasses(value, selectedRatings.includes(value))}`}
+                      title={`${quickRatingCounts.get(value) ?? 0} images rated ${getRatingLabel(value)}`}
+                      aria-label={`Toggle ${getRatingLabel(value)} filter`}
                     >
-                      {value}
+                      <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                     </button>
                   ))}
                 </div>
@@ -424,13 +432,13 @@ const TagsAndFavorites: React.FC = () => {
                     onClick={() => setFavoriteFilterMode(getNextFilterMode(favoriteFilterMode))}
                     title={`Favorites filter: ${getFilterModeLabel(favoriteFilterMode)}. Click to cycle.`}
                   />
-                  <Star
+                  <Heart
                     className={`w-4 h-4 ${
                       favoriteFilterMode === 'include'
-                        ? 'text-yellow-400 fill-yellow-400'
+                        ? 'text-rose-400 fill-rose-400'
                         : favoriteFilterMode === 'exclude'
                           ? 'text-red-300'
-                          : 'text-gray-400 group-hover:text-yellow-400'
+                          : 'text-gray-400 group-hover:text-rose-400'
                     }`}
                   />
                   <span className="text-sm text-gray-300 group-hover:text-gray-50 flex-1">

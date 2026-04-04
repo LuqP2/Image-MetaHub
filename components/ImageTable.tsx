@@ -12,7 +12,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import TransferImagesModal from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
-import { RATING_VALUES, getRatingBadgeClasses, getRatingChipClasses } from './RatingStars';
+import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 
@@ -453,9 +453,11 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
                 <button
                   key={value}
                   onClick={() => handleSetRating(value as 1 | 2 | 3 | 4 | 5)}
-                  className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${getRatingChipClasses(value, false)}`}
+                  className={`rounded-md border px-2 py-1 transition-colors ${getRatingChipClasses(value, false)}`}
+                  title={`Set ${getRatingLabel(value)}`}
+                  aria-label={`Set ${getRatingLabel(value)}`}
                 >
-                  {value}
+                  <RatingValueIcons value={value} size={11} starClassName="fill-current" />
                 </button>
               ))}
               <button
@@ -634,8 +636,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
                 loading="lazy"
               />
               {image.rating && (
-                <div className={`absolute right-1 top-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${getRatingBadgeClasses(image.rating)}`}>
-                  {image.rating}
+                <div className={`absolute right-1 top-1 rounded border px-1 py-0.5 ${getRatingBadgeClasses(image.rating)}`}>
+                  <RatingValueIcons value={image.rating} size={6} className="text-current" starClassName="fill-current" />
                 </div>
               )}
               {isVideo && (

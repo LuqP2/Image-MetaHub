@@ -1,16 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle, ChevronDown, Star, X } from 'lucide-react';
+import { Calendar, CheckCircle, ChevronDown, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { AdvancedFilters, ImageRating } from '../types';
-import { getRatingChipClasses, RATING_VALUES } from './RatingStars';
+import type { AdvancedFilters } from '../types';
 
 interface AdvancedFiltersProps {
   advancedFilters: AdvancedFilters;
   onAdvancedFiltersChange: (filters: AdvancedFilters) => void;
   onClearAdvancedFilters: () => void;
   availableDimensions: string[];
-  selectedRatings: ImageRating[];
-  onSelectedRatingsChange: (ratings: ImageRating[]) => void;
 }
 
 type MultiSelectFilterKey = 'generationModes' | 'mediaTypes';
@@ -24,8 +21,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   onAdvancedFiltersChange,
   onClearAdvancedFilters,
   availableDimensions,
-  selectedRatings,
-  onSelectedRatingsChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [localFilters, setLocalFilters] = useState<AdvancedFilters>(advancedFilters || {});
@@ -95,7 +90,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLocalFilters((prev) => normalizeFilters({ ...prev, [key]: value }));
   };
 
-  const advancedFilterCount = Object.keys(advancedFilters || {}).length + selectedRatings.length;
+  const advancedFilterCount = Object.keys(advancedFilters || {}).length;
   const hasActiveFilters = advancedFilterCount > 0;
   const generationSummary = useMemo(() => {
     const parts: string[] = [];
@@ -125,10 +120,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         : 'MetaHub-specific metadata filters.';
   const generationModes = Array.isArray(localFilters.generationModes) ? localFilters.generationModes : [];
   const mediaTypes = Array.isArray(localFilters.mediaTypes) ? localFilters.mediaTypes : [];
-  const ratingSummary = selectedRatings.length > 0
-    ? `Matching ratings ${selectedRatings.join(', ')}.`
-    : 'Toggle one or more ratings.';
-
   const metadataSummary = [
     generationModes.length > 0 ? generationModes.join(' + ') : null,
     mediaTypes.length > 0 ? mediaTypes.join(' + ') : null,
@@ -421,59 +412,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                       ))}
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <Star className="h-4 w-4 text-amber-400" />
-                      Rating
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">{ratingSummary}</p>
-                  </div>
-                  {selectedRatings.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onSelectedRatingsChange([])}
-                      className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-rose-300 transition-colors"
-                      title="Clear rating filters"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelectedRatingsChange([])}
-                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                      selectedRatings.length === 0
-                        ? 'border-blue-600/60 bg-blue-900/40 text-blue-200'
-                        : 'border-gray-700 bg-gray-800/70 text-gray-300 hover:border-gray-600 hover:text-gray-100'
-                    }`}
-                  >
-                    All
-                  </button>
-                  {RATING_VALUES.map((value) => {
-                    const active = selectedRatings.includes(value);
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => onSelectedRatingsChange(
-                          active
-                            ? selectedRatings.filter((rating) => rating !== value)
-                            : [...selectedRatings, value]
-                        )}
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors ${getRatingChipClasses(value, active)}`}
-                        title={`Toggle rating ${value}`}
-                      >
-                        {value}
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC } from 'react';
-import { Clipboard, Sparkles, ChevronDown, ChevronRight, Star, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
+import { Clipboard, Sparkles, ChevronDown, ChevronRight, Heart, X, Zap, CheckCircle, ArrowUp, Copy, Search } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { type BaseMetadata, type LoRAInfo } from '../types';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -463,12 +463,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 onClick={handleToggleFavorite}
                 className={`p-1 rounded transition-all ${
                   activeImage.isFavorite
-                    ? 'text-yellow-400 hover:text-yellow-300'
-                    : 'text-gray-500 hover:text-yellow-400'
+                    ? 'text-rose-400 hover:text-rose-300'
+                    : 'text-gray-500 hover:text-rose-400'
                 }`}
                 title={activeImage.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               >
-                <Star className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
+                <Heart className={`w-5 h-5 ${activeImage.isFavorite ? 'fill-current' : ''}`} />
               </button>
               <div className="h-5 w-px bg-gray-300/80 dark:bg-gray-700/70" />
               <RatingStars rating={activeImage.rating ?? null} onChange={handleSetRating} size={16} />

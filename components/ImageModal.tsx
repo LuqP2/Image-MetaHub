@@ -2,7 +2,7 @@ import React, { useEffect, useState, FC, useCallback, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Star, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2 } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -1879,12 +1879,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   onClick={handleToggleFavorite}
                   className={`p-1 rounded transition-all ${
                     currentIsFavorite
-                      ? 'text-yellow-400 hover:text-yellow-300'
-                      : 'text-gray-500 hover:text-yellow-400'
+                      ? 'text-rose-400 hover:text-rose-300'
+                      : 'text-gray-500 hover:text-rose-400'
                   }`}
                   title={currentIsFavorite ? 'Remove from favorites' : 'Add to favorites'}
                 >
-                  <Star className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
+                  <Heart className={`w-5 h-5 ${currentIsFavorite ? 'fill-current' : ''}`} />
                 </button>
                 <div className="h-5 w-px bg-gray-700/70" />
                 <RatingStars rating={currentRating} onChange={handleSetRating} size={16} />

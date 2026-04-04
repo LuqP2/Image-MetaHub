@@ -3,7 +3,7 @@ import {
   Copy,
   Folder,
   Download,
-  Star,
+  Heart,
   GitCompare,
   Sparkles,
   Trash2,
@@ -294,12 +294,12 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                   onClick={handleToggleFavorites}
                   className={`p-1.5 rounded transition-colors ${
                     allFavorites
-                      ? 'text-yellow-400 hover:text-yellow-300 hover:bg-gray-700'
-                      : 'text-gray-400 hover:text-yellow-400 hover:bg-gray-700'
+                      ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
                   }`}
                   title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
                 >
-                  <Star className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
+                  <Heart className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
                 </button>
 
                 <button
