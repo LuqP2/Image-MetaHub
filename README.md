@@ -19,12 +19,14 @@ It started as a local browser for InvokeAI outputs and has since grown into a br
 * Fast indexing and thumbnail caching for large libraries
 * Metadata parsing for Automatic1111, ComfyUI, InvokeAI, SD.Next, Forge, SwarmUI, Fooocus, Draw Things, Midjourney/Niji, Firefly, DreamStudio, DALL-E, and more
 * Support for PNG, JPG, JPEG, WEBP, GIF, MP4, WEBM, MKV, MOV, and AVI
-* Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, and schedulers
+* Faceted sidebar filters with explicit include/exclude actions for checkpoints, LoRAs, samplers, schedulers, ratings, generation modes, media types, and verified telemetry
+* Dedicated Node View for browsing embedded ComfyUI workflow node types
 * Image lineage detection for `img2img`, `inpaint`, and `outpaint`, including source-image recovery when possible
 * Multi-window image viewer with move, resize, docking/collapsible details, and fast cross-reference workflows
-* Smart Library with prompt clustering, TF-IDF auto-tags, and deduplication helpers
-* Automatic1111 and ComfyUI integrations with queueing and progress tracking
-* Analytics and verified telemetry support for images generated with the MetaHub Save Node
+* Smart Library with prompt clustering, TF-IDF auto-tags, manual tag management, and deduplication helpers
+* Startup verification modes for reopening saved libraries from cache or validating them against disk
+* Automatic1111 and ComfyUI integrations with queueing, progress tracking, and optional launcher shortcuts
+* Analytics Explorer and verified metrics support for images generated with the MetaHub Save Node
 
 ## Free vs Pro
 
@@ -43,8 +45,8 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 
 * Automatic1111 generation and parameter copy workflows
 * ComfyUI generation, workflow-native editing, and progress tracking
-* Two-image comparison view
-* Analytics dashboard
+* Compare View with 2-4 image layouts and metadata diff tools
+* Analytics Explorer
 * Batch export
 * Bulk tagging
 * In-app file management (copy/move between indexed folders)
@@ -64,8 +66,11 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 
 Image MetaHub is built around fast local curation:
 
-* **Search + facets**: combine free-text search with include/exclude facets for checkpoints, LoRAs, samplers, schedulers, tags, favorites, and advanced ranges
+* **Search + facets**: combine free-text search with include/exclude facets for checkpoints, LoRAs, samplers, schedulers, tags, favorites, ratings, generation modes, media types, and advanced ranges
 * **Stacking**: group identical prompts in the main library view for faster browsing
+* **Manual tags + ratings**: keep a persistent manual tag catalog, switch included tags between `Any` and `All`, and curate with 1-5 ratings
+* **Metadata recovery**: reparse selected images without running a full folder refresh or clearing cache
+* **Startup verification**: choose whether saved folders reopen from cache, reconcile in the background, or verify strictly before startup completes
 * **Shadow metadata**: edit metadata non-destructively and keep the original payload available for inspection or revert
 * **Viewer workflows**: open multiple image windows, minimize them into the footer, and navigate derived/source images through lineage
 * **Auto-watch**: keep output folders in sync while A1111 or ComfyUI is generating
@@ -79,6 +84,15 @@ The Smart Library groups similar prompts into stacks and adds metadata-derived d
 * **Stack browsing**: open a stack, paginate inside it, and keep navigation context in the image viewer
 * **Deduplication helper**: rank likely keep/archive candidates and estimate space savings
 * **Free-tier limits**: the open-source app includes Smart Library workflows, while Pro removes clustering scale limits
+
+## ComfyUI Node View
+
+For libraries that include embedded ComfyUI workflows, Image MetaHub can switch into a dedicated node browser:
+
+* Search exact node-type names across the current scope
+* Multi-select node filters with OR matching
+* See per-node result counts before applying a filter
+* Jump straight from node-filtered results back into the normal image viewer workflow
 
 ## Metadata Support
 
@@ -128,7 +142,7 @@ The image viewer is no longer just a single modal. In the current app it support
 * Multiple open image windows at the same time
 * Move, resize, minimize, maximize, and focus management
 * Docked or collapsed detail panels
-* Lineage display for transformations like `img2img`, `inpaint`, and `outpaint`
+* Lineage display for transformations like `img2img`, `inpaint`, and `outpaint`, including generation-type and denoise context when available
 * Source-image recovery from explicit references or inferred metadata when possible
 * Derived-image previews to navigate transformation chains
 
@@ -177,13 +191,15 @@ With Pro enabled, Image MetaHub can generate through ComfyUI using either the or
 1. Run ComfyUI locally, usually on `http://127.0.0.1:8188`.
 2. Install the MetaHub Save Node.
 3. Configure the ComfyUI URL in settings.
-4. Test the connection from the app and start generating.
+4. Optionally save a local launch command so the desktop header can start or reopen ComfyUI for you.
+5. Test the connection from the app and start generating.
 
 ## Compare View (Pro)
 
-Image MetaHub currently supports **two-image comparison** with:
+Image MetaHub currently supports comparing **up to 4 images** with:
 
 * Side-by-side mode with optional synchronized zoom/pan
+* Side Strip and 2x2 Grid layouts for 3-4 image sets
 * Slider mode
 * Hover mode
 * Metadata comparison in standard or diff view
@@ -193,13 +209,12 @@ Image MetaHub currently supports **two-image comparison** with:
 
 ## Analytics (Pro)
 
-The analytics dashboard summarizes library usage and, when telemetry is available, generation performance:
+The Analytics Explorer summarizes library usage and, when telemetry is available, generation performance:
 
-* Usage trends by time period
-* Generator distribution
-* Top checkpoints, LoRAs, and samplers
-* Resolution distributions
-* Habit analysis by weekday and hour
+* `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views
+* Scope switching between the current filtered results and the full library
+* Cohort comparisons for generators, models, LoRAs, samplers, GPU devices, ratings, and more
+* One-click promotion of analytics insights into live filters
 * Verified telemetry coverage
 * Average speed, VRAM, and generation time for MetaHub Save Node images
 * Performance charts grouped over time or by GPU
