@@ -88,6 +88,11 @@ const imageG = createImage({
   metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4070' } } } as any,
 });
 
+const imageH = createImage({
+  name: 'h.png',
+  metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { generation_time_ms: 5000, steps_per_second: 20, vram_peak_mb: 4096 } } } as any,
+});
+
 const seedStore = () => {
   useSettingsStore.setState({
     enableSafeMode: false,
@@ -98,8 +103,8 @@ const seedStore = () => {
   useImageStore.getState().resetState();
   useImageStore.setState({
     directories: [directory],
-    images: [imageA, imageB, imageC, imageD, imageE, imageF, imageG],
-    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF, imageG],
+    images: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH],
+    filteredImages: [imageA, imageB, imageC, imageD, imageE, imageF, imageG, imageH],
     sortOrder: 'asc',
   });
   useImageStore.getState().filterAndSortImages();
@@ -115,7 +120,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'c.png']);
 
     useImageStore.getState().setFavoriteFilterMode('exclude');
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
   });
 
   it('supports include and exclude for tags and auto-tags', () => {
@@ -166,7 +171,7 @@ describe('useImageStore tri-state filters', () => {
       excludedSamplers: ['dpmpp_2m'],
     });
 
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png', 'g.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
   });
 
   it('sanitizes malformed facet values during silent append', () => {
@@ -310,7 +315,7 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['b.png', 'c.png']);
 
     useImageStore.getState().setSelectedRatings([]);
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'g.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png', 'g.png', 'h.png']);
   });
 
   it('sets and bulk updates ratings without affecting favorites or tags', async () => {
@@ -342,7 +347,7 @@ describe('useImageStore tri-state filters', () => {
     useImageStore.getState().setAdvancedFilters({
       generationTimeMs: { min: 1000, max: null },
     });
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png', 'h.png']);
 
     useImageStore.getState().setAdvancedFilters({
       stepsPerSecond: { min: 3, max: 4 },
@@ -359,11 +364,28 @@ describe('useImageStore tri-state filters', () => {
     useImageStore.getState().setAdvancedFilters({
       telemetryState: 'present',
     });
-    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png', 'f.png', 'g.png']);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png', 'f.png', 'g.png', 'h.png']);
 
     useImageStore.getState().setAdvancedFilters({
       telemetryState: 'missing',
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png', 'b.png', 'c.png', 'd.png']);
+  });
+
+  it('honors exclusive upper bounds for analytics bucket filters', () => {
+    useImageStore.getState().setAdvancedFilters({
+      generationTimeMs: { min: 1000, max: 5000, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['e.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      stepsPerSecond: { min: 10, max: 20, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual([]);
+
+    useImageStore.getState().setAdvancedFilters({
+      vramPeakMb: { min: 3072, max: 4096, maxExclusive: true },
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['f.png']);
   });
 });

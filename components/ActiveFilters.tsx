@@ -9,7 +9,11 @@ const formatRangeLabel = (label: string, range?: NumericRangeFilter, suffix = ''
   }
 
   const min = range.min ?? '...';
-  const max = range.max ?? '...';
+  const max = range.max === null || range.max === undefined
+    ? '...'
+    : range.maxExclusive
+      ? `<${range.max}`
+      : range.max;
 
   return `${label} ${min}-${max}${suffix}`;
 };

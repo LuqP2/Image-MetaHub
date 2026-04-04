@@ -50,7 +50,10 @@ const COMPARE_LABELS: Record<AnalyticsCompareDimension, string> = {
 
 const percent = (value: number) => `${(value * 100).toFixed(0)}%`;
 const compact = (value: number) => Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
-const sameRange = (current: AdvancedFilters['steps'], min?: number, max?: number) => (current?.min ?? null) === (min ?? null) && (current?.max ?? null) === (max ?? null);
+const sameRange = (current: AdvancedFilters['steps'], min?: number, max?: number) =>
+  (current?.min ?? null) === (min ?? null) &&
+  (current?.max ?? null) === (max ?? null) &&
+  Boolean(current?.maxExclusive) === Boolean(max !== undefined);
 const compareSelectClass = 'min-w-0 w-full truncate rounded-xl border border-gray-700 bg-gray-950/70 px-3 py-2 pr-8 text-sm text-gray-200';
 
 const StatCard = ({ label, value, meta, icon: Icon }: { label: string; value: string; meta?: string; icon: React.ComponentType<any> }) => (
@@ -261,7 +264,7 @@ const Analytics: React.FC<AnalyticsProps> = ({ isOpen, onClose }) => {
   const clickNumeric = (kind: NumericFacetKind, bucket: AnalyticsNumericBucket) => {
     const next = { ...filterState.advancedFilters };
     if (sameRange(next[kind], bucket.min, bucket.max)) delete next[kind];
-    else next[kind] = { min: bucket.min ?? null, max: bucket.max ?? null };
+    else next[kind] = { min: bucket.min ?? null, max: bucket.max ?? null, maxExclusive: bucket.max !== undefined ? true : undefined };
     setAdvancedFilters(next);
   };
   const clickDay = (day: string) => setAdvancedFilters({ ...filterState.advancedFilters, date: { from: day, to: day } });

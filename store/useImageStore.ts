@@ -1490,7 +1490,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                         const hasMin = advancedFilters.generationTimeMs?.min !== null && advancedFilters.generationTimeMs?.min !== undefined;
                         const hasMax = advancedFilters.generationTimeMs?.max !== null && advancedFilters.generationTimeMs?.max !== undefined;
                         if (hasMin && generationTimeMs < advancedFilters.generationTimeMs!.min!) return false;
-                        if (hasMax && generationTimeMs > advancedFilters.generationTimeMs!.max!) return false;
+                        if (hasMax && advancedFilters.generationTimeMs?.maxExclusive === true && generationTimeMs >= advancedFilters.generationTimeMs!.max!) return false;
+                        if (hasMax && advancedFilters.generationTimeMs?.maxExclusive !== true && generationTimeMs > advancedFilters.generationTimeMs!.max!) return false;
                         return true;
                     }
                     return false;
@@ -1505,7 +1506,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                         const hasMin = advancedFilters.stepsPerSecond?.min !== null && advancedFilters.stepsPerSecond?.min !== undefined;
                         const hasMax = advancedFilters.stepsPerSecond?.max !== null && advancedFilters.stepsPerSecond?.max !== undefined;
                         if (hasMin && stepsPerSecond < advancedFilters.stepsPerSecond!.min!) return false;
-                        if (hasMax && stepsPerSecond > advancedFilters.stepsPerSecond!.max!) return false;
+                        if (hasMax && advancedFilters.stepsPerSecond?.maxExclusive === true && stepsPerSecond >= advancedFilters.stepsPerSecond!.max!) return false;
+                        if (hasMax && advancedFilters.stepsPerSecond?.maxExclusive !== true && stepsPerSecond > advancedFilters.stepsPerSecond!.max!) return false;
                         return true;
                     }
                     return false;
@@ -1520,7 +1522,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                         const hasMin = advancedFilters.vramPeakMb?.min !== null && advancedFilters.vramPeakMb?.min !== undefined;
                         const hasMax = advancedFilters.vramPeakMb?.max !== null && advancedFilters.vramPeakMb?.max !== undefined;
                         if (hasMin && vramPeakMb < advancedFilters.vramPeakMb!.min!) return false;
-                        if (hasMax && vramPeakMb > advancedFilters.vramPeakMb!.max!) return false;
+                        if (hasMax && advancedFilters.vramPeakMb?.maxExclusive === true && vramPeakMb >= advancedFilters.vramPeakMb!.max!) return false;
+                        if (hasMax && advancedFilters.vramPeakMb?.maxExclusive !== true && vramPeakMb > advancedFilters.vramPeakMb!.max!) return false;
                         return true;
                     }
                     return false;

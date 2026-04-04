@@ -28,13 +28,19 @@ describe('Analytics Explorer', () => {
         id: '1',
         name: 'one.png',
         models: ['Flux'],
-        metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090' } } } as any,
+        metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { gpu_device: 'RTX 4090', generation_time_ms: 4200 } } } as any,
       }),
       createImage({
         id: '2',
         name: 'two.png',
         models: ['SDXL'],
         metadata: { normalizedMetadata: { generator: 'InvokeAI' } } as any,
+      }),
+      createImage({
+        id: '3',
+        name: 'three.png',
+        models: ['Flux'],
+        metadata: { normalizedMetadata: { generator: 'ComfyUI', _analytics: { generation_time_ms: 5000 } } } as any,
       }),
     ];
 
@@ -87,5 +93,18 @@ describe('Analytics Explorer', () => {
     fireEvent.click(promoteButtons[1]);
     expect(useImageStore.getState().advancedFilters.telemetryState).toBe('missing');
     expect(useImageStore.getState().advancedFilters.hasVerifiedTelemetry).toBeUndefined();
+  });
+
+  it('marks numeric bucket filters with an exclusive upper bound', () => {
+    render(<Analytics isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'performance' }));
+    fireEvent.click(screen.getByRole('button', { name: /1000-5000ms/i }));
+
+    expect(useImageStore.getState().advancedFilters.generationTimeMs).toEqual({
+      min: 1000,
+      max: 5000,
+      maxExclusive: true,
+    });
   });
 });

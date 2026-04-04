@@ -678,6 +678,7 @@ export type ImageRating = 1 | 2 | 3 | 4 | 5;
 export interface NumericRangeFilter {
   min?: number | null;
   max?: number | null;
+  maxExclusive?: boolean;
 }
 
 export interface DateRangeFilter {
