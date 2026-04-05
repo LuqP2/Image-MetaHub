@@ -7,6 +7,7 @@ import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
 import { normalizeFacetValue } from '../utils/facetNormalization';
+import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 
 // Configure logging level
 const DEBUG = false;
@@ -345,6 +346,20 @@ export function useImageLoader() {
             gpuDevices: Array.from(gpuDevices).sort(),
             dimensions: [] as string[],
         });
+
+        traceCacheDebug('loader:updateGlobalFilters', () => {
+            const state = useImageStore.getState();
+            return {
+                details: {
+                    allImages: allImages.length,
+                    models: models.size,
+                    loras: loras.size,
+                    samplers: samplers.size,
+                    schedulers: schedulers.size,
+                },
+                snapshot: createCacheDebugSnapshot(state),
+            };
+        });
     }, [setFilterOptions]);
 
     const scheduleGlobalFilterRefresh = useCallback((force = false) => {
@@ -492,6 +507,15 @@ export function useImageLoader() {
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+
+        traceCacheDebug('loader:finalizeDirectoryLoad:beforeRefresh', () => ({
+            directoryId: directory.id,
+            details: {
+                finalDirectoryImages: finalDirectoryImages.length,
+                suppressIndexingState,
+            },
+            snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+        }));
         
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
@@ -624,6 +648,16 @@ export function useImageLoader() {
             shouldScanSubfolders,
         );
 
+        traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
+            directoryId: activeDirectory.id,
+            details: {
+                newAndModifiedFiles: diff.newAndModifiedFiles.length,
+                deletedFileIds: diff.deletedFileIds.length,
+                currentFiles: allCurrentFiles.length,
+            },
+            snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+        }));
+
         if (diff.newAndModifiedFiles.length === 0 && diff.deletedFileIds.length === 0) {
             return false;
         }
@@ -700,6 +734,10 @@ export function useImageLoader() {
             scheduleGlobalFilterRefresh(true);
             await refreshLineageDirectorySignature(activeDirectory);
             scheduleLineageRebuild(800);
+            traceCacheDebug('loader:reconcileCachedDirectory:complete', () => ({
+                directoryId: activeDirectory.id,
+                snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+            }));
             return true;
         } catch (reconcileError) {
             console.error(`[startup-reconcile] Failed for ${activeDirectory.path}:`, reconcileError);

@@ -14,6 +14,7 @@ import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetN
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
+import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
@@ -640,6 +641,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             maybeQueueLineageBuild(700);
         }
 
+        traceCacheDebug('store:flushPendingImages', () => ({
+            batchCount: imagesToAdd.length,
+            details: {
+                addedImages: addedImages.length,
+                remainingQueue: pendingImagesQueue.length,
+            },
+            snapshot: createCacheDebugSnapshot(get()),
+        }));
+
         if (pendingImagesQueue.length > 0) {
             scheduleFlush();
         }
@@ -761,6 +771,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         maybeQueueLineageBuild(700);
+
+        traceCacheDebug('store:flushPendingMerges', () => ({
+            batchCount: updatesToMerge.length,
+            details: {
+                remainingQueue: pendingMergeQueue.length,
+                forceFullRecompute,
+            },
+            snapshot: createCacheDebugSnapshot(get()),
+        }));
     };
 
     const scheduleMergeFlush = () => {
@@ -1917,6 +1936,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return _updateState(baseState, newImages);
             });
 
+            traceCacheDebug('store:removeDirectory', () => ({
+                directoryId,
+                details: {
+                    removedImages: images.length - newImages.length,
+                    updatedSelection: updatedSelection.size,
+                },
+                snapshot: createCacheDebugSnapshot(get()),
+            }));
+
             saveSelectedFolders(Array.from(updatedSelection)).catch((error) => {
                 console.error('Failed to persist folder selection state', error);
             });
@@ -2190,6 +2218,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
             });
+            traceCacheDebug('store:removeImages', () => ({
+                imageIdsCount: imageIds.length,
+                snapshot: createCacheDebugSnapshot(get()),
+            }));
             maybeQueueLineageBuild(500);
         },
 
