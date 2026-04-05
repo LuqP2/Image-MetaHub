@@ -5,8 +5,6 @@ import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
-import { normalizeFacetValue } from '../utils/facetNormalization';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 
 // Configure logging level
@@ -240,7 +238,7 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
         recomputeDerivedState,
         setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
@@ -253,14 +251,9 @@ export function useImageLoader() {
     
     // Timer for indexing performance tracking
     const indexingStartTimeRef = useRef<number | null>(null);
-    const filterRefreshRef = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({
-        last: 0,
-        timer: null,
-    });
     const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
-    const FILTER_REFRESH_MIN_INTERVAL_MS = 5000;
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback((allowIdle = false) => {
@@ -300,103 +293,6 @@ export function useImageLoader() {
         });
     }, []);
 
-    const updateGlobalFilters = useCallback(() => {
-        const allImages = useImageStore.getState().images;
-        const models = new Set<string>();
-        const loras = new Set<string>();
-        const samplers = new Set<string>();
-        const schedulers = new Set<string>();
-        const generators = new Set<string>();
-        const gpuDevices = new Set<string>();
-
-        for (const image of allImages) {
-            if (image.models && image.models.length > 0) {
-                image.models.forEach(model => {
-                    const normalized = normalizeFacetValue(model);
-                    if (normalized) {
-                        models.add(normalized);
-                    }
-                });
-            }
-            if (image.loras && image.loras.length > 0) {
-                image.loras.forEach(lora => {
-                    const normalized = normalizeFacetValue(lora);
-                    if (normalized) {
-                        loras.add(normalized);
-                    }
-                });
-            }
-            const sampler = normalizeFacetValue(image.sampler);
-            if (sampler) samplers.add(sampler);
-            const scheduler = normalizeFacetValue(image.scheduler);
-            if (scheduler) schedulers.add(scheduler);
-            generators.add(getImageGenerator(image));
-            const gpuDevice = getImageGpuDevice(image);
-            if (gpuDevice) {
-                gpuDevices.add(gpuDevice);
-            }
-        }
-
-        setFilterOptions({
-            models: Array.from(models).sort(),
-            loras: Array.from(loras).sort(),
-            samplers: Array.from(samplers).sort(),
-            schedulers: Array.from(schedulers).sort(),
-            generators: Array.from(generators).sort(),
-            gpuDevices: Array.from(gpuDevices).sort(),
-            dimensions: [] as string[],
-        });
-
-        traceCacheDebug('loader:updateGlobalFilters', () => {
-            const state = useImageStore.getState();
-            return {
-                details: {
-                    allImages: allImages.length,
-                    models: models.size,
-                    loras: loras.size,
-                    samplers: samplers.size,
-                    schedulers: schedulers.size,
-                },
-                snapshot: createCacheDebugSnapshot(state),
-            };
-        });
-    }, [setFilterOptions]);
-
-    const scheduleGlobalFilterRefresh = useCallback((force = false) => {
-        const isIndexing = useImageStore.getState().indexingState === 'indexing';
-        if (isIndexing && !force) {
-            return;
-        }
-        const now = Date.now();
-        const ref = filterRefreshRef.current;
-        if (force) {
-            if (ref.timer) {
-                clearTimeout(ref.timer);
-                ref.timer = null;
-            }
-            updateGlobalFilters();
-            ref.last = now;
-            return;
-        }
-
-        const elapsed = now - ref.last;
-        if (elapsed >= FILTER_REFRESH_MIN_INTERVAL_MS) {
-            updateGlobalFilters();
-            ref.last = now;
-            return;
-        }
-
-        if (ref.timer) {
-            return;
-        }
-
-        ref.timer = setTimeout(() => {
-            ref.timer = null;
-            updateGlobalFilters();
-            ref.last = Date.now();
-        }, FILTER_REFRESH_MIN_INTERVAL_MS - elapsed);
-    }, [updateGlobalFilters]);
-
     useEffect(() => {
         if (!getIsElectron()) return;
 
@@ -431,8 +327,6 @@ export function useImageLoader() {
                 setLoading(false);
                 isFirstBatch = false;
             }
-            // Update filters incrementally as new images are processed
-            scheduleGlobalFilterRefresh();
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
@@ -464,15 +358,10 @@ export function useImageLoader() {
             removeErrorListener();
             removeCompleteListener();
         };
-    }, [addImages, setProgress, setError, setLoading, scheduleGlobalFilterRefresh]);
+    }, [addImages, setProgress, setError, setLoading]);
 
     useEffect(() => {
         return () => {
-            const ref = filterRefreshRef.current;
-            if (ref.timer) {
-                clearTimeout(ref.timer);
-                ref.timer = null;
-            }
             if (idleReconcileTimerRef.current) {
                 clearTimeout(idleReconcileTimerRef.current);
                 idleReconcileTimerRef.current = null;
@@ -540,7 +429,6 @@ export function useImageLoader() {
             indexingStartTimeRef.current = null;
         }
 
-        scheduleGlobalFilterRefresh(true);
         await refreshLineageDirectorySignature(directory);
         if (!suppressSuccessMessage) {
             setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
@@ -569,7 +457,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
+    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing]);
 
     const CACHE_HYDRATE_FLUSH_SIZE = 2048;
     const DIRECTORY_THUMBNAIL_WARMUP_LIMIT = 384;
@@ -731,7 +619,6 @@ export function useImageLoader() {
             );
 
             await phaseB;
-            scheduleGlobalFilterRefresh(true);
             await refreshLineageDirectorySignature(activeDirectory);
             scheduleLineageRebuild(800);
             traceCacheDebug('loader:reconcileCachedDirectory:complete', () => ({
@@ -747,7 +634,7 @@ export function useImageLoader() {
             setEnrichmentProgress(null);
             setProgress(null);
         }
-    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleGlobalFilterRefresh, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
+    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
 
     const runIdleReconcileQueue = useCallback(async () => {
         if (idleReconcileRunningRef.current) {
@@ -1224,7 +1111,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
+    }, [addImages, mergeImages, removeImages, clearImages, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
 
 
     // Helper function to detect if a path is a root disk
@@ -1416,7 +1303,7 @@ export function useImageLoader() {
             setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
