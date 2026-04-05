@@ -11,6 +11,14 @@ const directory: Directory = {
   visible: true,
 };
 
+const secondDirectory: Directory = {
+  id: 'dir-2',
+  name: 'Archive',
+  path: 'D:/archive',
+  handle: {} as FileSystemDirectoryHandle,
+  visible: true,
+};
+
 const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   id: `dir-1::${overrides.name ?? 'image.png'}`,
   name: overrides.name ?? 'image.png',
@@ -250,6 +258,53 @@ describe('useImageStore tri-state filters', () => {
     const storedTarget = useImageStore.getState().images.find((image) => image.id === targetImage.id);
     expect(useImageStore.getState().images).toHaveLength(queuedImages.length);
     expect(storedTarget?.rating).toBe(4);
+  });
+
+  it('ignores queued images and merges from removed directories', () => {
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory, secondDirectory],
+      images: [
+        imageA,
+        {
+          ...createImage({
+            id: 'dir-2::existing.png',
+            name: 'existing.png',
+            directoryId: 'dir-2',
+            models: ['modelZ'],
+            loras: ['loraZ'],
+          }),
+        },
+      ],
+      filteredImages: [],
+      sortOrder: 'asc',
+    });
+    useImageStore.getState().filterAndSortImages();
+
+    const queuedRemovedDirectoryImage = createImage({
+      id: 'dir-2::queued.png',
+      name: 'queued.png',
+      directoryId: 'dir-2',
+      models: ['modelQueued'],
+      loras: ['loraQueued'],
+    });
+
+    useImageStore.getState().setIndexingState('indexing');
+    useImageStore.getState().addImages([queuedRemovedDirectoryImage]);
+    useImageStore.getState().mergeImages([
+      {
+        ...queuedRemovedDirectoryImage,
+        rating: 4,
+      },
+    ]);
+
+    useImageStore.getState().removeDirectory('dir-2');
+    useImageStore.getState().flushPendingImages();
+    useImageStore.getState().setIndexingState('idle');
+
+    expect(useImageStore.getState().images.map((image) => image.id)).toEqual([imageA.id]);
+    expect(useImageStore.getState().availableModels).toEqual(['modelA']);
+    expect(useImageStore.getState().availableLoras).toEqual(['loraA']);
   });
 
   it('supports open-ended advanced ranges for steps and cfg', () => {

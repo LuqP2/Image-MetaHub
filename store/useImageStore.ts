@@ -596,6 +596,21 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
     };
 
+    const purgePendingDirectoryEntries = (directoryId: string) => {
+        pendingImagesQueue = pendingImagesQueue.filter(img => img?.directoryId !== directoryId);
+        pendingMergeQueue = pendingMergeQueue.filter(img => img?.directoryId !== directoryId);
+
+        if (pendingImagesQueue.length === 0 && pendingFlushTimer) {
+            clearTimeout(pendingFlushTimer);
+            pendingFlushTimer = null;
+        }
+
+        if (pendingMergeQueue.length === 0 && pendingMergeTimer) {
+            clearTimeout(pendingMergeTimer);
+            pendingMergeTimer = null;
+        }
+    };
+
     const flushPendingImages = (drainAll: boolean = false) => {
         if (pendingImagesQueue.length === 0) {
             return;
@@ -614,9 +629,16 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         let addedImages: IndexedImage[] = [];
         set(state => {
+            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
             const deduped = new Map<string, IndexedImage>();
             for (const img of imagesToAdd) {
-                if (img?.id && !deduped.has(img.id)) {
+                if (!img?.id) {
+                    continue;
+                }
+                if (img.directoryId && !activeDirectoryIds.has(img.directoryId)) {
+                    continue;
+                }
+                if (!deduped.has(img.id)) {
                     deduped.set(img.id, img);
                 }
             }
@@ -677,8 +699,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         set(state => {
+            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
             const updates = new Map<string, IndexedImage>();
             for (const img of updatesToMerge) {
+                if (!img?.id) {
+                    continue;
+                }
+                if (img.directoryId && !activeDirectoryIds.has(img.directoryId)) {
+                    continue;
+                }
                 if (img?.id) {
                     updates.set(img.id, img);
                 }
@@ -1903,6 +1932,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const { directories, images, selectedFolders } = get();
             const targetDirectory = directories.find(d => d.id === directoryId);
             const newDirectories = directories.filter(d => d.id !== directoryId);
+            purgePendingDirectoryEntries(directoryId);
             if (window.electronAPI) {
                 localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
             }
