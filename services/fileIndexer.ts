@@ -1239,6 +1239,68 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
+  if (metaHubData && typeof metaHubData === 'object') {
+    const payload = metaHubData as Record<string, any>;
+    if (payload.generator === 'ComfyUI') {
+      const rawTags = payload.imh_pro?.user_tags;
+      const tags = Array.isArray(rawTags)
+        ? rawTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
+        : typeof rawTags === 'string'
+          ? rawTags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+          : [];
+      const notes = typeof payload.imh_pro?.notes === 'string' ? payload.imh_pro.notes : '';
+      const explicitGenerationType = typeof payload.generation_type === 'string'
+        ? payload.generation_type as BaseMetadata['generationType']
+        : undefined;
+      const explicitParentImage = payload.parent_image && typeof payload.parent_image === 'object'
+        ? payload.parent_image
+        : undefined;
+      const explicitSourceImage = payload.source_image && typeof payload.source_image === 'object'
+        ? payload.source_image
+        : undefined;
+      const width = fallbackDims?.width ?? 0;
+      const height = fallbackDims?.height ?? 0;
+
+      return {
+        prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
+        negativePrompt: typeof payload.negativePrompt === 'string' ? payload.negativePrompt : '',
+        model: typeof payload.model === 'string' ? payload.model : '',
+        models: typeof payload.model === 'string' && payload.model ? [payload.model] : [],
+        width,
+        height,
+        seed: typeof payload.seed === 'number' ? payload.seed : undefined,
+        steps: typeof payload.steps === 'number' ? payload.steps : 0,
+        cfgScale: typeof payload.cfg === 'number' ? payload.cfg : undefined,
+        cfg_scale: typeof payload.cfg === 'number' ? payload.cfg : undefined,
+        scheduler: typeof payload.scheduler === 'string' ? payload.scheduler : '',
+        sampler: typeof payload.sampler_name === 'string' ? payload.sampler_name : '',
+        loras: Array.isArray(payload.loras) ? payload.loras : [],
+        tags,
+        notes,
+        vae: typeof payload.vae === 'string' ? payload.vae : undefined,
+        denoise: typeof payload.denoise === 'number' ? payload.denoise : undefined,
+        generationType: explicitGenerationType,
+        lineage: explicitGenerationType
+          ? {
+              detection: 'explicit',
+              denoiseStrength: payload.denoise ?? null,
+              maskBlur: payload.mask_blur ?? null,
+              maskedContent: payload.masked_content ?? null,
+              resizeMode: payload.resize_mode ?? null,
+              sourceImage: explicitParentImage || explicitSourceImage,
+              workflowSourceImage: explicitParentImage && explicitSourceImage
+                ? explicitSourceImage
+                : undefined,
+            }
+          : undefined,
+        _analytics: payload.analytics || null,
+        _metahub_pro: payload.imh_pro || null,
+        _detection_method: 'metahub_chunk_direct',
+        generator: 'ComfyUI',
+      };
+    }
+  }
+
   const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: metaHubData });
   const width = fallbackDims?.width ?? 0;
   const height = fallbackDims?.height ?? 0;
