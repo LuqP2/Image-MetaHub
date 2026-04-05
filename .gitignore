@@ -71,3 +71,4 @@ packages/license-server/data/test-sqlite-relative.db
 packages/license-server/data/test-sqlite-relative.db-journal
 packages/license-server/data/test-sqlite.db
 packages/license-server/data/test-sqlite.db-journal
+image-metahub.code-workspace
