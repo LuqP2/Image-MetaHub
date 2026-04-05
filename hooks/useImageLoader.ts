@@ -1014,7 +1014,17 @@ export function useImageLoader() {
             };
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
+                const start = performance.now();
                 mergeImages(batch);
+                const durationMs = performance.now() - start;
+                traceCacheDebug('loader:handleEnrichmentBatch', () => ({
+                    directoryId: directory.id,
+                    batchCount: batch.length,
+                    details: {
+                        durationMs: Number(durationMs.toFixed(2)),
+                    },
+                    snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                }));
             };
 
             const handleEnrichmentProgress = (progress: { processed: number; total: number } | null) => {
@@ -1418,13 +1428,26 @@ export function useImageLoader() {
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        const addStart = performance.now();
                         addImages(enrichedBatch);
+                        const addDurationMs = performance.now() - addStart;
                         enrichedForCache.push(...enrichedBatch);
                         // Force flush imediatamente
                         const flushPendingImages = useImageStore.getState().flushPendingImages;
                         setTimeout(() => {
                             console.log('[auto-watch] Flushing enriched images');
+                            const flushStart = performance.now();
                             flushPendingImages();
+                            const flushDurationMs = performance.now() - flushStart;
+                            traceCacheDebug('loader:autoWatch:flushPendingImages', () => ({
+                                directoryId: directory.id,
+                                batchCount: enrichedBatch.length,
+                                details: {
+                                    addDurationMs: Number(addDurationMs.toFixed(2)),
+                                    flushDurationMs: Number(flushDurationMs.toFixed(2)),
+                                },
+                                snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                            }));
                         }, 0);
                     },
                 }

@@ -9,6 +9,7 @@ import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
+import { traceCacheDebug } from '../utils/cacheDebugTrace';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
   cancel: () => void;
@@ -1601,6 +1602,9 @@ interface PhaseTelemetry {
   profileParseMs: number;
   profileNormalizeMs: number;
   profileDimensionsMs: number;
+  rendererDispatchMs: number;
+  rendererDispatchBatches: number;
+  rendererDispatchImages: number;
 }
 
 interface PhaseProfileSample {
@@ -1698,6 +1702,9 @@ export async function processFiles(
     profileParseMs: 0,
     profileNormalizeMs: 0,
     profileDimensionsMs: 0,
+    rendererDispatchMs: 0,
+    rendererDispatchBatches: 0,
+    rendererDispatchImages: 0,
   };
   const phaseBStats: PhaseTelemetry = {
     startTime: 0,
@@ -1719,6 +1726,9 @@ export async function processFiles(
     profileParseMs: 0,
     profileNormalizeMs: 0,
     profileDimensionsMs: 0,
+    rendererDispatchMs: 0,
+    rendererDispatchBatches: 0,
+    rendererDispatchImages: 0,
   };
 
   performance.mark('indexing:phaseA:start');
@@ -2195,6 +2205,9 @@ export async function processFiles(
         const headReadAvgMs = phaseBStats.headReadFiles > 0 ? phaseBStats.headReadMs / phaseBStats.headReadFiles : 0;
         const tailReadAvgMs = phaseBStats.tailReadFiles > 0 ? phaseBStats.tailReadMs / phaseBStats.tailReadFiles : 0;
         const fullReadAvgMs = phaseBStats.fullReadFiles > 0 ? phaseBStats.fullReadMs / phaseBStats.fullReadFiles : 0;
+        const rendererDispatchAvgMs = phaseBStats.rendererDispatchBatches > 0
+          ? phaseBStats.rendererDispatchMs / phaseBStats.rendererDispatchBatches
+          : 0;
 
         console.log('[indexing]', {
           phase: 'B',
@@ -2208,6 +2221,10 @@ export async function processFiles(
           profile_avg_normalize_ms: Number(profileAvgNormalize.toFixed(2)),
           profile_avg_dimensions_ms: Number(profileAvgDimensions.toFixed(2)),
           flush_avg_ms: Number(flushAvgMs.toFixed(2)),
+          renderer_batch_avg_ms: Number(rendererDispatchAvgMs.toFixed(2)),
+          renderer_batches_dispatched: phaseBStats.rendererDispatchBatches,
+          renderer_images_dispatched: phaseBStats.rendererDispatchImages,
+          pending_results_batch: resultsBatch.length,
           ...(phaseBStats.tailReadHits > 0
             ? {
                 tail_read_hits: phaseBStats.tailReadHits,
@@ -2230,7 +2247,22 @@ export async function processFiles(
 
     const commitBatch = async (force = false) => {
       if (resultsBatch.length > 0) {
-        options.onEnrichmentBatch?.([...resultsBatch]);
+        const dispatchBatch = [...resultsBatch];
+        const dispatchStart = performance.now();
+        options.onEnrichmentBatch?.(dispatchBatch);
+        const dispatchDuration = performance.now() - dispatchStart;
+        phaseBStats.rendererDispatchMs += dispatchDuration;
+        phaseBStats.rendererDispatchBatches += 1;
+        phaseBStats.rendererDispatchImages += dispatchBatch.length;
+        traceCacheDebug('indexer:phaseB:dispatchBatch', () => ({
+          batchCount: dispatchBatch.length,
+          details: {
+            durationMs: Number(dispatchDuration.toFixed(2)),
+            processed: phaseBStats.processed,
+            totalEnrichment,
+            pendingResultsBeforeClear: resultsBatch.length,
+          },
+        }));
         resultsBatch.length = 0;
       }
 
@@ -2740,6 +2772,17 @@ export async function processFiles(
     });
 
     console.log(`[indexing] Phase B complete: ${phaseBStats.processed}/${totalEnrichment} images enriched in ${(elapsedMs / 1000).toFixed(2)}s`);
+    traceCacheDebug('indexer:phaseB:complete', () => ({
+      details: {
+        elapsedMs: Number(elapsedMs.toFixed(2)),
+        files: phaseBStats.processed,
+        rendererDispatchMs: Number(phaseBStats.rendererDispatchMs.toFixed(2)),
+        rendererDispatchBatches: phaseBStats.rendererDispatchBatches,
+        rendererDispatchImages: phaseBStats.rendererDispatchImages,
+        cacheFlushMs: Number(phaseBStats.flushMs.toFixed(2)),
+        cacheFlushChunks: phaseBStats.flushChunks,
+      },
+    }));
     throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
   };
 
