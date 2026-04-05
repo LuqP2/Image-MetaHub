@@ -125,19 +125,19 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
   <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
   <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-    <p>Hey there, Lucas here - the solo dev behind Image MetaHub</p>
+    <p>Hey there, I'm Lucas - solo dev behind Image MetaHub.</p>
 
-    <p>This update brings the first step toward proper file management inside the app -- copy/move images between indexed folders. It is still an early implementation, but it lays the groundwork for broader file operations later on.</p>
+    <p>v0.14 is a big one. It adds some very substantial features, especially around ComfyUI workflow inspection/regeneration, improved analytics, improved comparison, and a lot more. Most of it is the result of trying to make the app more useful in the same way I use it myself.</p>
 
-    <p>A lot of the work went into performance and responsiveness. The app should feel noticeably faster and smoother now (if it does not, or if you have any issues, please let me know). I also fixed a number of smaller issues that were getting in the way of day-to-day workflow.</p>
+    <p>I started IMH last September, as a tool for my own use, to basically do what the core of the app still is today: search/filter by generation parameters, with support exclusive to InvokeAI. After it got some visibility, I started to expand on it by including support to other generators. One thing hasn't changed, tho; I still develop this app for myself, as I'm just a normal mid-tier user who generates as a hobby and share a lot of the pains with people who deal with large libraries. This means that most features I add are things that are useful for myself which end up overlapping with many other users. This is also the reason a lot of things that may seem obvious are overlooked - which is why I thank everyone who help out on GitHub with Bug Reports/Feature Requests.</p>
 
-    <p>The next major release, v0.14, may take a little longer than usual. I'm using this cycle to work on features that stay true to the identity of IMH while expanding curation, comparison, and library management. These include things like faster bulk actions, structured comparison workflows, hybrid search, chained filters... in other words, not just more features, but a stronger system for organizing and understanding your work.</p>
+    <p>Still tho, I'm glad this thing is useful to people. Building it alone means I end up doing development, support, bug fixing, communication, and whatever else needs doing. So if IMH has been useful to you and it ever makes sense to mention it to someone who might benefit from it, that helps a lot!</p>
 
-    <p>I'd also really like to hear your thoughts on the direction you think the app should take -- as in, in what ways could it improve your daily workflow? Don't hesitate in opening an Issue on GitHub with your ideas. You can also contact me on <a href="mailto:imagemetahub@gmail.com" className="text-blue-400 hover:text-blue-300 underline">imagemetahub@gmail.com</a>.</p>
+    <p>As a side note: I hate the term "vibe coding". Sounds like something you would do lounging in a beanbag chair, burning incense, and saying "Take that, bug" while debugging.</p>
 
-    <p>I also created a Discord server for IMH -- it's still small and quiet but if you want a more direct place to ask questions, share suggestions, or follow development a bit more closely, you are welcome to join! <a href="https://discord.gg/BwYQWKcafh" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/BwYQWKcafh</a></p>
+    <p>Anyway, make sure to join our Discord server: <a href="https://discord.gg/7XgrWCSxfJ" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/7XgrWCSxfJ</a></p>
 
-    <p>As always, thank you to everyone using the app, reporting bugs, sharing feedback, and supporting the project. It genuinely helps me keep building.</p>
+    <p>And as usual, thanks to everyone who's helped development by downloading IMH, getting a pro license, or contributing on GitHub. Special thanks to nonplayer for their many relevant insights, Taruvi who helped building the base of what the app is today, mankochan11 for helping to test this build, and Silva and Camilo for funding the project.</p>
 
     <p className="mt-4">Enjoy the update!</p>
 
