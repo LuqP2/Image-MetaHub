@@ -586,7 +586,6 @@ export function useImageLoader() {
                 () => {},
                 (batch) => {
                     addImages(batch);
-                    thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
                 },
                 activeDirectory.id,
                 activeDirectory.name,
@@ -862,6 +861,13 @@ export function useImageLoader() {
 
         // Initialize AbortController for this indexing operation
         abortControllerRef.current = new AbortController();
+        let releaseBackgroundThumbnailPause: (() => void) | null = null;
+        const releaseThumbnailPause = () => {
+            if (releaseBackgroundThumbnailPause) {
+                releaseBackgroundThumbnailPause();
+                releaseBackgroundThumbnailPause = null;
+            }
+        };
 
         try {
             // Always update the allowed paths in the main process
@@ -1003,7 +1009,6 @@ export function useImageLoader() {
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 addImages(batch);
-                thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
                 if (totalCatalogItems > 0) {
                     loadedCatalogItems += batch.length;
                     setDirectoryProgress(directory.id, {
@@ -1041,6 +1046,7 @@ export function useImageLoader() {
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
+                    releaseThumbnailPause();
                     setDirectoryProgress(directory.id, null);
                     if (suppressIndexingState) {
                         setDirectoryRefreshing(directory.id, false);
@@ -1056,6 +1062,8 @@ export function useImageLoader() {
                 const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
 
                 setEnrichmentProgress(null);
+                thumbnailManager.cancelQueuedJobs({ queue: 'low' });
+                releaseBackgroundThumbnailPause = thumbnailManager.pauseBackgroundWork();
 
                 const { phaseB } = await processFiles(
                     fileHandles,
@@ -1080,10 +1088,14 @@ export function useImageLoader() {
 
                 phaseB
                     .then(() => {
+                        releaseThumbnailPause();
+                        const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+                        scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
                         // Keep the progress bar visible for 2 seconds after completion
                         setTimeout(() => setEnrichmentProgress(null), 2000);
                     })
                     .catch(err => {
+                        releaseThumbnailPause();
                         console.error('Phase B enrichment failed', err);
                         // Keep error visible for 2 seconds
                         setTimeout(() => setEnrichmentProgress(null), 2000);
@@ -1093,6 +1105,7 @@ export function useImageLoader() {
                     finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                 }
             } else {
+                releaseThumbnailPause();
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
                     scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:preloaded`, preloadedImages);
@@ -1105,6 +1118,7 @@ export function useImageLoader() {
             }
 
         } catch (err) {
+            releaseThumbnailPause();
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
                 if (!suppressErrorMessage) {
