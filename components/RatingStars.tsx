@@ -19,30 +19,30 @@ export const RATING_VALUES: ImageRating[] = [1, 2, 3, 4, 5];
 
 const RATING_TONES: Record<ImageRating, RatingTone> = {
   1: {
-    active: 'border-red-500/60 bg-red-500/20 text-red-200',
-    inactive: 'border-red-500/25 text-red-300/70 hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200',
+    active: 'border-gray-600 bg-gray-800 text-gray-100',
+    inactive: 'border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-gray-900/70 hover:text-gray-200',
   },
   2: {
-    active: 'border-orange-500/60 bg-orange-500/20 text-orange-200',
-    inactive: 'border-orange-500/25 text-orange-300/70 hover:border-orange-400/50 hover:bg-orange-500/10 hover:text-orange-200',
+    active: 'border-gray-600 bg-gray-800 text-gray-100',
+    inactive: 'border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-gray-900/70 hover:text-gray-200',
   },
   3: {
-    active: 'border-yellow-500/60 bg-yellow-500/20 text-yellow-200',
-    inactive: 'border-yellow-500/25 text-yellow-300/70 hover:border-yellow-400/50 hover:bg-yellow-500/10 hover:text-yellow-200',
+    active: 'border-gray-600 bg-gray-800 text-gray-100',
+    inactive: 'border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-gray-900/70 hover:text-gray-200',
   },
   4: {
-    active: 'border-lime-500/60 bg-lime-500/20 text-lime-200',
-    inactive: 'border-lime-500/25 text-lime-300/70 hover:border-lime-400/50 hover:bg-lime-500/10 hover:text-lime-200',
+    active: 'border-gray-600 bg-gray-800 text-gray-100',
+    inactive: 'border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-gray-900/70 hover:text-gray-200',
   },
   5: {
-    active: 'border-green-500/60 bg-green-500/20 text-green-200',
-    inactive: 'border-green-500/25 text-green-300/70 hover:border-green-400/50 hover:bg-green-500/10 hover:text-green-200',
+    active: 'border-gray-600 bg-gray-800 text-gray-100',
+    inactive: 'border-gray-800 text-gray-400 hover:border-gray-700 hover:bg-gray-900/70 hover:text-gray-200',
   },
 };
 
 export const getRatingChipClasses = (value: ImageRating, active: boolean) => {
   const tone = RATING_TONES[value];
-  return active ? tone.active : `bg-gray-950/30 text-gray-400 ${tone.inactive}`;
+  return active ? tone.active : `bg-gray-950/30 ${tone.inactive}`;
 };
 
 export const getRatingBadgeClasses = (value: ImageRating) =>
@@ -114,8 +114,8 @@ const RatingStars: React.FC<RatingStarsProps> = ({
               size <= 16 ? 'h-6 w-6' : 'h-7 w-7'
             } ${
               active
-                ? 'text-amber-400'
-                : 'text-gray-500 hover:bg-gray-800/60 hover:text-amber-300'
+                ? 'text-gray-200'
+                : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-300'
             } ${!isInteractive ? 'cursor-default opacity-90' : ''}`.trim()}
             title={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}
             aria-label={rating === value ? `Clear rating ${value}` : `Set rating ${value}`}

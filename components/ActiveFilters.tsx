@@ -126,9 +126,9 @@ const ActiveFilters: React.FC = () => {
         )}
 
         {selectedRatings.map((rating) => (
-          <div key={`rating-${rating}`} className={`${chipClass} border-amber-700/50 bg-amber-950/50 text-amber-200`}>
+          <div key={`rating-${rating}`} className={`${chipClass} border-gray-700 bg-gray-900/70 text-gray-200`}>
             <RatingValueIcons value={rating} size={11} starClassName="fill-current" />
-            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-amber-900/70">
+            <button onClick={() => setSelectedRatings(selectedRatings.filter((value) => value !== rating))} className="rounded p-0.5 hover:bg-gray-800">
               <X size={12} />
             </button>
           </div>

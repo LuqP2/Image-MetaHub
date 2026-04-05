@@ -373,10 +373,10 @@ const TagsAndFavorites: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <Star className="w-4 h-4 text-amber-400" />
+                    <Star className="w-4 h-4 text-gray-400" />
                     <span className="text-sm text-gray-400 font-medium">Rating</span>
                     {selectedRatings.length > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded border border-amber-700/50 bg-amber-900/40 px-2 py-0.5 text-xs text-amber-300">
+                      <span className="inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900/70 px-2 py-0.5 text-xs text-gray-200">
                         {selectedRatings.map((rating) => (
                           <RatingValueIcons
                             key={`selected-rating-${rating}`}

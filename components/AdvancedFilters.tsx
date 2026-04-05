@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle, ChevronDown, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AdvancedFilters } from '../types';
 
@@ -92,38 +92,8 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
   const advancedFilterCount = Object.keys(advancedFilters || {}).length;
   const hasActiveFilters = advancedFilterCount > 0;
-  const generationSummary = useMemo(() => {
-    const parts: string[] = [];
-    if (localFilters.steps) {
-      parts.push(`Steps ${localFilters.steps.min ?? '...'}-${localFilters.steps.max ?? '...'}`);
-    }
-    if (localFilters.cfg) {
-      parts.push(`CFG ${localFilters.cfg.min ?? '...'}-${localFilters.cfg.max ?? '...'}`);
-    }
-    return parts.join(' • ') || 'Ranges for generation parameters.';
-  }, [localFilters.cfg, localFilters.steps]);
-
-  const imageSummary = localFilters.dimension
-    ? `Pinned to ${localFilters.dimension}.`
-    : 'Resolution and aspect focused filters.';
-
-  const fileSummary = localFilters.date?.from || localFilters.date?.to
-    ? `${localFilters.date?.from || '...'} to ${localFilters.date?.to || '...'}`
-    : 'Filter by file date range.';
-
-  const metaHubSummary = localFilters.hasVerifiedTelemetry
-    ? 'Only images with verified metrics.'
-    : localFilters.telemetryState === 'present'
-      ? 'Only images with telemetry data.'
-      : localFilters.telemetryState === 'missing'
-        ? 'Only images missing telemetry data.'
-        : 'MetaHub-specific metadata filters.';
   const generationModes = Array.isArray(localFilters.generationModes) ? localFilters.generationModes : [];
   const mediaTypes = Array.isArray(localFilters.mediaTypes) ? localFilters.mediaTypes : [];
-  const metadataSummary = [
-    generationModes.length > 0 ? generationModes.join(' + ') : null,
-    mediaTypes.length > 0 ? mediaTypes.join(' + ') : null,
-  ].filter(Boolean).join(' • ') || 'Generation mode and media-type filters.';
 
   const toggleMultiSelectFilter = <K extends MultiSelectFilterKey>(key: K, value: MultiSelectFilterValues[K][number]) => {
     const currentValues = (Array.isArray(localFilters[key]) ? localFilters[key] : []) as string[];
@@ -137,16 +107,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const renderNumberRange = (
     label: string,
     key: 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb',
-    options: { minPlaceholder: string; maxPlaceholder: string; step?: string; max?: string }
+    options: { step?: string; max?: string; compactHeader?: boolean }
   ) => (
     <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-semibold text-gray-100">{label}</h4>
-          <p className="text-xs text-gray-500">
-            {localFilters[key] ? `${localFilters[key].min ?? '...'} to ${localFilters[key].max ?? '...'}` : 'Any value'}
-          </p>
-        </div>
+      <div className={`mb-3 flex items-start justify-between gap-2 ${options.compactHeader ? 'min-h-0' : 'min-h-[4.5rem]'}`}>
+        <h4 className="text-sm font-semibold leading-5 text-gray-100">{label}</h4>
         {localFilters[key] && (
           <button
             type="button"
@@ -161,7 +126,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       <div className="grid grid-cols-2 gap-2">
         <input
           type="number"
-          placeholder={options.minPlaceholder}
           step={options.step}
           min="0"
           max={options.max}
@@ -184,7 +148,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         />
         <input
           type="number"
-          placeholder={options.maxPlaceholder}
           step={options.step}
           min="0"
           max={options.max}
@@ -253,10 +216,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
             <div className="space-y-4 px-4 pb-4">
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-100">Generation</h3>
-                    <p className="mt-1 text-xs text-gray-500">{generationSummary}</p>
-                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Generation</h3>
                   {(localFilters.steps || localFilters.cfg) && (
                     <button
                       type="button"
@@ -269,17 +229,14 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   )}
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  {renderNumberRange('Steps', 'steps', { minPlaceholder: 'Min', maxPlaceholder: 'Max', max: '100' })}
-                  {renderNumberRange('CFG', 'cfg', { minPlaceholder: 'Min', maxPlaceholder: 'Max', step: '0.1', max: '20' })}
+                  {renderNumberRange('Steps', 'steps', { max: '100', compactHeader: true })}
+                  {renderNumberRange('CFG', 'cfg', { step: '0.1', max: '20', compactHeader: true })}
                 </div>
               </div>
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-100">Image</h3>
-                    <p className="mt-1 text-xs text-gray-500">{imageSummary}</p>
-                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Dimensions</h3>
                   {localFilters.dimension && (
                     <button
                       type="button"
@@ -305,13 +262,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <Calendar className="h-4 w-4 text-blue-400" />
-                      File
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">{fileSummary}</p>
-                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Date</h3>
                   {(localFilters.date?.from || localFilters.date?.to) && (
                     <button
                       type="button"
@@ -347,17 +298,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <CheckCircle className="h-4 w-4 text-gray-400" />
-                      Metadata & File Type
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">{metadataSummary}</p>
-                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">Type</h3>
                   {(generationModes.length > 0 || mediaTypes.length > 0) && (
                     <button
                       type="button"
-                      onClick={() => setLocalFilters((prev: Record<string, any>) => normalizeFilters({
+                      onClick={() => setLocalFilters((prev) => normalizeFilters({
                         ...prev,
                         generationModes: [],
                         mediaTypes: [],
@@ -372,8 +317,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="text-sm font-semibold text-gray-100">Generation Mode</h4>
-                    <p className="mt-1 text-xs text-gray-500">Match txt2img or img2img outputs.</p>
+                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">Generation Mode</h4>
                     <div className="mt-3 space-y-2">
                       {([
                         ['txt2img', 'txt2img'],
@@ -393,8 +337,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   </div>
 
                   <div className="rounded-xl border border-gray-800/80 bg-gray-900/40 p-4">
-                    <h4 className="text-sm font-semibold text-gray-100">Media Type</h4>
-                    <p className="mt-1 text-xs text-gray-500">Restrict results to images or videos.</p>
+                    <h4 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-gray-100">Media Type</h4>
                     <div className="mt-3 space-y-2">
                       {([
                         ['image', 'Images'],
@@ -417,13 +360,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
 
               <div className="rounded-xl border border-gray-800/80 bg-gray-900/30 p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-100">
-                      <CheckCircle className="h-4 w-4 text-emerald-400" />
-                      MetaHub
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">{metaHubSummary}</p>
-                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-300">MetaHub</h3>
                   {(localFilters.hasVerifiedTelemetry || localFilters.telemetryState || localFilters.generationTimeMs || localFilters.stepsPerSecond || localFilters.vramPeakMb) && (
                     <button
                       type="button"
@@ -455,15 +392,12 @@ const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   />
                   <div>
                     <div className="text-sm text-gray-200">MetaHub Save Node only</div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Restrict to images with VRAM, device, and runtime metadata from the MetaHub Save Node.
-                    </p>
                   </div>
                 </label>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {renderNumberRange('Generation Time (ms)', 'generationTimeMs', { minPlaceholder: 'Min ms', maxPlaceholder: 'Max ms', step: '50' })}
-                  {renderNumberRange('Speed (it/s)', 'stepsPerSecond', { minPlaceholder: 'Min', maxPlaceholder: 'Max', step: '0.1' })}
-                  {renderNumberRange('VRAM Peak (MB)', 'vramPeakMb', { minPlaceholder: 'Min MB', maxPlaceholder: 'Max MB', step: '1' })}
+                  {renderNumberRange('Generation Time (ms)', 'generationTimeMs', { step: '50' })}
+                  {renderNumberRange('Speed (it/s)', 'stepsPerSecond', { step: '0.1' })}
+                  {renderNumberRange('VRAM Peak (MB)', 'vramPeakMb', { step: '1' })}
                 </div>
               </div>
             </div>
