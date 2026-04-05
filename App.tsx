@@ -649,6 +649,20 @@ export default function App() {
     }
   }, [handleLoadFromPath]);
 
+  const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+
+  const getWatchedFileFolderPath = (directoryPath: string, file: { path?: string; name: string }) => {
+    const rawPath = file.path && file.path.trim().length > 0
+      ? file.path
+      : `${directoryPath}/${file.name}`;
+    const normalizedPath = normalizeFolderPath(rawPath);
+    const lastSlash = normalizedPath.lastIndexOf('/');
+    if (lastSlash <= 0) {
+      return normalizeFolderPath(directoryPath);
+    }
+    return normalizedPath.slice(0, lastSlash);
+  };
+
   // Listen for new images from file watcher
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -665,13 +679,47 @@ export default function App() {
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
 
-      if (sortOrder === 'date-desc') {
+      if (sortOrder !== 'date-desc') {
+        return;
+      }
+
+      if (directory.visible === false) {
+        return;
+      }
+
+      const normalizedExcludedFolders = Array.from(excludedFolders).map(normalizeFolderPath);
+      const relevantFolderPaths = files
+        .map((file) => getWatchedFileFolderPath(directory.path, file))
+        .filter((folderPath) => {
+          return !normalizedExcludedFolders.some((excludedFolder) =>
+            folderPath === excludedFolder || folderPath.startsWith(`${excludedFolder}/`)
+          );
+        });
+
+      if (relevantFolderPaths.length === 0) {
+        return;
+      }
+
+      if (selectedFolders.size === 0) {
+        setCurrentPage(1);
+        return;
+      }
+
+      const normalizedSelectedFolders = Array.from(selectedFolders).map(normalizeFolderPath);
+      const affectsVisibleScope = relevantFolderPaths.some((folderPath) =>
+        normalizedSelectedFolders.some((selectedFolder) =>
+          folderPath === selectedFolder ||
+          (includeSubfolders && folderPath.startsWith(`${selectedFolder}/`))
+        )
+      );
+
+      if (affectsVisibleScope) {
         setCurrentPage(1);
       }
     });
 
     return () => unsubscribe();
-  }, [directories, processNewWatchedFiles, sortOrder]);
+  }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
 
   useEffect(() => {
     if (!window.electronAPI?.onTransferIndexedImagesProgress) return;
@@ -1366,7 +1414,6 @@ export default function App() {
   }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
   const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
 
-  const normalizeFolderPath = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
     if (progressDirectoryIds.length === 0) {
