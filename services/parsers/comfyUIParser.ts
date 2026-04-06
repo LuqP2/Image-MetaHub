@@ -29,11 +29,22 @@ interface ParseResult {
   warnings: string[];
 }
 
+const MAX_COMFY_PAYLOAD_CHARS = 4 * 1024 * 1024;
+const MAX_COMFY_BASE64_CHARS = 2 * 1024 * 1024;
+const MAX_COMFY_COMPRESSED_BYTES = 1024 * 1024;
+const MAX_COMFY_DECOMPRESSED_BYTES = 16 * 1024 * 1024;
+const MAX_COMFY_REGEX_SCAN_CHARS = 512 * 1024;
+
 /**
  * Tenta parsear payload do ComfyUI com múltiplas estratégias de descompressão e fallback
  */
 async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   const warnings: string[] = [];
+
+  if (raw.length > MAX_COMFY_PAYLOAD_CHARS) {
+    warnings.push('Payload too large to parse safely');
+    return null;
+  }
   
   // 1. Try direct JSON
   try {
@@ -45,9 +56,13 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   
   // 2. Base64 decode
   try {
-    const decoded = Buffer.from(raw, 'base64').toString('utf8');
-    const parsed = JSON.parse(decoded);
-    return { data: parsed, detectionMethod: 'base64', warnings };
+    if (raw.length > MAX_COMFY_BASE64_CHARS) {
+      warnings.push('Base64 payload too large to decode safely');
+    } else {
+      const decoded = Buffer.from(raw, 'base64').toString('utf8');
+      const parsed = JSON.parse(decoded);
+      return { data: parsed, detectionMethod: 'base64', warnings };
+    }
   } catch (e) {
     warnings.push('Base64 decode failed');
   }
@@ -58,8 +73,12 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
     try {
       // Detect zlib magic bytes (\x78\x9c)
       const buffer = Buffer.from(raw, 'base64');
-      if (buffer[0] === 0x78 && buffer[1] === 0x9c) {
-        const inflated = zlib.inflateSync(buffer);
+      if (buffer.length > MAX_COMFY_COMPRESSED_BYTES) {
+        warnings.push('Compressed payload too large to inflate safely');
+      } else if (buffer.length >= 2 && buffer[0] === 0x78 && buffer[1] === 0x9c) {
+        const inflated = zlib.inflateSync(buffer, {
+          maxOutputLength: MAX_COMFY_DECOMPRESSED_BYTES,
+        });
         const parsed = JSON.parse(inflated.toString('utf8'));
         return { data: parsed, detectionMethod: 'compressed', warnings };
       }
@@ -70,11 +89,15 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
   
   // 4. Regex fallback - find large JSON blocks
   try {
-    const match = raw.match(/\{[\s\S]{200,}\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      warnings.push('Used regex fallback to find JSON block');
-      return { data: parsed, detectionMethod: 'regex', warnings };
+    if (raw.length > MAX_COMFY_REGEX_SCAN_CHARS) {
+      warnings.push('Skipped regex fallback for oversized payload');
+    } else {
+      const match = raw.match(/\{[\s\S]{200,}\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        warnings.push('Used regex fallback to find JSON block');
+        return { data: parsed, detectionMethod: 'regex', warnings };
+      }
     }
   } catch (e) {
     warnings.push('Regex JSON fallback failed');
@@ -87,20 +110,23 @@ async function tryParseComfyPayload(raw: string): Promise<ParseResult | null> {
  * Detecção agressiva de payload ComfyUI em chunks PNG
  */
 function detectComfyPayload(chunks: string[]): { payload: string; method: string } | null {
-  const combinedText = chunks.join('\n').toLowerCase();
+  const rawPayload = chunks.join('\n');
+  const combinedText = rawPayload.toLowerCase();
   
   // Procura por strings indicativas do ComfyUI
   const comfyIndicators = ['comfyui', 'workflow', 'nodes', 'comfy', 'class_type'];
   const hasComfyIndicator = comfyIndicators.some(indicator => combinedText.includes(indicator));
   
   if (hasComfyIndicator) {
-    return { payload: chunks.join('\n'), method: 'keyword' };
+    return { payload: rawPayload, method: 'keyword' };
   }
   
   // Regex para detectar blocos JSON grandes (>200 caracteres)
-  const largeJsonMatch = chunks.join('\n').match(/\{[\s\S]{200,}\}/);
-  if (largeJsonMatch) {
-    return { payload: largeJsonMatch[0], method: 'regex_large_json' };
+  if (rawPayload.length <= MAX_COMFY_REGEX_SCAN_CHARS) {
+    const largeJsonMatch = rawPayload.match(/\{[\s\S]{200,}\}/);
+    if (largeJsonMatch) {
+      return { payload: largeJsonMatch[0], method: 'regex_large_json' };
+    }
   }
   
   return null;
