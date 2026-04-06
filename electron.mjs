@@ -1342,6 +1342,7 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('launch-generator', async (event, payload) => {
     try {
+      await settingsWriteQueue;
       const settings = await readSettings();
       const configuredCommand = normalizeLauncherCommand(settings?.generatorLaunchCommand);
       const configuredWorkingDirectory = normalizeLauncherWorkingDirectory(settings?.generatorLaunchWorkingDirectory);
