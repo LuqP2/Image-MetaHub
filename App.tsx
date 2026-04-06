@@ -501,7 +501,7 @@ export default function App() {
       const licenseState = useLicenseStore.getState();
 
       // 2. Check current status (defaults to free until user opts into trial)
-      licenseState.checkLicenseStatus();
+      await licenseState.checkLicenseStatus();
     };
 
     initializeLicense();
