@@ -104,4 +104,24 @@ describe('useLicenseStore trial policy', () => {
     expect(nextState.licenseEmail).toBe('test@example.com');
     expect(nextState.licenseKey).toBe('ABCD-EFGH-IJKL-MNOP');
   });
+
+  it('falls back to free when stored license validation throws', async () => {
+    vi.mocked(validateLicenseKey).mockRejectedValue(new Error('crypto unavailable'));
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      licenseStatus: 'pro',
+      licenseEmail: 'test@example.com',
+      licenseKey: 'ABCD-EFGH-IJKL-MNOP',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.initialized).toBe(true);
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.licenseEmail).toBeNull();
+    expect(nextState.licenseKey).toBeNull();
+  });
 });

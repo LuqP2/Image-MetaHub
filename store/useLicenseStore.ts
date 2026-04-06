@@ -139,7 +139,13 @@ export const useLicenseStore = create<LicenseState>()(
             return;
           }
 
-          const isValid = await validateLicenseKey(state.licenseEmail, state.licenseKey);
+          let isValid = false;
+          try {
+            isValid = await validateLicenseKey(state.licenseEmail, state.licenseKey);
+          } catch (error) {
+            console.warn('[IMH] Stored license validation threw. Resetting to Free.', error);
+          }
+
           if (!isValid) {
             console.warn('[IMH] Stored license failed validation. Resetting to Free.');
             set({
