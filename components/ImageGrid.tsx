@@ -955,8 +955,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
       return;
     }
 
-    // Windows behavior: Clicking background deselects everything (unless Ctrl/Shift is held)
-    if (!e.ctrlKey && !e.shiftKey) {
+    const preserveExistingSelection = e.ctrlKey || e.metaKey || e.shiftKey;
+
+    // Clicking background deselects everything unless we're in additive/range selection mode
+    if (!preserveExistingSelection) {
         useImageStore.setState({ selectedImages: new Set() });
         setFocusedImageIndex(-1); // Also clear focus
     }
@@ -971,13 +973,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     setIsSelecting(true);
     setSelectionStart({ x, y });
     setSelectionEnd({ x, y });
-    // If we just cleared selection, initial is empty. If we held Ctrl/Shift, we keep it.
-    // However, since we updated store generated state above, we should read from it? 
-    // Actually, React state updates are scheduled.
-    // If we want to support "Add to selection with Drag", we need to handle that.
-    
-    // For now, if no modifiers, start fresh.
-    const currentSelection = (!e.ctrlKey && !e.shiftKey) ? new Set<string>() : new Set(selectedImages);
+    // Preserve the current selection for additive/range marquee operations.
+    const currentSelection = preserveExistingSelection ? new Set(selectedImages) : new Set<string>();
     setInitialSelectedImages(currentSelection);
   }, [selectedImages]);
 
@@ -1032,7 +1029,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
         bottom: Math.max(selectionStart.y, y),
       };
 
-      const newSelection = new Set(e.shiftKey ? initialSelectedImages : []);
+      const preserveExistingSelection = e.ctrlKey || e.metaKey || e.shiftKey;
+      const newSelection = new Set(preserveExistingSelection ? initialSelectedImages : []);
 
       if (isInfinite) {
         // Coordinate-based selection for virtualized grid

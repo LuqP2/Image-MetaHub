@@ -1401,6 +1401,7 @@ export default function App() {
         return {
           id: modal.modalId,
           title: image.name,
+          image,
           isActive: activeImageModalId === modal.modalId,
           isMinimized: modal.isMinimized,
         };
@@ -1408,6 +1409,7 @@ export default function App() {
       .filter(Boolean) as Array<{
         id: string;
         title: string;
+        image: IndexedImage;
         isActive: boolean;
         isMinimized: boolean;
       }>;
