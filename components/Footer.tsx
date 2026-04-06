@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
 import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
-import { IndexedImageTransferProgress } from '../types';
+import { IndexedImage, IndexedImageTransferProgress } from '../types';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import { useThumbnail } from '../hooks/useThumbnail';
 
 interface FooterProps {
   currentPage: number;
@@ -26,6 +28,7 @@ interface FooterProps {
   windowItems?: Array<{
     id: string;
     title: string;
+    image: IndexedImage;
     isActive: boolean;
     isMinimized: boolean;
   }>;
@@ -67,10 +70,57 @@ const Footer: React.FC<FooterProps> = ({
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
   const [pageInput, setPageInput] = useState(currentPage.toString());
+  const windowStripRef = useRef<HTMLDivElement | null>(null);
+  const [hoveredWindowPreview, setHoveredWindowPreview] = useState<{
+    id: string;
+    anchorLeft: number;
+  } | null>(null);
 
   useEffect(() => {
     setPageInput(currentPage.toString());
   }, [currentPage]);
+
+  const hoveredWindowItem = useMemo(() => {
+    if (!hoveredWindowPreview) {
+      return null;
+    }
+
+    return windowItems.find((item) => item.id === hoveredWindowPreview.id) ?? null;
+  }, [hoveredWindowPreview, windowItems]);
+
+  useThumbnail(hoveredWindowItem?.image ?? null);
+  const hoveredThumbnail = useResolvedThumbnail(hoveredWindowItem?.image ?? null);
+
+  const handleWindowHover = useCallback((event: React.MouseEvent<HTMLDivElement>, id: string) => {
+    const stripRect = windowStripRef.current?.getBoundingClientRect();
+    const targetRect = event.currentTarget.getBoundingClientRect();
+
+    if (!stripRect) {
+      return;
+    }
+
+    setHoveredWindowPreview({
+      id,
+      anchorLeft: targetRect.left - stripRect.left + (targetRect.width / 2),
+    });
+  }, []);
+
+  const previewWidth = 176;
+  const previewLeft = useMemo(() => {
+    if (!hoveredWindowPreview || !windowStripRef.current) {
+      return null;
+    }
+
+    const stripWidth = windowStripRef.current.clientWidth;
+    const minLeft = (previewWidth / 2) + 8;
+    const maxLeft = stripWidth - (previewWidth / 2) - 8;
+
+    if (maxLeft <= minLeft) {
+      return stripWidth / 2;
+    }
+
+    return Math.min(Math.max(hoveredWindowPreview.anchorLeft, minLeft), maxLeft);
+  }, [hoveredWindowPreview]);
 
   const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
@@ -87,54 +137,88 @@ const Footer: React.FC<FooterProps> = ({
   return (
     <footer className="sticky bottom-0 z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
       {windowItems.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-800/60 px-4 py-2">
-          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-            Windows
-          </span>
-          {windowItems.map((windowItem) => (
+        <div className="relative border-b border-gray-800/60 px-4 py-2">
+          {hoveredWindowItem?.isMinimized && previewLeft !== null && (
             <div
-              key={windowItem.id}
-              onAuxClick={(event) => {
-                if (event.button !== 1) {
-                  return;
-                }
-
-                event.preventDefault();
-                event.stopPropagation();
-                onWindowClose?.(windowItem.id);
-              }}
-              className={`flex max-w-[260px] shrink-0 items-stretch overflow-hidden rounded-lg border transition-colors ${
-                windowItem.isActive
-                  ? 'border-blue-500/50 bg-blue-500/15 text-blue-100'
-                  : windowItem.isMinimized
-                    ? 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
-                    : 'border-gray-700 bg-gray-800/90 text-gray-300 hover:border-gray-600 hover:text-white'
-              }`}
+              className="pointer-events-none absolute bottom-full z-20 mb-2 -translate-x-1/2 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 duration-150"
+              style={{ left: `${previewLeft}px`, width: `${previewWidth}px` }}
             >
-              <button
-                onClick={() => onWindowSelect?.(windowItem.id)}
-                className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-xs font-medium"
-                title={windowItem.title}
-              >
-                {windowItem.isMinimized ? '[_] ' : ''}
-                {windowItem.title}
-              </button>
-              <button
-                onClick={(event) => {
+              <div className="overflow-hidden rounded-xl border border-gray-700/80 bg-gray-950/95 shadow-2xl shadow-black/50 backdrop-blur-sm">
+                <div className="aspect-square bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950">
+                  {hoveredThumbnail?.thumbnailUrl ? (
+                    <img
+                      src={hoveredThumbnail.thumbnailUrl}
+                      alt={hoveredWindowItem.title}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500">
+                      {hoveredWindowItem.title}
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-gray-800 px-3 py-2">
+                  <div className="truncate text-xs font-medium text-gray-200">
+                    {hoveredWindowItem.title}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            ref={windowStripRef}
+            className="flex items-center gap-2 overflow-x-auto"
+            onMouseLeave={() => setHoveredWindowPreview(null)}
+          >
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+              Windows
+            </span>
+            {windowItems.map((windowItem) => (
+              <div
+                key={windowItem.id}
+                onMouseEnter={(event) => handleWindowHover(event, windowItem.id)}
+                onAuxClick={(event) => {
+                  if (event.button !== 1) {
+                    return;
+                  }
+
                   event.preventDefault();
                   event.stopPropagation();
                   onWindowClose?.(windowItem.id);
                 }}
-                className={`border-l px-2 text-gray-400 transition-colors hover:text-white ${
-                  windowItem.isActive ? 'border-blue-500/30 hover:bg-blue-500/20' : 'border-gray-700/80 hover:bg-gray-700/80'
+                className={`flex max-w-[260px] shrink-0 items-stretch overflow-hidden rounded-lg border transition-colors ${
+                  windowItem.isActive
+                    ? 'border-blue-500/50 bg-blue-500/15 text-blue-100'
+                    : windowItem.isMinimized
+                      ? 'border-gray-700 bg-gray-800/70 text-gray-400 hover:border-gray-600 hover:text-gray-200'
+                      : 'border-gray-700 bg-gray-800/90 text-gray-300 hover:border-gray-600 hover:text-white'
                 }`}
-                aria-label={`Close ${windowItem.title}`}
-                title="Close window"
               >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+                <button
+                  onClick={() => onWindowSelect?.(windowItem.id)}
+                  className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-xs font-medium"
+                  title={windowItem.title}
+                >
+                  {windowItem.isMinimized ? `[_] ${windowItem.title}` : windowItem.title}
+                </button>
+                <button
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onWindowClose?.(windowItem.id);
+                  }}
+                  className={`border-l px-2 text-gray-400 transition-colors hover:text-white ${
+                    windowItem.isActive ? 'border-blue-500/30 hover:bg-blue-500/20' : 'border-gray-700/80 hover:bg-gray-700/80'
+                  }`}
+                  aria-label={`Close ${windowItem.title}`}
+                  title="Close window"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       <div className={`px-6 flex items-center gap-4 ${hasAnyJob ? 'h-14 md:h-16' : 'h-12 md:h-14'}`}>
