@@ -104,7 +104,7 @@ export interface ElectronAPI {
   onMenuOpenSettings: (callback: () => void) => () => void;
   onMenuToggleView: (callback: () => void) => () => void;
   onMenuShowChangelog: (callback: () => void) => () => void;
-  testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
+  testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
