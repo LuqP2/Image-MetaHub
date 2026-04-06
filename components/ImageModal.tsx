@@ -535,6 +535,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
+  const [sidebarWidth, setSidebarWidth] = useState(340);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -1538,6 +1540,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [clearMediaOverlayHideTimer]);
 
   useEffect(() => {
+    if (!isResizingSidebar) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (modalShellRef.current) {
+        const modalRect = modalShellRef.current.getBoundingClientRect();
+        const newWidth = modalRect.right - e.clientX;
+        setSidebarWidth(Math.max(300, Math.min(newWidth, Math.floor(modalRect.width * 0.7))));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar]);
+
+  useEffect(() => {
     if (!isRenaming) {
       setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
     }
@@ -1918,15 +1943,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
         {/* Metadata Panel */}
         {showSidebar && (
+        <>
+          {!showSidebarOnBottom && (
+             <div
+               onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
+               className={`w-1 cursor-col-resize hover:bg-gray-500/50 bg-gray-800/80 shrink-0 transition-colors ${isResizingSidebar ? 'bg-gray-500/80 z-50' : 'z-40'}`}
+               title="Resize sidebar"
+             />
+          )}
         <div
           data-window-drag-region="details"
           className={`w-full ${
             showSidebarOnBottom
               ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
-              : 'h-full w-[340px] max-w-[42%] min-w-[300px] border-l border-gray-800/80'
-          } relative p-6 overflow-y-auto space-y-4`}
+              : 'h-full border-l border-transparent'
+          } relative flex flex-col`}
+          style={
+            showSidebarOnBottom
+              ? {}
+              : { width: sidebarWidth, minWidth: 300, maxWidth: "70%" }
+          }
           onContextMenu={handleSelectionContextMenu}
         >
+          <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
             {/* Favorite and Tags Row */}
@@ -2094,6 +2133,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
+          {sidebarTab === 'details' ? (
+            <div className="space-y-4">
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
             <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50">
@@ -2537,30 +2578,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </pre>
             )}
           </div>
-
-          {sidebarTab === 'workflow' && nMeta && showComfyUIActions && (
-            <div className="absolute inset-0 z-20 overflow-y-auto bg-gray-950/95 p-6 backdrop-blur-sm">
-              <div className="space-y-4">
-                <div className="rounded-lg border border-purple-700/30 bg-purple-500/10 px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-purple-100">ComfyUI Workflow Workspace</div>
-                      <div className="mt-1 text-xs text-purple-200/80">
-                        Inspect the embedded graph, edit supported values, and generate variations without leaving the image modal.
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setSidebarTab('details')}
-                      className="rounded-md border border-purple-400/30 px-2 py-1 text-xs text-purple-100 transition-colors hover:bg-purple-500/10"
-                    >
-                      Back to Details
-                    </button>
-                  </div>
-                </div>
-
-                <ComfyUIWorkflowWorkspace
-                  image={image}
-                  onGenerate={async (params: ComfyUIGenerationParams) => {
+            </div>
+          ) : sidebarTab === 'workflow' && nMeta && showComfyUIActions ? (
+            <div className="space-y-4">
+              <ComfyUIWorkflowWorkspace
+                image={image}
+                onGenerate={async (params: ComfyUIGenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
                       negativePrompt: params.negativePrompt,
@@ -2594,10 +2617,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   viewportHeight={showSidebarOnBottom ? 420 : 520}
                   showCancelButton={false}
                 />
-              </div>
             </div>
-          )}
+          ) : null}
+          </div>
         </div>
+        </>
         )}
         </div>
 
