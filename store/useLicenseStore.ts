@@ -58,10 +58,16 @@ interface LicenseState {
 
   // Actions
   activateTrial: () => void;
-  checkLicenseStatus: () => void;
+  checkLicenseStatus: () => Promise<void>;
   activateLicense: (key: string, email: string) => Promise<boolean>;
   _resetLicense: () => void;
 }
+
+const clearStoredLicenseState = () => ({
+  licenseStatus: 'free' as LicenseStatus,
+  licenseKey: null,
+  licenseEmail: null,
+});
 
 // Helper: Check if trial has expired
 const checkIfTrialExpired = (trialStartDate: number | null): boolean => {
@@ -117,12 +123,46 @@ export const useLicenseStore = create<LicenseState>()(
       },
 
       // Check license status (called on app start and periodically)
-      checkLicenseStatus: () => {
+      checkLicenseStatus: async () => {
         const state = get();
 
-        // If Pro/Lifetime, keep that status
+        // Persisted Pro/Lifetime state must still match a valid offline key.
         if (state.licenseStatus === 'pro' || state.licenseStatus === 'lifetime') {
-          set({ initialized: true, migrationResetApplied: true, expiredTrialResetApplied: true });
+          if (!state.licenseEmail || !state.licenseKey) {
+            console.warn('[IMH] Stored license is missing key or email. Resetting to Free.');
+            set({
+              ...clearStoredLicenseState(),
+              initialized: true,
+              migrationResetApplied: true,
+              expiredTrialResetApplied: true,
+            });
+            return;
+          }
+
+          let isValid = false;
+          try {
+            isValid = await validateLicenseKey(state.licenseEmail, state.licenseKey);
+          } catch (error) {
+            console.warn('[IMH] Stored license validation threw. Resetting to Free.', error);
+          }
+
+          if (!isValid) {
+            console.warn('[IMH] Stored license failed validation. Resetting to Free.');
+            set({
+              ...clearStoredLicenseState(),
+              initialized: true,
+              migrationResetApplied: true,
+              expiredTrialResetApplied: true,
+            });
+            return;
+          }
+
+          set({
+            initialized: true,
+            migrationResetApplied: true,
+            expiredTrialResetApplied: true,
+            licenseStatus: state.licenseStatus,
+          });
           return;
         }
 
@@ -160,7 +200,7 @@ export const useLicenseStore = create<LicenseState>()(
 
         // If trial never started, stay in free mode
         if (!state.trialActivated) {
-          set({ initialized: true, licenseStatus: 'free', trialStartDate: null });
+          set({ initialized: true, ...clearStoredLicenseState(), trialStartDate: null, trialActivated: false });
           return;
         }
 

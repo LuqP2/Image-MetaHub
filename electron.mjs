@@ -18,6 +18,7 @@ import archiver from 'archiver';
 import {
   buildLauncherScriptContent,
   normalizeLauncherCommand,
+  normalizeLauncherWorkingDirectory,
   resolveLauncherWorkingDirectory,
 } from './utils/generatorLauncher.mjs';
 
@@ -1262,6 +1263,23 @@ function setupFileOperationHandlers() {
     const normalizedFilePath = normalizeAllowedPath(filePath);
     return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
   };
+  const approvedWriteRoots = new Set();
+  const registerApprovedWriteRoot = (targetPath) => {
+    if (!targetPath) return;
+    const normalizedTarget = normalizeAllowedPath(targetPath);
+    if (normalizedTarget) {
+      approvedWriteRoots.add(normalizedTarget);
+    }
+  };
+  const registerApprovedWriteFilePath = (filePath) => {
+    if (!filePath) return;
+    registerApprovedWriteRoot(path.dirname(filePath));
+  };
+  const isApprovedWritePath = (filePath) => {
+    if (approvedWriteRoots.size === 0 || !filePath) return false;
+    const normalizedFilePath = normalizeAllowedPath(filePath);
+    return Array.from(approvedWriteRoots).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
+  };
   const userDataPath = path.normalize(app.getPath('userData'));
   const isInternalPath = (filePath) => {
     if (!filePath) return false;
@@ -1324,9 +1342,46 @@ function setupFileOperationHandlers() {
 
   ipcMain.handle('launch-generator', async (event, payload) => {
     try {
-      const command = typeof payload === 'string' ? payload : payload?.command;
-      const workingDirectory = typeof payload === 'string' ? '' : payload?.workingDirectory;
-      const result = await launchGeneratorCommand({ command, workingDirectory });
+      await settingsWriteQueue;
+      const settings = await readSettings();
+      const configuredCommand = normalizeLauncherCommand(settings?.generatorLaunchCommand);
+      const configuredWorkingDirectory = normalizeLauncherWorkingDirectory(settings?.generatorLaunchWorkingDirectory);
+
+      if (!configuredCommand) {
+        return { success: false, error: 'No launch command configured. Add one in Settings > Integrations.' };
+      }
+
+      const requestedCommand = normalizeLauncherCommand(typeof payload === 'string' ? payload : payload?.command);
+      const requestedWorkingDirectory = normalizeLauncherWorkingDirectory(
+        typeof payload === 'string' ? '' : payload?.workingDirectory
+      );
+
+      if (requestedCommand && requestedCommand !== configuredCommand) {
+        return { success: false, error: 'Launch request rejected: command must match the saved integration setting.' };
+      }
+
+      if (
+        requestedWorkingDirectory &&
+        configuredWorkingDirectory &&
+        requestedWorkingDirectory !== configuredWorkingDirectory
+      ) {
+        return {
+          success: false,
+          error: 'Launch request rejected: working directory must match the saved integration setting.',
+        };
+      }
+
+      if (requestedWorkingDirectory && !configuredWorkingDirectory) {
+        return {
+          success: false,
+          error: 'Launch request rejected: working directory must be saved in Settings before launch.',
+        };
+      }
+
+      const result = await launchGeneratorCommand({
+        command: configuredCommand,
+        workingDirectory: configuredWorkingDirectory,
+      });
       return { success: true, ...result };
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to launch generator.' };
@@ -1796,6 +1851,7 @@ function setupFileOperationHandlers() {
       }
       
       const selectedPath = result.filePaths[0];
+      registerApprovedWriteRoot(selectedPath);
       // NOTE: Don't update currentDirectoryPath here - this is for export destination selection
       // currentDirectoryPath should remain as the source directory
       
@@ -1815,6 +1871,9 @@ function setupFileOperationHandlers() {
       const result = await dialog.showSaveDialog(mainWindow, options);
       if (result.canceled) {
         return { success: true, canceled: true };
+      }
+      if (result.filePath) {
+        registerApprovedWriteFilePath(result.filePath);
       }
       return { success: true, canceled: false, path: result.filePath };
     } catch (error) {
@@ -1962,6 +2021,10 @@ function setupFileOperationHandlers() {
 
   // TEST ONLY: Simulate update available dialog
   ipcMain.handle('test-update-dialog', async () => {
+    if (process.env.NODE_ENV !== 'development') {
+      return { success: false, error: 'test-update-dialog is only available in development.' };
+    }
+
     if (!mainWindow) {
       return { success: false, error: 'Main window not available' };
     }
@@ -2481,9 +2544,10 @@ function setupFileOperationHandlers() {
       // This is more permissive than read operations but still controlled
       const normalizedFilePath = path.normalize(filePath);
 
-      // Check if the target directory is within the current directory or a user-selected export directory
-      // For now, we'll allow writing to any directory (since users explicitly choose export locations)
-      // But we should add additional validation in the future if needed
+      if (!isAllowedOrInternal(normalizedFilePath) && !isApprovedWritePath(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to write file outside of approved directories.');
+        return { success: false, error: 'Access denied: Cannot write files outside of approved directories.' };
+      }
 
       console.log('Writing file to:', normalizedFilePath, 'Size:', data.length);
 

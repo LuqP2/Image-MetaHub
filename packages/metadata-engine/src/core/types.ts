@@ -18,7 +18,7 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   getSettings: () => Promise<any>;
   saveSettings: (settings: any) => Promise<{ success: boolean; error?: string }>;
-  launchGenerator: (command: string) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
+  launchGenerator: (payload: { command: string; workingDirectory?: string }) => Promise<{ success: boolean; error?: string; scriptPath?: string }>;
   openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   getDefaultCachePath: () => Promise<{ success: boolean; path?: string; error?: string }>;
   getAppVersion: () => Promise<string>;
@@ -46,7 +46,7 @@ export interface ElectronAPI {
   onMenuOpenSettings: (callback: () => void) => () => void;
   onMenuToggleView: (callback: () => void) => () => void;
   onMenuShowChangelog: (callback: () => void) => () => void;
-  testUpdateDialog: () => Promise<{ success: boolean; response?: number; error?: string }>;
+  testUpdateDialog?: () => Promise<{ success: boolean; response?: number; error?: string }>;
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;

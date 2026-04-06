@@ -8,6 +8,10 @@ export type ProFeature = 'a1111' | 'comfyui' | 'comparison' | 'analytics' | 'clu
 export const CLUSTERING_FREE_TIER_LIMIT = 300;
 export const CLUSTERING_PREVIEW_LIMIT = 500; // Process extra for blurred preview
 
+const isDevelopmentBuild =
+  (typeof import.meta !== 'undefined' && Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)) ||
+  (typeof process !== 'undefined' && process.env.NODE_ENV === 'development');
+
 type ProModalState = {
   proModalOpen: boolean;
   proModalFeature: ProFeature;
@@ -52,7 +56,8 @@ export const useFeatureAccess = () => {
   const closeProModal = useProModalStore((state) => state.closeProModal);
 
   // Dev override: localStorage flag to bypass all checks
-  const devOverride = typeof window !== 'undefined' &&
+  const devOverride = isDevelopmentBuild &&
+                     typeof window !== 'undefined' &&
                      localStorage.getItem('IMH_DEV_LICENSE') === 'pro';
 
   const isInitialized = licenseStore.initialized;
@@ -70,8 +75,8 @@ export const useFeatureAccess = () => {
   const trialUsed = isInitialized && licenseStore.trialActivated;
   const canStartTrial = isInitialized && !hasProLicense && !isTrialActive && !trialUsed;
 
-  // During initialization, keep features open to avoid flicker
-  const allowDuringInit = !isInitialized || devOverride;
+  // Keep the development shortcut working, but do not open paid features before license state loads.
+  const allowDuringInit = devOverride;
   const canUseDuringTrialOrPro = isPro || isTrialActive;
 
   // Feature flags (all Pro features have same access requirements)

@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../utils/licenseKey', () => ({
+  validateLicenseKey: vi.fn(),
+}));
+
+import { validateLicenseKey } from '../utils/licenseKey';
 import { TRIAL_DURATION_DAYS, useLicenseStore } from '../store/useLicenseStore';
 
 const resetLicenseState = () => {
@@ -18,13 +23,14 @@ const resetLicenseState = () => {
 describe('useLicenseStore trial policy', () => {
   beforeEach(() => {
     resetLicenseState();
+    vi.mocked(validateLicenseKey).mockReset();
   });
 
   it('uses a 3-day trial duration', () => {
     expect(TRIAL_DURATION_DAYS).toBe(3);
   });
 
-  it('resets previously expired trials so users can start a fresh trial', () => {
+  it('resets previously expired trials so users can start a fresh trial', async () => {
     useLicenseStore.setState({
       initialized: false,
       migrationResetApplied: true,
@@ -34,7 +40,7 @@ describe('useLicenseStore trial policy', () => {
       licenseStatus: 'expired',
     });
 
-    useLicenseStore.getState().checkLicenseStatus();
+    await useLicenseStore.getState().checkLicenseStatus();
 
     const nextState = useLicenseStore.getState();
     expect(nextState.licenseStatus).toBe('free');
@@ -43,7 +49,7 @@ describe('useLicenseStore trial policy', () => {
     expect(nextState.expiredTrialResetApplied).toBe(true);
   });
 
-  it('does not reset an active trial during the duration migration', () => {
+  it('does not reset an active trial during the duration migration', async () => {
     useLicenseStore.setState({
       initialized: false,
       migrationResetApplied: true,
@@ -53,11 +59,69 @@ describe('useLicenseStore trial policy', () => {
       licenseStatus: 'trial',
     });
 
-    useLicenseStore.getState().checkLicenseStatus();
+    await useLicenseStore.getState().checkLicenseStatus();
 
     const nextState = useLicenseStore.getState();
     expect(nextState.licenseStatus).toBe('trial');
     expect(nextState.trialActivated).toBe(true);
     expect(nextState.expiredTrialResetApplied).toBe(true);
+  });
+
+  it('downgrades a persisted pro status when the stored key is missing', async () => {
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      licenseStatus: 'pro',
+      licenseEmail: 'test@example.com',
+      licenseKey: null,
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.licenseEmail).toBeNull();
+    expect(nextState.licenseKey).toBeNull();
+  });
+
+  it('keeps persisted pro status only when the stored key still validates', async () => {
+    vi.mocked(validateLicenseKey).mockResolvedValue(true);
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      licenseStatus: 'pro',
+      licenseEmail: 'test@example.com',
+      licenseKey: 'ABCD-EFGH-IJKL-MNOP',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(validateLicenseKey).toHaveBeenCalledWith('test@example.com', 'ABCD-EFGH-IJKL-MNOP');
+    expect(nextState.licenseStatus).toBe('pro');
+    expect(nextState.licenseEmail).toBe('test@example.com');
+    expect(nextState.licenseKey).toBe('ABCD-EFGH-IJKL-MNOP');
+  });
+
+  it('falls back to free when stored license validation throws', async () => {
+    vi.mocked(validateLicenseKey).mockRejectedValue(new Error('crypto unavailable'));
+    useLicenseStore.setState({
+      initialized: false,
+      migrationResetApplied: false,
+      expiredTrialResetApplied: false,
+      licenseStatus: 'pro',
+      licenseEmail: 'test@example.com',
+      licenseKey: 'ABCD-EFGH-IJKL-MNOP',
+    });
+
+    await useLicenseStore.getState().checkLicenseStatus();
+
+    const nextState = useLicenseStore.getState();
+    expect(nextState.initialized).toBe(true);
+    expect(nextState.licenseStatus).toBe('free');
+    expect(nextState.licenseEmail).toBeNull();
+    expect(nextState.licenseKey).toBeNull();
   });
 });

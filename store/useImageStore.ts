@@ -14,6 +14,7 @@ import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetN
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
+import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
 import { CLUSTERING_FREE_TIER_LIMIT, CLUSTERING_PREVIEW_LIMIT } from '../hooks/useFeatureAccess';
@@ -595,6 +596,21 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
     };
 
+    const purgePendingDirectoryEntries = (directoryId: string) => {
+        pendingImagesQueue = pendingImagesQueue.filter(img => img?.directoryId !== directoryId);
+        pendingMergeQueue = pendingMergeQueue.filter(img => img?.directoryId !== directoryId);
+
+        if (pendingImagesQueue.length === 0 && pendingFlushTimer) {
+            clearTimeout(pendingFlushTimer);
+            pendingFlushTimer = null;
+        }
+
+        if (pendingMergeQueue.length === 0 && pendingMergeTimer) {
+            clearTimeout(pendingMergeTimer);
+            pendingMergeTimer = null;
+        }
+    };
+
     const flushPendingImages = (drainAll: boolean = false) => {
         if (pendingImagesQueue.length === 0) {
             return;
@@ -613,9 +629,16 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         let addedImages: IndexedImage[] = [];
         set(state => {
+            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
             const deduped = new Map<string, IndexedImage>();
             for (const img of imagesToAdd) {
-                if (img?.id && !deduped.has(img.id)) {
+                if (!img?.id) {
+                    continue;
+                }
+                if (img.directoryId && !activeDirectoryIds.has(img.directoryId)) {
+                    continue;
+                }
+                if (!deduped.has(img.id)) {
                     deduped.set(img.id, img);
                 }
             }
@@ -639,6 +662,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             maybeQueueLineageBuild(700);
         }
+
+        traceCacheDebug('store:flushPendingImages', () => ({
+            batchCount: imagesToAdd.length,
+            details: {
+                addedImages: addedImages.length,
+                remainingQueue: pendingImagesQueue.length,
+            },
+            snapshot: createCacheDebugSnapshot(get()),
+        }));
 
         if (pendingImagesQueue.length > 0) {
             scheduleFlush();
@@ -667,8 +699,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         }
 
         set(state => {
+            const activeDirectoryIds = new Set(state.directories.map(directory => directory.id));
             const updates = new Map<string, IndexedImage>();
             for (const img of updatesToMerge) {
+                if (!img?.id) {
+                    continue;
+                }
+                if (img.directoryId && !activeDirectoryIds.has(img.directoryId)) {
+                    continue;
+                }
                 if (img?.id) {
                     updates.set(img.id, img);
                 }
@@ -761,6 +800,15 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         maybeQueueLineageBuild(700);
+
+        traceCacheDebug('store:flushPendingMerges', () => ({
+            batchCount: updatesToMerge.length,
+            details: {
+                remainingQueue: pendingMergeQueue.length,
+                forceFullRecompute,
+            },
+            snapshot: createCacheDebugSnapshot(get()),
+        }));
     };
 
     const scheduleMergeFlush = () => {
@@ -1884,6 +1932,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const { directories, images, selectedFolders } = get();
             const targetDirectory = directories.find(d => d.id === directoryId);
             const newDirectories = directories.filter(d => d.id !== directoryId);
+            purgePendingDirectoryEntries(directoryId);
             if (window.electronAPI) {
                 localStorage.setItem('image-metahub-directories', JSON.stringify(newDirectories.map(d => d.path)));
             }
@@ -1916,6 +1965,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
                 return _updateState(baseState, newImages);
             });
+
+            traceCacheDebug('store:removeDirectory', () => ({
+                directoryId,
+                details: {
+                    removedImages: images.length - newImages.length,
+                    updatedSelection: updatedSelection.size,
+                },
+                snapshot: createCacheDebugSnapshot(get()),
+            }));
 
             saveSelectedFolders(Array.from(updatedSelection)).catch((error) => {
                 console.error('Failed to persist folder selection state', error);
@@ -2190,6 +2248,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const remainingImages = state.images.filter(img => !idsToRemove.has(img.id));
                 return _updateState(state, remainingImages);
             });
+            traceCacheDebug('store:removeImages', () => ({
+                imageIdsCount: imageIds.length,
+                snapshot: createCacheDebugSnapshot(get()),
+            }));
             maybeQueueLineageBuild(500);
         },
 

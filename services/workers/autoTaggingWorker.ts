@@ -42,6 +42,9 @@ type WorkerResponse =
       };
     };
 
+const MAX_AUTO_TAG_IMAGES = 50000;
+const MAX_TOP_N = 50;
+
 let isCancelled = false;
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
@@ -50,8 +53,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   switch (message.type) {
     case 'start':
       await startAutoTagging(message.payload.images, {
-        topN: message.payload.topN,
-        minScore: message.payload.minScore,
+        topN: sanitizeTopN(message.payload.topN),
+        minScore: sanitizeMinScore(message.payload.minScore),
       });
       break;
     case 'cancel':
@@ -66,6 +69,15 @@ async function startAutoTagging(
   options: { topN?: number; minScore?: number }
 ): Promise<void> {
   try {
+    if (!Array.isArray(images)) {
+      postError('Invalid auto-tagging payload: images must be an array.');
+      return;
+    }
+    if (images.length > MAX_AUTO_TAG_IMAGES) {
+      postError(`Auto-tagging payload too large: received ${images.length} images (max ${MAX_AUTO_TAG_IMAGES}).`);
+      return;
+    }
+
     isCancelled = false;
     postProgress(0, images.length, 'Building TF-IDF model...');
 
@@ -125,6 +137,30 @@ function postError(error: string): void {
     payload: { error },
   };
   self.postMessage(response);
+}
+
+function sanitizeTopN(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(1, Math.min(MAX_TOP_N, Math.floor(value)));
+}
+
+function sanitizeMinScore(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.min(1, value));
 }
 
 export type { WorkerMessage, WorkerResponse };

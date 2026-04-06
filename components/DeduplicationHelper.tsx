@@ -25,6 +25,7 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Generate deduplication suggestion
   const suggestion: DeduplicationSuggestion = useMemo(() => {
@@ -49,6 +50,7 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
 
   const handleApplySuggestions = async () => {
     setIsApplying(true);
+    setStatusMessage(null);
     try {
       // Mark best images
       const bestImageIds = suggestion.bestImages.map((img) => img.id);
@@ -69,8 +71,16 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
       console.log(
         `Applied suggestions: ${bestImageIds.length} best, ${duplicateImageIds.length} to archive`
       );
+      setStatusMessage({
+        type: 'success',
+        text: `Applied ${bestImageIds.length} keep and ${duplicateImageIds.length} archive suggestions.`,
+      });
     } catch (error) {
       console.error('Failed to apply deduplication suggestions:', error);
+      setStatusMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to apply deduplication suggestions.',
+      });
     } finally {
       setIsApplying(false);
     }
@@ -78,6 +88,7 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
 
   const handleClearAll = async () => {
     setIsApplying(true);
+    setStatusMessage(null);
     try {
       // Clear all preferences by saving empty arrays
       await markAsBest(cluster.id, []);
@@ -87,8 +98,13 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
       onPreferenceUpdated?.();
 
       console.log('Cleared all deduplication preferences');
+      setStatusMessage({ type: 'success', text: 'Cleared saved deduplication preferences.' });
     } catch (error) {
       console.error('Failed to clear preferences:', error);
+      setStatusMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to clear deduplication preferences.',
+      });
     } finally {
       setIsApplying(false);
     }
@@ -240,6 +256,18 @@ const DeduplicationHelper: React.FC<DeduplicationHelperProps> = ({
             file size (larger = better quality), and creation date (earlier = original).
             Top 20% are suggested as "best" to keep.
           </div>
+
+          {statusMessage && (
+            <div
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                statusMessage.type === 'success'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                  : 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+              }`}
+            >
+              {statusMessage.text}
+            </div>
+          )}
         </div>
       )}
     </div>

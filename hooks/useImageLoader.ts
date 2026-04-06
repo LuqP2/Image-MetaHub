@@ -5,8 +5,7 @@ import { cacheManager, IncrementalCacheWriter } from '../services/cacheManager';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { IndexedImage, Directory } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { getImageGenerator, getImageGpuDevice } from '../utils/analyticsUtils';
-import { normalizeFacetValue } from '../utils/facetNormalization';
+import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 
 // Configure logging level
 const DEBUG = false;
@@ -239,7 +238,7 @@ const getRelativePath = (rootPath: string, targetPath: string) => {
 export function useImageLoader() {
     const {
         addDirectory, setLoading, setProgress, setError, setSuccess,
-        setFilterOptions, removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
+        removeImages, addImages, appendImagesRaw, mergeImages, clearImages, replaceDirectoryImagesRaw, setIndexingState, setEnrichmentProgress, setDirectoryRefreshing, setDirectoryProgress,
         recomputeDerivedState,
         setLineageDirectorySignature, setLineageRebuildSuspended, hydratePersistedLineageSnapshot, scheduleLineageRebuild
     } = useImageStore();
@@ -252,14 +251,9 @@ export function useImageLoader() {
     
     // Timer for indexing performance tracking
     const indexingStartTimeRef = useRef<number | null>(null);
-    const filterRefreshRef = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({
-        last: 0,
-        timer: null,
-    });
     const idleReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const idleReconcileQueueRef = useRef<Directory[]>([]);
     const idleReconcileRunningRef = useRef(false);
-    const FILTER_REFRESH_MIN_INTERVAL_MS = 5000;
 
     // Helper function to check if indexing should be cancelled
     const shouldCancelIndexing = useCallback((allowIdle = false) => {
@@ -299,89 +293,6 @@ export function useImageLoader() {
         });
     }, []);
 
-    const updateGlobalFilters = useCallback(() => {
-        const allImages = useImageStore.getState().images;
-        const models = new Set<string>();
-        const loras = new Set<string>();
-        const samplers = new Set<string>();
-        const schedulers = new Set<string>();
-        const generators = new Set<string>();
-        const gpuDevices = new Set<string>();
-
-        for (const image of allImages) {
-            if (image.models && image.models.length > 0) {
-                image.models.forEach(model => {
-                    const normalized = normalizeFacetValue(model);
-                    if (normalized) {
-                        models.add(normalized);
-                    }
-                });
-            }
-            if (image.loras && image.loras.length > 0) {
-                image.loras.forEach(lora => {
-                    const normalized = normalizeFacetValue(lora);
-                    if (normalized) {
-                        loras.add(normalized);
-                    }
-                });
-            }
-            const sampler = normalizeFacetValue(image.sampler);
-            if (sampler) samplers.add(sampler);
-            const scheduler = normalizeFacetValue(image.scheduler);
-            if (scheduler) schedulers.add(scheduler);
-            generators.add(getImageGenerator(image));
-            const gpuDevice = getImageGpuDevice(image);
-            if (gpuDevice) {
-                gpuDevices.add(gpuDevice);
-            }
-        }
-
-        setFilterOptions({
-            models: Array.from(models).sort(),
-            loras: Array.from(loras).sort(),
-            samplers: Array.from(samplers).sort(),
-            schedulers: Array.from(schedulers).sort(),
-            generators: Array.from(generators).sort(),
-            gpuDevices: Array.from(gpuDevices).sort(),
-            dimensions: [] as string[],
-        });
-    }, [setFilterOptions]);
-
-    const scheduleGlobalFilterRefresh = useCallback((force = false) => {
-        const isIndexing = useImageStore.getState().indexingState === 'indexing';
-        if (isIndexing && !force) {
-            return;
-        }
-        const now = Date.now();
-        const ref = filterRefreshRef.current;
-        if (force) {
-            if (ref.timer) {
-                clearTimeout(ref.timer);
-                ref.timer = null;
-            }
-            updateGlobalFilters();
-            ref.last = now;
-            return;
-        }
-
-        const elapsed = now - ref.last;
-        if (elapsed >= FILTER_REFRESH_MIN_INTERVAL_MS) {
-            updateGlobalFilters();
-            ref.last = now;
-            return;
-        }
-
-        if (ref.timer) {
-            return;
-        }
-
-        ref.timer = setTimeout(() => {
-            ref.timer = null;
-            updateGlobalFilters();
-            ref.last = Date.now();
-        }, FILTER_REFRESH_MIN_INTERVAL_MS - elapsed);
-    }, [updateGlobalFilters]);
-
     useEffect(() => {
         if (!getIsElectron()) return;
 
@@ -416,8 +327,6 @@ export function useImageLoader() {
                 setLoading(false);
                 isFirstBatch = false;
             }
-            // Update filters incrementally as new images are processed
-            scheduleGlobalFilterRefresh();
         });
 
         const removeErrorListener = (window as any).electronAPI.onIndexingError(({ error, directoryId }: { error: string, directoryId: string }) => {
@@ -449,15 +358,10 @@ export function useImageLoader() {
             removeErrorListener();
             removeCompleteListener();
         };
-    }, [addImages, setProgress, setError, setLoading, scheduleGlobalFilterRefresh]);
+    }, [addImages, setProgress, setError, setLoading]);
 
     useEffect(() => {
         return () => {
-            const ref = filterRefreshRef.current;
-            if (ref.timer) {
-                clearTimeout(ref.timer);
-                ref.timer = null;
-            }
             if (idleReconcileTimerRef.current) {
                 clearTimeout(idleReconcileTimerRef.current);
                 idleReconcileTimerRef.current = null;
@@ -492,6 +396,15 @@ export function useImageLoader() {
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const finalDirectoryImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+
+        traceCacheDebug('loader:finalizeDirectoryLoad:beforeRefresh', () => ({
+            directoryId: directory.id,
+            details: {
+                finalDirectoryImages: finalDirectoryImages.length,
+                suppressIndexingState,
+            },
+            snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+        }));
         
         if (finalDirectoryImages.length === 0) {
             console.warn(`⚠️ No images found for directory ${directory.name}, skipping cache save`);
@@ -516,7 +429,6 @@ export function useImageLoader() {
             indexingStartTimeRef.current = null;
         }
 
-        scheduleGlobalFilterRefresh(true);
         await refreshLineageDirectorySignature(directory);
         if (!suppressSuccessMessage) {
             setSuccess(`Loaded ${finalDirectoryImages.length} images from ${directory.name}.`);
@@ -545,7 +457,7 @@ export function useImageLoader() {
             delete (window as any)[finalizationKey];
             completedTimeoutRef.current = null;
         }, 3000);
-    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing, scheduleGlobalFilterRefresh]);
+    }, [refreshLineageDirectorySignature, setSuccess, setLoading, setIndexingState, setProgress, setDirectoryRefreshing]);
 
     const CACHE_HYDRATE_FLUSH_SIZE = 2048;
     const DIRECTORY_THUMBNAIL_WARMUP_LIMIT = 384;
@@ -624,6 +536,16 @@ export function useImageLoader() {
             shouldScanSubfolders,
         );
 
+        traceCacheDebug('loader:reconcileCachedDirectory:diff', () => ({
+            directoryId: activeDirectory.id,
+            details: {
+                newAndModifiedFiles: diff.newAndModifiedFiles.length,
+                deletedFileIds: diff.deletedFileIds.length,
+                currentFiles: allCurrentFiles.length,
+            },
+            snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+        }));
+
         if (diff.newAndModifiedFiles.length === 0 && diff.deletedFileIds.length === 0) {
             return false;
         }
@@ -664,7 +586,6 @@ export function useImageLoader() {
                 () => {},
                 (batch) => {
                     addImages(batch);
-                    thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
                 },
                 activeDirectory.id,
                 activeDirectory.name,
@@ -697,9 +618,12 @@ export function useImageLoader() {
             );
 
             await phaseB;
-            scheduleGlobalFilterRefresh(true);
             await refreshLineageDirectorySignature(activeDirectory);
             scheduleLineageRebuild(800);
+            traceCacheDebug('loader:reconcileCachedDirectory:complete', () => ({
+                directoryId: activeDirectory.id,
+                snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+            }));
             return true;
         } catch (reconcileError) {
             console.error(`[startup-reconcile] Failed for ${activeDirectory.path}:`, reconcileError);
@@ -709,7 +633,7 @@ export function useImageLoader() {
             setEnrichmentProgress(null);
             setProgress(null);
         }
-    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleGlobalFilterRefresh, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
+    }, [addImages, mergeImages, refreshLineageDirectorySignature, removeImages, scheduleLineageRebuild, setDirectoryRefreshing, setEnrichmentProgress, setProgress, waitWhilePaused]);
 
     const runIdleReconcileQueue = useCallback(async () => {
         if (idleReconcileRunningRef.current) {
@@ -937,6 +861,13 @@ export function useImageLoader() {
 
         // Initialize AbortController for this indexing operation
         abortControllerRef.current = new AbortController();
+        let releaseBackgroundThumbnailPause: (() => void) | null = null;
+        const releaseThumbnailPause = () => {
+            if (releaseBackgroundThumbnailPause) {
+                releaseBackgroundThumbnailPause();
+                releaseBackgroundThumbnailPause = null;
+            }
+        };
 
         try {
             // Always update the allowed paths in the main process
@@ -1078,7 +1009,6 @@ export function useImageLoader() {
 
             const handleBatchProcessed = (batch: IndexedImage[]) => {
                 addImages(batch);
-                thumbnailManager.prefetchImages(batch, 'low', { markLoading: false });
                 if (totalCatalogItems > 0) {
                     loadedCatalogItems += batch.length;
                     setDirectoryProgress(directory.id, {
@@ -1089,7 +1019,17 @@ export function useImageLoader() {
             };
 
             const handleEnrichmentBatch = (batch: IndexedImage[]) => {
+                const start = performance.now();
                 mergeImages(batch);
+                const durationMs = performance.now() - start;
+                traceCacheDebug('loader:handleEnrichmentBatch', () => ({
+                    directoryId: directory.id,
+                    batchCount: batch.length,
+                    details: {
+                        durationMs: Number(durationMs.toFixed(2)),
+                    },
+                    snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                }));
             };
 
             const handleEnrichmentProgress = (progress: { processed: number; total: number } | null) => {
@@ -1106,6 +1046,7 @@ export function useImageLoader() {
 
             if (shouldProcessPipeline) {
                 if (shouldCancelIndexing(suppressIndexingState)) {
+                    releaseThumbnailPause();
                     setDirectoryProgress(directory.id, null);
                     if (suppressIndexingState) {
                         setDirectoryRefreshing(directory.id, false);
@@ -1121,6 +1062,8 @@ export function useImageLoader() {
                 const indexingConcurrency = useSettingsStore.getState().indexingConcurrency ?? 4;
 
                 setEnrichmentProgress(null);
+                thumbnailManager.cancelQueuedJobs({ queue: 'low' });
+                releaseBackgroundThumbnailPause = thumbnailManager.pauseBackgroundWork();
 
                 const { phaseB } = await processFiles(
                     fileHandles,
@@ -1145,10 +1088,14 @@ export function useImageLoader() {
 
                 phaseB
                     .then(() => {
+                        releaseThumbnailPause();
+                        const indexedImages = useImageStore.getState().images.filter(img => img.directoryId === directory.id);
+                        scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:indexed`, indexedImages);
                         // Keep the progress bar visible for 2 seconds after completion
                         setTimeout(() => setEnrichmentProgress(null), 2000);
                     })
                     .catch(err => {
+                        releaseThumbnailPause();
                         console.error('Phase B enrichment failed', err);
                         // Keep error visible for 2 seconds
                         setTimeout(() => setEnrichmentProgress(null), 2000);
@@ -1158,6 +1105,7 @@ export function useImageLoader() {
                     finalizeDirectoryLoad(directory, { suppressIndexingState, suppressSuccessMessage });
                 }
             } else {
+                releaseThumbnailPause();
                 if (shouldHydratePreloadedImages && preloadedImages.length > 0) {
                     addImages(preloadedImages);
                     scheduleDirectoryThumbnailWarmup(`directory:${directory.id}:preloaded`, preloadedImages);
@@ -1170,6 +1118,7 @@ export function useImageLoader() {
             }
 
         } catch (err) {
+            releaseThumbnailPause();
             if (!(err instanceof DOMException && err.name === 'AbortError')) {
                 console.error(err);
                 if (!suppressErrorMessage) {
@@ -1186,7 +1135,7 @@ export function useImageLoader() {
                 setProgress(null);
             }
         }
-    }, [addImages, mergeImages, removeImages, clearImages, setFilterOptions, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
+    }, [addImages, mergeImages, removeImages, clearImages, setLoading, setProgress, setError, setSuccess, setDirectoryRefreshing, finalizeDirectoryLoad, scheduleDirectoryThumbnailWarmup, setDirectoryProgress]);
 
 
     // Helper function to detect if a path is a root disk
@@ -1378,7 +1327,7 @@ export function useImageLoader() {
             setLineageRebuildSuspended(false);
             setLoading(false);
         }
-    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setFilterOptions, setSuccess]);
+    }, [addDirectory, hydratePersistedLineageSnapshot, loadDirectoryFromCache, reconcileCachedDirectory, recomputeDerivedState, scheduleIdleReconcile, scheduleLineageRebuild, setLineageRebuildSuspended, setLoading, setError, setSuccess]);
 
     const handleRemoveDirectory = useCallback(async (directoryId: string) => {
         const { removeDirectory: removeDirectoryFromStore } = useImageStore.getState();
@@ -1493,13 +1442,26 @@ export function useImageLoader() {
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        const addStart = performance.now();
                         addImages(enrichedBatch);
+                        const addDurationMs = performance.now() - addStart;
                         enrichedForCache.push(...enrichedBatch);
                         // Force flush imediatamente
                         const flushPendingImages = useImageStore.getState().flushPendingImages;
                         setTimeout(() => {
                             console.log('[auto-watch] Flushing enriched images');
+                            const flushStart = performance.now();
                             flushPendingImages();
+                            const flushDurationMs = performance.now() - flushStart;
+                            traceCacheDebug('loader:autoWatch:flushPendingImages', () => ({
+                                directoryId: directory.id,
+                                batchCount: enrichedBatch.length,
+                                details: {
+                                    addDurationMs: Number(addDurationMs.toFixed(2)),
+                                    flushDurationMs: Number(flushDurationMs.toFixed(2)),
+                                },
+                                snapshot: createCacheDebugSnapshot(useImageStore.getState()),
+                            }));
                         }, 0);
                     },
                 }

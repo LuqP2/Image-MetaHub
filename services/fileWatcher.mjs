@@ -25,8 +25,24 @@ const isPermissionError = (error) => {
 
 const sendWatcherDebug = (mainWindow, message) => {
   console.log(message);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('watcher-debug', { message });
+  sendToRenderer(mainWindow, 'watcher-debug', { message });
+};
+
+const sendToRenderer = (mainWindow, channel, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return false;
+  }
+
+  const contents = mainWindow.webContents;
+  if (!contents || contents.isDestroyed()) {
+    return false;
+  }
+
+  try {
+    contents.send(channel, payload);
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -131,7 +147,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher error for ${directoryId}: ${error.message || error}`);
 
       const errorMessage = error instanceof Error ? error.message : String(error);
-      mainWindow.webContents.send('watcher-error', {
+      sendToRenderer(mainWindow, 'watcher-error', {
         directoryId,
         error: errorMessage
       });
@@ -218,7 +234,7 @@ function processBatch(directoryId, dirPath, mainWindow) {
 
   if (fileInfos.length > 0) {
     sendWatcherDebug(mainWindow, `[FileWatcher] Sending ${fileInfos.length} files to renderer for directory ${directoryId}`);
-    mainWindow.webContents.send('new-images-detected', {
+    sendToRenderer(mainWindow, 'new-images-detected', {
       directoryId,
       files: fileInfos
     });

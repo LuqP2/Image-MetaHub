@@ -1,8 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const isDevelopment = process.env.NODE_ENV === 'development';
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electronAPI', {
+const electronAPI = {
   // --- Listeners for main-to-renderer events ---
   onLoadDirectoryFromCLI: (callback) => {
     const handler = (event, ...args) => callback(...args);
@@ -188,11 +190,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('watcher-debug', subscription);
   },
 
-  // TEST ONLY: Simulate update dialog
-  testUpdateDialog: () => ipcRenderer.invoke('test-update-dialog')
-});
+};
 
-// DEBUG: Log that preload script has loaded
-console.log('🔌 Preload script loaded successfully');
-console.log('🔍 electronAPI exposed:', typeof window !== 'undefined' ? 'window object available' : 'no window object');
-console.log('🔍 Available electronAPI methods:', Object.keys(window.electronAPI || {}));
+if (isDevelopment) {
+  electronAPI.testUpdateDialog = () => ipcRenderer.invoke('test-update-dialog');
+}
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+
+if (isDevelopment) {
+  console.log('🔌 Preload script loaded successfully');
+  console.log('🔍 electronAPI exposed:', typeof window !== 'undefined' ? 'window object available' : 'no window object');
+  console.log('🔍 Available electronAPI methods:', Object.keys(window.electronAPI || {}));
+}

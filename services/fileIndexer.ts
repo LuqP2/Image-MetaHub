@@ -9,6 +9,7 @@ import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
 import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
+import { traceCacheDebug } from '../utils/cacheDebugTrace';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
   cancel: () => void;
@@ -111,6 +112,18 @@ const shouldLogPngDebug = Boolean(
   (typeof globalThis !== 'undefined' && (globalThis as any)?.process?.env?.PNG_DEBUG === 'true') ||
   (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_PNG_DEBUG)
 );
+const PNG_CHUNK_TYPE_tEXt = 0x74455874;
+const PNG_CHUNK_TYPE_iTXt = 0x69545874;
+const PNG_CHUNK_TYPE_eXIf = 0x65584966;
+const PNG_CHUNK_TYPE_IEND = 0x49454E44;
+const PNG_RELEVANT_TEXT_KEYS = new Set([
+  'invokeai_metadata',
+  'parameters',
+  'workflow',
+  'prompt',
+  'description',
+  'imagemetahub_data',
+]);
 
 // Helper function to chunk array into smaller arrays
 function chunkArray<T>(array: T[], size: number): T[][] {
@@ -119,6 +132,53 @@ function chunkArray<T>(array: T[], size: number): T[][] {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
+}
+
+function incrementCounter(counter: Record<string, number>, key: string) {
+  counter[key] = (counter[key] ?? 0) + 1;
+}
+
+function classifyFileType(source?: CatalogFileEntry): string {
+  if (!source) {
+    return 'unknown';
+  }
+
+  const type = source.type ?? inferMimeTypeFromName(source.handle.name);
+  if (type === 'image/png') return 'png';
+  if (type === 'image/webp') return 'webp';
+  if (type === 'image/jpeg') return 'jpeg';
+  if (type.startsWith('video/')) return 'video';
+  return type || 'unknown';
+}
+
+function classifyMetadataKind(metadata?: IndexedImage['metadata'] | null): string {
+  if (!metadata) {
+    return 'none';
+  }
+
+  const rawMetadata = metadata as Record<string, unknown>;
+  if ('imagemetahub_data' in rawMetadata) return 'metahub';
+  if ('videometahub_data' in rawMetadata) return 'video_metahub';
+  if (typeof rawMetadata.parameters === 'string') return 'parameters';
+  if ('workflow' in rawMetadata) return 'workflow';
+  if ('invokeai_metadata' in rawMetadata) return 'invokeai';
+  if ('prompt' in rawMetadata) return 'prompt';
+  return 'other';
+}
+
+function readPngTextKeyword(
+  chunkData: Uint8Array,
+  decoder: TextDecoder
+): { keyword: string; keywordEndIndex: number } | null {
+  const keywordEndIndex = chunkData.indexOf(0);
+  if (keywordEndIndex === -1) {
+    return null;
+  }
+
+  return {
+    keyword: decoder.decode(chunkData.subarray(0, keywordEndIndex)),
+    keywordEndIndex,
+  };
 }
 
 function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
@@ -411,45 +471,61 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   
   // OPTIMIZATION: Stop early if we found all needed chunks
   let foundChunks = 0;
-  const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
+  const maxChunks = 6; // invokeai_metadata, parameters, workflow, prompt, description, imagemetahub_data
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     if (offset + 8 > view.byteLength) {
       break;
     }
-    const length = view.getUint32(offset);
-    const type = decoder.decode(buffer.slice(offset + 4, offset + 8));
+    const length = view.getUint32(offset, false);
+    const type = view.getUint32(offset + 4, false);
     if (offset + 12 + length > view.byteLength) {
       break;
     }
     
-    if (type === 'tEXt') {
-      const chunkData = buffer.slice(offset + 8, offset + 8 + length);
-      const chunkString = decoder.decode(chunkData);
-      const [keyword, text] = chunkString.split('\0');
-      if (keyword.toLowerCase() === 'xml:com.adobe.xmp') {
-        shouldTryExif = true;
-      }
-      
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
-        chunks[keyword.toLowerCase()] = text;
-        foundChunks++;
-      }
-    } else if (type === 'iTXt') {
-      const chunkData = new Uint8Array(buffer.slice(offset + 8, offset + 8 + length));
-      const keywordEndIndex = chunkData.indexOf(0);
-      if (keywordEndIndex === -1) {
+    if (type === PNG_CHUNK_TYPE_tEXt) {
+      const chunkData = new Uint8Array(buffer, offset + 8, length);
+      const keywordInfo = readPngTextKeyword(chunkData, decoder);
+      if (!keywordInfo) {
         offset += 12 + length;
         continue;
       }
-      const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
-      if (keyword.toLowerCase() === 'xml:com.adobe.xmp') {
+
+      const keyword = keywordInfo.keyword.toLowerCase();
+      if (keyword === 'xml:com.adobe.xmp') {
         shouldTryExif = true;
       }
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword)) {
-        const compressionFlag = chunkData[keywordEndIndex + 1];
-        let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
+      if (PNG_RELEVANT_TEXT_KEYS.has(keyword) && keywordInfo.keywordEndIndex + 1 < chunkData.length) {
+        const text = decoder.decode(chunkData.subarray(keywordInfo.keywordEndIndex + 1));
+        if (text) {
+          if (keyword === 'imagemetahub_data') {
+            try {
+              return { imagemetahub_data: JSON.parse(text) };
+            } catch (e) {
+              console.warn('[PNG Parser] Failed to parse imagemetahub_data chunk:', e);
+            }
+          }
+          chunks[keyword] = text;
+          foundChunks++;
+        }
+      }
+    } else if (type === PNG_CHUNK_TYPE_iTXt) {
+      const chunkData = new Uint8Array(buffer, offset + 8, length);
+      const keywordInfo = readPngTextKeyword(chunkData, decoder);
+      if (!keywordInfo) {
+        offset += 12 + length;
+        continue;
+      }
+
+      const keyword = keywordInfo.keyword.toLowerCase();
+      if (keyword === 'xml:com.adobe.xmp') {
+        shouldTryExif = true;
+      }
+
+      if (PNG_RELEVANT_TEXT_KEYS.has(keyword)) {
+        const compressionFlag = chunkData[keywordInfo.keywordEndIndex + 1];
+        let currentIndex = keywordInfo.keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
         const langTagEndIndex = chunkData.indexOf(0, currentIndex);
         if (langTagEndIndex === -1) {
@@ -467,14 +543,21 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
         const text = await decodeITXtText(chunkData.slice(currentIndex), compressionFlag, decoder);
         if (text) {
-          chunks[keyword.toLowerCase()] = text;
+          if (keyword === 'imagemetahub_data') {
+            try {
+              return { imagemetahub_data: JSON.parse(text) };
+            } catch (e) {
+              console.warn('[PNG Parser] Failed to parse imagemetahub_data chunk:', e);
+            }
+          }
+          chunks[keyword] = text;
           foundChunks++;
         }
       }
-    } else if (type === 'eXIf') {
+    } else if (type === PNG_CHUNK_TYPE_eXIf) {
       shouldTryExif = true;
     }
-    if (type === 'IEND') break;
+    if (type === PNG_CHUNK_TYPE_IEND) break;
     offset += 12 + length;
   }
 
@@ -1156,6 +1239,76 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
+  if (metaHubData && typeof metaHubData === 'object') {
+    const payload = metaHubData as Record<string, any>;
+    if (payload.generator === 'ComfyUI') {
+      const rawTags = payload.imh_pro?.user_tags;
+      const tags = Array.isArray(rawTags)
+        ? rawTags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0).map((tag) => tag.trim())
+        : typeof rawTags === 'string'
+          ? rawTags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+          : [];
+      const notes = typeof payload.imh_pro?.notes === 'string' ? payload.imh_pro.notes : '';
+      const explicitGenerationType = typeof payload.generation_type === 'string'
+        ? payload.generation_type as BaseMetadata['generationType']
+        : undefined;
+      const explicitParentImage = payload.parent_image && typeof payload.parent_image === 'object'
+        ? payload.parent_image
+        : undefined;
+      const explicitSourceImage = payload.source_image && typeof payload.source_image === 'object'
+        ? payload.source_image
+        : undefined;
+      const width = fallbackDims?.width ?? 0;
+      const height = fallbackDims?.height ?? 0;
+      let inferredGenerationType: BaseMetadata['generationType'] | undefined;
+      let inferredLineage: BaseMetadata['lineage'] | undefined;
+
+      if (!explicitGenerationType && (payload.workflow || payload.prompt_api || payload.prompt)) {
+        const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: payload });
+        inferredGenerationType = enhancedResult.generationType as BaseMetadata['generationType'] | undefined;
+        inferredLineage = enhancedResult.lineage as BaseMetadata['lineage'] | undefined;
+      }
+
+      return {
+        prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
+        negativePrompt: typeof payload.negativePrompt === 'string' ? payload.negativePrompt : '',
+        model: typeof payload.model === 'string' ? payload.model : '',
+        models: typeof payload.model === 'string' && payload.model ? [payload.model] : [],
+        width,
+        height,
+        seed: typeof payload.seed === 'number' ? payload.seed : undefined,
+        steps: typeof payload.steps === 'number' ? payload.steps : 0,
+        cfgScale: typeof payload.cfg === 'number' ? payload.cfg : undefined,
+        cfg_scale: typeof payload.cfg === 'number' ? payload.cfg : undefined,
+        scheduler: typeof payload.scheduler === 'string' ? payload.scheduler : '',
+        sampler: typeof payload.sampler_name === 'string' ? payload.sampler_name : '',
+        loras: Array.isArray(payload.loras) ? payload.loras : [],
+        tags,
+        notes,
+        vae: typeof payload.vae === 'string' ? payload.vae : undefined,
+        denoise: typeof payload.denoise === 'number' ? payload.denoise : undefined,
+        generationType: explicitGenerationType || inferredGenerationType,
+        lineage: explicitGenerationType
+          ? {
+              detection: 'explicit',
+              denoiseStrength: payload.denoise ?? null,
+              maskBlur: payload.mask_blur ?? null,
+              maskedContent: payload.masked_content ?? null,
+              resizeMode: payload.resize_mode ?? null,
+              sourceImage: explicitParentImage || explicitSourceImage,
+              workflowSourceImage: explicitParentImage && explicitSourceImage
+                ? explicitSourceImage
+                : undefined,
+            }
+          : inferredLineage,
+        _analytics: payload.analytics || null,
+        _metahub_pro: payload.imh_pro || null,
+        _detection_method: 'metahub_chunk_direct',
+        generator: 'ComfyUI',
+      };
+    }
+  }
+
   const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: metaHubData });
   const width = fallbackDims?.width ?? 0;
   const height = fallbackDims?.height ?? 0;
@@ -1601,6 +1754,11 @@ interface PhaseTelemetry {
   profileParseMs: number;
   profileNormalizeMs: number;
   profileDimensionsMs: number;
+  rendererDispatchMs: number;
+  rendererDispatchBatches: number;
+  rendererDispatchImages: number;
+  metadataKinds: Record<string, number>;
+  fileTypes: Record<string, number>;
 }
 
 interface PhaseProfileSample {
@@ -1698,6 +1856,11 @@ export async function processFiles(
     profileParseMs: 0,
     profileNormalizeMs: 0,
     profileDimensionsMs: 0,
+    rendererDispatchMs: 0,
+    rendererDispatchBatches: 0,
+    rendererDispatchImages: 0,
+    metadataKinds: {},
+    fileTypes: {},
   };
   const phaseBStats: PhaseTelemetry = {
     startTime: 0,
@@ -1719,6 +1882,11 @@ export async function processFiles(
     profileParseMs: 0,
     profileNormalizeMs: 0,
     profileDimensionsMs: 0,
+    rendererDispatchMs: 0,
+    rendererDispatchBatches: 0,
+    rendererDispatchImages: 0,
+    metadataKinds: {},
+    fileTypes: {},
   };
 
   performance.mark('indexing:phaseA:start');
@@ -2195,6 +2363,9 @@ export async function processFiles(
         const headReadAvgMs = phaseBStats.headReadFiles > 0 ? phaseBStats.headReadMs / phaseBStats.headReadFiles : 0;
         const tailReadAvgMs = phaseBStats.tailReadFiles > 0 ? phaseBStats.tailReadMs / phaseBStats.tailReadFiles : 0;
         const fullReadAvgMs = phaseBStats.fullReadFiles > 0 ? phaseBStats.fullReadMs / phaseBStats.fullReadFiles : 0;
+        const rendererDispatchAvgMs = phaseBStats.rendererDispatchBatches > 0
+          ? phaseBStats.rendererDispatchMs / phaseBStats.rendererDispatchBatches
+          : 0;
 
         console.log('[indexing]', {
           phase: 'B',
@@ -2208,6 +2379,12 @@ export async function processFiles(
           profile_avg_normalize_ms: Number(profileAvgNormalize.toFixed(2)),
           profile_avg_dimensions_ms: Number(profileAvgDimensions.toFixed(2)),
           flush_avg_ms: Number(flushAvgMs.toFixed(2)),
+          renderer_batch_avg_ms: Number(rendererDispatchAvgMs.toFixed(2)),
+          renderer_batches_dispatched: phaseBStats.rendererDispatchBatches,
+          renderer_images_dispatched: phaseBStats.rendererDispatchImages,
+          pending_results_batch: resultsBatch.length,
+          metadata_kinds: phaseBStats.metadataKinds,
+          file_types: phaseBStats.fileTypes,
           ...(phaseBStats.tailReadHits > 0
             ? {
                 tail_read_hits: phaseBStats.tailReadHits,
@@ -2230,7 +2407,22 @@ export async function processFiles(
 
     const commitBatch = async (force = false) => {
       if (resultsBatch.length > 0) {
-        options.onEnrichmentBatch?.([...resultsBatch]);
+        const dispatchBatch = [...resultsBatch];
+        const dispatchStart = performance.now();
+        options.onEnrichmentBatch?.(dispatchBatch);
+        const dispatchDuration = performance.now() - dispatchStart;
+        phaseBStats.rendererDispatchMs += dispatchDuration;
+        phaseBStats.rendererDispatchBatches += 1;
+        phaseBStats.rendererDispatchImages += dispatchBatch.length;
+        traceCacheDebug('indexer:phaseB:dispatchBatch', () => ({
+          batchCount: dispatchBatch.length,
+          details: {
+            durationMs: Number(dispatchDuration.toFixed(2)),
+            processed: phaseBStats.processed,
+            totalEnrichment,
+            pendingResultsBeforeClear: resultsBatch.length,
+          },
+        }));
         resultsBatch.length = 0;
       }
 
@@ -2284,6 +2476,8 @@ export async function processFiles(
       }
 
       phaseBStats.processed += 1;
+      incrementCounter(phaseBStats.metadataKinds, classifyMetadataKind(merged.metadata));
+      incrementCounter(phaseBStats.fileTypes, classifyFileType(entry.source));
       if (profile) {
         phaseBStats.profileSamples += 1;
         phaseBStats.profileTotalMs += profile.totalMs;
@@ -2740,6 +2934,17 @@ export async function processFiles(
     });
 
     console.log(`[indexing] Phase B complete: ${phaseBStats.processed}/${totalEnrichment} images enriched in ${(elapsedMs / 1000).toFixed(2)}s`);
+    traceCacheDebug('indexer:phaseB:complete', () => ({
+      details: {
+        elapsedMs: Number(elapsedMs.toFixed(2)),
+        files: phaseBStats.processed,
+        rendererDispatchMs: Number(phaseBStats.rendererDispatchMs.toFixed(2)),
+        rendererDispatchBatches: phaseBStats.rendererDispatchBatches,
+        rendererDispatchImages: phaseBStats.rendererDispatchImages,
+        cacheFlushMs: Number(phaseBStats.flushMs.toFixed(2)),
+        cacheFlushChunks: phaseBStats.flushChunks,
+      },
+    }));
     throttledEnrichmentProgress({ processed: phaseBStats.processed, total: totalEnrichment });
   };
 
