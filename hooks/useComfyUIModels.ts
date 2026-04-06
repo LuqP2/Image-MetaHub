@@ -31,6 +31,7 @@ interface UseComfyUIModelsReturn {
  */
 export function useComfyUIModels(): UseComfyUIModelsReturn {
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
+  const setComfyUIConnectionStatus = useSettingsStore((state) => state.setComfyUIConnectionStatus);
   const [resources, setResources] = useState<ComfyUIResources | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
         schedulers: catalog.schedulers,
         objectInfo,
       });
+      setComfyUIConnectionStatus('connected');
 
       console.log('[useComfyUIModels] Fetched resources:', {
         models: catalog.models.length,
@@ -61,11 +63,12 @@ export function useComfyUIModels(): UseComfyUIModelsReturn {
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to fetch ComfyUI resources';
       setError(errorMessage);
+      setComfyUIConnectionStatus('error');
       console.error('[useComfyUIModels] Error:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [comfyUIServerUrl]);
+  }, [comfyUIServerUrl, setComfyUIConnectionStatus]);
 
   // Fetch on mount and when server URL changes
   useEffect(() => {

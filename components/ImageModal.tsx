@@ -11,7 +11,8 @@ import { comparisonWillAutoOpen, useImageComparison } from '../hooks/useImageCom
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
-import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
+import { type GenerationParams as ComfyUIGenerationParams } from './ComfyUIGenerateModal';
+import ComfyUIWorkflowWorkspace from './ComfyUIWorkflowWorkspace';
 import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
@@ -533,10 +534,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
-  const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
     const defaultWindow = createDefaultModalWindow();
     return clampModalWindowToViewport({
@@ -606,7 +607,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const showComfyUIActions = !isVideo && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
-  const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
   const currentTags = liveImage.tags || [];
   const currentAutoTags = liveImage.autoTags || [];
   const currentIsFavorite = liveImage.isFavorite ?? false;
@@ -909,6 +909,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const videoInfo = (nMeta as any)?.video;
   const motionModel = (nMeta as any)?.motion_model;
+
+  useEffect(() => {
+    if (!showComfyUIActions || !nMeta) {
+      setSidebarTab('details');
+    }
+  }, [nMeta, showComfyUIActions]);
 
   const beginWindowDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isFullscreen || isWindowMaximized || event.button !== 0) {
@@ -1918,7 +1924,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             showSidebarOnBottom
               ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
               : 'h-full w-[340px] max-w-[42%] min-w-[300px] border-l border-gray-800/80'
-          } p-6 overflow-y-auto space-y-4`}
+          } relative p-6 overflow-y-auto space-y-4`}
           onContextMenu={handleSelectionContextMenu}
         >
           {/* Annotations Section */}
@@ -2051,6 +2057,42 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
             </div>
           </div>
+
+          {nMeta && showComfyUIActions && (
+            <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSidebarTab('details')}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    sidebarTab === 'details'
+                      ? 'bg-gray-800 text-gray-100 ring-1 ring-gray-600'
+                      : 'text-gray-400 hover:bg-gray-800/70 hover:text-gray-200'
+                  }`}
+                >
+                  Details
+                </button>
+                <button
+                  onClick={() => {
+                    if (!canUseComfyUI) {
+                      showProModal('comfyui');
+                      return;
+                    }
+                    setSidebarTab('workflow');
+                  }}
+                  className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    sidebarTab === 'workflow'
+                      ? 'bg-purple-500/15 text-purple-100 ring-1 ring-purple-400/40'
+                      : 'text-gray-300 hover:bg-gray-800/70 hover:text-white'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <span>View Workflow</span>
+                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* MetaHub Save Node Notes - Only if present */}
           {nMeta?.notes && (
@@ -2388,26 +2430,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     showProModal('comfyui');
                     return;
                   }
-                  setIsComfyUIGenerateModalOpen(true);
+                  setSidebarTab('workflow');
                 }}
-                disabled={canUseComfyUI && !nMeta.prompt}
                 className="w-full bg-purple-50 hover:bg-purple-100 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-purple-200 dark:border-purple-500/50 hover:border-purple-300 dark:hover:border-purple-400 text-purple-700 dark:text-purple-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 mb-2"
               >
-                {isGeneratingComfyUI && canUseComfyUI ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>{comfyGenerateLabel}</span>
-                    {!canUseComfyUI && initialized && <ProBadge size="sm" />}
-                  </>
-                )}
+                <Sparkles className="w-4 h-4" />
+                <span>View Workflow / Generate</span>
+                {!canUseComfyUI && initialized && <ProBadge size="sm" />}
               </button>
 
               {/* Copy Workflow Button */}
@@ -2450,43 +2479,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </div>
               )}
 
-              {/* ComfyUI Generate Modal */}
-              {showComfyUIActions && isComfyUIGenerateModalOpen && nMeta && (
-                <ComfyUIGenerateModal
-                  isOpen={isComfyUIGenerateModalOpen}
-                  onClose={() => setIsComfyUIGenerateModalOpen(false)}
-                  image={image}
-                  onGenerate={async (params: ComfyUIGenerationParams) => {
-                    const customMetadata: Partial<BaseMetadata> = {
-                      prompt: params.prompt,
-                      negativePrompt: params.negativePrompt,
-                      cfg_scale: params.cfgScale,
-                      steps: params.steps,
-                      seed: params.randomSeed ? -1 : params.seed,
-                      width: params.width,
-                      height: params.height,
-                      batch_size: params.numberOfImages,
-                      model: params.model?.name || nMeta?.model,
-                      ...(params.sampler ? { sampler: params.sampler } : {}),
-                      ...(params.scheduler ? { scheduler: params.scheduler } : {}),
-                    };
-                    await generateWithComfyUI(image, {
-                      customMetadata,
-                      overrides: {
-                        model: params.model || undefined,
-                        loras: params.loras,
-                      },
-                      workflowMode: params.workflowMode,
-                      sourceImagePolicy: params.sourceImagePolicy,
-                      advancedPromptJson: params.advancedPromptJson,
-                      advancedWorkflowJson: params.advancedWorkflowJson,
-                      maskFile: params.maskFile,
-                    });
-                    setIsComfyUIGenerateModalOpen(false);
-                  }}
-                  isGenerating={isGeneratingComfyUI}
-                />
-              )}
             </div>
           )}
 
@@ -2545,6 +2537,66 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </pre>
             )}
           </div>
+
+          {sidebarTab === 'workflow' && nMeta && showComfyUIActions && (
+            <div className="absolute inset-0 z-20 overflow-y-auto bg-gray-950/95 p-6 backdrop-blur-sm">
+              <div className="space-y-4">
+                <div className="rounded-lg border border-purple-700/30 bg-purple-500/10 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-purple-100">ComfyUI Workflow Workspace</div>
+                      <div className="mt-1 text-xs text-purple-200/80">
+                        Inspect the embedded graph, edit supported values, and generate variations without leaving the image modal.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSidebarTab('details')}
+                      className="rounded-md border border-purple-400/30 px-2 py-1 text-xs text-purple-100 transition-colors hover:bg-purple-500/10"
+                    >
+                      Back to Details
+                    </button>
+                  </div>
+                </div>
+
+                <ComfyUIWorkflowWorkspace
+                  image={image}
+                  onGenerate={async (params: ComfyUIGenerationParams) => {
+                    const customMetadata: Partial<BaseMetadata> = {
+                      prompt: params.prompt,
+                      negativePrompt: params.negativePrompt,
+                      cfg_scale: params.cfgScale,
+                      steps: params.steps,
+                      seed: params.randomSeed ? -1 : params.seed,
+                      width: params.width,
+                      height: params.height,
+                      batch_size: params.numberOfImages,
+                      model: params.model?.name || nMeta?.model,
+                      ...(params.sampler ? { sampler: params.sampler } : {}),
+                      ...(params.scheduler ? { scheduler: params.scheduler } : {}),
+                    };
+
+                    await generateWithComfyUI(image, {
+                      customMetadata,
+                      overrides: {
+                        model: params.model || undefined,
+                        loras: params.loras,
+                      },
+                      workflowMode: params.workflowMode,
+                      sourceImagePolicy: params.sourceImagePolicy,
+                      advancedPromptJson: params.advancedPromptJson,
+                      advancedWorkflowJson: params.advancedWorkflowJson,
+                      maskFile: params.maskFile,
+                    });
+                  }}
+                  isGenerating={isGeneratingComfyUI}
+                  status={generateStatusComfyUI}
+                  defaultTab="visual"
+                  viewportHeight={showSidebarOnBottom ? 420 : 520}
+                  showCancelButton={false}
+                />
+              </div>
+            </div>
+          )}
         </div>
         )}
         </div>
