@@ -48,6 +48,8 @@ type WorkerResponse =
       };
     };
 
+const MAX_CLUSTERING_IMAGES = 50000;
+
 // Worker state
 let isPaused = false;
 let isCancelled = false;
@@ -60,7 +62,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
   switch (message.type) {
     case 'start':
-      await startClustering(message.payload.images, message.payload.threshold);
+      await startClustering(message.payload.images, sanitizeThreshold(message.payload.threshold));
       break;
 
     case 'pause':
@@ -88,6 +90,15 @@ async function startClustering(
   threshold: number
 ): Promise<void> {
   try {
+    if (!Array.isArray(images)) {
+      postError('Invalid clustering payload: images must be an array.');
+      return;
+    }
+    if (images.length > MAX_CLUSTERING_IMAGES) {
+      postError(`Clustering payload too large: received ${images.length} images (max ${MAX_CLUSTERING_IMAGES}).`);
+      return;
+    }
+
     // Reset state
     isPaused = false;
     isCancelled = false;
@@ -155,6 +166,14 @@ function postError(error: string): void {
     payload: { error },
   };
   self.postMessage(response);
+}
+
+function sanitizeThreshold(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0.35;
+  }
+
+  return Math.max(0, Math.min(1, value));
 }
 
 // Export types for use in main thread
