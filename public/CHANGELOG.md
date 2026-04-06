@@ -5,50 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.0] - Unreleased
+## [0.14.0] - 2026-04-06
 
 ### Added
 
-- **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside the ComfyUI generation modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
-- **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library, and Model View, with searchable exact node-type catalogs, per-node result counts, and multi-select OR filtering for images that contain embedded ComfyUI workflows.
-- **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows the generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered with confidence.
-- **Analytics Explorer**: Rebuilt analytics into an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between the current results and full library, cohort comparison tools, and one-click promotion of analytics insights into live filters.
-- **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details so images can be compared and inspected more flexibly.
-- **Image Ratings**: Added persistent 1-5 ratings for images, including star controls in the viewer, badges in the library views, bulk rating actions, and multi-select rating filters in the sidebar and advanced filters.
-- **Startup Verification Modes**: Added configurable startup verification modes for saved folders, so the app can now open from cache only, reconcile in the background, or verify folders strictly before startup completes.
-- **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, plus right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing/deleting used tags in one step.
+- **Visual ComfyUI Workflow Inspector**: Added a visual node-based editor inside both the ComfyUI generation modal and the Image Details Modal, with zoom/pan controls, editable node fields, embedded-layout support, and an advanced JSON fallback for debugging edge cases.
+- **ComfyUI Node View**: Added a dedicated `Node View` alongside Library, Smart Library, and Model View, with exact node-type catalogs, per-node result counts, search, and multi-select OR filtering for images containing embedded ComfyUI workflows.
+- **Image Lineage for Transformations**: Added explicit lineage support for `img2img`, `inpaint`, and `outpaint`, so transformed images are no longer treated as generic generations. The viewer now shows generation type, source/input image status, denoise strength when available, and direct navigation between source and result when the original image can be recovered confidently.
+- **Analytics Explorer**: Rebuilt analytics as an interactive explorer with `Overview`, `Resources`, `Time`, `Performance`, and `Curation` views, scope switching between current results and full library, cohort comparison tools, and one-click promotion of insights into live filters.
+- **Windowed Image Viewer**: Added support for multiple open image windows with drag, resize, minimize/maximize, and dockable or collapsible details for more flexible comparison and inspection.
+- **Image Ratings**: Added persistent 1-5 ratings for images, including viewer controls, library badges, bulk rating actions, and multi-select rating filters in the sidebar and advanced filters.
+- **Startup Verification Modes**: Added configurable startup verification modes for saved folders, allowing the app to open from cache only, reconcile in the background, or verify folders strictly before startup completes.
+- **Manual Tag Management**: Added a persistent manual tag catalog so empty tags remain visible in the sidebar, along with right-click tag actions for renaming, clearing tags from images, removing unused tags, and clearing or deleting used tags.
 - **Metadata Type Filters**: Added checkbox filters for `txt2img` / `img2img` generation modes and `Images` / `Videos` file types in `Metadata & File Filters`.
-- **Manual Metadata Recovery**: Added `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files and updating their cached metadata without requiring a full folder refresh or cache clear.
+- **Manual Metadata Recovery**: Added `Reparse Metadata` actions for single images and multi-selection workflows, reprocessing only the chosen files without requiring a full folder refresh or cache clear.
 - **Expanded Compare View**: Added support for comparing up to 4 images at once, with new `Side Strip` and `2x2 Grid` layouts for 3-4 image sets, plus improved Compare integration with the windowed viewer workflow.
 
 ### Improved
 
-- **Electron Privileged IPC Hardening**: Restricted renderer-driven write operations to app-internal paths or user-approved export destinations, tightened generator launch requests so they must match the saved integration settings, and limited test-only update dialog exposure to development builds.
-- **Offline License Integrity**: Revalidated persisted Pro/Lifetime state on startup, removed the temporary "unlock during initialization" window for paid features, and limited the `IMH_DEV_LICENSE` shortcut to development builds only.
+- **Electron Privileged IPC Hardening**: Restricted renderer-driven write operations to app-internal paths or user-approved export destinations, tightened generator launch requests to match saved integration settings, and limited test-only update dialog exposure to development builds.
+- **Offline License Integrity**: Revalidated persisted Pro/Lifetime state on startup, removed the temporary "unlock during initialization" window for paid features, and limited the `IMH_DEV_LICENSE` shortcut to development builds.
 - **Background Worker Guardrails**: Added validation and sane limits for clustering and auto-tagging worker payloads so malformed or extreme jobs fail fast instead of consuming excessive CPU or memory.
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
-- **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
+- **Favorites Icon Refresh**: Replaced favorite stars with heart icons to clearly distinguish favorites from ratings.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
-- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing tag searches to match any selected tag or require all selected tags for narrower curation workflows.
-- **Large Library Responsiveness**: Significantly improved responsiveness for large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
+- **Tag Match Mode**: Added an `Any / All` toggle for included manual tag filters in the sidebar, allowing searches to match any selected tag or require all selected tags.
+- **Large Library Responsiveness**: Improved responsiveness on large libraries by moving lineage resolution out of the image modal hot path, reducing expensive modal navigation lookups, and cutting renderer churn during indexing and filtering.
 - **Cached Startup Stability**: Reduced reopen instability on large libraries and made startup verification less intrusive by default, improving launches from cache on heavy libraries.
-- **Sidebar Visual Cohesion**: Simplified the sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
-- **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, and generation queue can now be resized by dragging their edges, with widths preserved between sessions for a more adaptable workspace.
-- **Generation Queue Compatibility**: Updated the existing generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
+- **Sidebar Visual Cohesion**: Simplified sidebar styling into a more consistent, subdued visual system and made the `Generation Parameters` section collapsible like the other filter groups.
+- **Resizable Side Panels**: The left filter sidebar, Image Preview sidebar, generation queue, and Image Details Modal sidebar can now be resized by dragging their edges for a more adaptable workspace.
+- **Generation Queue Compatibility**: Updated the generation queue to persist and retry the new workflow-native ComfyUI parameters, including workflow mode, source image policy, advanced JSON overrides, and mask inputs.
 - **Cross-Generator Transformation Detection**: Improved metadata parsing for ComfyUI, Automatic1111, Forge, SD.Next, InvokeAI, and Draw Things to detect transformation workflows more reliably, preserve lineage references during indexing, and surface img2img-specific parameters in a normalized way.
-- **Generator Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
-- **Analytics Cohorts & Coverage**: Analytics summaries now account for favorites, ratings, GPU devices, telemetry presence, and bucketed performance ranges more accurately, making curation and performance comparisons more useful on mixed libraries.
+- **Sampler & Scheduler Faceting**: Added sampler-aware caching and filtering support so sampler and scheduler metadata can be browsed more accurately from the sidebar and advanced filters.
+- **Analytics Cohorts & Coverage**: Improved analytics summaries to account more accurately for favorites, ratings, GPU devices, telemetry presence, and bucketed performance ranges, making curation and performance comparisons more useful on mixed libraries.
 - **Task-Based Settings Navigation**: Reorganized the Settings modal into focused Library, Viewer, Integrations, Appearance, Privacy, and Shortcuts panels with sidebar navigation and compatibility for legacy deep links.
-- **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
+- **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered confidently, the UI now says so explicitly instead of implying a weak match.
 - **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
-- **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
+- **Copy Submenu in Grid Context Menu**: Grouped grid copy actions under a `Copy` submenu, including prompt, negative prompt, seed, and checkpoint.
 - **Cross-Platform Path Handling**: Replaced hardcoded Windows path joins in Electron viewer utilities with platform-aware path resolution to keep desktop-only actions working more reliably on macOS and Linux.
 
 ### Fixed
 
-- **ComfyUI Payload Parsing Safety**: Added size limits around base64 decode, regex fallback scanning, and zlib inflate paths to avoid oversized metadata payloads causing memory or responsiveness spikes during parsing and indexing.
+- **ComfyUI Payload Parsing Safety**: Added size limits around base64 decode, regex fallback scanning, and zlib inflate paths to prevent oversized metadata payloads from causing memory or responsiveness spikes during parsing and indexing.
 - **Watcher Lifecycle IPC**: File watcher notifications now guard against destroyed renderer windows before sending events, avoiding shutdown-time errors and stray IPC churn.
-- **Deduplication Helper Feedback**: Applying or clearing deduplication suggestions now surfaces visible success/error feedback instead of failing silently in the UI.
+- **Deduplication Helper Feedback**: Applying or clearing deduplication suggestions now surfaces visible success or error feedback instead of failing silently in the UI.
 - **Electron Window Restore**: The desktop window now reopens on the last monitor with the previous size and position when that display is still available, while safely falling back to a visible screen when monitor layouts change.
 - **Startup Folder Reconciliation**: Cached folders are now silently reconciled against disk on launch, so files created while the app was closed are indexed automatically instead of requiring a manual folder refresh.
 - **Open-Ended Advanced Ranges**: Step and CFG filters now preserve min-only or max-only searches instead of dropping partially filled ranges.
