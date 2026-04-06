@@ -7,6 +7,22 @@ export interface OperationResult {
   error?: string;
 }
 
+const joinElectronPath = async (directoryPath: string | null | undefined, fileName: string): Promise<string> => {
+  if (!directoryPath) {
+    return fileName;
+  }
+
+  if (typeof window !== 'undefined' && window.electronAPI?.joinPaths) {
+    const joined = await window.electronAPI.joinPaths(directoryPath, fileName);
+    if (joined.success && joined.path) {
+      return joined.path;
+    }
+  }
+
+  const separator = directoryPath.endsWith('/') || directoryPath.endsWith('\\') ? '' : '/';
+  return `${directoryPath}${separator}${fileName}`;
+};
+
 /**
  * Copies an image to the clipboard using the Clipboard API
  * @param image - The IndexedImage object containing the file handle
@@ -83,7 +99,7 @@ export const showInExplorer = async (imageOrPath: IndexedImage | string): Promis
           directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
         }
 
-        fullPath = directoryPath ? `${directoryPath}\\${imageOrPath.name}` : imageOrPath.name;
+        fullPath = await joinElectronPath(directoryPath, imageOrPath.name);
       }
       
       const result = await (window as any).electronAPI.showItemInFolder(fullPath);
@@ -169,7 +185,7 @@ export const copyFilePathToClipboard = async (image: IndexedImage): Promise<Oper
         directoryPath = sessionStorage.getItem('invokeai-electron-directory-path');
       }
 
-      pathToCopy = directoryPath ? `${directoryPath}\\${image.name}` : image.name;
+      pathToCopy = await joinElectronPath(directoryPath, image.name);
     } else {
       // In browser, use relative path
       pathToCopy = image.id;
