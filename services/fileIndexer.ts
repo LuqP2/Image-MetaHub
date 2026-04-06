@@ -1260,6 +1260,14 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         : undefined;
       const width = fallbackDims?.width ?? 0;
       const height = fallbackDims?.height ?? 0;
+      let inferredGenerationType: BaseMetadata['generationType'] | undefined;
+      let inferredLineage: BaseMetadata['lineage'] | undefined;
+
+      if (!explicitGenerationType && (payload.workflow || payload.prompt_api || payload.prompt)) {
+        const enhancedResult = await parseComfyUIMetadataEnhanced({ imagemetahub_data: payload });
+        inferredGenerationType = enhancedResult.generationType as BaseMetadata['generationType'] | undefined;
+        inferredLineage = enhancedResult.lineage as BaseMetadata['lineage'] | undefined;
+      }
 
       return {
         prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
@@ -1279,7 +1287,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
         notes,
         vae: typeof payload.vae === 'string' ? payload.vae : undefined,
         denoise: typeof payload.denoise === 'number' ? payload.denoise : undefined,
-        generationType: explicitGenerationType,
+        generationType: explicitGenerationType || inferredGenerationType,
         lineage: explicitGenerationType
           ? {
               detection: 'explicit',
@@ -1292,7 +1300,7 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
                 ? explicitSourceImage
                 : undefined,
             }
-          : undefined,
+          : inferredLineage,
         _analytics: payload.analytics || null,
         _metahub_pro: payload.imh_pro || null,
         _detection_method: 'metahub_chunk_direct',

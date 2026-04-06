@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolvePromptFromGraph } from '../services/parsers/comfyUIParser';
+import { parseComfyUIMetadataEnhanced, resolvePromptFromGraph } from '../services/parsers/comfyUIParser';
 import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -324,6 +324,70 @@ describe('ComfyUI Parser - MetaHub lineage metadata', () => {
     expect(result?.generationType).toBe('img2img');
     expect(result?.lineage?.sourceImage?.fileName).toBe('selected.png');
     expect(result?.lineage?.workflowSourceImage?.fileName).toBe('workflow-input.png');
+  });
+
+  it('infers lineage from workflow graphs when explicit MetaHub lineage fields are absent', async () => {
+    const result = await parseComfyUIMetadataEnhanced({
+      imagemetahub_data: {
+        generator: 'ComfyUI',
+        prompt: 'variation',
+        negativePrompt: '',
+        seed: 77,
+        steps: 18,
+        cfg: 6.5,
+        sampler_name: 'euler',
+        scheduler: 'normal',
+        model: 'base.safetensors',
+        denoise: 0.35,
+        workflow: { nodes: [] },
+        prompt_api: {
+          '1': {
+            class_type: 'LoadImage',
+            inputs: {
+              image: 'inputs/base.png',
+            },
+          },
+          '2': {
+            class_type: 'VAEEncode',
+            inputs: {
+              pixels: ['1', 0],
+            },
+          },
+          '3': {
+            class_type: 'CheckpointLoaderSimple',
+            inputs: {
+              ckpt_name: 'base.safetensors',
+            },
+          },
+          '4': {
+            class_type: 'CLIPTextEncode',
+            inputs: {
+              text: 'variation',
+              clip: ['3', 1],
+            },
+          },
+          '5': {
+            class_type: 'KSampler',
+            inputs: {
+              model: ['3', 0],
+              positive: ['4', 0],
+              seed: 77,
+              steps: 18,
+              cfg: 6.5,
+              sampler_name: 'euler',
+              scheduler: 'normal',
+              denoise: 0.35,
+              latent_image: ['2', 0],
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.generationType).toBe('img2img');
+    expect(result.lineage?.detection).toBe('inferred');
+    expect(result.lineage?.sourceImage?.fileName).toBe('base.png');
+    expect(result.lineage?.sourceImage?.relativePath).toBe('inputs/base.png');
   });
 });
 
