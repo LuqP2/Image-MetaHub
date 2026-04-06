@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 
+- **Electron Privileged IPC Hardening**: Restricted renderer-driven write operations to app-internal paths or user-approved export destinations, tightened generator launch requests so they must match the saved integration settings, and limited test-only update dialog exposure to development builds.
+- **Offline License Integrity**: Revalidated persisted Pro/Lifetime state on startup, removed the temporary "unlock during initialization" window for paid features, and limited the `IMH_DEV_LICENSE` shortcut to development builds only.
+- **Background Worker Guardrails**: Added validation and sane limits for clustering and auto-tagging worker payloads so malformed or extreme jobs fail fast instead of consuming excessive CPU or memory.
 - **ComfyUI Variation Controls**: Expanded the ComfyUI generation modal with workflow mode selection, model-family aware resource overrides, LoRA controls, source image policy for transform workflows, and better handling for original-graph assets.
 - **Favorites Icon Refresh**: Updated favorite actions and indicators to use a heart icon instead of a star for clearer separation from the new rating system.
 - **Sidebar Faceted Filters**: Reworked the sidebar filter experience around dedicated facet sections for checkpoints, LoRAs, samplers, and schedulers, with per-value include/exclude actions, result counts, in-section search, and clearer active-filter chips.
@@ -39,9 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lineage Fallback Clarity**: When a transformation is detected but the original image cannot be recovered with confidence, the UI now states that clearly instead of implying a weak or uncertain match.
 - **Grid Filename Readability**: Thumbnail captions now support a two-line layout, making long filenames and full-path display more usable without requiring fullscreen zoom.
 - **Copy Submenu in Grid Context Menu**: Grouped copy actions under a `Copy` submenu in the image grid, including prompt, negative prompt, seed, and checkpoint.
+- **Cross-Platform Path Handling**: Replaced hardcoded Windows path joins in Electron viewer utilities with platform-aware path resolution to keep desktop-only actions working more reliably on macOS and Linux.
 
 ### Fixed
 
+- **ComfyUI Payload Parsing Safety**: Added size limits around base64 decode, regex fallback scanning, and zlib inflate paths to avoid oversized metadata payloads causing memory or responsiveness spikes during parsing and indexing.
+- **Watcher Lifecycle IPC**: File watcher notifications now guard against destroyed renderer windows before sending events, avoiding shutdown-time errors and stray IPC churn.
+- **Deduplication Helper Feedback**: Applying or clearing deduplication suggestions now surfaces visible success/error feedback instead of failing silently in the UI.
 - **Electron Window Restore**: The desktop window now reopens on the last monitor with the previous size and position when that display is still available, while safely falling back to a visible screen when monitor layouts change.
 - **Startup Folder Reconciliation**: Cached folders are now silently reconciled against disk on launch, so files created while the app was closed are indexed automatically instead of requiring a manual folder refresh.
 - **Open-Ended Advanced Ranges**: Step and CFG filters now preserve min-only or max-only searches instead of dropping partially filled ranges.
