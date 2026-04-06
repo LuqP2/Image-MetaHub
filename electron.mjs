@@ -2031,7 +2031,7 @@ function setupFileOperationHandlers() {
     
     // Simulate update info
     const mockUpdateInfo = {
-  version: '0.13.2',
+  version: '0.14.0',
       releaseNotes: `## [0.13.2] - Release
 
 ### Major Performance Improvements
