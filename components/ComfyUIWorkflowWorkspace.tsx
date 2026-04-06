@@ -1185,9 +1185,6 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
             </div>
           ) : (
             <>
-              <div className="rounded-lg border border-blue-700/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
-                Visual edits update the same working prompt graph used for original workflow execution. Structural graph editing is intentionally out of scope for v1.
-              </div>
               <ComfyUIWorkflowVisualEditor
                 graph={visualGraph}
                 selectedNodeId={selectedVisualNodeId}
