@@ -1,6 +1,27 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 
+export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
+  if (!settings) {
+    return {} as Omit<T, 'license'>;
+  }
+
+  const { license: _license, ...appSettings } = settings;
+  return appSettings;
+};
+
+export const mergeSettingsWithExisting = <
+  TState extends Record<string, unknown>,
+  TSettings extends Record<string, unknown>,
+>(
+  currentSettings: TSettings | null | undefined,
+  nextState: TState,
+): TSettings & TState => ({
+  ...(currentSettings ?? {} as TSettings),
+  ...nextState,
+  ...(currentSettings && 'license' in currentSettings ? { license: currentSettings.license } : {}),
+});
+
 // --- Electron IPC-based storage for Zustand ---
 // This storage adapter will be used if the app is running in Electron.
 const electronStorage: StateStorage = {
@@ -15,14 +36,15 @@ const electronStorage: StateStorage = {
         return null;
       }
 
-      return JSON.stringify({ state: settings });
+      return JSON.stringify({ state: stripLicenseFromSettings(settings) });
     }
     return null;
   },
   setItem: async (name: string, value: string): Promise<void> => {
     if (window.electronAPI) {
       const { state } = JSON.parse(value);
-      const result = await window.electronAPI.saveSettings(state);
+      const currentSettings = await window.electronAPI.getSettings();
+      const result = await window.electronAPI.saveSettings(mergeSettingsWithExisting(currentSettings, state));
       if (!result?.success) {
         throw new Error(result?.error || 'Failed to persist application settings.');
       }
