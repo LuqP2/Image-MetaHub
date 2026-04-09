@@ -4,6 +4,8 @@ import { IndexedImage, SmartCollection } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import CollectionCard from './CollectionCard';
+import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import { useThumbnail } from '../hooks/useThumbnail';
 
 interface CollectionsWorkspaceProps {
   filteredImages: IndexedImage[];
@@ -44,14 +46,6 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
     return collections.filter((collection) => collection.name.toLowerCase().includes(normalizedQuery));
   }, [collections, searchQuery]);
 
-  const selectedCollectionResolvedImages = useMemo(() => {
-    if (!selectedCollection) {
-      return [];
-    }
-
-    return getResolvedCollectionImages(selectedCollection.id);
-  }, [getResolvedCollectionImages, selectedCollection]);
-
   const collectionPreviewImages = useMemo(() => {
     const imageById = new Map(images.map((image) => [image.id, image]));
 
@@ -73,12 +67,11 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
       return null;
     }
 
-    if (selectedCollection.coverImageId) {
-      return images.find((image) => image.id === selectedCollection.coverImageId) ?? null;
-    }
-
-    return selectedCollectionResolvedImages[0] ?? null;
-  }, [images, selectedCollection, selectedCollectionResolvedImages]);
+    const previewImages = collectionPreviewImages.get(selectedCollection.id) ?? [];
+    return previewImages[0] ?? null;
+  }, [collectionPreviewImages, selectedCollection]);
+  const coverThumbnail = useResolvedThumbnail(coverImage);
+  useThumbnail(coverImage);
 
   const moveCollection = async (collectionId: string, direction: -1 | 1) => {
     const currentIndex = collections.findIndex((collection) => collection.id === collectionId);
@@ -287,9 +280,9 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
 
               <div className="flex items-start gap-4">
                 <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-gray-800 bg-gray-900">
-                  {coverImage ? (
+                  {coverImage && coverThumbnail?.thumbnailUrl ? (
                     <img
-                      src={coverImage.thumbnailUrl}
+                      src={coverThumbnail.thumbnailUrl}
                       alt={selectedCollection.name}
                       className="h-full w-full object-cover"
                     />
