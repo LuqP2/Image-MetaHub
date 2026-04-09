@@ -28,9 +28,10 @@ import {
     toLightweightLineageImage,
 } from '../services/lineageRegistry';
 import { loadLineageRegistrySnapshot, saveLineageRegistrySnapshot } from '../services/lineageRegistryCache';
+import { MAX_RECENT_TAG_HISTORY } from '../utils/tagSuggestions';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
-const MAX_RECENT_TAGS = 12;
+const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
 
 type ThumbnailEntryState = {
     lastModified: number;
