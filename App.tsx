@@ -1811,6 +1811,8 @@ export default function App() {
                         onImageClick={handleImageSelection}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
+                        activeCollection={activeCollection}
+                        isCollectionsView
                       />
                     )}
                   </CollectionsWorkspace>
