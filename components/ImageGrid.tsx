@@ -2,7 +2,7 @@ import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { type IndexedImage, type BaseMetadata, type Directory, ImageStack } from '../types';
+import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, SmartCollection } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
@@ -33,6 +33,7 @@ import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
 import TransferImagesModal from './TransferImagesModal';
+import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
@@ -673,6 +674,8 @@ interface ImageGridProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onBatchExport: () => void;
+  activeCollection?: SmartCollection | null;
+  isCollectionsView?: boolean;
   // Deduplication support (optional)
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
@@ -683,7 +686,19 @@ const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<H
   <div ref={ref} {...props} data-grid-background="true" />
 ));
 
-const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedImages, currentPage, totalPages, onPageChange, onBatchExport, markedBestIds, markedArchivedIds }) => {
+const ImageGrid: React.FC<ImageGridProps> = ({
+  images,
+  onImageClick,
+  selectedImages,
+  currentPage,
+  totalPages,
+  onPageChange,
+  onBatchExport,
+  activeCollection = null,
+  isCollectionsView = false,
+  markedBestIds,
+  markedArchivedIds,
+}) => {
   const imageSize = useSettingsStore((state) => state.imageSize);
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
@@ -737,7 +752,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
+  const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
+  const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
+  const collections = useImageStore((state) => state.collections);
+  const createCollection = useImageStore((state) => state.createCollection);
+  const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
+  const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
+  const updateCollection = useImageStore((state) => state.updateCollection);
+  const bulkAddTag = useImageStore((state) => state.bulkAddTag);
+  const bulkRemoveTag = useImageStore((state) => state.bulkRemoveTag);
   const { canUseComparison, showProModal, canUseA1111, canUseComfyUI, canUseBatchExport, canUseBulkTagging, canUseFileManagement, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const selectedCount = selectedImages.size;
   const sensitiveTagSet = useMemo(() => {
@@ -780,7 +805,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
     if (!contextMenu.visible && isCopySubmenuOpen) {
       setIsCopySubmenuOpen(false);
     }
-  }, [contextMenu.visible, isCopySubmenuOpen]);
+    if (!contextMenu.visible && isCollectionSubmenuOpen) {
+      setIsCollectionSubmenuOpen(false);
+    }
+    if (!contextMenu.visible && isAddToCollectionSubmenuOpen) {
+      setIsAddToCollectionSubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen]);
 
   const queuedComparisonFirstImageId = queuedComparisonImages[0]?.id;
 
@@ -866,6 +897,98 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    if (collection.kind === 'tag_rule') {
+      if (!collection.sourceTag) {
+        hideContextMenu();
+        return;
+      }
+
+      await bulkAddTag(targetImages.map((image) => image.id), collection.sourceTag);
+    } else {
+      await addImagesToCollection(collection.id, targetImages.map((image) => image.id));
+    }
+
+    hideContextMenu();
+  }, [addImagesToCollection, bulkAddTag, getContextTargetImages, hideContextMenu]);
+
+  const handleCreateCollectionFromContext = useCallback(async (values: CollectionFormValues) => {
+    const targetImages = getContextTargetImages();
+    const targetImageIds = values.includeTargetImages ? targetImages.map((image) => image.id) : [];
+    const coverImageId = targetImageIds.length > 0 ? targetImageIds[0] : null;
+
+    await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: collections.length,
+      imageIds: targetImageIds,
+      snapshotImageIds: [],
+      coverImageId,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: coverImageId ?? undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    setIsCollectionModalOpen(false);
+    hideContextMenu();
+  }, [collections.length, createCollection, getContextTargetImages, hideContextMenu]);
+
+  const handleSetCollectionCover = useCallback(async () => {
+    if (!activeCollection || !contextMenu.image) {
+      hideContextMenu();
+      return;
+    }
+
+    await updateCollection(activeCollection.id, {
+      coverImageId: contextMenu.image.id,
+      thumbnailId: contextMenu.image.id,
+    });
+    hideContextMenu();
+  }, [activeCollection, contextMenu.image, hideContextMenu, updateCollection]);
+
+  const handleRemoveFromCurrentCollection = useCallback(async () => {
+    if (!activeCollection) {
+      hideContextMenu();
+      return;
+    }
+
+    const targetImages = getContextTargetImages();
+    if (targetImages.length === 0) {
+      hideContextMenu();
+      return;
+    }
+
+    if (activeCollection.kind === 'tag_rule') {
+      const sourceTag = activeCollection.sourceTag;
+      if (!sourceTag) {
+        hideContextMenu();
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Remove the "${sourceTag}" tag from ${targetImages.length} image(s) in this collection?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      await bulkRemoveTag(targetImages.map((image) => image.id), sourceTag);
+    } else {
+      await removeImagesFromCollection(activeCollection.id, targetImages.map((image) => image.id));
+    }
+
+    hideContextMenu();
+  }, [activeCollection, bulkRemoveTag, getContextTargetImages, hideContextMenu, removeImagesFromCollection]);
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
@@ -1311,6 +1434,93 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
             {!canUseBulkTagging && selectedCount > 1 && initialized && !canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
+          <div
+            className="relative"
+            onMouseEnter={() => setIsCollectionSubmenuOpen(true)}
+            onMouseLeave={() => {
+              setIsCollectionSubmenuOpen(false);
+              setIsAddToCollectionSubmenuOpen(false);
+            }}
+          >
+            <button
+              onClick={() => setIsCollectionSubmenuOpen((open) => !open)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Folder className="w-4 h-4" />
+              <span className="flex-1">Collection</span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isCollectionSubmenuOpen && (
+              <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                <div
+                  className="relative"
+                  onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                  onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                >
+                  <button
+                    onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  >
+                    <span className="flex-1">Add to Collection</span>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  </button>
+
+                  {isAddToCollectionSubmenuOpen && (
+                    <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                      {collections.length === 0 ? (
+                        <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
+                      ) : (
+                        collections.map((collection) => (
+                          <button
+                            key={collection.id}
+                            onClick={() => void handleAddToExistingCollection(collection)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                          >
+                            <span className="truncate">{collection.name}</span>
+                            <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                              {collection.kind === 'tag_rule' ? 'Tag' : 'Manual'}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsCollectionModalOpen(true);
+                    hideContextMenu();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                >
+                  Create New Collection
+                </button>
+              </div>
+            )}
+          </div>
+
+          {isCollectionsView && activeCollection && (
+            <>
+              <button
+                onClick={() => void handleSetCollectionCover()}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Folder className="w-4 h-4" />
+                Set as Cover
+              </button>
+
+              <button
+                onClick={() => void handleRemoveFromCurrentCollection()}
+                className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 hover:text-amber-100 transition-colors flex items-center gap-2"
+              >
+                <Folder className="w-4 h-4" />
+                <span className="flex-1">Remove from Current Collection</span>
+              </button>
+            </>
+          )}
+
           <div className="px-4 py-2">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Set Rating</div>
             <div className="flex flex-wrap gap-1.5">
@@ -1507,6 +1717,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({ images, onImageClick, selectedIma
 
   const modalsContent = (
     <>
+      <CollectionFormModal
+        isOpen={isCollectionModalOpen}
+        title="Create Collection"
+        submitLabel="Create Collection"
+        initialValues={{
+          name: '',
+          description: '',
+          sourceTag: '',
+          autoUpdate: false,
+          includeTargetImages: getContextTargetImages().length > 0,
+        }}
+        onClose={() => setIsCollectionModalOpen(false)}
+        onSubmit={handleCreateCollectionFromContext}
+        showIncludeTargetImages={getContextTargetImages().length > 0}
+      />
+
       <TagManagerModal
         isOpen={isTagManagerOpen}
         onClose={() => setIsTagManagerOpen(false)}

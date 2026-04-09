@@ -31,6 +31,7 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import NodeView from './components/NodeView';
+import CollectionsWorkspace from './components/CollectionsWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -158,6 +159,8 @@ export default function App() {
   const clustersCount = useImageStore((state) => state.clusters.length);
   const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
   const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const collections = useImageStore((state) => state.collections);
+  const activeCollectionId = useImageStore((state) => state.activeCollectionId);
 
   // Loading & progress selectors
   const isLoading = useImageStore((state) => state.isLoading);
@@ -229,14 +232,18 @@ export default function App() {
   const openComparisonModal = useImageStore((state) => state.openComparisonModal);
   const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
+  const loadCollections = useImageStore((state) => state.loadCollections);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
+  const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
+  const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
 
   const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
   const safeClusterNavigationContext = Array.isArray(clusterNavigationContext) ? clusterNavigationContext : [];
   const safeActiveImageScope = Array.isArray(activeImageScope) ? activeImageScope : null;
+  const safeCollections = Array.isArray(collections) ? collections : [];
   const safeDirectories = Array.isArray(directories) ? directories : [];
   const safeSelectedImages = selectedImages instanceof Set ? selectedImages : new Set<string>();
   const hasDirectories = safeDirectories.length > 0;
@@ -326,7 +333,7 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections'>('library');
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
@@ -342,7 +349,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (libraryView !== 'node' && activeImageScope !== null) {
+    if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
       setActiveImageScope(null);
     }
   }, [activeImageScope, libraryView, setActiveImageScope]);
@@ -492,6 +499,10 @@ export default function App() {
       loadAnnotations();
     }
   }, [loadAnnotations, isAnnotationsLoaded]);
+
+  useEffect(() => {
+    loadCollections();
+  }, [loadCollections]);
 
   // Initialize license and keep trial opt-in
   useEffect(() => {
@@ -1346,19 +1357,57 @@ export default function App() {
     setIsBatchExportModalOpen(true);
   }, [canUseBatchExport, showProModal]);
 
+  const activeCollection = useMemo(
+    () => safeCollections.find((collection) => collection.id === activeCollectionId) ?? null,
+    [activeCollectionId, safeCollections],
+  );
+
+  const collectionTotalImages = useMemo(() => {
+    if (!activeCollection) {
+      return [];
+    }
+
+    return getResolvedCollectionImages(activeCollection.id);
+  }, [activeCollection, getResolvedCollectionImages]);
+
+  const collectionFilteredImages = useMemo(() => {
+    if (!activeCollection) {
+      return [];
+    }
+
+    return getResolvedFilteredCollectionImages(activeCollection.id);
+  }, [activeCollection, getResolvedFilteredCollectionImages]);
+
+  const displayImages = libraryView === 'collections' ? collectionFilteredImages : safeFilteredImages;
+
+  useEffect(() => {
+    const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
+    if (currentPage > scopedTotalPages && scopedTotalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, displayImages.length, itemsPerPage]);
+
+  useEffect(() => {
+    if (libraryView !== 'collections') {
+      return;
+    }
+
+    setActiveImageScope(activeCollection ? collectionFilteredImages : null);
+  }, [activeCollection, collectionFilteredImages, libraryView, setActiveImageScope]);
+
   // --- Render Logic ---
   const paginatedImages = useMemo(
     () => {
       if (itemsPerPage === -1) {
-        return safeFilteredImages;
+        return displayImages;
       }
-      return safeFilteredImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+      return displayImages.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     },
-    [safeFilteredImages, currentPage, itemsPerPage]
+    [displayImages, currentPage, itemsPerPage]
   );
   const totalPages = itemsPerPage === -1
     ? 1
-    : Math.ceil(safeFilteredImages.length / itemsPerPage);
+    : Math.ceil(displayImages.length / itemsPerPage);
   const openImageModalEntries = useMemo(() => {
     return openImageModals
       .map((modal) => {
@@ -1484,7 +1533,7 @@ export default function App() {
         isOpen={isBatchExportModalOpen}
         onClose={() => setIsBatchExportModalOpen(false)}
         selectedImageIds={safeSelectedImages}
-        filteredImages={safeFilteredImages}
+        filteredImages={displayImages}
         directories={safeDirectories}
       />
 
@@ -1684,7 +1733,7 @@ export default function App() {
                     }}
                   />
                 )}
-                {(libraryView === 'library' || libraryView === 'node') && (
+                {(libraryView === 'library' || libraryView === 'node' || libraryView === 'collections') && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
                     images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
@@ -1739,6 +1788,32 @@ export default function App() {
                       setLibraryView('library');
                     }}
                   />
+                ) : libraryView === 'collections' ? (
+                  <CollectionsWorkspace
+                    filteredImages={collectionFilteredImages}
+                    totalImages={collectionTotalImages}
+                  >
+                    {viewMode === 'grid' ? (
+                      <ImageGrid
+                        images={paginatedImages}
+                        onImageClick={handleGridImageClick}
+                        selectedImages={safeSelectedImages}
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={setCurrentPage}
+                        onBatchExport={handleOpenBatchExport}
+                        activeCollection={activeCollection}
+                        isCollectionsView
+                      />
+                    ) : (
+                      <ImageTable
+                        images={paginatedImages}
+                        onImageClick={handleImageSelection}
+                        selectedImages={safeSelectedImages}
+                        onBatchExport={handleOpenBatchExport}
+                      />
+                    )}
+                  </CollectionsWorkspace>
                 ) : libraryView === 'node' ? (
                   <NodeView
                     images={safeFilteredImages}
@@ -1759,7 +1834,7 @@ export default function App() {
                 )}
               </div>
 
-              {libraryView === 'library' && (
+              {(libraryView === 'library' || libraryView === 'collections') && (
                 <Footer
                   currentPage={currentPage}
                   totalPages={totalPages}
@@ -1768,9 +1843,13 @@ export default function App() {
                   onItemsPerPageChange={setItemsPerPage}
                   viewMode={viewMode}
                   onViewModeChange={toggleViewMode}
-                  filteredCount={safeFilteredImages.length}
-                  totalCount={selectionTotalImages}
-                  directoryCount={selectionDirectoryCount}
+                  filteredCount={displayImages.length}
+                  totalCount={libraryView === 'collections' ? collectionTotalImages.length : selectionTotalImages}
+                  directoryCount={
+                    libraryView === 'collections'
+                      ? new Set(collectionFilteredImages.map((image) => image.directoryId).filter(Boolean)).size
+                      : selectionDirectoryCount
+                  }
                   enrichmentProgress={enrichmentProgress}
                   a1111Progress={a1111Progress}
                   transferProgress={transferProgress}

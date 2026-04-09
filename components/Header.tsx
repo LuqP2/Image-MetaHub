@@ -12,8 +12,8 @@ interface HeaderProps {
     onOpenAnalytics: () => void;
     onOpenLicense: () => void;
     onGeneratorSetupNeeded?: () => void;
-    libraryView?: 'library' | 'smart' | 'model' | 'node';
-    onLibraryViewChange?: (view: 'library' | 'smart' | 'model' | 'node') => void;
+    libraryView?: 'library' | 'smart' | 'model' | 'node' | 'collections';
+    onLibraryViewChange?: (view: 'library' | 'smart' | 'model' | 'node' | 'collections') => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -386,6 +386,16 @@ const Header: React.FC<HeaderProps> = ({
                     >
                         <Boxes className="h-3.5 w-3.5" />
                         Node View
+                    </button>
+                    <button
+                        onClick={() => onLibraryViewChange('collections')}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 flex items-center gap-1.5 ${
+                            libraryView === 'collections'
+                            ? 'bg-amber-600 text-white shadow-md shadow-amber-900/20'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        Collections
                     </button>
                 </div>
 

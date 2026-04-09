@@ -5,6 +5,7 @@ import { useImageStore } from '../store/useImageStore';
 import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 import { getRatingChipClasses, getRatingLabel, RatingValueIcons } from './RatingStars';
+import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 
 type TagContextMenuState = {
   x: number;
@@ -43,6 +44,8 @@ const TagsAndFavorites: React.FC = () => {
   const filteredImages = useImageStore((state) => state.filteredImages);
   const images = useImageStore((state) => state.images);
   const indexingState = useImageStore((state) => state.indexingState);
+  const collections = useImageStore((state) => state.collections);
+  const createCollection = useImageStore((state) => state.createCollection);
 
   const [isExpanded, setIsExpanded] = useState(true);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -53,6 +56,7 @@ const TagsAndFavorites: React.FC = () => {
     sourceTag: '',
     value: '',
   });
+  const [collectionSourceTag, setCollectionSourceTag] = useState<string | null>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -275,6 +279,45 @@ const TagsAndFavorites: React.FC = () => {
   const handleTagAction = async (action: () => Promise<void>) => {
     closeContextMenu();
     await action();
+  };
+
+  const openCreateCollectionDialog = () => {
+    if (!contextMenu) {
+      return;
+    }
+
+    setCollectionSourceTag(contextMenu.tag.name);
+    closeContextMenu();
+  };
+
+  const handleCreateCollection = async (values: CollectionFormValues) => {
+    if (!collectionSourceTag) {
+      return;
+    }
+
+    const normalizedTag = collectionSourceTag.trim().toLowerCase();
+    const snapshotImageIds = values.autoUpdate
+      ? []
+      : images
+          .filter((image) => Array.isArray(image.tags) && image.tags.includes(normalizedTag))
+          .map((image) => image.id);
+
+    await createCollection({
+      kind: 'tag_rule',
+      name: values.name,
+      description: values.description || undefined,
+      sourceTag: normalizedTag,
+      autoUpdate: values.autoUpdate,
+      imageIds: [],
+      snapshotImageIds,
+      sortIndex: collections.length,
+      coverImageId: null,
+      thumbnailId: undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    setCollectionSourceTag(null);
   };
 
   const handleClearFromMenu = async () => {
@@ -685,6 +728,13 @@ const TagsAndFavorites: React.FC = () => {
           >
             Rename Tag
           </button>
+          <button
+            type="button"
+            className="w-full px-4 py-2 text-left text-sm text-gray-300 transition-colors hover:bg-gray-700"
+            onClick={openCreateCollectionDialog}
+          >
+            Create Collection
+          </button>
           {contextMenu.tag.count > 0 && (
             <button
               type="button"
@@ -722,6 +772,25 @@ const TagsAndFavorites: React.FC = () => {
           )}
         </div>
       )}
+
+      <CollectionFormModal
+        isOpen={collectionSourceTag !== null}
+        title="Create Collection from Tag"
+        submitLabel="Create Collection"
+        initialValues={{
+          name: collectionSourceTag ?? '',
+          description: '',
+          sourceTag: collectionSourceTag ?? '',
+          autoUpdate: true,
+          includeTargetImages: false,
+        }}
+        onClose={() => setCollectionSourceTag(null)}
+        onSubmit={handleCreateCollection}
+        collectionKind="tag_rule"
+        showSourceTag
+        disableSourceTag
+        showAutoUpdate
+      />
 
       {renameDialog.isOpen && (
         <div

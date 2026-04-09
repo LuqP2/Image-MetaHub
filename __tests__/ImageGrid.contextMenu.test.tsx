@@ -7,12 +7,20 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import type { IndexedImage } from '../types';
 
 const showContextMenuMock = vi.fn();
+const hideContextMenuMock = vi.fn();
+const contextMenuStateMock = {
+  visible: false,
+  x: 24,
+  y: 24,
+  image: undefined as IndexedImage | undefined,
+  directoryPath: 'D:/library',
+};
 
 vi.mock('../hooks/useContextMenu', () => ({
   useContextMenu: () => ({
-    contextMenu: { visible: false, x: 0, y: 0, image: undefined, directoryPath: undefined },
+    contextMenu: contextMenuStateMock,
     showContextMenu: showContextMenuMock,
-    hideContextMenu: vi.fn(),
+    hideContextMenu: hideContextMenuMock,
     copyPrompt: vi.fn(),
     copyNegativePrompt: vi.fn(),
     copySeed: vi.fn(),
@@ -140,6 +148,9 @@ const Harness = ({ images }: { images: IndexedImage[] }) => {
 describe('ImageGrid context menu', () => {
   beforeEach(() => {
     showContextMenuMock.mockReset();
+    hideContextMenuMock.mockReset();
+    contextMenuStateMock.visible = false;
+    contextMenuStateMock.image = undefined;
     useImageStore.getState().resetState();
     useSettingsStore.getState().resetState();
     useSettingsStore.setState({
@@ -183,5 +194,80 @@ describe('ImageGrid context menu', () => {
     expect(showContextMenuMock).toHaveBeenCalledTimes(1);
     expect(showContextMenuMock.mock.calls[0]?.[1]).toMatchObject({ id: 'img-1' });
     expect(showContextMenuMock.mock.calls[0]?.[2]).toBe('D:/library');
+  });
+
+  it('shows collection actions in the image context menu', () => {
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      collections: [],
+      createCollection: vi.fn().mockResolvedValue(undefined),
+      addImagesToCollection: vi.fn().mockResolvedValue(undefined),
+      removeImagesFromCollection: vi.fn().mockResolvedValue(undefined),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      bulkAddTag: vi.fn().mockResolvedValue(undefined),
+      bulkRemoveTag: vi.fn().mockResolvedValue(undefined),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={[image]} />);
+
+    expect(screen.getByText('Collection')).toBeTruthy();
+    fireEvent.click(screen.getByText('Collection'));
+    expect(screen.getByText('Create New Collection')).toBeTruthy();
+  });
+
+  it('adds selected images to a manual collection from the context menu', () => {
+    const addImagesToCollection = vi.fn().mockResolvedValue(undefined);
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1']),
+      collections: [
+        {
+          id: 'collection-1',
+          kind: 'manual',
+          name: 'Motos',
+          sortIndex: 0,
+          imageCount: 0,
+          imageIds: [],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      createCollection: vi.fn().mockResolvedValue(undefined),
+      addImagesToCollection,
+      removeImagesFromCollection: vi.fn().mockResolvedValue(undefined),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      bulkAddTag: vi.fn().mockResolvedValue(undefined),
+      bulkRemoveTag: vi.fn().mockResolvedValue(undefined),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={[image]} />);
+
+    fireEvent.click(screen.getByText('Collection'));
+    fireEvent.click(screen.getByText('Add to Collection'));
+    fireEvent.click(screen.getByText('Motos'));
+
+    expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
   });
 });
