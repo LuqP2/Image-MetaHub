@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
+import {
+  DEFAULT_RECENT_TAG_CHIP_LIMIT,
+  DEFAULT_TAG_SUGGESTION_LIMIT,
+  sanitizeTagUiLimit,
+} from '../utils/tagSuggestions';
 
 export const stripLicenseFromSettings = <T extends Record<string, unknown>>(settings: T | null | undefined): Omit<T, 'license'> => {
   if (!settings) {
@@ -93,6 +98,8 @@ interface SettingsState {
   globalAutoWatch: boolean;
   startupVerificationMode: StartupVerificationMode;
   doubleClickToOpen: boolean;
+  tagSuggestionLimit: number;
+  recentTagChipLimit: number;
   sensitiveTags: string[];
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
@@ -129,6 +136,8 @@ interface SettingsState {
   toggleGlobalAutoWatch: () => void;
   setStartupVerificationMode: (value: StartupVerificationMode) => void;
   setDoubleClickToOpen: (value: boolean) => void;
+  setTagSuggestionLimit: (value: number) => void;
+  setRecentTagChipLimit: (value: number) => void;
   setSensitiveTags: (tags: string[]) => void;
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
@@ -170,6 +179,8 @@ export const useSettingsStore = create<SettingsState>()(
       globalAutoWatch: true,
       startupVerificationMode: 'off',
       doubleClickToOpen: false,
+      tagSuggestionLimit: DEFAULT_TAG_SUGGESTION_LIMIT,
+      recentTagChipLimit: DEFAULT_RECENT_TAG_CHIP_LIMIT,
       sensitiveTags: ['nsfw', 'private', 'hidden'],
       blurSensitiveImages: true,
       enableSafeMode: true,
@@ -213,6 +224,8 @@ export const useSettingsStore = create<SettingsState>()(
       toggleGlobalAutoWatch: () => set((state) => ({ globalAutoWatch: !state.globalAutoWatch })),
       setStartupVerificationMode: (value) => set({ startupVerificationMode: value }),
       setDoubleClickToOpen: (value) => set({ doubleClickToOpen: !!value }),
+      setTagSuggestionLimit: (value) => set({ tagSuggestionLimit: sanitizeTagUiLimit(value, DEFAULT_TAG_SUGGESTION_LIMIT) }),
+      setRecentTagChipLimit: (value) => set({ recentTagChipLimit: sanitizeTagUiLimit(value, DEFAULT_RECENT_TAG_CHIP_LIMIT) }),
       setSensitiveTags: (tags) => {
         const normalized = (Array.isArray(tags) ? tags : [])
           .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
@@ -264,6 +277,8 @@ export const useSettingsStore = create<SettingsState>()(
         globalAutoWatch: true,
         startupVerificationMode: 'off',
         doubleClickToOpen: false,
+        tagSuggestionLimit: DEFAULT_TAG_SUGGESTION_LIMIT,
+        recentTagChipLimit: DEFAULT_RECENT_TAG_CHIP_LIMIT,
         sensitiveTags: ['nsfw', 'private', 'hidden'],
         blurSensitiveImages: true,
         enableSafeMode: true,
@@ -309,6 +324,11 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.showFullFilePath !== 'boolean') {
           state.showFullFilePath = false;
+        }
+
+        if (state) {
+          state.tagSuggestionLimit = sanitizeTagUiLimit(state.tagSuggestionLimit, DEFAULT_TAG_SUGGESTION_LIMIT);
+          state.recentTagChipLimit = sanitizeTagUiLimit(state.recentTagChipLimit, DEFAULT_RECENT_TAG_CHIP_LIMIT);
         }
 
         if (

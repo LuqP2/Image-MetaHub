@@ -17,6 +17,7 @@ describe('TagManagerModal', () => {
     useImageStore.getState().resetState();
     useImageStore.setState({
       availableTags: [{ name: 'portrait', count: 2 }],
+      recentTags: ['portrait'],
       bulkAddTag,
       bulkRemoveTag,
       images: [

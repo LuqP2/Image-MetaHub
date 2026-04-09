@@ -28,37 +28,8 @@ import { MetadataEditorModal } from './MetadataEditorModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
-
-
-const TAG_SUGGESTION_LIMIT = 5;
-
-const buildTagSuggestions = (
-  recentTags: string[],
-  availableTags: { name: string }[],
-  currentTags: string[],
-): string[] => {
-  const suggestions: string[] = [];
-
-  for (const tag of recentTags) {
-    if (!currentTags.includes(tag) && !suggestions.includes(tag)) {
-      suggestions.push(tag);
-      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
-        return suggestions;
-      }
-    }
-  }
-
-  for (const tag of availableTags) {
-    if (!currentTags.includes(tag.name) && !suggestions.includes(tag.name)) {
-      suggestions.push(tag.name);
-      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
-        break;
-      }
-    }
-  }
-
-  return suggestions;
-};
+import TagInputCombobox from './TagInputCombobox';
+import { getRecentTagChips } from '../utils/tagSuggestions';
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -591,6 +562,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const recentTags = useImageStore((state) => state.recentTags);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
+  const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
+  const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
 
   // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
@@ -616,12 +589,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentIsFavorite = liveImage.isFavorite ?? false;
   const currentRating = liveImage.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
-  const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
+  const recentTagSuggestions = useMemo(() => getRecentTagChips({
+    recentTags,
+    excludedTags: currentTags,
+    limit: recentTagChipLimit,
+  }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
-  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -1378,7 +1354,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const focusInput = () => {
       tagInputRef.current?.focus();
       tagInputRef.current?.select();
-      setShowTagAutocomplete((tagInputRef.current?.value ?? '').trim().length > 0);
     };
 
     if (isFullscreen) {
@@ -1603,11 +1578,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   // Tag management handlers
-  const handleAddTag = () => {
-    if (!tagInput.trim()) return;
-    addTagToImage(image.id, tagInput);
+  const handleAddTag = (value = tagInput) => {
+    if (!value.trim()) return;
+    addTagToImage(image.id, value);
     setTagInput('');
-    setShowTagAutocomplete(false);
   };
 
   const handleRemoveTag = (tag: string) => {
@@ -1623,16 +1597,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
   };
-
-  // Filter autocomplete tags
-  const autocompleteOptions = tagInput
-    ? availableTags
-        .filter(tag =>
-          tag.name.includes(tagInput.toLowerCase()) &&
-          !currentTags.includes(tag.name)
-        )
-        .slice(0, 5)
-    : [];
 
   if (isMinimized) {
     return null;
@@ -1996,51 +1960,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Tags Pills */}
               <div className="flex-1 space-y-2">
                 {/* Add Tag Input */}
-                <div className="relative">
-                  <input
-                    ref={tagInputRef}
-                    type="text"
-                    placeholder="Add tag..."
-                    value={tagInput}
-                    onChange={(e) => {
-                      setTagInput(e.target.value);
-                      setShowTagAutocomplete(e.target.value.length > 0);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                      if (e.key === 'Escape') {
-                        setTagInput('');
-                        setShowTagAutocomplete(false);
-                      }
-                    }}
-                    onFocus={() => tagInput && setShowTagAutocomplete(true)}
-                    onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
-                    className="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
-                  />
-
-                  {/* Autocomplete Dropdown */}
-                  {showTagAutocomplete && autocompleteOptions.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                      {autocompleteOptions.map(tag => (
-                        <button
-                          key={tag.name}
-                          onClick={() => {
-                            addTagToImage(image.id, tag.name);
-                            setTagInput('');
-                            setShowTagAutocomplete(false);
-                          }}
-                          className="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
-                        >
-                          <span>{tag.name}</span>
-                          <span className="text-xs text-gray-500">({tag.count})</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <TagInputCombobox
+                  ref={tagInputRef}
+                  value={tagInput}
+                  onValueChange={setTagInput}
+                  onSubmit={handleAddTag}
+                  recentTags={recentTags}
+                  availableTags={availableTags}
+                  excludedTags={currentTags}
+                  suggestionLimit={tagSuggestionLimit}
+                  placeholder="Add tag..."
+                  inputClassName="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                  dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
+                  optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                  activeOptionClassName="bg-gray-700 text-white"
+                  metaClassName="text-xs text-gray-500"
+                  onEscape={() => {
+                    setTagInput('');
+                    tagInputRef.current?.focus();
+                  }}
+                />
 
                 {/* Current Tags */}
                 {currentTags && currentTags.length > 0 && (
@@ -2060,9 +1999,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
 
                 {/* Tag Suggestions */}
-                {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (
+                {tagInput.trim().length === 0 && recentTagSuggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {tagSuggestions.map(tag => (
+                    {recentTagSuggestions.map(tag => (
                       <button
                         key={tag}
                         onClick={() => addTagToImage(image.id, tag)}
