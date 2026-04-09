@@ -240,6 +240,7 @@ export default function App() {
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
   const createCollection = useImageStore((state) => state.createCollection);
+  const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
   const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
@@ -1522,6 +1523,20 @@ export default function App() {
     setSuccess(`Collection "${collection.name}" created.`);
   }, [createCollection, displayImages, safeCollections.length, setSuccess]);
 
+  const handleAddCurrentFilteredToCollection = useCallback(async (collectionId: string) => {
+    const targetImageIds = displayImages.map((image) => image.id);
+    if (targetImageIds.length === 0) {
+      return;
+    }
+
+    const collection = await addImagesToCollection(collectionId, targetImageIds);
+    if (!collection) {
+      return;
+    }
+
+    setSuccess(`Added ${targetImageIds.length} image${targetImageIds.length === 1 ? '' : 's'} to "${collection.name}".`);
+  }, [addImagesToCollection, displayImages, setSuccess]);
+
   const shouldShowLibraryPlaceholder =
     libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
@@ -1782,12 +1797,17 @@ export default function App() {
                     selectedImages={safeSelectedImages}
                     images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
                     directories={safeDirectories}
-                    onSaveCurrentFilteredAsCollection={
+                    onCreateCollectionFromFiltered={
                       canSaveCurrentFilteredAsCollection
                         ? () => setIsSaveFilteredCollectionModalOpen(true)
                         : undefined
                     }
-                    saveCurrentFilteredCount={displayImages.length}
+                    onAddCurrentFilteredToCollection={
+                      canSaveCurrentFilteredAsCollection
+                        ? handleAddCurrentFilteredToCollection
+                        : undefined
+                    }
+                    filteredImageActionCount={displayImages.length}
                     onDeleteSelected={handleDeleteSelectedImages}
                     onGenerateA1111={(image) => {
                       setSelectedImageForGeneration(image);

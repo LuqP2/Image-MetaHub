@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Copy,
   Folder,
-  FolderPlus,
   Download,
   Heart,
   GitCompare,
@@ -10,12 +9,13 @@ import {
   Trash2,
   ChevronDown,
   Tag,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { type IndexedImage } from '../types';
+import { SmartCollection, type IndexedImage } from '../types';
 
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
@@ -26,8 +26,9 @@ interface GridToolbarProps {
   selectedImages: Set<string>;
   images: IndexedImage[];
   directories: { id: string; path: string }[];
-  onSaveCurrentFilteredAsCollection?: () => void;
-  saveCurrentFilteredCount?: number;
+  onCreateCollectionFromFiltered?: () => void;
+  onAddCurrentFilteredToCollection?: (collectionId: string) => Promise<void> | void;
+  filteredImageActionCount?: number;
   onDeleteSelected: () => void;
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
@@ -51,8 +52,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   selectedImages,
   images,
   directories,
-  onSaveCurrentFilteredAsCollection,
-  saveCurrentFilteredCount = 0,
+  onCreateCollectionFromFiltered,
+  onAddCurrentFilteredToCollection,
+  filteredImageActionCount = 0,
   onDeleteSelected,
   onGenerateA1111,
   onGenerateComfyUI,
@@ -60,9 +62,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onBatchExport,
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
+  const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
+  const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const collectionActionsRef = useRef<HTMLDivElement>(null);
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
+  const collections = useImageStore((state) => state.collections);
   const { canUseComparison, canUseA1111, canUseComfyUI, showProModal, canUseBulkTagging } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
@@ -91,6 +97,10 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setGenerateDropdownOpen(false);
+      }
+      if (collectionActionsRef.current && !collectionActionsRef.current.contains(event.target as Node)) {
+        setIsCollectionActionsOpen(false);
+        setIsAddToCollectionSubmenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -228,8 +238,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const selectedRatings = useImageStore((state) => state.selectedRatings);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
-  const canSaveCurrentFilteredAsCollection =
-    Boolean(onSaveCurrentFilteredAsCollection) && saveCurrentFilteredCount > 0;
+  const canUseFilteredCollectionActions =
+    filteredImageActionCount > 0 &&
+    (Boolean(onCreateCollectionFromFiltered) || Boolean(onAddCurrentFilteredToCollection));
 
   const hasActiveFilters = 
       selectedModels.length > 0 ||
@@ -253,9 +264,25 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters && !canSaveCurrentFilteredAsCollection) {
+  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions) {
     return null;
   }
+
+  const handleAddToCollection = async (collection: SmartCollection) => {
+    if (!onAddCurrentFilteredToCollection) {
+      return;
+    }
+
+    await onAddCurrentFilteredToCollection(collection.id);
+    setIsCollectionActionsOpen(false);
+    setIsAddToCollectionSubmenuOpen(false);
+  };
+
+  const handleCreateCollectionFromFiltered = () => {
+    onCreateCollectionFromFiltered?.();
+    setIsCollectionActionsOpen(false);
+    setIsAddToCollectionSubmenuOpen(false);
+  };
 
   return (
     <>
@@ -396,19 +423,68 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               </>
             )}
 
-            {canSaveCurrentFilteredAsCollection && (
+            {canUseFilteredCollectionActions && (
               <>
-                <button
-                  onClick={onSaveCurrentFilteredAsCollection}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition-all duration-200 hover:border-amber-400/60 hover:bg-amber-500/20"
-                  title={`Save ${saveCurrentFilteredCount} filtered image${saveCurrentFilteredCount === 1 ? '' : 's'} as a collection`}
-                >
-                  <FolderPlus className="h-4 w-4" />
-                  <span>Save as Collection</span>
-                  <span className="rounded-full bg-black/20 px-1.5 py-0.5 text-[10px]">
-                    {saveCurrentFilteredCount}
-                  </span>
-                </button>
+                <div className="relative" ref={collectionActionsRef}>
+                  <button
+                    onClick={() => setIsCollectionActionsOpen((open) => !open)}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
+                    aria-label="Collection actions"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+
+                  {isCollectionActionsOpen && (
+                    <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
+                      <div
+                        className="relative"
+                        onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                        onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                      >
+                        <button
+                          onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                          disabled={!onAddCurrentFilteredToCollection}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                        >
+                          <span>Add filtered images to collection</span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${isAddToCollectionSubmenuOpen ? '-rotate-90' : 'rotate-[-90deg]'}`} />
+                        </button>
+
+                        {isAddToCollectionSubmenuOpen && onAddCurrentFilteredToCollection && (
+                          <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl">
+                            {collections.length === 0 ? (
+                              <div className="px-3 py-2 text-sm text-gray-500">No collections yet</div>
+                            ) : (
+                              collections.map((collection) => (
+                                <button
+                                  key={collection.id}
+                                  onClick={() => void handleAddToCollection(collection)}
+                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                >
+                                  <span className="truncate">{collection.name}</span>
+                                  {collection.sourceTag && (
+                                    <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                      {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                    </span>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={handleCreateCollectionFromFiltered}
+                        disabled={!onCreateCollectionFromFiltered}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                      >
+                        Create new collection from filtered images
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
               </>
