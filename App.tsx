@@ -35,6 +35,7 @@ import CollectionsWorkspace from './components/CollectionsWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
+import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
@@ -238,6 +239,7 @@ export default function App() {
   const reshuffle = useImageStore((state) => state.reshuffle);
   const getResolvedCollectionImages = useImageStore((state) => state.getResolvedCollectionImages);
   const getResolvedFilteredCollectionImages = useImageStore((state) => state.getResolvedFilteredCollectionImages);
+  const createCollection = useImageStore((state) => state.createCollection);
 
   const safeImages = Array.isArray(images) ? images : [];
   const safeFilteredImages = Array.isArray(filteredImages) ? filteredImages : [];
@@ -340,6 +342,7 @@ export default function App() {
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
+  const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
@@ -1379,6 +1382,7 @@ export default function App() {
   }, [activeCollection, getResolvedFilteredCollectionImages]);
 
   const displayImages = libraryView === 'collections' ? collectionFilteredImages : safeFilteredImages;
+  const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -1493,6 +1497,31 @@ export default function App() {
       );
     });
   })();
+
+  const handleSaveCurrentFilteredAsCollection = useCallback(async (values: CollectionFormValues) => {
+    const targetImageIds = displayImages.map((image) => image.id);
+    const coverImageId = targetImageIds[0] ?? null;
+
+    const collection = await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: safeCollections.length,
+      imageIds: targetImageIds,
+      snapshotImageIds: [],
+      coverImageId,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: coverImageId ?? undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    setIsSaveFilteredCollectionModalOpen(false);
+    setLibraryView('collections');
+    setSuccess(`Collection "${collection.name}" created.`);
+  }, [createCollection, displayImages, safeCollections.length, setSuccess]);
+
   const shouldShowLibraryPlaceholder =
     libraryView === 'library' &&
     safeFilteredImages.length === 0 &&
@@ -1647,6 +1676,21 @@ export default function App() {
           onLibraryViewChange={setLibraryView}
         />
 
+        <CollectionFormModal
+          isOpen={isSaveFilteredCollectionModalOpen}
+          title="Save as Collection"
+          submitLabel="Save Collection"
+          initialValues={{
+            name: '',
+            description: '',
+            sourceTag: '',
+            autoUpdate: false,
+            includeTargetImages: false,
+          }}
+          onClose={() => setIsSaveFilteredCollectionModalOpen(false)}
+          onSubmit={handleSaveCurrentFilteredAsCollection}
+        />
+
         <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
           {showGeneratorSetupNotice && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
@@ -1738,6 +1782,12 @@ export default function App() {
                     selectedImages={safeSelectedImages}
                     images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
                     directories={safeDirectories}
+                    onSaveCurrentFilteredAsCollection={
+                      canSaveCurrentFilteredAsCollection
+                        ? () => setIsSaveFilteredCollectionModalOpen(true)
+                        : undefined
+                    }
+                    saveCurrentFilteredCount={displayImages.length}
                     onDeleteSelected={handleDeleteSelectedImages}
                     onGenerateA1111={(image) => {
                       setSelectedImageForGeneration(image);

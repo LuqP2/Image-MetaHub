@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Copy,
   Folder,
+  FolderPlus,
   Download,
   Heart,
   GitCompare,
@@ -25,6 +26,8 @@ interface GridToolbarProps {
   selectedImages: Set<string>;
   images: IndexedImage[];
   directories: { id: string; path: string }[];
+  onSaveCurrentFilteredAsCollection?: () => void;
+  saveCurrentFilteredCount?: number;
   onDeleteSelected: () => void;
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
@@ -48,6 +51,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   selectedImages,
   images,
   directories,
+  onSaveCurrentFilteredAsCollection,
+  saveCurrentFilteredCount = 0,
   onDeleteSelected,
   onGenerateA1111,
   onGenerateComfyUI,
@@ -223,6 +228,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   const selectedRatings = useImageStore((state) => state.selectedRatings);
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
+  const canSaveCurrentFilteredAsCollection =
+    Boolean(onSaveCurrentFilteredAsCollection) && saveCurrentFilteredCount > 0;
 
   const hasActiveFilters = 
       selectedModels.length > 0 ||
@@ -246,7 +253,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters) {
+  if (selectedCount === 0 && !hasActiveFilters && !canSaveCurrentFilteredAsCollection) {
     return null;
   }
 
@@ -385,6 +392,24 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 </button>
                 
                 {/* Divider between selection tools and filters if both exist */}
+                {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
+              </>
+            )}
+
+            {canSaveCurrentFilteredAsCollection && (
+              <>
+                <button
+                  onClick={onSaveCurrentFilteredAsCollection}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition-all duration-200 hover:border-amber-400/60 hover:bg-amber-500/20"
+                  title={`Save ${saveCurrentFilteredCount} filtered image${saveCurrentFilteredCount === 1 ? '' : 's'} as a collection`}
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  <span>Save as Collection</span>
+                  <span className="rounded-full bg-black/20 px-1.5 py-0.5 text-[10px]">
+                    {saveCurrentFilteredCount}
+                  </span>
+                </button>
+
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
               </>
             )}
