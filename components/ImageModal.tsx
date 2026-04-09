@@ -2725,34 +2725,38 @@ const ImageModal: React.FC<ImageModalProps> = ({
       </div>
 
       {/* Metadata Editor Modal */}
-      <MetadataEditorModal
-        isOpen={isMetadataEditorOpen}
-        onClose={() => setIsMetadataEditorOpen(false)}
-        initialMetadata={shadowMetadata}
-        onSave={async (m) => { await saveShadowMetadata(m); }}
-        imageId={image.id}
-      />
+      <div className="pointer-events-auto">
+        <MetadataEditorModal
+          isOpen={isMetadataEditorOpen}
+          onClose={() => setIsMetadataEditorOpen(false)}
+          initialMetadata={shadowMetadata}
+          onSave={async (m) => { await saveShadowMetadata(m); }}
+          imageId={image.id}
+        />
+      </div>
 
-      <CollectionFormModal
-        isOpen={isCollectionModalOpen}
-        title="Create Collection"
-        submitLabel="Create Collection"
-        initialValues={{
-          name: '',
-          description: '',
-          sourceTag: '',
-          autoUpdate: false,
-          includeTargetImages: true,
-        }}
-        onClose={() => setIsCollectionModalOpen(false)}
-        onSubmit={handleCreateCollectionFromContext}
-        showIncludeTargetImages
-      />
+      <div className="pointer-events-auto">
+        <CollectionFormModal
+          isOpen={isCollectionModalOpen}
+          title="Create Collection"
+          submitLabel="Create Collection"
+          initialValues={{
+            name: '',
+            description: '',
+            sourceTag: '',
+            autoUpdate: false,
+            includeTargetImages: true,
+          }}
+          onClose={() => setIsCollectionModalOpen(false)}
+          onSubmit={handleCreateCollectionFromContext}
+          showIncludeTargetImages
+        />
+      </div>
 
       {/* Context Menu */}
       {contextMenu.visible && (
         <div
-          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="pointer-events-auto fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
