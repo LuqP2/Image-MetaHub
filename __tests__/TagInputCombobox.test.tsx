@@ -70,6 +70,16 @@ describe('TagInputCombobox', () => {
     expect(escapeSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('delegates escape immediately when the current token has no matches', () => {
+    const { input, escapeSpy } = renderHarness();
+
+    fireEvent.change(input, { target: { value: 'zzz' } });
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(escapeSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('applies mouse-selected suggestions without losing the action', () => {
     const { input, submitSpy } = renderHarness({ value: 'mac' });
 

@@ -1,4 +1,4 @@
-import React, { forwardRef, useId, useMemo, useState } from 'react';
+import React, { forwardRef, useEffect, useId, useMemo, useState } from 'react';
 import type { TagInfo } from '../types';
 import { getTagSearchToken, getTagSuggestions, replaceLastCsvToken, type TagInputMode } from '../utils/tagSuggestions';
 
@@ -61,6 +61,13 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
     [availableTags, excludedTags, recentTags, searchToken, suggestionLimit],
   );
 
+  useEffect(() => {
+    if (isOpen && suggestions.length === 0) {
+      setIsOpen(false);
+      setActiveIndex(0);
+    }
+  }, [isOpen, suggestions.length]);
+
   const closeSuggestions = () => {
     setIsOpen(false);
     setActiveIndex(0);
@@ -101,8 +108,17 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
         aria-controls={isOpen ? listboxId : undefined}
         onChange={(event) => {
           const nextValue = event.target.value;
+          const nextSearchToken = getTagSearchToken(nextValue, mode);
+          const nextSuggestions = getTagSuggestions({
+            query: nextSearchToken,
+            recentTags,
+            availableTags,
+            excludedTags,
+            limit: suggestionLimit,
+          });
+
           onValueChange(nextValue);
-          if (getTagSearchToken(nextValue, mode)) {
+          if (nextSearchToken && nextSuggestions.length > 0) {
             setIsOpen(true);
             setActiveIndex(0);
           } else {
