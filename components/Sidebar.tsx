@@ -6,12 +6,8 @@ import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
-import VerticalSplitPanels from './VerticalSplitPanels';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
-
-const SIDEBAR_PANE_SIZES_STORAGE_KEY = 'image-metahub-sidebar-pane-sizes';
-const DEFAULT_SIDEBAR_PANE_SIZES = [36, 34, 30];
 
 const toFacetLabel = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -279,57 +275,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
-  const directoryPaneContent = children && React.isValidElement(children)
-    ? React.cloneElement(children as React.ReactElement<any>, {
-        isIndexing,
-        scanSubfolders,
-        excludedFolders,
-        onExcludeFolder,
-        onIncludeFolder
-      })
-    : children;
-  const secondaryFiltersPane = (
-    <div className="space-y-4 pb-4">
-      {generationFacets.length > 0 && (
-        <section className="border-b border-gray-800/80 bg-gray-950/20">
-          <button
-            type="button"
-            onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
-            className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
-          >
-            <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
-            <ChevronDown
-              className={`h-4 w-4 text-gray-500 transition-transform ${isGenerationParametersExpanded ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {isGenerationParametersExpanded && (
-            <div className="space-y-3 px-4 pb-4">
-              {generationFacets.map((facet) => (
-                <FacetFilterSection
-                  key={facet.title}
-                  title={facet.title}
-                  items={facet.items}
-                  counts={facet.counts}
-                  selectedValues={facet.selectedValues}
-                  excludedValues={facet.excludedValues}
-                  onIncludeToggle={facet.onIncludeToggle}
-                  onExcludeToggle={facet.onExcludeToggle}
-                  onClear={facet.onClear}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      <AdvancedFilters
-        advancedFilters={advancedFilters}
-        onAdvancedFiltersChange={onAdvancedFiltersChange}
-        onClearAdvancedFilters={onClearAdvancedFilters}
-        availableDimensions={availableDimensions}
-      />
-    </div>
-  );
 
   if (isCollapsed) {
     return (
@@ -418,76 +363,107 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
 
-      <div className="border-b border-gray-800/80">
-        <ActiveFilters />
-      </div>
+      <div className="flex-1 overflow-y-auto scrollbar-sidebar">
+        <div className="border-b border-gray-800/80">
+          <ActiveFilters />
+        </div>
 
-      <div className="px-4 py-3 border-b border-gray-700">
-        <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
-        <div className="flex items-center">
-        <select
-          id="sidebar-sort"
-          value={sortOrder}
-          onChange={(e) => onSortOrderChange(e.target.value)}
-          className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="date-desc">Newest First</option>
-          <option value="date-asc">Oldest First</option>
-          <option value="asc">A-Z</option>
-          <option value="desc">Z-A</option>
-          <option value="random">Random</option>
-        </select>
-        {sortOrder === 'random' && onReshuffle && (
-          <button
-              onClick={onReshuffle}
-              className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
-              title="Reshuffle Random Order"
+        <div className="px-4 py-3 border-b border-gray-700">
+          <label htmlFor="sidebar-sort" className="block text-gray-400 text-xs font-medium mb-2">Sort Order</label>
+          <div className="flex items-center">
+          <select
+            id="sidebar-sort"
+            value={sortOrder}
+            onChange={(e) => onSortOrderChange(e.target.value)}
+            className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-              <RefreshCw className="h-5 w-5" />
-          </button>
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="asc">A-Z</option>
+            <option value="desc">Z-A</option>
+            <option value="random">Random</option>
+          </select>
+          {sortOrder === 'random' && onReshuffle && (
+            <button
+                onClick={onReshuffle}
+                className="ml-2 p-2 text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-md border border-gray-600 transition-colors"
+                title="Reshuffle Random Order"
+            >
+                <RefreshCw className="h-5 w-5" />
+            </button>
+          )}
+          </div>
+        </div>
+
+        {onAddFolder && (
+          <div className="px-3 py-2 border-b border-gray-700">
+            <button
+              onClick={onAddFolder}
+              disabled={isIndexing}
+              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                isIndexing
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+              }`}
+              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+            >
+              <Plus size={14} />
+              <span>Add Folder</span>
+            </button>
+          </div>
         )}
-        </div>
-      </div>
 
-      {onAddFolder && (
-        <div className="px-3 py-2 border-b border-gray-700">
-          <button
-            onClick={onAddFolder}
-            disabled={isIndexing}
-            className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-              isIndexing
-                ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-            }`}
-            title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
-          >
-            <Plus size={14} />
-            <span>Add Folder</span>
-          </button>
-        </div>
-      )}
+        {children && React.isValidElement(children) ? (
+          React.cloneElement(children as React.ReactElement<any>, {
+            isIndexing,
+            scanSubfolders,
+            excludedFolders,
+            onExcludeFolder,
+            onIncludeFolder
+          })
+        ) : (
+          children
+        )}
 
-      <div className="min-h-0 flex-1 px-3 py-3">
-        <VerticalSplitPanels
-          storageKey={SIDEBAR_PANE_SIZES_STORAGE_KEY}
-          defaultSizes={DEFAULT_SIDEBAR_PANE_SIZES}
-          panes={[
-            {
-              id: 'directories',
-              ariaLabel: 'Folders pane',
-              content: directoryPaneContent,
-            },
-            {
-              id: 'tags',
-              ariaLabel: 'Tags and favorites pane',
-              content: <TagsAndFavorites />,
-            },
-            {
-              id: 'filters',
-              ariaLabel: 'Filters pane',
-              content: secondaryFiltersPane,
-            },
-          ]}
+        <TagsAndFavorites />
+
+        {generationFacets.length > 0 && (
+          <section className="border-y border-gray-800/80 bg-gray-950/20">
+            <button
+              type="button"
+              onClick={() => setIsGenerationParametersExpanded((prev) => !prev)}
+              className="flex w-full items-center justify-between px-4 py-4 text-left transition-colors hover:bg-gray-800/40"
+            >
+              <h3 className="text-base font-medium text-gray-200">Generation Parameters</h3>
+              <ChevronDown
+                className={`h-4 w-4 text-gray-500 transition-transform ${isGenerationParametersExpanded ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isGenerationParametersExpanded && (
+              <div className="space-y-3 px-4 pb-4">
+                {generationFacets.map((facet) => (
+                  <FacetFilterSection
+                    key={facet.title}
+                    title={facet.title}
+                    items={facet.items}
+                    counts={facet.counts}
+                    selectedValues={facet.selectedValues}
+                    excludedValues={facet.excludedValues}
+                    onIncludeToggle={facet.onIncludeToggle}
+                    onExcludeToggle={facet.onExcludeToggle}
+                    onClear={facet.onClear}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        <AdvancedFilters
+          advancedFilters={advancedFilters}
+          onAdvancedFiltersChange={onAdvancedFiltersChange}
+          onClearAdvancedFilters={onClearAdvancedFilters}
+          availableDimensions={availableDimensions}
         />
       </div>
 

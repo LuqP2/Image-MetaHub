@@ -33,7 +33,7 @@ describe('Sidebar layout', () => {
     cleanup();
   });
 
-  it('renders the left sidebar in three independently resizable panes', () => {
+  it('renders the left sidebar with the main scrollable filter content', () => {
     const FolderPane = (_props: Record<string, unknown>) => <div>Folder content</div>;
 
     render(
@@ -76,10 +76,8 @@ describe('Sidebar layout', () => {
       </Sidebar>,
     );
 
-    expect(screen.getByRole('region', { name: 'Folders pane' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Tags and favorites pane' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Filters pane' })).toBeTruthy();
-    expect(screen.getByRole('separator', { name: 'Resize Folders pane' })).toBeTruthy();
-    expect(screen.getByRole('separator', { name: 'Resize Tags and favorites pane' })).toBeTruthy();
+    expect(screen.getByText('Folder content')).toBeTruthy();
+    expect(screen.getByText('Ratings, Favorites & Tags')).toBeTruthy();
+    expect(screen.getByText('Sort Order')).toBeTruthy();
   });
 });
