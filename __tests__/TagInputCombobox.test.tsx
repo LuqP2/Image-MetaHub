@@ -84,11 +84,9 @@ describe('TagInputCombobox', () => {
   it('replaces the last CSV token instead of submitting immediately in csv mode', async () => {
     const { input, submitSpy } = renderHarness({
       mode: 'csv',
-      value: 'macro, por',
     });
 
-    fireEvent.focus(input);
-    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.change(input, { target: { value: 'macro, por' } });
     await waitFor(() => {
       expect(screen.getByRole('listbox')).toBeTruthy();
     });
