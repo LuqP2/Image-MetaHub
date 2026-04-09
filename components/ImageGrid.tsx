@@ -1424,7 +1424,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             </button>
 
             {isCollectionSubmenuOpen && (
-              <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                 <div
                   className="relative"
                   onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
@@ -1439,7 +1439,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
-                    <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                    <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                       {collections.length === 0 ? (
                         <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
                       ) : (
@@ -1535,7 +1535,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             </button>
 
             {isCopySubmenuOpen && (
-              <div className="absolute left-full top-0 ml-1 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className="absolute left-full top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                 <button
                   onClick={copyPrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"

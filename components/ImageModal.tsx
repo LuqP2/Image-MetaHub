@@ -2806,7 +2806,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </button>
 
                 {isCollectionSubmenuOpen && (
-                  <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                  <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                     <div
                       className="relative"
                       onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
@@ -2821,7 +2821,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       </button>
 
                       {isAddToCollectionSubmenuOpen && (
-                        <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                        <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                           {collections.length === 0 ? (
                             <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
                           ) : (
