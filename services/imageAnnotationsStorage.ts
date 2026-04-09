@@ -41,14 +41,23 @@ function normalizeManualTagName(tagName: string): string {
   return tagName.trim().toLowerCase();
 }
 
-const normalizeCollectionTagName = (tagName: string | null | undefined): string | null => {
-  if (typeof tagName !== 'string') {
-    return null;
+export const normalizeCollectionTagNames = (tagNames: string | null | undefined): string[] => {
+  if (typeof tagNames !== 'string') {
+    return [];
   }
 
-  const normalized = tagName.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
+  return Array.from(
+    new Set(
+      tagNames
+        .split(',')
+        .map((tagName) => tagName.trim().toLowerCase())
+        .filter((tagName) => tagName.length > 0),
+    ),
+  );
 };
+
+const serializeCollectionTagNames = (tagNames: string[]): string | null =>
+  tagNames.length > 0 ? tagNames.join(', ') : null;
 
 const uniqueImageIds = (imageIds: unknown): string[] => {
   if (!Array.isArray(imageIds)) {
@@ -946,7 +955,7 @@ export function normalizeSmartCollection(
 ): SmartCollection {
   const imageIds = uniqueImageIds(collection.imageIds);
   const snapshotImageIds = uniqueImageIds(collection.snapshotImageIds);
-  const sourceTag = normalizeCollectionTagName(collection.sourceTag);
+  const sourceTag = serializeCollectionTagNames(normalizeCollectionTagNames(collection.sourceTag));
   const kind = collection.kind === 'tag_rule' ? 'tag_rule' : 'manual';
   const autoUpdate = kind === 'tag_rule' ? collection.autoUpdate !== false : false;
   const coverImageId =
@@ -989,15 +998,19 @@ export function resolveSmartCollectionImageIds(collection: SmartCollection, imag
   }
 
   if (collection.autoUpdate !== false) {
-    const sourceTag = normalizeCollectionTagName(collection.sourceTag);
-    if (!sourceTag) {
+    const sourceTags = normalizeCollectionTagNames(collection.sourceTag);
+    if (sourceTags.length === 0) {
       return manualImageIds;
     }
 
     return uniqueImageIds([
       ...manualImageIds,
       ...images
-        .filter((image) => Array.isArray(image.tags) && image.tags.includes(sourceTag))
+        .filter(
+          (image) =>
+            Array.isArray(image.tags) &&
+            sourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
+        )
         .map((image) => image.id),
     ]);
   }

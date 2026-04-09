@@ -6,6 +6,7 @@ import { InclusionFilterMode, TagInfo } from '../types';
 import TriStateToggle, { getFilterModeLabel, getNextFilterMode } from './TriStateToggle';
 import { getRatingChipClasses, getRatingLabel, RatingValueIcons } from './RatingStars';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import { normalizeCollectionTagNames } from '../services/imageAnnotationsStorage';
 
 type TagContextMenuState = {
   x: number;
@@ -295,11 +296,16 @@ const TagsAndFavorites: React.FC = () => {
       return;
     }
 
-    const normalizedTag = collectionSourceTag.trim().toLowerCase();
+    const normalizedTag = normalizeCollectionTagNames(collectionSourceTag).join(', ');
+    const normalizedTags = normalizeCollectionTagNames(collectionSourceTag);
     const snapshotImageIds = values.autoUpdate
       ? []
       : images
-          .filter((image) => Array.isArray(image.tags) && image.tags.includes(normalizedTag))
+          .filter(
+            (image) =>
+              Array.isArray(image.tags) &&
+              normalizedTags.some((tag) => image.tags.includes(tag)),
+          )
           .map((image) => image.id);
 
     await createCollection({

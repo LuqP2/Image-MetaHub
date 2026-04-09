@@ -13,6 +13,7 @@ import {
   deleteSmartCollection,
   getAllSmartCollections,
   normalizeSmartCollection,
+  normalizeCollectionTagNames,
   removeImagesFromSmartCollection,
   reorderSmartCollections,
   resolveSmartCollectionImageCount,
@@ -3410,12 +3411,20 @@ export const useImageStore = create<ImageState>((set, get) => {
             const { annotations, collections } = get();
             const updatedAnnotations: ImageAnnotations[] = [];
             const updatedCollections = collections
-                .filter((collection) => collection.kind === 'tag_rule' && collection.sourceTag === normalizedSource)
+                .filter((collection) => {
+                    if (collection.kind !== 'tag_rule') {
+                        return false;
+                    }
+
+                    return normalizeCollectionTagNames(collection.sourceTag).includes(normalizedSource);
+                })
                 .map((collection) =>
                     normalizeSmartCollection(
                         {
                             ...collection,
-                            sourceTag: normalizedTarget,
+                            sourceTag: normalizeCollectionTagNames(collection.sourceTag)
+                                .map((tag) => tag === normalizedSource ? normalizedTarget : tag)
+                                .join(', '),
                             updatedAt: Date.now(),
                         },
                         collection.sortIndex,

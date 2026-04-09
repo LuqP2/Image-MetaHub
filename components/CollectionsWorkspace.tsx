@@ -6,6 +6,7 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import CollectionCard from './CollectionCard';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
+import { normalizeCollectionTagNames } from '../services/imageAnnotationsStorage';
 
 interface CollectionsWorkspaceProps {
   filteredImages: IndexedImage[];
@@ -109,12 +110,17 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
       return;
     }
 
-    const normalizedSourceTag = values.sourceTag.trim().toLowerCase();
-    const hasAutoAddSettings = normalizedSourceTag.length > 0;
+    const normalizedSourceTags = normalizeCollectionTagNames(values.sourceTag);
+    const normalizedSourceTag = normalizedSourceTags.join(', ');
+    const hasAutoAddSettings = normalizedSourceTags.length > 0;
     const snapshotImageIds =
       hasAutoAddSettings && values.autoUpdate === false
         ? images
-            .filter((image) => Array.isArray(image.tags) && image.tags.includes(normalizedSourceTag))
+            .filter(
+              (image) =>
+                Array.isArray(image.tags) &&
+                normalizedSourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
+            )
             .map((image) => image.id)
         : [];
 
