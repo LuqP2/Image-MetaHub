@@ -1372,7 +1372,7 @@ export default function App() {
     }
 
     return getResolvedCollectionImages(activeCollection.id);
-  }, [activeCollection, getResolvedCollectionImages]);
+  }, [activeCollection, getResolvedCollectionImages, safeImages]);
 
   const collectionFilteredImages = useMemo(() => {
     if (!activeCollection) {
@@ -1380,7 +1380,7 @@ export default function App() {
     }
 
     return getResolvedFilteredCollectionImages(activeCollection.id);
-  }, [activeCollection, getResolvedFilteredCollectionImages]);
+  }, [activeCollection, getResolvedFilteredCollectionImages, safeFilteredImages]);
 
   const displayImages = libraryView === 'collections' ? collectionFilteredImages : safeFilteredImages;
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
