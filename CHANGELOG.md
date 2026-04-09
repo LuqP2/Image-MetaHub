@@ -10,10 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Collections View**: Added a dedicated `Collections` tab for building reusable image groups across indexed folders, with support for manual collections, tag-driven auto-updating collections, collection ordering, cover images, and collection management from the main workspace.
+### Improved
+
+- **Unified Tag Entry UX**: Manual tag entry in `ImageModal`, `ImagePreviewSidebar`, and `Tag Manager` now shares the same suggestion combobox, keyboard navigation, mouse selection behavior, and match ranking, making tag suggestions feel consistent everywhere.
+- **Tagging Controls in Settings**: Added viewer settings for tag suggestion count and visible recent-tag chips, while keeping a larger internal recent-tag history so quick picks stay useful without overwhelming the UI.
+- **Safer Bulk Tag Suggestions**: The Tag Manager's comma-separated input now applies autocomplete only to the active CSV token, making multi-tag edits faster and less error-prone.
 
 ### Fixed
 
 - **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.
+- **Sidebar Filter Layout Regression**: Restored the single-scroll sidebar flow after the experimental split-pane filter layout proved confusing and interfered with normal folder and tag browsing.
 
 ## [0.14.0] - Unreleased
 

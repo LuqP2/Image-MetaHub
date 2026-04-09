@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Plus, Tag } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import TagInputCombobox from './TagInputCombobox';
 
 interface TagManagerModalProps {
   isOpen: boolean;
@@ -14,6 +16,8 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   selectedImageIds,
 }) => {
   const { availableTags, bulkAddTag, bulkRemoveTag, images } = useImageStore();
+  const recentTags = useImageStore((state) => state.recentTags);
+  const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
   const [inputValue, setInputValue] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingRemoveTag, setPendingRemoveTag] = useState<string | null>(null);
@@ -64,23 +68,6 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
       }));
   }, [existingTagsStats, selectedImages.length]);
 
-  // Filter suggestions based on input (last part after comma)
-  const suggestions = useMemo(() => {
-    if (!inputValue.trim()) return [];
-    
-    const parts = inputValue.split(',');
-    const currentSearch = parts[parts.length - 1].trim().toLowerCase();
-    
-    if (!currentSearch) return [];
-
-    return availableTags
-      .filter(tag => 
-        tag.name.toLowerCase().includes(currentSearch) && 
-        !existingTagsStats.has(tag.name)
-      )
-      .slice(0, 5);
-  }, [inputValue, availableTags, existingTagsStats]);
-
   const handleAddTag = async (input: string) => {
     if (!input.trim()) return;
     
@@ -104,16 +91,6 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
       setIsSubmitting(false);
       focusInput();
     }
-  };
-
-  const handleSuggestionClick = (tagName: string) => {
-    const parts = inputValue.split(',');
-    parts.pop(); // Remove the partial chunk
-    parts.push(tagName); // Add the selected tag
-    // Join with comma and space, and add a trailing comma space for convenience to type next
-    const newValue = parts.map(p => p.trim()).join(', ') + ', ';
-    setInputValue(newValue);
-    focusInput();
   };
 
   const handleRemoveTagRequest = (tag: string, e?: React.MouseEvent) => {
@@ -140,12 +117,7 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (inputValue.trim()) {
-        handleAddTag(inputValue);
-      }
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Escape') {
       if (pendingRemoveTag) {
         setPendingRemoveTag(null);
         focusInput();
@@ -185,42 +157,43 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
           
           {/* Input Section */}
           <div className="relative">
-            <input
+            <TagInputCombobox
               ref={inputRef}
-              type="text"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onValueChange={setInputValue}
+              onSubmit={handleAddTag}
+              recentTags={recentTags}
+              availableTags={availableTags}
+              excludedTags={Array.from(existingTagsStats.keys())}
+              suggestionLimit={tagSuggestionLimit}
+              mode="csv"
               placeholder="Type tags separated by commas..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-10 py-2.5 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              onClick={() => handleAddTag(inputValue)}
-              disabled={!inputValue.trim() || isSubmitting}
-              className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              aria-label="Add tags"
-            >
-              <Plus size={16} />
-            </button>
+              onEscape={() => {
+                if (pendingRemoveTag) {
+                  setPendingRemoveTag(null);
+                  focusInput();
+                  return;
+                }
 
-            {/* Suggestions Dropdown */}
-            {suggestions.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
-                {suggestions.map(tag => (
-                  <button
-                    type="button"
-                    key={tag.name}
-                    onClick={() => handleSuggestionClick(tag.name)}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white flex justify-between items-center group"
-                  >
-                    <span>{tag.name}</span>
-                    <span className="text-xs text-gray-500 group-hover:text-gray-400">{tag.count}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+                onClose();
+              }}
+              wrapperClassName="relative"
+              inputClassName="w-full bg-gray-800 border border-gray-700 rounded-lg pl-3 pr-10 py-2.5 text-gray-200 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none"
+              dropdownClassName="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-gray-700 bg-gray-800 shadow-xl"
+              metaClassName="text-xs text-gray-500"
+              trailingContent={
+                <button
+                  type="button"
+                  onClick={() => handleAddTag(inputValue)}
+                  onKeyDown={handleKeyDown}
+                  disabled={!inputValue.trim() || isSubmitting}
+                  className="absolute right-1.5 top-1.5 p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Add tags"
+                >
+                  <Plus size={16} />
+                </button>
+              }
+            />
           </div>
 
           {pendingRemoveTag && (

@@ -359,7 +359,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {/* Scrollable Content - includes DirectoryList AND Filters */}
       <div className="flex-1 overflow-y-auto scrollbar-sidebar">
         <div className="border-b border-gray-800/80">
           <ActiveFilters />
@@ -392,7 +391,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Add Folder Button - Subtle and discrete */}
         {onAddFolder && (
           <div className="px-3 py-2 border-b border-gray-700">
             <button
@@ -411,7 +409,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Render children, which will be the DirectoryList */}
         {children && React.isValidElement(children) ? (
           React.cloneElement(children as React.ReactElement<any>, {
             isIndexing,
@@ -424,7 +421,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           children
         )}
 
-        {/* Tags and Favorites Section */}
         <TagsAndFavorites />
 
         {generationFacets.length > 0 && (
