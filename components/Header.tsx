@@ -253,14 +253,14 @@ const Header: React.FC<HeaderProps> = ({
 
   const generatorButtonClassName = useMemo(() => {
     if (isLaunchingGenerator) {
-      return 'border-accent/40 bg-accent/15 text-accent cursor-wait hover:border-accent/40 hover:bg-accent/20 hover:text-accent';
+      return 'border-accent/45 bg-accent/15 text-accent cursor-wait hover:border-accent/45 hover:bg-accent/20 hover:text-accent';
     }
 
     if (
       (relevantConnectionStatus === 'connected' && hasRelevantServerUrl) ||
       hasLaunchCommand
     ) {
-      return 'border-accent/60 bg-accent text-white hover:border-accent/60 hover:bg-accent/90 hover:text-white';
+      return 'border-accent/45 bg-accent/12 text-accent hover:border-accent/55 hover:bg-accent/18 hover:text-accent';
     }
 
     return 'text-gray-200';
@@ -333,49 +333,48 @@ const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
-      <div className="container mx-auto flex items-center gap-4">
-        <div className="shrink-0">
+      <div className="container mx-auto flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <button
             onClick={onOpenLicense}
-            className={`app-top-pill text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
+            className={`app-top-pill shrink-0 text-[10px] uppercase tracking-[0.18em] ${statusConfig.classes}`}
             title={isFree ? 'Start trial or activate license' : 'Manage license and status'}
           >
             <Crown className="h-3 w-3" />
             <span>{statusConfig.label}</span>
           </button>
-        </div>
 
-        <div className="flex min-w-0 flex-1 justify-center">
-        {libraryView && onLibraryViewChange && (
-          <div className="app-top-segmented max-w-full">
-            {viewTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => onLibraryViewChange(tab.id)}
-                className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
-              >
-                <span>{tab.label}</span>
-                {tab.count ? (
-                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                    libraryView === tab.id
-                      ? 'border-white/20 bg-black/20 text-white/90'
-                      : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
-                  }`}>
-                    {tab.count}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        )}
-        </div>
+          {libraryView && onLibraryViewChange && (
+            <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
+              <div className="app-top-segmented w-max">
+                {viewTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => onLibraryViewChange(tab.id)}
+                    className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.count ? (
+                      <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                        libraryView === tab.id
+                          ? 'border-white/20 bg-black/20 text-white/90'
+                          : 'border-gray-700/80 bg-gray-950/80 text-gray-500'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-        <div className="flex shrink-0 items-center gap-2">
           {(libraryView === 'library' || libraryView === 'node') && (
             <>
+              <span className="app-top-divider shrink-0" />
               <button
                 onClick={() => setStackingEnabled(!isStackingEnabled)}
-                className={`${utilityButtonClassName} ${isStackingEnabled ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : ''}`}
+                className={`${utilityButtonClassName} shrink-0 ${isStackingEnabled ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : ''}`}
                 title={isStackingEnabled ? 'Disable stacking' : 'Stack items by identical prompt'}
               >
                 {isStackingEnabled ? <Layers2 size={16} /> : <Layers size={16} />}
@@ -388,7 +387,7 @@ const Header: React.FC<HeaderProps> = ({
                     setStackingEnabled(true);
                     setViewingStackPrompt(null);
                   }}
-                  className="app-top-pill px-2.5 text-gray-300"
+                  className="app-top-pill shrink-0 px-2.5 text-gray-300"
                   title="Return to the stacked results"
                 >
                   <ArrowLeft size={12} />
@@ -399,34 +398,39 @@ const Header: React.FC<HeaderProps> = ({
           )}
 
           {libraryView === 'smart' && (
-            <div className="app-top-segmented animate-in fade-in duration-300">
-              <button
-                onClick={handleGenerateClusters}
-                disabled={!hasDirectories || isClustering}
-                className={`app-top-segment ${isClustering ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                title="Generate clusters"
-              >
-                <Layers size={14} className={isClustering ? 'animate-pulse' : ''} />
-                <span>Cluster</span>
-              </button>
-              <button
-                onClick={handleGenerateAutoTags}
-                disabled={!hasDirectories || isAutoTagging}
-                className={`app-top-segment ${isAutoTagging ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
-                title="Generate auto-tags"
-              >
-                <Sparkles size={14} className={isAutoTagging ? 'animate-pulse' : ''} />
-                <span>Auto-Tag</span>
-              </button>
-            </div>
+            <>
+              <span className="app-top-divider shrink-0" />
+              <div className="app-top-segmented animate-in fade-in shrink-0 duration-300">
+                <button
+                  onClick={handleGenerateClusters}
+                  disabled={!hasDirectories || isClustering}
+                  className={`app-top-segment ${isClustering ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
+                  title="Generate clusters"
+                >
+                  <Layers size={14} className={isClustering ? 'animate-pulse' : ''} />
+                  <span>Cluster</span>
+                </button>
+                <button
+                  onClick={handleGenerateAutoTags}
+                  disabled={!hasDirectories || isAutoTagging}
+                  className={`app-top-segment ${isAutoTagging ? 'text-accent cursor-wait hover:text-accent' : ''} ${!hasDirectories ? 'cursor-not-allowed opacity-50' : ''}`}
+                  title="Generate auto-tags"
+                >
+                  <Sparkles size={14} className={isAutoTagging ? 'animate-pulse' : ''} />
+                  <span>Auto-Tag</span>
+                </button>
+              </div>
+            </>
           )}
+        </div>
 
+        <div className="flex shrink-0 items-center gap-2">
           <span className="app-top-divider" />
 
           <button
             onClick={handleLaunchGenerator}
             disabled={isLaunchingGenerator}
-            className={`app-top-pill h-10 px-4 text-sm font-semibold shadow-sm ${generatorButtonClassName}`}
+            className={`app-top-pill h-9 px-3 text-xs font-semibold shadow-sm ${generatorButtonClassName}`}
             title={generatorButtonTitle}
           >
             <Sparkles size={14} className={isLaunchingGenerator ? 'animate-pulse' : ''} />
@@ -438,7 +442,7 @@ const Header: React.FC<HeaderProps> = ({
               href="https://imagemetahub.com/getpro"
               target="_blank"
               rel="noopener noreferrer"
-              className="app-top-pill hidden border-amber-700/30 bg-amber-500/10 text-[10px] uppercase tracking-[0.18em] text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
+              className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
             >
               Get Pro
             </a>

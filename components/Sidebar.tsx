@@ -284,10 +284,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         className="fixed left-0 top-0 z-40 flex h-full w-16 flex-col items-center border-r border-gray-800/70 bg-gray-900/90 py-6 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300 ease-in-out">
         <button
           onClick={onToggleCollapse}
-          className="app-top-icon-button mt-4 mb-6 h-10 w-10 overflow-hidden p-0"
+          className="mt-4 mb-6 rounded-xl p-0 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
           title="Expand sidebar"
         >
-           <img src="logo1.png" alt="Expand" className="h-9 w-9 rounded-lg object-cover" />
+           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl object-contain" />
         </button>
         <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 ||
@@ -336,9 +336,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Header with collapse button */}
       <div className="flex flex-col border-b border-gray-800/70 bg-gray-900/55">
         <div className="flex items-center gap-3 px-4 py-3">
-          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-gray-800/80 bg-gray-950/70 p-1">
-            <img src="logo1.png" alt="Image MetaHub" className="h-9 w-9 rounded-lg object-cover" />
-          </div>
+          <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
             <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.14.0</span>
