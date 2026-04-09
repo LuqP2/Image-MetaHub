@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Collections View**: Added a dedicated `Collections` tab for building reusable image groups across indexed folders, with support for manual collections, tag-driven auto-updating collections, collection ordering, cover images, and collection management from the main workspace.
-- **Collection Creation Shortcuts**: Added `Create Collection` to the manual tag context menu plus `Collection` actions in both the grid and table context menus, including `Add to Collection`, `Create New Collection`, `Set as Cover`, and `Remove from Current Collection`.
 
 ### Fixed
 
