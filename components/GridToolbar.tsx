@@ -239,6 +239,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
 
   const advancedFilters = useImageStore((state) => state.advancedFilters);
   const canUseFilteredCollectionActions =
+    selectedCount > 0 &&
     filteredImageActionCount > 0 &&
     (Boolean(onCreateCollectionFromFiltered) || Boolean(onAddCurrentFilteredToCollection));
 
@@ -264,7 +265,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions) {
+  if (selectedCount === 0 && !hasActiveFilters) {
     return null;
   }
 
@@ -288,7 +289,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     <>
       <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
-        <div className="flex items-center gap-1 flex-1 overflow-hidden">
+        <div className="flex items-center gap-1 flex-1 min-w-0">
             {selectedCount > 0 && (
               <>
                 <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
@@ -419,79 +420,78 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 </button>
                 
                 {/* Divider between selection tools and filters if both exist */}
-                {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
-              </>
-            )}
-
-            {canUseFilteredCollectionActions && (
-              <>
-                <div className="relative" ref={collectionActionsRef}>
-                  <button
-                    onClick={() => setIsCollectionActionsOpen((open) => !open)}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                    title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
-                    aria-label="Collection actions"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-
-                  {isCollectionActionsOpen && (
-                    <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
-                      <div
-                        className="relative"
-                        onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
-                        onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                {canUseFilteredCollectionActions && (
+                  <>
+                    <div className="relative" ref={collectionActionsRef}>
+                      <button
+                        onClick={() => setIsCollectionActionsOpen((open) => !open)}
+                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                        title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
+                        aria-label="Collection actions"
                       >
-                        <button
-                          onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
-                          disabled={!onAddCurrentFilteredToCollection}
-                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
-                        >
-                          <span>Add filtered images to collection</span>
-                          <ChevronDown className={`h-4 w-4 transition-transform ${isAddToCollectionSubmenuOpen ? '-rotate-90' : 'rotate-[-90deg]'}`} />
-                        </button>
+                        <Plus className="w-4 h-4" />
+                      </button>
 
-                        {isAddToCollectionSubmenuOpen && onAddCurrentFilteredToCollection && (
-                          <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl">
-                            {collections.length === 0 ? (
-                              <div className="px-3 py-2 text-sm text-gray-500">No collections yet</div>
-                            ) : (
-                              collections.map((collection) => (
-                                <button
-                                  key={collection.id}
-                                  onClick={() => void handleAddToCollection(collection)}
-                                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
-                                >
-                                  <span className="truncate">{collection.name}</span>
-                                  {collection.sourceTag && (
-                                    <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                                      {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
-                                    </span>
-                                  )}
-                                </button>
-                              ))
+                      {isCollectionActionsOpen && (
+                        <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
+                          <div
+                            className="relative"
+                            onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                            onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                          >
+                            <button
+                              onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                              disabled={!onAddCurrentFilteredToCollection}
+                              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                            >
+                              <span>Add filtered images to collection</span>
+                              <ChevronDown className={`h-4 w-4 transition-transform ${isAddToCollectionSubmenuOpen ? '-rotate-90' : 'rotate-[-90deg]'}`} />
+                            </button>
+
+                            {isAddToCollectionSubmenuOpen && onAddCurrentFilteredToCollection && (
+                              <div className="absolute left-full top-0 ml-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl">
+                                {collections.length === 0 ? (
+                                  <div className="px-3 py-2 text-sm text-gray-500">No collections yet</div>
+                                ) : (
+                                  collections.map((collection) => (
+                                    <button
+                                      key={collection.id}
+                                      onClick={() => void handleAddToCollection(collection)}
+                                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                                    >
+                                      <span className="truncate">{collection.name}</span>
+                                      {collection.sourceTag && (
+                                        <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                          {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
 
-                      <button
-                        onClick={handleCreateCollectionFromFiltered}
-                        disabled={!onCreateCollectionFromFiltered}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
-                      >
-                        Create new collection from filtered images
-                      </button>
+                          <button
+                            onClick={handleCreateCollectionFromFiltered}
+                            disabled={!onCreateCollectionFromFiltered}
+                            className="w-full px-3 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:text-gray-500"
+                          >
+                            Create new collection from filtered images
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+
+                  </>
+                )}
 
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
               </>
             )}
 
             {/* Active Filters */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 overflow-hidden">
                <ActiveFilters />
             </div>
         </div>
