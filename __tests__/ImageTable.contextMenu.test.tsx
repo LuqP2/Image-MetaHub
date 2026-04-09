@@ -133,4 +133,53 @@ describe('ImageTable context menu', () => {
     fireEvent.click(screen.getByText('Collection'));
     expect(screen.getByText('Create New Collection')).toBeTruthy();
   });
+
+  it('adds selected images explicitly to collections with auto-add enabled', () => {
+    const addImagesToCollection = vi.fn().mockResolvedValue(undefined);
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1']),
+      collections: [
+        {
+          id: 'collection-1',
+          kind: 'tag_rule',
+          name: 'Carros',
+          sortIndex: 0,
+          imageCount: 0,
+          imageIds: [],
+          sourceTag: 'carros',
+          autoUpdate: true,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      createCollection: vi.fn().mockResolvedValue(undefined),
+      addImagesToCollection,
+      removeImagesFromCollection: vi.fn().mockResolvedValue(undefined),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      bulkSetImageRating: vi.fn(),
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set(['img-1'])}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Collection'));
+    fireEvent.click(screen.getByText('Add to Collection'));
+    fireEvent.click(screen.getByText('Carros'));
+
+    expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
+  });
 });

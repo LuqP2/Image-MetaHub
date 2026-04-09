@@ -86,8 +86,6 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const bulkAddTag = useImageStore((state) => state.bulkAddTag);
-  const bulkRemoveTag = useImageStore((state) => state.bulkRemoveTag);
   const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
@@ -159,19 +157,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
       return;
     }
 
-    if (collection.kind === 'tag_rule') {
-      if (!collection.sourceTag) {
-        hideContextMenu();
-        return;
-      }
-
-      await bulkAddTag(targetImages.map((image) => image.id), collection.sourceTag);
-    } else {
-      await addImagesToCollection(collection.id, targetImages.map((image) => image.id));
-    }
+    await addImagesToCollection(collection.id, targetImages.map((image) => image.id));
 
     hideContextMenu();
-  }, [addImagesToCollection, bulkAddTag, getContextTargetImages, hideContextMenu]);
+  }, [addImagesToCollection, getContextTargetImages, hideContextMenu]);
 
   const handleCreateCollectionFromContext = useCallback(async (values: CollectionFormValues) => {
     const targetImages = getContextTargetImages();
@@ -222,27 +211,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
       return;
     }
 
-    if (activeCollection.kind === 'tag_rule') {
-      const sourceTag = activeCollection.sourceTag;
-      if (!sourceTag) {
-        hideContextMenu();
-        return;
-      }
-
-      const confirmed = window.confirm(
-        `Remove the "${sourceTag}" tag from ${targetImages.length} image(s) in this collection?`,
-      );
-      if (!confirmed) {
-        return;
-      }
-
-      await bulkRemoveTag(targetImages.map((image) => image.id), sourceTag);
-    } else {
-      await removeImagesFromCollection(activeCollection.id, targetImages.map((image) => image.id));
-    }
+    await removeImagesFromCollection(activeCollection.id, targetImages.map((image) => image.id));
 
     hideContextMenu();
-  }, [activeCollection, bulkRemoveTag, getContextTargetImages, hideContextMenu, removeImagesFromCollection]);
+  }, [activeCollection, getContextTargetImages, hideContextMenu, removeImagesFromCollection]);
 
   const handleReparseMetadata = useCallback(async () => {
     const targetImages = getContextTargetImages();
@@ -558,9 +530,11 @@ const ImageTable: React.FC<ImageTableProps> = ({
                             className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
                           >
                             <span className="truncate">{collection.name}</span>
-                            <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                              {collection.kind === 'tag_rule' ? 'Tag' : 'Manual'}
-                            </span>
+                            {collection.sourceTag && (
+                              <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                              </span>
+                            )}
                           </button>
                         ))
                       )}

@@ -296,13 +296,14 @@ describe('smart collection storage', () => {
           sortIndex: 0,
           sourceTag: 'carros',
           autoUpdate: true,
+          imageIds: ['img-3'],
           imageCount: 0,
           createdAt: 1,
           updatedAt: 1,
         },
         images,
       ),
-    ).toEqual(['img-1', 'img-2']);
+    ).toEqual(['img-3', 'img-1', 'img-2']);
 
     expect(
       resolveSmartCollectionImageIds(
@@ -313,6 +314,7 @@ describe('smart collection storage', () => {
           sortIndex: 0,
           sourceTag: 'carros',
           autoUpdate: false,
+          imageIds: ['img-1'],
           snapshotImageIds: ['img-2'],
           imageCount: 1,
           createdAt: 1,
@@ -320,6 +322,6 @@ describe('smart collection storage', () => {
         },
         images,
       ),
-    ).toEqual(['img-2']);
+    ).toEqual(['img-1', 'img-2']);
   });
 });

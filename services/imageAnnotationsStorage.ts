@@ -982,22 +982,27 @@ export function normalizeSmartCollection(
 }
 
 export function resolveSmartCollectionImageIds(collection: SmartCollection, images: IndexedImage[]): string[] {
+  const manualImageIds = uniqueImageIds(collection.imageIds);
+
   if (collection.kind === 'manual') {
-    return uniqueImageIds(collection.imageIds);
+    return manualImageIds;
   }
 
   if (collection.autoUpdate !== false) {
     const sourceTag = normalizeCollectionTagName(collection.sourceTag);
     if (!sourceTag) {
-      return [];
+      return manualImageIds;
     }
 
-    return images
-      .filter((image) => Array.isArray(image.tags) && image.tags.includes(sourceTag))
-      .map((image) => image.id);
+    return uniqueImageIds([
+      ...manualImageIds,
+      ...images
+        .filter((image) => Array.isArray(image.tags) && image.tags.includes(sourceTag))
+        .map((image) => image.id),
+    ]);
   }
 
-  return uniqueImageIds(collection.snapshotImageIds);
+  return uniqueImageIds([...manualImageIds, ...uniqueImageIds(collection.snapshotImageIds)]);
 }
 
 export function resolveSmartCollectionImages(collection: SmartCollection, images: IndexedImage[]): IndexedImage[] {
