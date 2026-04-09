@@ -2,12 +2,13 @@ import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 're
 import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2 } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { comparisonWillAutoOpen, useImageComparison } from '../hooks/useImageComparison';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -573,6 +574,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
@@ -1147,6 +1149,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
     // The showInExplorer utility can handle the full path directly
     showInExplorer(`${directoryPath}/${image.name}`);
+  };
+
+  const handleReparseMetadata = async () => {
+    hideContextMenu();
+    await reparseImages([liveImage]);
   };
 
   const exportImage = async () => {
@@ -2757,6 +2764,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Copy className="w-4 h-4" />
                 Copy Model
+              </button>
+
+              <div className="border-t border-gray-600 my-1"></div>
+
+              <button
+                onClick={handleReparseMetadata}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isReparsing}
+              >
+                <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+                Reparse Metadata
               </button>
 
               <div className="border-t border-gray-600 my-1"></div>
