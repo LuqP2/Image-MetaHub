@@ -2530,7 +2530,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const collections = syncCollectionCounts(persistedCollections, state.images);
                 const activeCollectionId = collections.some((collection) => collection.id === state.activeCollectionId)
                     ? state.activeCollectionId
-                    : collections[0]?.id ?? null;
+                    : null;
 
                 return {
                     collections,
@@ -2601,7 +2601,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     state.images,
                 );
                 const activeCollectionId = state.activeCollectionId === collectionId
-                    ? remainingCollections[0]?.id ?? null
+                    ? null
                     : state.activeCollectionId;
 
                 return {

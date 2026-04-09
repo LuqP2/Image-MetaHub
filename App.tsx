@@ -1733,7 +1733,7 @@ export default function App() {
                     }}
                   />
                 )}
-                {(libraryView === 'library' || libraryView === 'node' || libraryView === 'collections') && (
+                {(libraryView === 'library' || libraryView === 'node' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                   <GridToolbar
                     selectedImages={safeSelectedImages}
                     images={libraryView === 'node' ? nodeViewVisibleImages : paginatedImages}
@@ -1836,7 +1836,7 @@ export default function App() {
                 )}
               </div>
 
-              {(libraryView === 'library' || libraryView === 'collections') && (
+              {(libraryView === 'library' || (libraryView === 'collections' && Boolean(activeCollection))) && (
                 <Footer
                   currentPage={currentPage}
                   totalPages={totalPages}
