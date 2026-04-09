@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { SmartCollection } from '../types';
 
 export interface CollectionFormValues {
   name: string;
@@ -16,12 +15,12 @@ interface CollectionFormModalProps {
   initialValues: CollectionFormValues;
   onClose: () => void;
   onSubmit: (values: CollectionFormValues) => Promise<void> | void;
+  subtitle?: string;
   showSourceTag?: boolean;
   disableSourceTag?: boolean;
   showAutoUpdate?: boolean;
   showIncludeTargetImages?: boolean;
   includeTargetImagesLabel?: string;
-  collectionKind?: SmartCollection['kind'];
 }
 
 const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
@@ -31,15 +30,16 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
   initialValues,
   onClose,
   onSubmit,
+  subtitle,
   showSourceTag = false,
   disableSourceTag = false,
   showAutoUpdate = false,
   showIncludeTargetImages = false,
   includeTargetImagesLabel = 'Add the current images now',
-  collectionKind = 'manual',
 }) => {
   const [values, setValues] = useState<CollectionFormValues>(initialValues);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const hasSourceTag = values.sourceTag.trim().length > 0;
 
   useEffect(() => {
     if (!isOpen) {
@@ -86,11 +86,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
       >
         <div className="mb-4">
           <h3 className="text-base font-semibold text-white">{title}</h3>
-          <p className="mt-1 text-xs text-gray-400">
-            {collectionKind === 'tag_rule'
-              ? 'Tag-based collections can stay in sync automatically or freeze the current membership.'
-              : 'Manual collections keep only the images you explicitly add.'}
-          </p>
+          {subtitle && <p className="mt-1 text-xs text-gray-400">{subtitle}</p>}
         </div>
 
         <div className="space-y-4">
@@ -125,7 +121,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
 
           {showSourceTag && (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Source Tag</span>
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Auto-Add Tag</span>
               <input
                 type="text"
                 value={values.sourceTag}
@@ -141,14 +137,17 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
             <label className="flex items-start gap-3 rounded-xl border border-gray-700 bg-gray-800/50 px-3 py-3">
               <input
                 type="checkbox"
-                checked={values.autoUpdate}
+                checked={hasSourceTag ? values.autoUpdate : false}
+                disabled={!hasSourceTag}
                 onChange={(event) => setValues((current) => ({ ...current, autoUpdate: event.target.checked }))}
-                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <span>
-                <span className="block text-sm font-medium text-gray-100">Auto-update from future tags</span>
+                <span className="block text-sm font-medium text-gray-100">Add matching tagged images automatically</span>
                 <span className="mt-1 block text-xs text-gray-400">
-                  Keep the collection synced with future images tagged with this source tag.
+                  {hasSourceTag
+                    ? 'New images with this tag will appear here automatically.'
+                    : 'Choose a tag above to enable this.'}
                 </span>
               </span>
             </label>
@@ -164,9 +163,6 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
               />
               <span>
                 <span className="block text-sm font-medium text-gray-100">{includeTargetImagesLabel}</span>
-                <span className="mt-1 block text-xs text-gray-400">
-                  The current context-menu target can be added immediately when the collection is created.
-                </span>
               </span>
             </label>
           )}

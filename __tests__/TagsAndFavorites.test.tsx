@@ -193,7 +193,7 @@ describe('TagsAndFavorites manual tag browser', () => {
     render(<TagsAndFavorites />);
     openContextMenuForTag('carros');
     fireEvent.click(screen.getByText('Create Collection'));
-    fireEvent.click(screen.getByText('Create Collection'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Collection' }));
 
     expect(createCollection).toHaveBeenCalledWith(
       expect.objectContaining({

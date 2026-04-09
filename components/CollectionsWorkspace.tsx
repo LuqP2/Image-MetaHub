@@ -100,18 +100,20 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
     }
 
     const normalizedSourceTag = values.sourceTag.trim().toLowerCase();
+    const hasAutoAddSettings = normalizedSourceTag.length > 0;
     const snapshotImageIds =
-      editingCollection.kind === 'tag_rule' && values.autoUpdate === false
+      hasAutoAddSettings && values.autoUpdate === false
         ? images
             .filter((image) => Array.isArray(image.tags) && image.tags.includes(normalizedSourceTag))
             .map((image) => image.id)
-        : editingCollection.snapshotImageIds;
+        : [];
 
     await updateCollection(editingCollection.id, {
       name: values.name,
       description: values.description || undefined,
-      sourceTag: editingCollection.kind === 'tag_rule' ? normalizedSourceTag : editingCollection.sourceTag,
-      autoUpdate: editingCollection.kind === 'tag_rule' ? values.autoUpdate : editingCollection.autoUpdate,
+      kind: hasAutoAddSettings ? 'tag_rule' : 'manual',
+      sourceTag: hasAutoAddSettings ? normalizedSourceTag : null,
+      autoUpdate: hasAutoAddSettings ? values.autoUpdate : false,
       snapshotImageIds,
     });
     setEditingCollection(null);
@@ -133,7 +135,6 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-white">Collections</h2>
-              <p className="mt-1 text-xs text-gray-400">Group images by tag rules or manual curation.</p>
             </div>
             <button
               type="button"
@@ -179,13 +180,13 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-gray-100">{collection.name}</div>
-                        <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-500">
-                          {collection.kind === 'tag_rule'
-                            ? collection.autoUpdate !== false
-                              ? `Tag rule · ${collection.sourceTag ?? 'no tag'}`
-                              : `Frozen tag rule · ${collection.sourceTag ?? 'no tag'}`
-                            : 'Manual'}
-                        </div>
+                        {collection.sourceTag && (
+                          <div className="mt-1 text-[11px] uppercase tracking-wide text-gray-500">
+                            {collection.autoUpdate !== false
+                              ? `Auto-add · ${collection.sourceTag}`
+                              : `Tag link · ${collection.sourceTag}`}
+                          </div>
+                        )}
                       </div>
                       <span className="rounded-full border border-gray-700 bg-gray-950 px-2 py-0.5 text-[11px] text-gray-300">
                         {collection.imageCount}
@@ -216,7 +217,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                       type="button"
                       onClick={() => setEditingCollection(collection)}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800"
-                      title="Manage collection"
+                      title="Collection settings"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -258,10 +259,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold text-white">{selectedCollection.name}</h2>
-                    <span className="rounded-full border border-gray-700 bg-gray-900 px-2 py-0.5 text-[11px] uppercase tracking-wide text-gray-300">
-                      {selectedCollection.kind === 'tag_rule' ? 'Tag Rule' : 'Manual'}
-                    </span>
-                    {selectedCollection.kind === 'tag_rule' && selectedCollection.autoUpdate !== false && (
+                    {selectedCollection.sourceTag && selectedCollection.autoUpdate !== false && (
                       <span className="rounded-full border border-emerald-600/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] uppercase tracking-wide text-emerald-300">
                         Auto
                       </span>
@@ -273,8 +271,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                   <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-400">
                     <span>{totalImages.length} total in collection</span>
                     <span>{filteredImages.length} after current filters</span>
-                    {selectedCollection.kind === 'tag_rule' && selectedCollection.sourceTag && (
-                      <span>Source tag: {selectedCollection.sourceTag}</span>
+                    {selectedCollection.sourceTag && (
+                      <span>Auto-add tag: {selectedCollection.sourceTag}</span>
                     )}
                   </div>
                 </div>
@@ -287,9 +285,6 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
           <div className="flex h-full flex-col items-center justify-center px-6 text-center text-gray-400">
             <FolderOpen className="mb-4 h-10 w-10 text-gray-600" />
             <h3 className="text-base font-semibold text-gray-200">Choose a collection</h3>
-            <p className="mt-2 max-w-md text-sm text-gray-500">
-              Create manual sets for hand-picked images or tag-rule collections that stay in sync automatically.
-            </p>
           </div>
         )}
       </section>
@@ -311,7 +306,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
 
       <CollectionFormModal
         isOpen={editingCollection !== null}
-        title={editingCollection?.kind === 'tag_rule' ? 'Edit Tag Collection' : 'Edit Collection'}
+        title="Collection Settings"
         submitLabel="Save Changes"
         initialValues={{
           name: editingCollection?.name ?? '',
@@ -322,9 +317,8 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         }}
         onClose={() => setEditingCollection(null)}
         onSubmit={handleSaveCollection}
-        collectionKind={editingCollection?.kind ?? 'manual'}
-        showSourceTag={editingCollection?.kind === 'tag_rule'}
-        showAutoUpdate={editingCollection?.kind === 'tag_rule'}
+        showSourceTag
+        showAutoUpdate
       />
     </div>
   );

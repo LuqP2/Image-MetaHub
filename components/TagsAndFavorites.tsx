@@ -775,7 +775,7 @@ const TagsAndFavorites: React.FC = () => {
 
       <CollectionFormModal
         isOpen={collectionSourceTag !== null}
-        title="Create Collection from Tag"
+        title="Create Collection"
         submitLabel="Create Collection"
         initialValues={{
           name: collectionSourceTag ?? '',
@@ -786,7 +786,6 @@ const TagsAndFavorites: React.FC = () => {
         }}
         onClose={() => setCollectionSourceTag(null)}
         onSubmit={handleCreateCollection}
-        collectionKind="tag_rule"
         showSourceTag
         disableSourceTag
         showAutoUpdate
