@@ -21,6 +21,11 @@ hotkeys.filter = function(event) {
 
 // A map to store the actions that the application supports.
 const registeredActions = new Map<string, RegisteredAction>();
+const hotkeysAllowedInTypingContext = new Set([
+  'openCommandPalette',
+  'openQuickSettings',
+  'openKeyboardShortcuts',
+]);
 
 // Track nested pause requests so overlapping modals do not resume hotkeys too early.
 let hotkeysPauseCount = 0;
@@ -61,6 +66,10 @@ const bindAllActions = () => {
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
       const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {
+        return;
+      }
 
       // For navigation/action keys, prevent default even in inputs
       const isActionKey = ['delete', 'enter', 'escape', 'f1'].some(k => key.includes(k));

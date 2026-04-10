@@ -1216,7 +1216,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   // Adjust focusedImageIndex when changing pages via arrow keys
   useEffect(() => {
-    if (focusedImageIndex === -1 && images.length > 0) {
+    if (focusedImageIndex === -1 && images.length > 0 && gridKeyboardActiveRef.current) {
       // Quando volta de página, vai para última imagem
       setFocusedImageIndex(images.length - 1);
       setPreviewImage(images[images.length - 1]);
