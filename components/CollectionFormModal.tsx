@@ -199,7 +199,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 disabled={disableSourceTag}
                 onChange={(event) => setValues((current) => ({ ...current, sourceTag: event.target.value }))}
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
-                placeholder="motos, carros, barcos"
+                placeholder=""
               />
               <span className="mt-1 block text-xs text-gray-500">Separate tags with commas.</span>
             </label>
