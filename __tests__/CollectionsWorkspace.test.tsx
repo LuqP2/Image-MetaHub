@@ -158,7 +158,6 @@ describe('CollectionsWorkspace', () => {
         includeTargetImages: false,
       },
       images: state.images,
-      resolvedImageIds: ['img-3'],
     });
 
     expect(update).toMatchObject({
@@ -168,6 +167,43 @@ describe('CollectionsWorkspace', () => {
       imageIds: ['img-3'],
       snapshotImageIds: [],
       excludedImageIds: [],
+    });
+  });
+
+  it('freezes tag-rule collections from resolved members instead of rebuilding excluded matches', () => {
+    const update = buildCollectionSettingsUpdate({
+      collection: {
+        id: 'collection-live',
+        kind: 'tag_rule',
+        name: 'Carros',
+        sortIndex: 0,
+        sourceTag: 'carros',
+        autoUpdate: true,
+        imageIds: [],
+        snapshotImageIds: [],
+        excludedImageIds: ['img-2'],
+        imageCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      values: {
+        name: 'Carros',
+        description: '',
+        sourceTag: 'carros',
+        autoUpdate: false,
+        includeTargetImages: false,
+      },
+      images: [
+        { id: 'img-1', tags: ['carros'] },
+        { id: 'img-2', tags: ['carros'] },
+      ] as any,
+    });
+
+    expect(update).toMatchObject({
+      kind: 'tag_rule',
+      autoUpdate: false,
+      snapshotImageIds: ['img-1'],
+      excludedImageIds: ['img-2'],
     });
   });
 });

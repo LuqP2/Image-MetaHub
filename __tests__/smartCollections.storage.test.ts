@@ -297,7 +297,7 @@ describe('smart collection storage', () => {
           sortIndex: 0,
           sourceTag: 'carros',
           autoUpdate: true,
-          imageIds: ['img-3'],
+          imageIds: ['img-3', 'missing-manual'],
           excludedImageIds: ['img-2'],
           imageCount: 0,
           createdAt: 1,
@@ -316,8 +316,8 @@ describe('smart collection storage', () => {
           sortIndex: 0,
           sourceTag: 'carros',
           autoUpdate: false,
-          imageIds: ['img-1'],
-          snapshotImageIds: ['img-2'],
+          imageIds: ['img-1', 'missing-manual'],
+          snapshotImageIds: ['img-2', 'missing-snapshot'],
           imageCount: 1,
           createdAt: 1,
           updatedAt: 1,
@@ -325,6 +325,31 @@ describe('smart collection storage', () => {
         images,
       ),
     ).toEqual(['img-1', 'img-2']);
+  });
+
+  it('resolves manual collection membership from indexed images only', async () => {
+    const {
+      resolveSmartCollectionImageCount,
+      resolveSmartCollectionImageIds,
+    } = await import('../services/imageAnnotationsStorage');
+
+    const collection = {
+      id: 'manual',
+      kind: 'manual',
+      name: 'Manual',
+      sortIndex: 0,
+      imageIds: ['img-1', 'missing', 'img-3'],
+      imageCount: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    } as any;
+    const images = [
+      { id: 'img-1' },
+      { id: 'img-3' },
+    ] as any;
+
+    expect(resolveSmartCollectionImageIds(collection, images)).toEqual(['img-1', 'img-3']);
+    expect(resolveSmartCollectionImageCount(collection, images)).toBe(2);
   });
 
   it('removes images from both manual and frozen snapshot membership sources', async () => {

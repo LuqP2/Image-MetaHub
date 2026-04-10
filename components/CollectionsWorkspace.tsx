@@ -6,7 +6,11 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import CollectionCard from './CollectionCard';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
-import { normalizeCollectionTagNames } from '../services/imageAnnotationsStorage';
+import {
+  normalizeCollectionTagNames,
+  resolveSmartCollectionImageIds,
+  resolveTagRuleMatchedImageIds,
+} from '../services/imageAnnotationsStorage';
 
 interface CollectionsWorkspaceProps {
   filteredImages: IndexedImage[];
@@ -20,25 +24,24 @@ export const buildCollectionSettingsUpdate = ({
   collection,
   values,
   images,
-  resolvedImageIds,
 }: {
   collection: SmartCollection;
   values: CollectionFormValues;
   images: IndexedImage[];
-  resolvedImageIds: string[];
 }): CollectionSettingsUpdate => {
   const normalizedSourceTags = normalizeCollectionTagNames(values.sourceTag);
   const normalizedSourceTag = normalizedSourceTags.join(', ');
+  const currentSourceTag = normalizeCollectionTagNames(collection.sourceTag).join(', ');
   const hasAutoAddSettings = normalizedSourceTags.length > 0;
+  const sourceTagChanged = normalizedSourceTag !== currentSourceTag;
+  const resolvedImageIds = resolveSmartCollectionImageIds(collection, images);
+  const frozenSnapshotImageIds =
+    sourceTagChanged
+      ? resolveTagRuleMatchedImageIds(normalizedSourceTag, images)
+      : resolvedImageIds;
   const snapshotImageIds =
     hasAutoAddSettings && values.autoUpdate === false
-      ? images
-          .filter(
-            (image) =>
-              Array.isArray(image.tags) &&
-              normalizedSourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
-          )
-          .map((image) => image.id)
+      ? frozenSnapshotImageIds
       : [];
 
   return {
@@ -49,10 +52,7 @@ export const buildCollectionSettingsUpdate = ({
     autoUpdate: hasAutoAddSettings ? values.autoUpdate : false,
     imageIds: hasAutoAddSettings ? collection.imageIds ?? [] : resolvedImageIds,
     snapshotImageIds,
-    excludedImageIds:
-      hasAutoAddSettings && values.autoUpdate !== false
-        ? collection.excludedImageIds ?? []
-        : [],
+    excludedImageIds: hasAutoAddSettings && !sourceTagChanged ? collection.excludedImageIds ?? [] : [],
   };
 };
 
@@ -152,15 +152,12 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
       return;
     }
 
-    const resolvedImageIds = getResolvedCollectionImages(editingCollection.id).map((image) => image.id);
-
     await updateCollection(
       editingCollection.id,
       buildCollectionSettingsUpdate({
         collection: editingCollection,
         values,
         images,
-        resolvedImageIds,
       }),
     );
     setEditingCollection(null);

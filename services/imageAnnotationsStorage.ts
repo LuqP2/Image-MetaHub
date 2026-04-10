@@ -73,6 +73,32 @@ const uniqueImageIds = (imageIds: unknown): string[] => {
   );
 };
 
+const getExistingImageIdSet = (images: IndexedImage[]): Set<string> =>
+  new Set(images.map((image) => image.id));
+
+const filterExistingImageIds = (imageIds: string[], existingImageIdSet: Set<string>): string[] =>
+  imageIds.filter((imageId) => existingImageIdSet.has(imageId));
+
+export const resolveTagRuleMatchedImageIds = (
+  sourceTag: string | null | undefined,
+  images: IndexedImage[],
+): string[] => {
+  const sourceTags = normalizeCollectionTagNames(sourceTag);
+  if (sourceTags.length === 0) {
+    return [];
+  }
+
+  return uniqueImageIds(
+    images
+      .filter(
+        (image) =>
+          Array.isArray(image.tags) &&
+          sourceTags.some((tagName) => image.tags.includes(tagName)),
+      )
+      .map((image) => image.id),
+  );
+};
+
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
   const db = await openPreferencesDatabase({
     context: 'image annotations storage',
@@ -993,32 +1019,29 @@ export function normalizeSmartCollection(
 }
 
 export function resolveSmartCollectionImageIds(collection: SmartCollection, images: IndexedImage[]): string[] {
-  const manualImageIds = uniqueImageIds(collection.imageIds);
+  const existingImageIdSet = getExistingImageIdSet(images);
+  const manualImageIds = filterExistingImageIds(uniqueImageIds(collection.imageIds), existingImageIdSet);
 
   if (collection.kind === 'manual') {
     return manualImageIds;
   }
 
   if (collection.autoUpdate !== false) {
-    const sourceTags = normalizeCollectionTagNames(collection.sourceTag);
     const excludedImageIdSet = new Set(uniqueImageIds(collection.excludedImageIds));
-    if (sourceTags.length === 0) {
+    const matchedImageIds = resolveTagRuleMatchedImageIds(collection.sourceTag, images);
+    if (matchedImageIds.length === 0) {
       return manualImageIds.filter((imageId) => !excludedImageIdSet.has(imageId));
     }
 
-    return uniqueImageIds([
-      ...manualImageIds,
-      ...images
-        .filter(
-          (image) =>
-            Array.isArray(image.tags) &&
-            sourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
-        )
-        .map((image) => image.id),
-    ]).filter((imageId) => !excludedImageIdSet.has(imageId));
+    return uniqueImageIds([...manualImageIds, ...matchedImageIds]).filter(
+      (imageId) => !excludedImageIdSet.has(imageId),
+    );
   }
 
-  return uniqueImageIds([...manualImageIds, ...uniqueImageIds(collection.snapshotImageIds)]);
+  return uniqueImageIds([
+    ...manualImageIds,
+    ...filterExistingImageIds(uniqueImageIds(collection.snapshotImageIds), existingImageIdSet),
+  ]);
 }
 
 export function resolveSmartCollectionImages(collection: SmartCollection, images: IndexedImage[]): IndexedImage[] {
