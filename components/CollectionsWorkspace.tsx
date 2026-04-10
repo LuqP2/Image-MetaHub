@@ -14,6 +14,48 @@ interface CollectionsWorkspaceProps {
   children: React.ReactNode;
 }
 
+type CollectionSettingsUpdate = Partial<Omit<SmartCollection, 'id' | 'createdAt'>>;
+
+export const buildCollectionSettingsUpdate = ({
+  collection,
+  values,
+  images,
+  resolvedImageIds,
+}: {
+  collection: SmartCollection;
+  values: CollectionFormValues;
+  images: IndexedImage[];
+  resolvedImageIds: string[];
+}): CollectionSettingsUpdate => {
+  const normalizedSourceTags = normalizeCollectionTagNames(values.sourceTag);
+  const normalizedSourceTag = normalizedSourceTags.join(', ');
+  const hasAutoAddSettings = normalizedSourceTags.length > 0;
+  const snapshotImageIds =
+    hasAutoAddSettings && values.autoUpdate === false
+      ? images
+          .filter(
+            (image) =>
+              Array.isArray(image.tags) &&
+              normalizedSourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
+          )
+          .map((image) => image.id)
+      : [];
+
+  return {
+    name: values.name,
+    description: values.description || undefined,
+    kind: hasAutoAddSettings ? 'tag_rule' : 'manual',
+    sourceTag: hasAutoAddSettings ? normalizedSourceTag : null,
+    autoUpdate: hasAutoAddSettings ? values.autoUpdate : false,
+    imageIds: hasAutoAddSettings ? collection.imageIds ?? [] : resolvedImageIds,
+    snapshotImageIds,
+    excludedImageIds:
+      hasAutoAddSettings && values.autoUpdate !== false
+        ? collection.excludedImageIds ?? []
+        : [],
+  };
+};
+
 const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   filteredImages,
   totalImages,
@@ -110,28 +152,17 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
       return;
     }
 
-    const normalizedSourceTags = normalizeCollectionTagNames(values.sourceTag);
-    const normalizedSourceTag = normalizedSourceTags.join(', ');
-    const hasAutoAddSettings = normalizedSourceTags.length > 0;
-    const snapshotImageIds =
-      hasAutoAddSettings && values.autoUpdate === false
-        ? images
-            .filter(
-              (image) =>
-                Array.isArray(image.tags) &&
-                normalizedSourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
-            )
-            .map((image) => image.id)
-        : [];
+    const resolvedImageIds = getResolvedCollectionImages(editingCollection.id).map((image) => image.id);
 
-    await updateCollection(editingCollection.id, {
-      name: values.name,
-      description: values.description || undefined,
-      kind: hasAutoAddSettings ? 'tag_rule' : 'manual',
-      sourceTag: hasAutoAddSettings ? normalizedSourceTag : null,
-      autoUpdate: hasAutoAddSettings ? values.autoUpdate : false,
-      snapshotImageIds,
-    });
+    await updateCollection(
+      editingCollection.id,
+      buildCollectionSettingsUpdate({
+        collection: editingCollection,
+        values,
+        images,
+        resolvedImageIds,
+      }),
+    );
     setEditingCollection(null);
   };
 

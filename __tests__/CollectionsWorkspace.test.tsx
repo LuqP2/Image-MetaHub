@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import CollectionsWorkspace from '../components/CollectionsWorkspace';
+import CollectionsWorkspace, { buildCollectionSettingsUpdate } from '../components/CollectionsWorkspace';
 import { useImageStore } from '../store/useImageStore';
 
 vi.mock('../hooks/useThumbnail', () => ({
@@ -137,5 +137,37 @@ describe('CollectionsWorkspace', () => {
     fireEvent.click(moveUpButton);
 
     expect(reorderCollections).toHaveBeenCalledWith(['collection-2', 'collection-1']);
+  });
+
+  it('preserves resolved tag-rule members when clearing auto-add tags', () => {
+    const state = useImageStore.getState();
+    const collection = state.collections.find((entry) => entry.id === 'collection-2');
+    expect(collection).toBeTruthy();
+
+    const update = buildCollectionSettingsUpdate({
+      collection: {
+        ...collection!,
+        imageIds: [],
+        excludedImageIds: [],
+      },
+      values: {
+        name: 'Motos',
+        description: '',
+        sourceTag: '',
+        autoUpdate: false,
+        includeTargetImages: false,
+      },
+      images: state.images,
+      resolvedImageIds: ['img-3'],
+    });
+
+    expect(update).toMatchObject({
+      kind: 'manual',
+      sourceTag: null,
+      autoUpdate: false,
+      imageIds: ['img-3'],
+      snapshotImageIds: [],
+      excludedImageIds: [],
+    });
   });
 });

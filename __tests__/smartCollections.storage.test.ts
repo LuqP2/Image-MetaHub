@@ -392,4 +392,58 @@ describe('smart collection storage', () => {
     expect(readded.excludedImageIds).toEqual(['img-3']);
     expect(resolveSmartCollectionImageIds(readded, images)).toEqual(['img-2', 'img-1']);
   });
+
+  it('allocates new collection sort indexes after gaps in existing order', async () => {
+    const { useImageStore } = await import('../store/useImageStore');
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      images: [],
+      collections: [
+        {
+          id: 'collection-1',
+          kind: 'manual',
+          name: 'Alpha',
+          sortIndex: 0,
+          imageIds: [],
+          snapshotImageIds: [],
+          imageCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: 'collection-3',
+          kind: 'manual',
+          name: 'Charlie',
+          sortIndex: 2,
+          imageIds: [],
+          snapshotImageIds: [],
+          imageCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    const created = await useImageStore.getState().createCollection({
+      id: 'collection-new',
+      kind: 'manual',
+      name: 'Bravo',
+      sortIndex: 2,
+      imageIds: [],
+      snapshotImageIds: [],
+      coverImageId: null,
+      autoUpdate: false,
+      sourceTag: null,
+      type: 'custom',
+      query: undefined,
+    });
+
+    expect(created.sortIndex).toBe(3);
+    expect(useImageStore.getState().collections.map((collection) => collection.id)).toEqual([
+      'collection-1',
+      'collection-3',
+      'collection-new',
+    ]);
+  });
 });

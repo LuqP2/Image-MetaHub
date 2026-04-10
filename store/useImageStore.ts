@@ -239,6 +239,16 @@ const sortCollections = (collections: SmartCollection[]): SmartCollection[] =>
         return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
 
+const getNextCollectionSortIndex = (collections: SmartCollection[]): number =>
+    collections.reduce(
+        (maxSortIndex, collection) =>
+            Math.max(
+                maxSortIndex,
+                Number.isFinite(collection.sortIndex) ? Number(collection.sortIndex) : -1,
+            ),
+        -1,
+    ) + 1;
+
 const syncCollectionCounts = (collections: SmartCollection[], images: IndexedImage[]): SmartCollection[] =>
     sortCollections(
         collections.map((collection, index) =>
@@ -2542,6 +2552,7 @@ export const useImageStore = create<ImageState>((set, get) => {
         },
         createCollection: async (collection) => {
             const state = get();
+            const nextSortIndex = getNextCollectionSortIndex(state.collections);
             const nextCollection = normalizeSmartCollection(
                 {
                     ...collection,
@@ -2551,9 +2562,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     imageCount: collection.kind === 'tag_rule'
                         ? resolveSmartCollectionImageCount(collection as SmartCollection, state.images)
                         : (collection.imageIds?.length ?? 0),
-                    sortIndex: Number.isFinite(collection.sortIndex) ? collection.sortIndex : state.collections.length,
+                    sortIndex: nextSortIndex,
                 },
-                state.collections.length,
+                nextSortIndex,
             );
 
             await saveSmartCollection(nextCollection);
