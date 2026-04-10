@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -9,6 +9,17 @@ import {
   ensureManualTagExists,
   renameManualTag,
   deleteManualTag,
+  addImagesToSmartCollection,
+  deleteSmartCollection,
+  getAllSmartCollections,
+  normalizeSmartCollection,
+  normalizeCollectionTagNames,
+  removeImagesFromSmartCollection,
+  reorderSmartCollections,
+  resolveSmartCollectionImageCount,
+  resolveSmartCollectionImageIds,
+  resolveSmartCollectionImages,
+  saveSmartCollection,
 } from '../services/imageAnnotationsStorage';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
@@ -218,6 +229,29 @@ const renameAnnotationTag = (tags: string[], sourceTag: string, targetTag: strin
     return Array.from(new Set(tags.map(tag => tag === normalizedSource ? normalizedTarget : tag)));
 };
 
+const sortCollections = (collections: SmartCollection[]): SmartCollection[] =>
+    [...collections].sort((a, b) => {
+        const sortDelta = a.sortIndex - b.sortIndex;
+        if (sortDelta !== 0) {
+            return sortDelta;
+        }
+
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+const syncCollectionCounts = (collections: SmartCollection[], images: IndexedImage[]): SmartCollection[] =>
+    sortCollections(
+        collections.map((collection, index) =>
+            normalizeSmartCollection(
+                {
+                    ...collection,
+                    imageCount: resolveSmartCollectionImageCount(collection, images),
+                },
+                Number.isFinite(collection.sortIndex) ? collection.sortIndex : index,
+            ),
+        ),
+    );
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -345,6 +379,8 @@ interface ImageState {
   selectedImage: IndexedImage | null;
   selectedImages: Set<string>;
   activeImageScope: IndexedImage[] | null;
+  collections: SmartCollection[];
+  activeCollectionId: string | null;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
   isStackingEnabled: boolean;
@@ -474,6 +510,18 @@ interface ImageState {
   setPreviewImage: (image: IndexedImage | null) => void;
   setSelectedImage: (image: IndexedImage | null) => void;
   setActiveImageScope: (images: IndexedImage[] | null) => void;
+  loadCollections: () => Promise<void>;
+  createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
+  updateCollection: (collectionId: string, updates: Partial<Omit<SmartCollection, 'id' | 'createdAt'>>) => Promise<SmartCollection | null>;
+  deleteCollectionById: (collectionId: string) => Promise<void>;
+  setActiveCollectionId: (collectionId: string | null) => void;
+  reorderCollections: (orderedCollectionIds: string[]) => Promise<void>;
+  addImagesToCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
+  removeImagesFromCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
+  getCollectionById: (collectionId: string) => SmartCollection | null;
+  getResolvedCollectionImages: (collectionId: string) => IndexedImage[];
+  getResolvedFilteredCollectionImages: (collectionId: string) => IndexedImage[];
+  getCollectionImageCount: (collectionId: string) => number;
   toggleImageSelection: (imageId: string) => void;
   selectAllImages: () => void;
   clearImageSelection: () => void;
@@ -1174,11 +1222,17 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         // Then, recalculate available filters based on the filtered images (after folder selection)
         const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
+        const syncedCollections = syncCollectionCounts(combinedState.collections, imagesWithAnnotations);
+        const activeCollectionId = syncedCollections.some((collection) => collection.id === combinedState.activeCollectionId)
+            ? combinedState.activeCollectionId
+            : null;
 
         return {
             ...combinedState,
             ...filteredResult,
             ...availableFilters,
+            collections: syncedCollections,
+            activeCollectionId,
             ...(imagesWithAnnotations.length === 0
                 ? {
                     lineageResolvedByImageId: {},
@@ -1691,6 +1745,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         previewImage: null,
         selectedImages: new Set(),
         activeImageScope: null,
+        collections: [],
+        activeCollectionId: null,
         focusedImageIndex: null,
         isStackingEnabled: false,
         searchQuery: '',
@@ -2470,6 +2526,176 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
             return { activeImageScope: images };
         }),
+        loadCollections: async () => {
+            const persistedCollections = await getAllSmartCollections();
+            set((state) => {
+                const collections = syncCollectionCounts(persistedCollections, state.images);
+                const activeCollectionId = collections.some((collection) => collection.id === state.activeCollectionId)
+                    ? state.activeCollectionId
+                    : null;
+
+                return {
+                    collections,
+                    activeCollectionId,
+                };
+            });
+        },
+        createCollection: async (collection) => {
+            const state = get();
+            const nextCollection = normalizeSmartCollection(
+                {
+                    ...collection,
+                    id: collection.id ?? crypto.randomUUID(),
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    imageCount: collection.kind === 'tag_rule'
+                        ? resolveSmartCollectionImageCount(collection as SmartCollection, state.images)
+                        : (collection.imageIds?.length ?? 0),
+                    sortIndex: Number.isFinite(collection.sortIndex) ? collection.sortIndex : state.collections.length,
+                },
+                state.collections.length,
+            );
+
+            await saveSmartCollection(nextCollection);
+
+            set((currentState) => {
+                const collections = syncCollectionCounts([...currentState.collections, nextCollection], currentState.images);
+                return {
+                    collections,
+                    activeCollectionId: nextCollection.id,
+                };
+            });
+
+            return nextCollection;
+        },
+        updateCollection: async (collectionId, updates) => {
+            const currentCollection = get().collections.find((collection) => collection.id === collectionId);
+            if (!currentCollection) {
+                return null;
+            }
+
+            const nextCollection = normalizeSmartCollection(
+                {
+                    ...currentCollection,
+                    ...updates,
+                    updatedAt: Date.now(),
+                },
+                currentCollection.sortIndex,
+            );
+
+            await saveSmartCollection(nextCollection);
+
+            set((state) => ({
+                collections: syncCollectionCounts(
+                    state.collections.map((collection) => collection.id === collectionId ? nextCollection : collection),
+                    state.images,
+                ),
+            }));
+
+            return nextCollection;
+        },
+        deleteCollectionById: async (collectionId) => {
+            await deleteSmartCollection(collectionId);
+
+            set((state) => {
+                const remainingCollections = syncCollectionCounts(
+                    state.collections.filter((collection) => collection.id !== collectionId),
+                    state.images,
+                );
+                const activeCollectionId = state.activeCollectionId === collectionId
+                    ? null
+                    : state.activeCollectionId;
+
+                return {
+                    collections: remainingCollections,
+                    activeCollectionId,
+                };
+            });
+        },
+        setActiveCollectionId: (collectionId) => set((state) => ({
+            activeCollectionId: collectionId && state.collections.some((collection) => collection.id === collectionId)
+                ? collectionId
+                : null,
+        })),
+        reorderCollections: async (orderedCollectionIds) => {
+            const state = get();
+            const orderMap = new Map(orderedCollectionIds.map((collectionId, index) => [collectionId, index]));
+            const reordered = sortCollections(
+                state.collections.map((collection, index) =>
+                    normalizeSmartCollection(
+                        {
+                            ...collection,
+                            sortIndex: orderMap.get(collection.id) ?? (orderedCollectionIds.length + index),
+                        },
+                        index,
+                    ),
+                ),
+            );
+
+            const persistedCollections = await reorderSmartCollections(reordered);
+            set((currentState) => ({
+                collections: syncCollectionCounts(persistedCollections, currentState.images),
+            }));
+        },
+        addImagesToCollection: async (collectionId, imageIds) => {
+            const collection = get().collections.find((entry) => entry.id === collectionId);
+            if (!collection) {
+                return null;
+            }
+
+            const nextCollection = await addImagesToSmartCollection(collection, imageIds);
+            set((state) => ({
+                collections: syncCollectionCounts(
+                    state.collections.map((entry) => entry.id === collectionId ? nextCollection : entry),
+                    state.images,
+                ),
+            }));
+            return nextCollection;
+        },
+        removeImagesFromCollection: async (collectionId, imageIds) => {
+            const collection = get().collections.find((entry) => entry.id === collectionId);
+            if (!collection) {
+                return null;
+            }
+
+            const nextCollection = await removeImagesFromSmartCollection(collection, imageIds);
+            set((state) => ({
+                collections: syncCollectionCounts(
+                    state.collections.map((entry) => entry.id === collectionId ? nextCollection : entry),
+                    state.images,
+                ),
+            }));
+            return nextCollection;
+        },
+        getCollectionById: (collectionId) => get().collections.find((collection) => collection.id === collectionId) ?? null,
+        getResolvedCollectionImages: (collectionId) => {
+            const state = get();
+            const collection = state.collections.find((entry) => entry.id === collectionId);
+            if (!collection) {
+                return [];
+            }
+
+            return resolveSmartCollectionImages(collection, state.images);
+        },
+        getResolvedFilteredCollectionImages: (collectionId) => {
+            const state = get();
+            const collection = state.collections.find((entry) => entry.id === collectionId);
+            if (!collection) {
+                return [];
+            }
+
+            const visibleIds = new Set(state.filteredImages.map((image) => image.id));
+            return resolveSmartCollectionImages(collection, state.images).filter((image) => visibleIds.has(image.id));
+        },
+        getCollectionImageCount: (collectionId) => {
+            const state = get();
+            const collection = state.collections.find((entry) => entry.id === collectionId);
+            if (!collection) {
+                return 0;
+            }
+
+            return resolveSmartCollectionImageIds(collection, state.images).length;
+        },
         setFocusedImageIndex: (index) => set({ focusedImageIndex: index }),
         setFullscreenMode: (isFullscreen) => set({ isFullscreenMode: isFullscreen }),
 
@@ -3183,8 +3409,28 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return;
             }
 
-            const { annotations } = get();
+            const { annotations, collections } = get();
             const updatedAnnotations: ImageAnnotations[] = [];
+            const updatedCollections = collections
+                .filter((collection) => {
+                    if (collection.kind !== 'tag_rule') {
+                        return false;
+                    }
+
+                    return normalizeCollectionTagNames(collection.sourceTag).includes(normalizedSource);
+                })
+                .map((collection) =>
+                    normalizeSmartCollection(
+                        {
+                            ...collection,
+                            sourceTag: normalizeCollectionTagNames(collection.sourceTag)
+                                .map((tag) => tag === normalizedSource ? normalizedTarget : tag)
+                                .join(', '),
+                            updatedAt: Date.now(),
+                        },
+                        collection.sortIndex,
+                    ),
+                );
 
             for (const annotation of annotations.values()) {
                 if (!annotation.tags.includes(normalizedSource)) {
@@ -3213,11 +3459,16 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                 const filteredState = transferManualTagFilters(state, normalizedSource, normalizedTarget);
                 const updatedImages = applyAnnotationsToImages(state.images, newAnnotations);
+                const collectionMap = new Map(updatedCollections.map((collection) => [collection.id, collection]));
                 const newState = {
                     ...state,
                     ...filteredState,
                     annotations: newAnnotations,
                     images: updatedImages,
+                    collections: syncCollectionCounts(
+                        state.collections.map((collection) => collectionMap.get(collection.id) ?? collection),
+                        updatedImages,
+                    ),
                     recentTags: nextRecentTags,
                 };
 
@@ -3229,6 +3480,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             await Promise.all([
                 updatedAnnotations.length > 0 ? bulkSaveAnnotations(updatedAnnotations) : Promise.resolve(),
                 renameManualTag(normalizedSource, normalizedTarget),
+                ...updatedCollections.map((collection) => saveSmartCollection(collection)),
             ]).catch(error => {
                 console.error('Failed to rename tag:', error);
             });
@@ -3607,6 +3859,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedImage: null,
             selectedImages: new Set(),
             activeImageScope: null,
+            collections: [],
+            activeCollectionId: null,
             searchQuery: '',
             availableModels: [],
             availableLoras: [],

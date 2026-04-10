@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.1] - Unreleased
 
+### Added
+
+- **Collections View**: Added a dedicated `Collections` tab for building reusable image groups across indexed folders, with support for manual collections, tag-driven auto-updating collections, collection ordering, cover images, and collection management from the main workspace.
 ### Improved
 
 - **Unified Tag Entry UX**: Manual tag entry in `ImageModal`, `ImagePreviewSidebar`, and `Tag Manager` now shares the same suggestion combobox, keyboard navigation, mouse selection behavior, and match ranking, making tag suggestions feel consistent everywhere.

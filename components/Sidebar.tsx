@@ -281,14 +281,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         data-area="sidebar"
         tabIndex={-1}
-        className="fixed left-0 top-0 h-full w-16 bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col items-center py-6 transition-all duration-300 ease-in-out shadow-lg shadow-black/20">
+        className="fixed left-0 top-0 z-40 flex h-full w-16 flex-col items-center border-r border-gray-800/70 bg-gray-900/90 py-6 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300 ease-in-out">
         <button
           onClick={onToggleCollapse}
-          className="mt-4 mb-6 relative group"
+          className="mt-4 mb-6 rounded-xl p-0 text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-100"
           title="Expand sidebar"
         >
-           <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl shadow-lg relative z-10 transition-transform duration-200 group-hover:scale-105" />
+           <img src="logo1.png" alt="Expand" className="h-10 w-10 rounded-xl object-contain" />
         </button>
         <div className="flex flex-col space-y-3">
           {(selectedModels.length > 0 ||
@@ -323,7 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       data-area="sidebar"
       tabIndex={-1}
       style={{ width }}
-      className={`fixed left-0 top-0 h-full bg-gray-900/90 backdrop-blur-md border-r border-gray-800/60 z-40 flex flex-col shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
+      className={`fixed left-0 top-0 z-40 flex h-full flex-col border-r border-gray-800/70 bg-gray-900/90 backdrop-blur-md shadow-2xl shadow-black/40 ${isResizing ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`}>
       <div
         role="separator"
         aria-label="Resize filters sidebar"
@@ -335,19 +334,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizing ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-600/70 hover:bg-blue-400/80'}`} />
       </div>
       {/* Header with collapse button */}
-      <div className="flex flex-col border-b border-gray-800/60 bg-gray-900/40">
-        <div className="flex items-center gap-3.5 px-4 pt-2.5 pb-2">
-          <div className="relative flex-shrink-0">
-            <div className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl opacity-50" />
-            <img src="logo1.png" alt="Image MetaHub" className="relative z-10 h-12 w-12 rounded-xl shadow-2xl" />
-          </div>
+      <div className="flex flex-col border-b border-gray-800/70 bg-gray-900/55">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
-            <h1 className="truncate text-xl font-bold tracking-tight text-white">Image MetaHub</h1>
-            <span className="text-xs font-mono font-normal text-gray-500">v0.14.0</span>
+            <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.14.0</span>
           </div>
           <button
             onClick={onToggleCollapse}
-            className="ml-auto rounded-lg border border-gray-700 bg-gray-800/40 p-1.5 text-gray-400 transition-colors hover:bg-gray-700/60 hover:text-white hover:shadow-lg hover:shadow-blue-500/20"
+            className="app-top-icon-button ml-auto h-8 w-8"
             title="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
-import { type IndexedImage, type BaseMetadata, type LoRAInfo } from '../types';
+import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
@@ -28,8 +28,38 @@ import { MetadataEditorModal } from './MetadataEditorModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
-import TagInputCombobox from './TagInputCombobox';
-import { getRecentTagChips } from '../utils/tagSuggestions';
+import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+
+
+const TAG_SUGGESTION_LIMIT = 5;
+
+const buildTagSuggestions = (
+  recentTags: string[],
+  availableTags: { name: string }[],
+  currentTags: string[],
+): string[] => {
+  const suggestions: string[] = [];
+
+  for (const tag of recentTags) {
+    if (!currentTags.includes(tag) && !suggestions.includes(tag)) {
+      suggestions.push(tag);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        return suggestions;
+      }
+    }
+  }
+
+  for (const tag of availableTags) {
+    if (!currentTags.includes(tag.name) && !suggestions.includes(tag.name)) {
+      suggestions.push(tag.name);
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) {
+        break;
+      }
+    }
+  }
+
+  return suggestions;
+};
 
 interface ImageModalProps {
   image: IndexedImage;
@@ -503,6 +533,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
     kind: 'media',
     selectionText: '',
   });
+  const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
+  const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -562,8 +595,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const recentTags = useImageStore((state) => state.recentTags);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
-  const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
-  const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
+  const collections = useImageStore((state) => state.collections);
+  const createCollection = useImageStore((state) => state.createCollection);
+  const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
   // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
@@ -611,6 +645,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
     : image.name;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
+
+  useEffect(() => {
+    if (contextMenu.visible) {
+      return;
+    }
+
+    setIsCollectionSubmenuOpen(false);
+    setIsAddToCollectionSubmenuOpen(false);
+  }, [contextMenu.visible]);
 
   const applyModalWindowStyles = useCallback((windowState: ModalWindowState) => {
     if (isFullscreen || !modalShellRef.current) {
@@ -1064,6 +1107,34 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const hideContextMenu = () => {
     setContextMenu({ x: 0, y: 0, visible: false, kind: 'media', selectionText: '' });
   };
+
+  const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
+    await addImagesToCollection(collection.id, [image.id]);
+    hideContextMenu();
+  }, [addImagesToCollection, image.id]);
+
+  const handleCreateCollectionFromContext = useCallback(async (values: CollectionFormValues) => {
+    const targetImageIds = values.includeTargetImages ? [image.id] : [];
+    const coverImageId = targetImageIds.length > 0 ? targetImageIds[0] : null;
+
+    await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: collections.length,
+      imageIds: targetImageIds,
+      snapshotImageIds: [],
+      coverImageId,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: coverImageId ?? undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    setIsCollectionModalOpen(false);
+    hideContextMenu();
+  }, [collections.length, createCollection, image.id]);
 
   const copyPrompt = () => {
     copyToClipboardElectron(nMeta?.prompt || '', 'Prompt');
@@ -2627,18 +2698,38 @@ const ImageModal: React.FC<ImageModalProps> = ({
       </div>
 
       {/* Metadata Editor Modal */}
-      <MetadataEditorModal
-        isOpen={isMetadataEditorOpen}
-        onClose={() => setIsMetadataEditorOpen(false)}
-        initialMetadata={shadowMetadata}
-        onSave={async (m) => { await saveShadowMetadata(m); }}
-        imageId={image.id}
-      />
+      <div className="pointer-events-auto">
+        <MetadataEditorModal
+          isOpen={isMetadataEditorOpen}
+          onClose={() => setIsMetadataEditorOpen(false)}
+          initialMetadata={shadowMetadata}
+          onSave={async (m) => { await saveShadowMetadata(m); }}
+          imageId={image.id}
+        />
+      </div>
+
+      <div className="pointer-events-auto">
+        <CollectionFormModal
+          isOpen={isCollectionModalOpen}
+          title="Create Collection"
+          submitLabel="Create Collection"
+          initialValues={{
+            name: '',
+            description: '',
+            sourceTag: '',
+            autoUpdate: false,
+            includeTargetImages: true,
+          }}
+          onClose={() => setIsCollectionModalOpen(false)}
+          onSubmit={handleCreateCollectionFromContext}
+          showIncludeTargetImages
+        />
+      </div>
 
       {/* Context Menu */}
       {contextMenu.visible && (
         <div
-          className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+          className="pointer-events-auto fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -2669,6 +2760,75 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <Copy className="w-4 h-4" />
                 Copy to Clipboard
               </button>
+
+              <div
+                className="relative"
+                onMouseEnter={() => setIsCollectionSubmenuOpen(true)}
+                onMouseLeave={() => {
+                  setIsCollectionSubmenuOpen(false);
+                  setIsAddToCollectionSubmenuOpen(false);
+                }}
+              >
+                <button
+                  onClick={() => setIsCollectionSubmenuOpen((open) => !open)}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                >
+                  <Folder className="w-4 h-4" />
+                  <span className="flex-1">Collection</span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+
+                {isCollectionSubmenuOpen && (
+                  <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                    <div
+                      className="relative"
+                      onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                      onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                    >
+                      <button
+                        onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                      >
+                        <span className="flex-1">Add to Collection</span>
+                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                      </button>
+
+                      {isAddToCollectionSubmenuOpen && (
+                        <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                          {collections.length === 0 ? (
+                            <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
+                          ) : (
+                            collections.map((collection) => (
+                              <button
+                                key={collection.id}
+                                onClick={() => void handleAddToExistingCollection(collection)}
+                                className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                              >
+                                <span className="truncate">{collection.name}</span>
+                                {collection.sourceTag && (
+                                  <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                    {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                                  </span>
+                                )}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsCollectionModalOpen(true);
+                        hideContextMenu();
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                    >
+                      Create New Collection
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div className="border-t border-gray-600 my-1"></div>
 

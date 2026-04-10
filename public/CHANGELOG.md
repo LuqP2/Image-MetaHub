@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.14.1] - Unreleased
 
+### Added
+
+- **Collections View**: Added a dedicated `Collections` tab for building reusable image groups across indexed folders, with support for manual collections, tag-driven auto-updating collections, collection ordering, cover images, and collection management from the main workspace.
+
 ### Fixed
 
 - **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.

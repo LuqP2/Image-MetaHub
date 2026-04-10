@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import type { ClusterPreference, ImageAnnotations, ShadowMetadata, SmartCollection, TagInfo } from '../types';
+import type { ClusterPreference, ImageAnnotations, IndexedImage, ShadowMetadata, SmartCollection, TagInfo } from '../types';
 import {
   getIndexedDbErrorName,
   openPreferencesDatabase,
@@ -40,6 +40,38 @@ function disablePersistence(error?: unknown) {
 function normalizeManualTagName(tagName: string): string {
   return tagName.trim().toLowerCase();
 }
+
+export const normalizeCollectionTagNames = (tagNames: string | null | undefined): string[] => {
+  if (typeof tagNames !== 'string') {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      tagNames
+        .split(',')
+        .map((tagName) => tagName.trim().toLowerCase())
+        .filter((tagName) => tagName.length > 0),
+    ),
+  );
+};
+
+const serializeCollectionTagNames = (tagNames: string[]): string | null =>
+  tagNames.length > 0 ? tagNames.join(', ') : null;
+
+const uniqueImageIds = (imageIds: unknown): string[] => {
+  if (!Array.isArray(imageIds)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      imageIds
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.trim()),
+    ),
+  );
+};
 
 async function openDatabase({ allowReset = true }: { allowReset?: boolean } = {}): Promise<IDBDatabase | null> {
   const db = await openPreferencesDatabase({
@@ -917,6 +949,86 @@ export async function markForArchive(clusterId: string, imageIds: string[]): Pro
 
 // ===== Smart Collections Functions (Phase 1) =====
 
+export function normalizeSmartCollection(
+  collection: Partial<SmartCollection> & Pick<SmartCollection, 'id' | 'name' | 'createdAt' | 'updatedAt'>,
+  fallbackSortIndex = 0,
+): SmartCollection {
+  const imageIds = uniqueImageIds(collection.imageIds);
+  const snapshotImageIds = uniqueImageIds(collection.snapshotImageIds);
+  const sourceTag = serializeCollectionTagNames(normalizeCollectionTagNames(collection.sourceTag));
+  const kind = collection.kind === 'tag_rule' ? 'tag_rule' : 'manual';
+  const autoUpdate = kind === 'tag_rule' ? collection.autoUpdate !== false : false;
+  const coverImageId =
+    typeof collection.coverImageId === 'string'
+      ? collection.coverImageId
+      : typeof collection.thumbnailId === 'string'
+      ? collection.thumbnailId
+      : null;
+  const normalizedCount = Number.isFinite(collection.imageCount)
+    ? Math.max(0, Number(collection.imageCount))
+    : kind === 'tag_rule'
+    ? (autoUpdate ? 0 : snapshotImageIds.length)
+    : imageIds.length;
+
+  return {
+    id: collection.id,
+    kind,
+    name: collection.name.trim(),
+    description: collection.description?.trim() || undefined,
+    coverImageId,
+    sortIndex: Number.isFinite(collection.sortIndex) ? Number(collection.sortIndex) : fallbackSortIndex,
+    sourceTag,
+    autoUpdate,
+    imageIds,
+    snapshotImageIds,
+    imageCount: normalizedCount,
+    thumbnailId: coverImageId ?? undefined,
+    createdAt: collection.createdAt,
+    updatedAt: collection.updatedAt,
+    type: collection.type,
+    query: collection.query,
+  };
+}
+
+export function resolveSmartCollectionImageIds(collection: SmartCollection, images: IndexedImage[]): string[] {
+  const manualImageIds = uniqueImageIds(collection.imageIds);
+
+  if (collection.kind === 'manual') {
+    return manualImageIds;
+  }
+
+  if (collection.autoUpdate !== false) {
+    const sourceTags = normalizeCollectionTagNames(collection.sourceTag);
+    if (sourceTags.length === 0) {
+      return manualImageIds;
+    }
+
+    return uniqueImageIds([
+      ...manualImageIds,
+      ...images
+        .filter(
+          (image) =>
+            Array.isArray(image.tags) &&
+            sourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
+        )
+        .map((image) => image.id),
+    ]);
+  }
+
+  return uniqueImageIds([...manualImageIds, ...uniqueImageIds(collection.snapshotImageIds)]);
+}
+
+export function resolveSmartCollectionImages(collection: SmartCollection, images: IndexedImage[]): IndexedImage[] {
+  const imageLookup = new Map(images.map((image) => [image.id, image]));
+  return resolveSmartCollectionImageIds(collection, images)
+    .map((imageId) => imageLookup.get(imageId))
+    .filter((image): image is IndexedImage => Boolean(image));
+}
+
+export function resolveSmartCollectionImageCount(collection: SmartCollection, images: IndexedImage[]): number {
+  return resolveSmartCollectionImageIds(collection, images).length;
+}
+
 /**
  * Get smart collection by ID
  */
@@ -929,7 +1041,10 @@ export async function getSmartCollection(id: string): Promise<SmartCollection | 
     const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.get(id);
 
-    request.onsuccess = () => resolve(request.result || null);
+    request.onsuccess = () => {
+      const result = request.result as SmartCollection | undefined;
+      resolve(result ? normalizeSmartCollection(result) : null);
+    };
     request.onerror = () => {
       console.error('Error getting smart collection:', request.error);
       resolve(null);
@@ -944,12 +1059,18 @@ export async function saveSmartCollection(collection: SmartCollection): Promise<
   const db = await openDatabase();
   if (!db) return;
 
-  collection.updatedAt = Date.now();
+  const normalizedCollection = normalizeSmartCollection(
+    {
+      ...collection,
+      updatedAt: Date.now(),
+    },
+    collection.sortIndex,
+  );
 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([SMART_COLLECTIONS_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
-    const request = store.put(collection);
+    const request = store.put(normalizedCollection);
 
     request.onsuccess = () => resolve();
     request.onerror = () => {
@@ -991,7 +1112,19 @@ export async function getAllSmartCollections(): Promise<SmartCollection[]> {
     const store = transaction.objectStore(SMART_COLLECTIONS_STORE_NAME);
     const request = store.getAll();
 
-    request.onsuccess = () => resolve(request.result || []);
+    request.onsuccess = () => {
+      const collections = ((request.result || []) as SmartCollection[])
+        .map((collection, index) => normalizeSmartCollection(collection, index))
+        .sort((a, b) => {
+          const sortDelta = a.sortIndex - b.sortIndex;
+          if (sortDelta !== 0) {
+            return sortDelta;
+          }
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        });
+
+      resolve(collections);
+    };
     request.onerror = () => {
       console.error('Error getting all smart collections:', request.error);
       resolve([]);
@@ -1012,12 +1145,80 @@ export async function getSmartCollectionsByType(type: SmartCollection['type']): 
     const index = store.index('type');
     const request = index.getAll(type);
 
-    request.onsuccess = () => resolve(request.result || []);
+    request.onsuccess = () =>
+      resolve(
+        ((request.result || []) as SmartCollection[]).map((collection, index) =>
+          normalizeSmartCollection(collection, index),
+        ),
+      );
     request.onerror = () => {
       console.error('Error getting smart collections by type:', request.error);
       resolve([]);
     };
   });
+}
+
+export async function reorderSmartCollections(collections: SmartCollection[]): Promise<SmartCollection[]> {
+  const normalizedCollections = collections.map((collection, index) =>
+    normalizeSmartCollection(
+      {
+        ...collection,
+        sortIndex: index,
+        updatedAt: Date.now(),
+      },
+      index,
+    ),
+  );
+
+  await Promise.all(normalizedCollections.map((collection) => saveSmartCollection(collection)));
+  return normalizedCollections;
+}
+
+export async function addImagesToSmartCollection(
+  collection: SmartCollection,
+  imageIds: string[],
+): Promise<SmartCollection> {
+  const targetIds = uniqueImageIds(imageIds);
+  const nextCollection = normalizeSmartCollection(
+    {
+      ...collection,
+      imageIds: [...uniqueImageIds(collection.imageIds), ...targetIds],
+      imageCount: uniqueImageIds([...(collection.imageIds ?? []), ...targetIds]).length,
+      updatedAt: Date.now(),
+    },
+    collection.sortIndex,
+  );
+
+  await saveSmartCollection(nextCollection);
+  return nextCollection;
+}
+
+export async function removeImagesFromSmartCollection(
+  collection: SmartCollection,
+  imageIds: string[],
+): Promise<SmartCollection> {
+  const targetIdSet = new Set(uniqueImageIds(imageIds));
+  const nextIds = uniqueImageIds(collection.imageIds).filter((imageId) => !targetIdSet.has(imageId));
+  const nextSnapshotIds = uniqueImageIds(collection.snapshotImageIds).filter(
+    (imageId) => !targetIdSet.has(imageId),
+  );
+  const nextImageCount =
+    collection.kind === 'tag_rule' && collection.autoUpdate === false
+      ? uniqueImageIds([...nextIds, ...nextSnapshotIds]).length
+      : nextIds.length;
+  const nextCollection = normalizeSmartCollection(
+    {
+      ...collection,
+      imageIds: nextIds,
+      snapshotImageIds: nextSnapshotIds,
+      imageCount: nextImageCount,
+      updatedAt: Date.now(),
+    },
+    collection.sortIndex,
+  );
+
+  await saveSmartCollection(nextCollection);
+  return nextCollection;
 }
 
 // ===== Shadow Metadata Functions =====
