@@ -273,6 +273,7 @@ describe('smart collection storage', () => {
       sortIndex: 0,
       imageIds: [],
       snapshotImageIds: [],
+      excludedImageIds: [],
       query: { userTags: ['carros'] },
       type: 'custom',
     });
@@ -297,13 +298,14 @@ describe('smart collection storage', () => {
           sourceTag: 'carros',
           autoUpdate: true,
           imageIds: ['img-3'],
+          excludedImageIds: ['img-2'],
           imageCount: 0,
           createdAt: 1,
           updatedAt: 1,
         },
         images,
       ),
-    ).toEqual(['img-3', 'img-1', 'img-2']);
+    ).toEqual(['img-3', 'img-1']);
 
     expect(
       resolveSmartCollectionImageIds(
@@ -348,5 +350,46 @@ describe('smart collection storage', () => {
     expect(updated.imageIds).toEqual(['img-1']);
     expect(updated.snapshotImageIds).toEqual([]);
     expect(updated.imageCount).toBe(1);
+  });
+
+  it('persists exclusions when removing matching images from live tag-rule collections', async () => {
+    const {
+      addImagesToSmartCollection,
+      removeImagesFromSmartCollection,
+      resolveSmartCollectionImageIds,
+    } = await import('../services/imageAnnotationsStorage');
+
+    const images = [
+      { id: 'img-1', tags: ['carros'] },
+      { id: 'img-2', tags: ['carros'] },
+      { id: 'img-3', tags: ['motos'] },
+    ] as any;
+
+    const removed = await removeImagesFromSmartCollection(
+      {
+        id: 'tag-live',
+        kind: 'tag_rule',
+        name: 'Carros',
+        sortIndex: 0,
+        sourceTag: 'carros',
+        autoUpdate: true,
+        imageIds: ['img-3'],
+        snapshotImageIds: [],
+        excludedImageIds: [],
+        imageCount: 3,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      ['img-2', 'img-3'],
+    );
+
+    expect(removed.imageIds).toEqual([]);
+    expect(removed.excludedImageIds).toEqual(['img-2', 'img-3']);
+    expect(resolveSmartCollectionImageIds(removed, images)).toEqual(['img-1']);
+
+    const readded = await addImagesToSmartCollection(removed, ['img-2']);
+
+    expect(readded.excludedImageIds).toEqual(['img-3']);
+    expect(resolveSmartCollectionImageIds(readded, images)).toEqual(['img-2', 'img-1']);
   });
 });

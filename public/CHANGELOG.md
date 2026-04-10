@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.
+- **Live Collection Removal**: Fixed removing images from auto-updating tag collections so removed images stay excluded unless explicitly added back.
+- **Filtered Collection Reordering**: Fixed collection move buttons while searching collections so they reflect the collection's global order instead of the filtered list position.
 - **Search Field Hotkeys**: Fixed global hotkeys firing while typing in text inputs, preventing search text from being interrupted by app actions.
 - **Preview Sidebar Opening Unexpectedly**: Fixed the Image Preview sidebar opening by itself after search/filter changes or view switches by limiting automatic preview restoration to active grid keyboard navigation.
 

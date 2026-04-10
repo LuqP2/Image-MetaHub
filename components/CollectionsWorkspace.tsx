@@ -177,8 +177,9 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
               No collections yet.
             </div>
           ) : (
-            filteredCollections.map((collection, index) => {
+            filteredCollections.map((collection) => {
               const isActive = collection.id === selectedCollection?.id;
+              const globalIndex = collections.findIndex((entry) => entry.id === collection.id);
               return (
                 <div
                   key={collection.id}
@@ -221,7 +222,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                         event.stopPropagation();
                         void moveCollection(collection.id, -1);
                       }}
-                      disabled={index === 0}
+                      disabled={globalIndex <= 0}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                       title="Move up"
                     >
@@ -233,7 +234,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
                         event.stopPropagation();
                         void moveCollection(collection.id, 1);
                       }}
-                      disabled={index === collections.length - 1}
+                      disabled={globalIndex === -1 || globalIndex >= collections.length - 1}
                       className="rounded-md border border-gray-700 p-1.5 text-gray-300 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                       title="Move down"
                     >

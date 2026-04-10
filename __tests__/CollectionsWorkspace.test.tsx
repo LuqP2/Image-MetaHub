@@ -113,4 +113,29 @@ describe('CollectionsWorkspace', () => {
     expect(screen.getByText('Collection Detail')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'All Collections' })).toBeTruthy();
   });
+
+  it('uses global collection order for move buttons while the sidebar list is filtered', () => {
+    const reorderCollections = vi.fn().mockResolvedValue(undefined);
+    useImageStore.setState({ reorderCollections } as any);
+
+    render(
+      <CollectionsWorkspace filteredImages={[]} totalImages={[]}>
+        <div>Collection Detail</div>
+      </CollectionsWorkspace>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Search collections...'), {
+      target: { value: 'Motos' },
+    });
+
+    const moveUpButton = screen.getByTitle('Move up') as HTMLButtonElement;
+    const moveDownButton = screen.getByTitle('Move down') as HTMLButtonElement;
+
+    expect(moveUpButton.disabled).toBe(false);
+    expect(moveDownButton.disabled).toBe(true);
+
+    fireEvent.click(moveUpButton);
+
+    expect(reorderCollections).toHaveBeenCalledWith(['collection-2', 'collection-1']);
+  });
 });

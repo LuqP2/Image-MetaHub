@@ -917,6 +917,7 @@ export interface SmartCollection {
   autoUpdate?: boolean;            // Live tag membership toggle
   imageIds?: string[];             // Explicit membership for manual collections
   snapshotImageIds?: string[];     // Frozen membership for tag_rule collections
+  excludedImageIds?: string[];     // User-removed images from live tag_rule collections
   imageCount: number;              // Cached count for list rendering
   thumbnailId?: string;            // Legacy alias for cover image
   createdAt: number;

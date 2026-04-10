@@ -955,6 +955,7 @@ export function normalizeSmartCollection(
 ): SmartCollection {
   const imageIds = uniqueImageIds(collection.imageIds);
   const snapshotImageIds = uniqueImageIds(collection.snapshotImageIds);
+  const excludedImageIds = uniqueImageIds(collection.excludedImageIds);
   const sourceTag = serializeCollectionTagNames(normalizeCollectionTagNames(collection.sourceTag));
   const kind = collection.kind === 'tag_rule' ? 'tag_rule' : 'manual';
   const autoUpdate = kind === 'tag_rule' ? collection.autoUpdate !== false : false;
@@ -981,6 +982,7 @@ export function normalizeSmartCollection(
     autoUpdate,
     imageIds,
     snapshotImageIds,
+    excludedImageIds,
     imageCount: normalizedCount,
     thumbnailId: coverImageId ?? undefined,
     createdAt: collection.createdAt,
@@ -999,8 +1001,9 @@ export function resolveSmartCollectionImageIds(collection: SmartCollection, imag
 
   if (collection.autoUpdate !== false) {
     const sourceTags = normalizeCollectionTagNames(collection.sourceTag);
+    const excludedImageIdSet = new Set(uniqueImageIds(collection.excludedImageIds));
     if (sourceTags.length === 0) {
-      return manualImageIds;
+      return manualImageIds.filter((imageId) => !excludedImageIdSet.has(imageId));
     }
 
     return uniqueImageIds([
@@ -1012,7 +1015,7 @@ export function resolveSmartCollectionImageIds(collection: SmartCollection, imag
             sourceTags.some((sourceTag) => image.tags.includes(sourceTag)),
         )
         .map((image) => image.id),
-    ]);
+    ]).filter((imageId) => !excludedImageIdSet.has(imageId));
   }
 
   return uniqueImageIds([...manualImageIds, ...uniqueImageIds(collection.snapshotImageIds)]);
@@ -1179,10 +1182,12 @@ export async function addImagesToSmartCollection(
   imageIds: string[],
 ): Promise<SmartCollection> {
   const targetIds = uniqueImageIds(imageIds);
+  const targetIdSet = new Set(targetIds);
   const nextCollection = normalizeSmartCollection(
     {
       ...collection,
       imageIds: [...uniqueImageIds(collection.imageIds), ...targetIds],
+      excludedImageIds: uniqueImageIds(collection.excludedImageIds).filter((imageId) => !targetIdSet.has(imageId)),
       imageCount: uniqueImageIds([...(collection.imageIds ?? []), ...targetIds]).length,
       updatedAt: Date.now(),
     },
@@ -1202,6 +1207,10 @@ export async function removeImagesFromSmartCollection(
   const nextSnapshotIds = uniqueImageIds(collection.snapshotImageIds).filter(
     (imageId) => !targetIdSet.has(imageId),
   );
+  const nextExcludedIds =
+    collection.kind === 'tag_rule' && collection.autoUpdate !== false
+      ? uniqueImageIds([...uniqueImageIds(collection.excludedImageIds), ...Array.from(targetIdSet)])
+      : uniqueImageIds(collection.excludedImageIds).filter((imageId) => !targetIdSet.has(imageId));
   const nextImageCount =
     collection.kind === 'tag_rule' && collection.autoUpdate === false
       ? uniqueImageIds([...nextIds, ...nextSnapshotIds]).length
@@ -1211,6 +1220,7 @@ export async function removeImagesFromSmartCollection(
       ...collection,
       imageIds: nextIds,
       snapshotImageIds: nextSnapshotIds,
+      excludedImageIds: nextExcludedIds,
       imageCount: nextImageCount,
       updatedAt: Date.now(),
     },
