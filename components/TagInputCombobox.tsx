@@ -48,6 +48,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
 }, ref) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isSuggestionSelectionActive, setIsSuggestionSelectionActive] = useState(false);
   const listboxId = useId();
   const searchToken = getTagSearchToken(value, mode);
   const suggestions = useMemo(
@@ -71,6 +72,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
   const closeSuggestions = () => {
     setIsOpen(false);
     setActiveIndex(0);
+    setIsSuggestionSelectionActive(false);
   };
 
   const openSuggestions = (nextIndex = 0) => {
@@ -121,6 +123,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
           if (nextSearchToken && nextSuggestions.length > 0) {
             setIsOpen(true);
             setActiveIndex(0);
+            setIsSuggestionSelectionActive(false);
           } else {
             closeSuggestions();
           }
@@ -128,6 +131,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
         onFocus={() => {
           if (searchToken && suggestions.length > 0) {
             openSuggestions(0);
+            setIsSuggestionSelectionActive(false);
           }
         }}
         onBlur={() => {
@@ -136,7 +140,8 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            if (!isOpen) {
+            setIsSuggestionSelectionActive(true);
+            if (!isOpen || !isSuggestionSelectionActive) {
               openSuggestions(0);
               return;
             }
@@ -147,7 +152,13 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
 
           if (event.key === 'ArrowUp') {
             event.preventDefault();
+            setIsSuggestionSelectionActive(true);
             if (!isOpen) {
+              openSuggestions(suggestions.length - 1);
+              return;
+            }
+
+            if (!isSuggestionSelectionActive) {
               openSuggestions(suggestions.length - 1);
               return;
             }
@@ -157,7 +168,7 @@ const TagInputCombobox = forwardRef<HTMLInputElement, TagInputComboboxProps>(({
           }
 
           if (event.key === 'Enter') {
-            if (isOpen && suggestions[activeIndex]) {
+            if (isOpen && isSuggestionSelectionActive && suggestions[activeIndex]) {
               event.preventDefault();
               applySuggestion(suggestions[activeIndex].name);
               return;

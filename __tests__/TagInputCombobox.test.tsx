@@ -56,6 +56,27 @@ describe('TagInputCombobox', () => {
     expect(submitSpy).toHaveBeenCalledWith('landscape');
   });
 
+  it('submits the typed tag when suggestions are open without explicit selection', () => {
+    const { input, submitSpy } = renderHarness({ value: 'por' });
+
+    fireEvent.focus(input);
+    expect(screen.getByRole('listbox')).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(submitSpy).toHaveBeenCalledWith('por');
+  });
+
+  it('applies the first typed suggestion after arrow-key selection', () => {
+    const { input, submitSpy } = renderHarness({ value: 'por' });
+
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(submitSpy).toHaveBeenCalledWith('portrait');
+  });
+
   it('closes the open list on escape before delegating to the caller', () => {
     const { input, escapeSpy } = renderHarness({ value: 'por' });
 
@@ -91,7 +112,7 @@ describe('TagInputCombobox', () => {
     expect(submitSpy).toHaveBeenCalledWith('macro');
   });
 
-  it('replaces the last CSV token instead of submitting immediately in csv mode', async () => {
+  it('submits the typed CSV value when suggestions are open without explicit selection', async () => {
     const { input, submitSpy } = renderHarness({
       mode: 'csv',
     });
@@ -100,6 +121,21 @@ describe('TagInputCombobox', () => {
     await waitFor(() => {
       expect(screen.getByRole('listbox')).toBeTruthy();
     });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(submitSpy).toHaveBeenCalledWith('macro, por');
+  });
+
+  it('still replaces the active CSV token after arrow-key selection', async () => {
+    const { input, submitSpy } = renderHarness({
+      mode: 'csv',
+    });
+
+    fireEvent.change(input, { target: { value: 'macro, por' } });
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toBeTruthy();
+    });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => {

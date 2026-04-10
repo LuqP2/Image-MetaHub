@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Manual Collection Counts**: Fixed manual collection membership and counts so deleted or unindexed images no longer remain in resolved collection results.
 - **Collection Sort Ordering**: Fixed new collection ordering after deleted collections so sort indexes are allocated from the current maximum instead of reusing stale positions.
 - **Filtered Collection Reordering**: Fixed collection move buttons while searching collections so they reflect the collection's global order instead of the filtered list position.
+- **Tag Input Enter Behavior**: Fixed tag combobox Enter handling so typed tags submit as entered unless the user explicitly navigates to a suggestion first.
 - **Search Field Hotkeys**: Fixed global hotkeys firing while typing in text inputs, preventing search text from being interrupted by app actions.
 - **Preview Sidebar Opening Unexpectedly**: Fixed the Image Preview sidebar opening by itself after search/filter changes or view switches by limiting automatic preview restoration to active grid keyboard navigation.
 
