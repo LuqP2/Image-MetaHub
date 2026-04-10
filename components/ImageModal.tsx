@@ -28,6 +28,8 @@ import { MetadataEditorModal } from './MetadataEditorModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
+import TagInputCombobox from './TagInputCombobox';
+import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 
 
@@ -622,6 +624,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentAutoTags = liveImage.autoTags || [];
   const currentIsFavorite = liveImage.isFavorite ?? false;
   const currentRating = liveImage.rating ?? null;
+  const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
+  const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
   const recentTagSuggestions = useMemo(() => getRecentTagChips({
     recentTags,

@@ -338,6 +338,7 @@ export default function App() {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections'>('library');
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
+  const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
@@ -357,6 +358,12 @@ export default function App() {
       setActiveImageScope(null);
     }
   }, [activeImageScope, libraryView, setActiveImageScope]);
+
+  useEffect(() => {
+    if (libraryView !== 'node' && nodeViewResultImages.length > 0) {
+      setNodeViewResultImages([]);
+    }
+  }, [libraryView, nodeViewResultImages.length]);
   const hasRightSidebar = Boolean(previewImage || isQueueOpen);
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
@@ -1382,7 +1389,20 @@ export default function App() {
     return getResolvedFilteredCollectionImages(activeCollection.id);
   }, [activeCollection, getResolvedFilteredCollectionImages, safeFilteredImages]);
 
-  const displayImages = libraryView === 'collections' ? collectionFilteredImages : safeFilteredImages;
+  const handleNodeViewResultImagesChange = useCallback(
+    (images: IndexedImage[]) => {
+      setNodeViewResultImages(images);
+      setActiveImageScope(images);
+    },
+    [setActiveImageScope],
+  );
+
+  const displayImages =
+    libraryView === 'collections'
+      ? collectionFilteredImages
+      : libraryView === 'node'
+      ? nodeViewResultImages
+      : safeFilteredImages;
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
 
   useEffect(() => {
@@ -1895,7 +1915,7 @@ export default function App() {
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onVisibleImagesChange={setNodeViewVisibleImages}
-                    onResultImagesChange={setActiveImageScope}
+                    onResultImagesChange={handleNodeViewResultImagesChange}
                   />
                 ) : (
                   <SmartLibrary
