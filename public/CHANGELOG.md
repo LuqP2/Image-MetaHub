@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.1] - Unreleased
+## [0.14.1] - 2026-04-10
 
 ### Added
 
@@ -23,15 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.
-- **Collection Form Focus and Draft Text**: Fixed collection creation dialogs sometimes losing focus or clearing typed text after background rerenders.
 - **Search Field Hotkeys**: Fixed global hotkeys firing while typing in text inputs, preventing search text from being interrupted by app actions.
 - **Preview Sidebar Opening Unexpectedly**: Fixed the Image Preview sidebar opening by itself after search/filter changes or view switches by limiting automatic preview restoration to active grid keyboard navigation.
-- **Collection Membership Consistency**: Fixed collection removals and updates so explicit image IDs and snapshot image IDs stay in sync.
-- **Live Collection Filtering**: Fixed collection filter results so they update in real time as filters and collection contents change.
-- **Collection Thumbnail Resolution**: Fixed collection cover thumbnails to resolve consistently across collection cards and workspace views.
-- **Context Menu Reliability**: Fixed collection context menu submenu gaps and Image Modal pointer-event handling that could make menus or modal actions feel unreliable.
 
-## [0.14.0] - Unreleased
+## [0.14.0] - 2026-04-06
 
 ### Added
 
