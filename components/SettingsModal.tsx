@@ -84,11 +84,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:p-6"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-3 md:p-6"
       onClick={onClose}
     >
       <div
-        className="flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-800 text-gray-100 shadow-2xl"
+        className="mx-auto my-3 flex min-h-0 w-full max-w-6xl max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-800 text-gray-100 shadow-2xl md:my-6 md:max-h-[calc(100vh-3rem)]"
+        style={{
+          minHeight: 'min(720px, calc(100vh - 1.5rem))',
+        }}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-700/80 px-4 py-4 md:px-6">

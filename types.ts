@@ -887,22 +887,11 @@ export interface AutoTag {
   sourceType: 'prompt' | 'metadata';  // Origin of tag
 }
 
-/**
- * Smart collection - virtual folder based on filters
- */
-export interface SmartCollection {
-  id: string;                      // Unique collection ID
-  name: string;                    // Display name
-  type: 'model' | 'style' | 'subject' | 'custom';  // Collection category
-  query: SmartCollectionQuery;     // Filter criteria
-  imageCount: number;              // Cached count
-  thumbnailId?: string;            // Cover image ID
-  createdAt: number;
-  updatedAt: number;
-}
+export type LegacySmartCollectionType = 'model' | 'style' | 'subject' | 'custom';
 
 /**
- * Query criteria for smart collections
+ * Query criteria for legacy smart collections.
+ * Kept optional for backward-compatible loading of older records.
  */
 export interface SmartCollectionQuery {
   models?: string[];
@@ -910,6 +899,33 @@ export interface SmartCollectionQuery {
   userTags?: string[];
   clusters?: string[];
   dateRange?: { from: number; to: number };
+}
+
+export type CollectionKind = 'manual' | 'tag_rule';
+
+/**
+ * Persisted collection record used by the Collections view.
+ */
+export interface SmartCollection {
+  id: string;                      // Unique collection ID
+  kind: CollectionKind;            // Manual or tag-driven collection
+  name: string;                    // Display name
+  description?: string;
+  coverImageId?: string | null;    // Explicit cover image
+  sortIndex: number;               // Manual ordering in the sidebar
+  sourceTag?: string | null;       // Tag source for tag_rule collections
+  autoUpdate?: boolean;            // Live tag membership toggle
+  imageIds?: string[];             // Explicit membership for manual collections
+  snapshotImageIds?: string[];     // Frozen membership for tag_rule collections
+  excludedImageIds?: string[];     // User-removed images from live tag_rule collections
+  imageCount: number;              // Cached count for list rendering
+  thumbnailId?: string;            // Legacy alias for cover image
+  createdAt: number;
+  updatedAt: number;
+
+  // Legacy fields kept optional for backward-compatible loading.
+  type?: LegacySmartCollectionType;
+  query?: SmartCollectionQuery;
 }
 
 /**

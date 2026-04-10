@@ -21,9 +21,14 @@ hotkeys.filter = function(event) {
 
 // A map to store the actions that the application supports.
 const registeredActions = new Map<string, RegisteredAction>();
+const hotkeysAllowedInTypingContext = new Set([
+  'openCommandPalette',
+  'openQuickSettings',
+  'openKeyboardShortcuts',
+]);
 
-// Track whether hotkeys are currently paused
-let hotkeysPaused = false;
+// Track nested pause requests so overlapping modals do not resume hotkeys too early.
+let hotkeysPauseCount = 0;
 
 /**
  * Unbinds all currently bound hotkeys from the hotkeys-js instance.
@@ -54,13 +59,17 @@ const bindAllActions = () => {
 
     hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
       // If hotkeys are paused, don't execute any actions
-      if (hotkeysPaused) {
+      if (hotkeysPauseCount > 0) {
         return;
       }
 
       // Don't block keys in text inputs for typing operations
       const target = event.target as HTMLElement;
       const isTypingContext = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      if (isTypingContext && !hotkeysAllowedInTypingContext.has(action.id)) {
+        return;
+      }
 
       // For navigation/action keys, prevent default even in inputs
       const isActionKey = ['delete', 'enter', 'escape', 'f1'].some(k => key.includes(k));
@@ -124,14 +133,14 @@ const getRegisteredHotkeys = (): (HotkeyDefinition & { currentKey: string })[] =
  * Useful when modals or input-heavy components are open.
  */
 const pauseHotkeys = () => {
-  hotkeysPaused = true;
+  hotkeysPauseCount += 1;
 };
 
 /**
  * Resumes hotkey execution after being paused.
  */
 const resumeHotkeys = () => {
-  hotkeysPaused = false;
+  hotkeysPauseCount = Math.max(0, hotkeysPauseCount - 1);
 };
 
 /**
@@ -139,7 +148,7 @@ const resumeHotkeys = () => {
  * @returns True if hotkeys are paused, false otherwise.
  */
 const areHotkeysPaused = () => {
-  return hotkeysPaused;
+  return hotkeysPauseCount > 0;
 };
 
 const hotkeyManager = {

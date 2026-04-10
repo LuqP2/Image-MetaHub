@@ -5,7 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.0] - Unreleased
+## [0.14.1] - 2026-04-10
+
+### Added
+
+- **Collections**: Added a dedicated `Collections` tab for reusable image groups, with manual and tag-driven collections, multi-tag rules, ordering, cover images, collection cards, in-place settings, and collection actions across the grid, table, Image Modal, and toolbar, including saving or adding the current filtered result set.
+
+### Improved
+
+- **Unified Tag Entry UX**: Manual tag entry in `ImageModal`, `ImagePreviewSidebar`, and `Tag Manager` now shares the same suggestion combobox, keyboard navigation, mouse selection behavior, and match ranking, making tag suggestions feel consistent everywhere.
+- **Tagging Controls in Settings**: Added viewer settings for tag suggestion count and visible recent-tag chips, while keeping a larger internal recent-tag history so quick picks stay useful without overwhelming the UI.
+- **Safer Bulk Tag Suggestions**: The Tag Manager's comma-separated input now applies autocomplete only to the active CSV token, making multi-tag edits faster and less error-prone.
+- **Viewer Annotation Layout**: Moved the star rating control above the tag editor in the full image view and preview sidebar so tags have more horizontal space.
+- **Header and Navigation Polish**: Refreshed the header layout, aligned view navigation more cleanly, added Collections to the main view switcher, and reduced overlay issues around Settings and other top-level controls.
+- **Stable Sidebar Layout**: Restored the single-scroll sidebar filter flow and tightened sidebar sizing so folder, tag, and filter browsing remains predictable.
+
+### Fixed
+
+- **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.
+- **Live Collection Removal**: Fixed removing images from auto-updating tag collections so removed images stay excluded unless explicitly added back.
+- **Collection Settings Conversion**: Fixed clearing Auto-Add Tags in Collection Settings so tag-rule collections keep their currently resolved images when converted to manual collections.
+- **Frozen Collection Membership**: Fixed disabling auto-update on tag-driven collections so the frozen snapshot preserves the resolved, curated membership instead of reintroducing previously removed tag matches.
+- **Manual Collection Counts**: Fixed manual collection membership and counts so deleted or unindexed images no longer remain in resolved collection results.
+- **Collection Sort Ordering**: Fixed new collection ordering after deleted collections so sort indexes are allocated from the current maximum instead of reusing stale positions.
+- **Filtered Collection Reordering**: Fixed collection move buttons while searching collections so they reflect the collection's global order instead of the filtered list position.
+- **Tag Input Enter Behavior**: Fixed tag combobox Enter handling so typed tags submit as entered unless the user explicitly navigates to a suggestion first.
+- **Search Field Hotkeys**: Fixed global hotkeys firing while typing in text inputs, preventing search text from being interrupted by app actions.
+- **Preview Sidebar Opening Unexpectedly**: Fixed the Image Preview sidebar opening by itself after search/filter changes or view switches by limiting automatic preview restoration to active grid keyboard navigation.
+
+## [0.14.0] - 2026-04-06
 
 ### Added
 

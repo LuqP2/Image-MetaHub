@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import { type IndexedImage, type Directory } from '../types';
+import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
 import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
@@ -15,12 +15,15 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
+import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 
 interface ImageTableProps {
   images: IndexedImage[];
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
   onBatchExport: () => void;
+  activeCollection?: SmartCollection | null;
+  isCollectionsView?: boolean;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -56,7 +59,14 @@ const joinDisplayPath = (basePath: string, relativePath: string): string => {
   return `${normalizedBase}/${normalizedRelative}`;
 };
 
-const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedImages, onBatchExport }) => {
+const ImageTable: React.FC<ImageTableProps> = ({
+  images,
+  onImageClick,
+  selectedImages,
+  onBatchExport,
+  activeCollection = null,
+  isCollectionsView = false,
+}) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -66,8 +76,16 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [isCopySubmenuOpen, setIsCopySubmenuOpen] = useState(false);
+  const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
+  const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
+  const collections = useImageStore((state) => state.collections);
+  const createCollection = useImageStore((state) => state.createCollection);
+  const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
+  const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
+  const updateCollection = useImageStore((state) => state.updateCollection);
   const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
@@ -89,7 +107,13 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     if (!contextMenu.visible && isCopySubmenuOpen) {
       setIsCopySubmenuOpen(false);
     }
-  }, [contextMenu.visible, isCopySubmenuOpen]);
+    if (!contextMenu.visible && isCollectionSubmenuOpen) {
+      setIsCollectionSubmenuOpen(false);
+    }
+    if (!contextMenu.visible && isAddToCollectionSubmenuOpen) {
+      setIsAddToCollectionSubmenuOpen(false);
+    }
+  }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen]);
 
   const selectedCount = selectedImages.size;
 
@@ -125,6 +149,72 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
     bulkSetImageRating(targetImageIds, rating);
     hideContextMenu();
   }, [bulkSetImageRating, contextMenu.image?.id, hideContextMenu, selectedImages]);
+
+  const handleAddToExistingCollection = useCallback(async (collection: SmartCollection) => {
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+
+    await addImagesToCollection(collection.id, targetImages.map((image) => image.id));
+
+    hideContextMenu();
+  }, [addImagesToCollection, getContextTargetImages, hideContextMenu]);
+
+  const handleCreateCollectionFromContext = useCallback(async (values: CollectionFormValues) => {
+    const targetImages = getContextTargetImages();
+    const targetImageIds = values.includeTargetImages ? targetImages.map((image) => image.id) : [];
+    const coverImageId = targetImageIds.length > 0 ? targetImageIds[0] : null;
+
+    await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: collections.length,
+      imageIds: targetImageIds,
+      snapshotImageIds: [],
+      coverImageId,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: coverImageId ?? undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    setIsCollectionModalOpen(false);
+    hideContextMenu();
+  }, [collections.length, createCollection, getContextTargetImages, hideContextMenu]);
+
+  const handleSetCollectionCover = useCallback(async () => {
+    if (!activeCollection || !contextMenu.image) {
+      hideContextMenu();
+      return;
+    }
+
+    await updateCollection(activeCollection.id, {
+      coverImageId: contextMenu.image.id,
+      thumbnailId: contextMenu.image.id,
+    });
+    hideContextMenu();
+  }, [activeCollection, contextMenu.image, hideContextMenu, updateCollection]);
+
+  const handleRemoveFromCurrentCollection = useCallback(async () => {
+    if (!activeCollection) {
+      hideContextMenu();
+      return;
+    }
+
+    const targetImages = getContextTargetImages();
+    if (!targetImages.length) {
+      hideContextMenu();
+      return;
+    }
+
+    await removeImagesFromCollection(activeCollection.id, targetImages.map((image) => image.id));
+
+    hideContextMenu();
+  }, [activeCollection, getContextTargetImages, hideContextMenu, removeImagesFromCollection]);
 
   const handleReparseMetadata = useCallback(async () => {
     const targetImages = getContextTargetImages();
@@ -398,6 +488,95 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
 
           <div
             className="relative"
+            onMouseEnter={() => setIsCollectionSubmenuOpen(true)}
+            onMouseLeave={() => {
+              setIsCollectionSubmenuOpen(false);
+              setIsAddToCollectionSubmenuOpen(false);
+            }}
+          >
+            <button
+              onClick={() => setIsCollectionSubmenuOpen((open) => !open)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            >
+              <Folder className="w-4 h-4" />
+              <span className="flex-1">Collection</span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+
+            {isCollectionSubmenuOpen && (
+              <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                <div
+                  className="relative"
+                  onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
+                  onMouseLeave={() => setIsAddToCollectionSubmenuOpen(false)}
+                >
+                  <button
+                    onClick={() => setIsAddToCollectionSubmenuOpen((open) => !open)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                  >
+                    <span className="flex-1">Add to Collection</span>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  </button>
+
+                  {isAddToCollectionSubmenuOpen && (
+                    <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                      {collections.length === 0 ? (
+                        <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
+                      ) : (
+                        collections.map((collection) => (
+                          <button
+                            key={collection.id}
+                            onClick={() => void handleAddToExistingCollection(collection)}
+                            className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                          >
+                            <span className="truncate">{collection.name}</span>
+                            {collection.sourceTag && (
+                              <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                                {collection.autoUpdate !== false ? 'Auto' : 'Linked'}
+                              </span>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsCollectionModalOpen(true);
+                    hideContextMenu();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
+                >
+                  Create New Collection
+                </button>
+              </div>
+            )}
+          </div>
+
+          {isCollectionsView && activeCollection && (
+            <>
+              <button
+                onClick={() => void handleSetCollectionCover()}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Folder className="w-4 h-4" />
+                Set as Cover
+              </button>
+
+              <button
+                onClick={() => void handleRemoveFromCurrentCollection()}
+                className="w-full text-left px-4 py-2 text-sm text-amber-200 hover:bg-amber-900/20 hover:text-amber-100 transition-colors flex items-center gap-2"
+              >
+                <Folder className="w-4 h-4" />
+                <span className="flex-1">Remove from Current Collection</span>
+              </button>
+            </>
+          )}
+
+          <div
+            className="relative"
             onMouseEnter={() => setIsCopySubmenuOpen(true)}
             onMouseLeave={() => setIsCopySubmenuOpen(false)}
           >
@@ -411,7 +590,7 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             </button>
 
             {isCopySubmenuOpen && (
-              <div className="absolute left-full top-0 ml-1 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className="absolute left-full top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
                 <button
                   onClick={copyPrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
@@ -537,6 +716,22 @@ const ImageTable: React.FC<ImageTableProps> = ({ images, onImageClick, selectedI
             )}
           </div>
         )}
+
+      <CollectionFormModal
+        isOpen={isCollectionModalOpen}
+        title="Create Collection"
+        submitLabel="Create Collection"
+        initialValues={{
+          name: '',
+          description: '',
+          sourceTag: '',
+          autoUpdate: false,
+          includeTargetImages: getContextTargetImages().length > 0,
+        }}
+        onClose={() => setIsCollectionModalOpen(false)}
+        onSubmit={handleCreateCollectionFromContext}
+        showIncludeTargetImages={getContextTargetImages().length > 0}
+      />
 
       <TransferImagesModal
         isOpen={isTransferModalOpen && !!transferMode}

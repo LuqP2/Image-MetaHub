@@ -23,6 +23,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
   const setExcludedAutoTags = vi.fn();
   const setSelectedRatings = vi.fn();
   const refreshAvailableAutoTags = vi.fn();
+  const createCollection = vi.fn().mockResolvedValue(undefined);
 
   useImageStore.getState().resetState();
   useImageStore.setState({
@@ -30,6 +31,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     availableAutoTags: [],
     images: [],
     filteredImages: [],
+    collections: [],
     selectedTags: [],
     excludedTags: [],
     selectedTagsMatchMode: 'any',
@@ -48,6 +50,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     setExcludedAutoTags,
     setSelectedRatings,
     refreshAvailableAutoTags,
+    createCollection,
     ...overrides,
   });
 
@@ -61,6 +64,7 @@ const seedSidebarState = (overrides: Record<string, unknown> = {}) => {
     setSelectedTagsMatchMode,
     setSelectedRatings,
     refreshAvailableAutoTags,
+    createCollection,
   };
 };
 
@@ -175,6 +179,30 @@ describe('TagsAndFavorites manual tag browser', () => {
     fireEvent.click(screen.getByText('Rename'));
 
     expect(renameTag).toHaveBeenCalledWith('ghost-tag', 'fixed-tag');
+  });
+
+  it('creates a tag-rule collection from the tag context menu', async () => {
+    const { createCollection } = seedSidebarState({
+      availableTags: [{ name: 'carros', count: 2 }],
+      images: [
+        { id: 'img-1', tags: ['carros'] } as any,
+        { id: 'img-2', tags: ['carros', 'motos'] } as any,
+      ],
+    });
+
+    render(<TagsAndFavorites />);
+    openContextMenuForTag('carros');
+    fireEvent.click(screen.getByText('Create Collection'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Collection' }));
+
+    expect(createCollection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'tag_rule',
+        name: 'carros',
+        sourceTag: 'carros',
+        autoUpdate: true,
+      }),
+    );
   });
 
   it('hides delete-empty for used tags and keeps purge available', () => {
