@@ -1199,11 +1199,19 @@ export async function removeImagesFromSmartCollection(
 ): Promise<SmartCollection> {
   const targetIdSet = new Set(uniqueImageIds(imageIds));
   const nextIds = uniqueImageIds(collection.imageIds).filter((imageId) => !targetIdSet.has(imageId));
+  const nextSnapshotIds = uniqueImageIds(collection.snapshotImageIds).filter(
+    (imageId) => !targetIdSet.has(imageId),
+  );
+  const nextImageCount =
+    collection.kind === 'tag_rule' && collection.autoUpdate === false
+      ? uniqueImageIds([...nextIds, ...nextSnapshotIds]).length
+      : nextIds.length;
   const nextCollection = normalizeSmartCollection(
     {
       ...collection,
       imageIds: nextIds,
-      imageCount: nextIds.length,
+      snapshotImageIds: nextSnapshotIds,
+      imageCount: nextImageCount,
       updatedAt: Date.now(),
     },
     collection.sortIndex,

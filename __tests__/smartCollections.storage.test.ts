@@ -324,4 +324,29 @@ describe('smart collection storage', () => {
       ),
     ).toEqual(['img-1', 'img-2']);
   });
+
+  it('removes images from both manual and frozen snapshot membership sources', async () => {
+    const { removeImagesFromSmartCollection } = await import('../services/imageAnnotationsStorage');
+
+    const updated = await removeImagesFromSmartCollection(
+      {
+        id: 'tag-frozen',
+        kind: 'tag_rule',
+        name: 'Carros',
+        sortIndex: 0,
+        sourceTag: 'carros',
+        autoUpdate: false,
+        imageIds: ['img-1', 'img-2'],
+        snapshotImageIds: ['img-2', 'img-3'],
+        imageCount: 3,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      ['img-2', 'img-3'],
+    );
+
+    expect(updated.imageIds).toEqual(['img-1']);
+    expect(updated.snapshotImageIds).toEqual([]);
+    expect(updated.imageCount).toBe(1);
+  });
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GridToolbar from '../components/GridToolbar';
 import { useImageStore } from '../store/useImageStore';
 
@@ -49,7 +49,7 @@ describe('GridToolbar', () => {
     } as any);
   });
 
-  it('opens collection actions from the toolbar and creates a new collection from filtered images', () => {
+  it('opens collection actions from the toolbar and creates a new collection from filtered images', async () => {
     const onCreateCollectionFromFiltered = vi.fn();
 
     render(
@@ -69,12 +69,12 @@ describe('GridToolbar', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Collection actions' }));
-    fireEvent.click(screen.getByText('Create new collection from filtered images'));
+    fireEvent.click(await screen.findByText('Create new collection from filtered images'));
 
     expect(onCreateCollectionFromFiltered).toHaveBeenCalled();
   });
 
-  it('adds filtered images to an existing collection from the toolbar menu', () => {
+  it('adds filtered images to an existing collection from the toolbar menu', async () => {
     const onAddCurrentFilteredToCollection = vi.fn();
 
     render(
@@ -94,9 +94,11 @@ describe('GridToolbar', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Collection actions' }));
-    fireEvent.mouseEnter(screen.getByText('Add filtered images to collection'));
-    fireEvent.click(screen.getByText('Carros'));
+    fireEvent.mouseEnter(await screen.findByText('Add filtered images to collection'));
+    fireEvent.click(await screen.findByText('Carros'));
 
-    expect(onAddCurrentFilteredToCollection).toHaveBeenCalledWith('collection-1');
+    await waitFor(() => {
+      expect(onAddCurrentFilteredToCollection).toHaveBeenCalledWith('collection-1');
+    });
   });
 });
