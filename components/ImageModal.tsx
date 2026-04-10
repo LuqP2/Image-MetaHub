@@ -2014,9 +2014,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
-            {/* Favorite and Tags Row */}
-            <div className="flex items-start gap-3">
-              <div className="flex items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
+            {/* Favorite, Rating, and Tags */}
+            <div className="space-y-3">
+              <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-950/30 px-2 py-1.5">
                 <button
                   onClick={handleToggleFavorite}
                   className={`p-1 rounded transition-all ${
@@ -2033,7 +2033,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               </div>
 
               {/* Tags Pills */}
-              <div className="flex-1 space-y-2">
+              <div className="space-y-2">
                 {/* Add Tag Input */}
                 <TagInputCombobox
                   ref={tagInputRef}

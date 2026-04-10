@@ -9,11 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Collections View**: Added a dedicated `Collections` tab for building reusable image groups across indexed folders, with support for manual collections, tag-driven auto-updating collections, collection ordering, cover images, and collection management from the main workspace.
+- **Collections**: Added a dedicated `Collections` tab for reusable image groups, with manual and tag-driven collections, multi-tag rules, ordering, cover images, collection cards, in-place settings, and collection actions across the grid, table, Image Modal, and toolbar, including saving or adding the current filtered result set.
+
+### Improved
+
+- **Unified Tag Entry UX**: Manual tag entry in `ImageModal`, `ImagePreviewSidebar`, and `Tag Manager` now shares the same suggestion combobox, keyboard navigation, mouse selection behavior, and match ranking, making tag suggestions feel consistent everywhere.
+- **Tagging Controls in Settings**: Added viewer settings for tag suggestion count and visible recent-tag chips, while keeping a larger internal recent-tag history so quick picks stay useful without overwhelming the UI.
+- **Safer Bulk Tag Suggestions**: The Tag Manager's comma-separated input now applies autocomplete only to the active CSV token, making multi-tag edits faster and less error-prone.
+- **Viewer Annotation Layout**: Moved the star rating control above the tag editor in the full image view and preview sidebar so tags have more horizontal space.
+- **Header and Navigation Polish**: Refreshed the header layout, aligned view navigation more cleanly, added Collections to the main view switcher, and reduced overlay issues around Settings and other top-level controls.
+- **Stable Sidebar Layout**: Restored the single-scroll sidebar filter flow and tightened sidebar sizing so folder, tag, and filter browsing remains predictable.
 
 ### Fixed
 
 - **License Persistence on Restart**: Fixed an Electron settings persistence regression where saving general app settings could overwrite the stored license block, causing Pro users to fall back to Free Mode after restart.
+- **Collection Form Focus and Draft Text**: Fixed collection creation dialogs sometimes losing focus or clearing typed text after background rerenders.
+- **Search Field Hotkeys**: Fixed global hotkeys firing while typing in text inputs, preventing search text from being interrupted by app actions.
+- **Preview Sidebar Opening Unexpectedly**: Fixed the Image Preview sidebar opening by itself after search/filter changes or view switches by limiting automatic preview restoration to active grid keyboard navigation.
+- **Collection Membership Consistency**: Fixed collection removals and updates so explicit image IDs and snapshot image IDs stay in sync.
+- **Live Collection Filtering**: Fixed collection filter results so they update in real time as filters and collection contents change.
+- **Collection Thumbnail Resolution**: Fixed collection cover thumbnails to resolve consistently across collection cards and workspace views.
+- **Context Menu Reliability**: Fixed collection context menu submenu gaps and Image Modal pointer-event handling that could make menus or modal actions feel unreliable.
 
 ## [0.14.0] - Unreleased
 

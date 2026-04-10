@@ -425,9 +425,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
         {/* Annotations Section */}
         <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700/50 space-y-2">
-          {/* Favorite and Tags Row */}
-          <div className="flex items-start gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
+          {/* Favorite, Rating, and Tags */}
+          <div className="space-y-3">
+            <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-200 bg-white/70 px-2 py-1.5 dark:border-gray-700/60 dark:bg-gray-950/30">
               <button
                 onClick={handleToggleFavorite}
                 className={`p-1 rounded transition-all ${
@@ -444,7 +444,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
             </div>
 
             {/* Tags Pills */}
-            <div className="flex-1 space-y-2">
+            <div className="space-y-2">
               {/* Add Tag Input */}
               <TagInputCombobox
                 ref={tagInputRef}
