@@ -2,12 +2,13 @@ import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 're
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2 } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
 import { comparisonWillAutoOpen, useImageComparison } from '../hooks/useImageComparison';
+import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useGenerationProviderAvailability } from '../hooks/useGenerationProviderAvailability';
 import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } from './A1111GenerateModal';
@@ -577,6 +578,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
+  const { isReparsing, reparseImages } = useReparseMetadata();
 
   // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
@@ -621,12 +623,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const currentIsFavorite = liveImage.isFavorite ?? false;
   const currentRating = liveImage.rating ?? null;
   const preferredThumbnailUrl = thumbnail?.thumbnailUrl ?? null;
-  const tagSuggestions = buildTagSuggestions(recentTags, availableTags, currentTags);
+  const recentTagSuggestions = useMemo(() => getRecentTagChips({
+    recentTags,
+    excludedTags: currentTags,
+    limit: recentTagChipLimit,
+  }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
 
   // State for tag input
   const [tagInput, setTagInput] = useState('');
-  const [showTagAutocomplete, setShowTagAutocomplete] = useState(false);
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
@@ -1193,6 +1198,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     showInExplorer(`${directoryPath}/${image.name}`);
   };
 
+  const handleReparseMetadata = async () => {
+    hideContextMenu();
+    await reparseImages([liveImage]);
+  };
+
   const exportImage = async () => {
     hideContextMenu();
     
@@ -1415,7 +1425,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const focusInput = () => {
       tagInputRef.current?.focus();
       tagInputRef.current?.select();
-      setShowTagAutocomplete((tagInputRef.current?.value ?? '').trim().length > 0);
     };
 
     if (isFullscreen) {
@@ -1640,11 +1649,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   // Tag management handlers
-  const handleAddTag = () => {
-    if (!tagInput.trim()) return;
-    addTagToImage(image.id, tagInput);
+  const handleAddTag = (value = tagInput) => {
+    if (!value.trim()) return;
+    addTagToImage(image.id, value);
     setTagInput('');
-    setShowTagAutocomplete(false);
   };
 
   const handleRemoveTag = (tag: string) => {
@@ -1660,16 +1668,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
   };
-
-  // Filter autocomplete tags
-  const autocompleteOptions = tagInput
-    ? availableTags
-        .filter(tag =>
-          tag.name.includes(tagInput.toLowerCase()) &&
-          !currentTags.includes(tag.name)
-        )
-        .slice(0, 5)
-    : [];
 
   if (isMinimized) {
     return null;
@@ -2033,51 +2031,26 @@ const ImageModal: React.FC<ImageModalProps> = ({
               {/* Tags Pills */}
               <div className="flex-1 space-y-2">
                 {/* Add Tag Input */}
-                <div className="relative">
-                  <input
-                    ref={tagInputRef}
-                    type="text"
-                    placeholder="Add tag..."
-                    value={tagInput}
-                    onChange={(e) => {
-                      setTagInput(e.target.value);
-                      setShowTagAutocomplete(e.target.value.length > 0);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                      if (e.key === 'Escape') {
-                        setTagInput('');
-                        setShowTagAutocomplete(false);
-                      }
-                    }}
-                    onFocus={() => tagInput && setShowTagAutocomplete(true)}
-                    onBlur={() => setTimeout(() => setShowTagAutocomplete(false), 200)}
-                    className="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
-                  />
-
-                  {/* Autocomplete Dropdown */}
-                  {showTagAutocomplete && autocompleteOptions.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                      {autocompleteOptions.map(tag => (
-                        <button
-                          key={tag.name}
-                          onClick={() => {
-                            addTagToImage(image.id, tag.name);
-                            setTagInput('');
-                            setShowTagAutocomplete(false);
-                          }}
-                          className="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
-                        >
-                          <span>{tag.name}</span>
-                          <span className="text-xs text-gray-500">({tag.count})</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <TagInputCombobox
+                  ref={tagInputRef}
+                  value={tagInput}
+                  onValueChange={setTagInput}
+                  onSubmit={handleAddTag}
+                  recentTags={recentTags}
+                  availableTags={availableTags}
+                  excludedTags={currentTags}
+                  suggestionLimit={tagSuggestionLimit}
+                  placeholder="Add tag..."
+                  inputClassName="w-full bg-gray-700/50 text-gray-200 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-gray-500"
+                  dropdownClassName="absolute z-10 mt-1 max-h-32 w-full overflow-y-auto rounded-lg border border-gray-600 bg-gray-800 shadow-lg"
+                  optionClassName="w-full text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-gray-700 flex justify-between items-center"
+                  activeOptionClassName="bg-gray-700 text-white"
+                  metaClassName="text-xs text-gray-500"
+                  onEscape={() => {
+                    setTagInput('');
+                    tagInputRef.current?.focus();
+                  }}
+                />
 
                 {/* Current Tags */}
                 {currentTags && currentTags.length > 0 && (
@@ -2097,9 +2070,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 )}
 
                 {/* Tag Suggestions */}
-                {tagInput.trim().length === 0 && tagSuggestions.length > 0 && (
+                {tagInput.trim().length === 0 && recentTagSuggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {tagSuggestions.map(tag => (
+                    {recentTagSuggestions.map(tag => (
                       <button
                         key={tag}
                         onClick={() => addTagToImage(image.id, tag)}
@@ -2890,6 +2863,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Copy className="w-4 h-4" />
                 Copy Model
+              </button>
+
+              <div className="border-t border-gray-600 my-1"></div>
+
+              <button
+                onClick={handleReparseMetadata}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isReparsing}
+              >
+                <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+                Reparse Metadata
               </button>
 
               <div className="border-t border-gray-600 my-1"></div>
