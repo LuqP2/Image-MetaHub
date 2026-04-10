@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import hotkeyManager from '../services/hotkeyManager';
 
 export interface CollectionFormValues {
   name: string;
@@ -37,7 +38,21 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
   showIncludeTargetImages = false,
   includeTargetImagesLabel = 'Add the current images now',
 }) => {
-  const [values, setValues] = useState<CollectionFormValues>(initialValues);
+  const {
+    name: initialName,
+    description: initialDescription,
+    sourceTag: initialSourceTag,
+    autoUpdate: initialAutoUpdate,
+    includeTargetImages: initialIncludeTargetImages,
+  } = initialValues;
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const [values, setValues] = useState<CollectionFormValues>({
+    name: initialName,
+    description: initialDescription,
+    sourceTag: initialSourceTag,
+    autoUpdate: initialAutoUpdate,
+    includeTargetImages: initialIncludeTargetImages,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const hasSourceTag = values.sourceTag.trim().length > 0;
 
@@ -46,9 +61,57 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
       return;
     }
 
-    setValues(initialValues);
+    setValues({
+      name: initialName,
+      description: initialDescription,
+      sourceTag: initialSourceTag,
+      autoUpdate: initialAutoUpdate,
+      includeTargetImages: initialIncludeTargetImages,
+    });
     setIsSubmitting(false);
-  }, [initialValues, isOpen]);
+  }, [
+    initialAutoUpdate,
+    initialDescription,
+    initialIncludeTargetImages,
+    initialName,
+    initialSourceTag,
+    isOpen,
+  ]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    hotkeyManager.pauseHotkeys();
+
+    return () => {
+      hotkeyManager.resumeHotkeys();
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const focusTitleInput = () => {
+      titleInputRef.current?.focus({ preventScroll: true });
+    };
+
+    const animationFrameId =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame(focusTitleInput)
+        : null;
+    const timeoutId = window.setTimeout(focusTitleInput, 0);
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      window.clearTimeout(timeoutId);
+    };
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
@@ -76,6 +139,13 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
       onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
     >
       <div
         className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-5 shadow-2xl"
@@ -93,6 +163,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
           <label className="block">
             <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Title</span>
             <input
+              ref={titleInputRef}
               autoFocus
               type="text"
               value={values.name}

@@ -22,8 +22,8 @@ hotkeys.filter = function(event) {
 // A map to store the actions that the application supports.
 const registeredActions = new Map<string, RegisteredAction>();
 
-// Track whether hotkeys are currently paused
-let hotkeysPaused = false;
+// Track nested pause requests so overlapping modals do not resume hotkeys too early.
+let hotkeysPauseCount = 0;
 
 /**
  * Unbinds all currently bound hotkeys from the hotkeys-js instance.
@@ -54,7 +54,7 @@ const bindAllActions = () => {
 
     hotkeys(keysToRegister, { scope: action.scope, keyup: false, keydown: true }, (event, handler) => {
       // If hotkeys are paused, don't execute any actions
-      if (hotkeysPaused) {
+      if (hotkeysPauseCount > 0) {
         return;
       }
 
@@ -124,14 +124,14 @@ const getRegisteredHotkeys = (): (HotkeyDefinition & { currentKey: string })[] =
  * Useful when modals or input-heavy components are open.
  */
 const pauseHotkeys = () => {
-  hotkeysPaused = true;
+  hotkeysPauseCount += 1;
 };
 
 /**
  * Resumes hotkey execution after being paused.
  */
 const resumeHotkeys = () => {
-  hotkeysPaused = false;
+  hotkeysPauseCount = Math.max(0, hotkeysPauseCount - 1);
 };
 
 /**
@@ -139,7 +139,7 @@ const resumeHotkeys = () => {
  * @returns True if hotkeys are paused, false otherwise.
  */
 const areHotkeysPaused = () => {
-  return hotkeysPaused;
+  return hotkeysPauseCount > 0;
 };
 
 const hotkeyManager = {
