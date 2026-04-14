@@ -10,7 +10,7 @@ import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
-import TransferImagesModal from './TransferImagesModal';
+import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
@@ -245,7 +245,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
 
-  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+  const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
       return;
     }

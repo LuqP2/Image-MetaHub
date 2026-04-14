@@ -32,7 +32,7 @@ import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
 import { useImageStacking } from '../hooks/useImageStacking';
 import TagManagerModal from './TagManagerModal';
-import TransferImagesModal from './TransferImagesModal';
+import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
@@ -1002,7 +1002,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
 
-  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+  const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
       return;
     }
