@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Settings, Bug, BarChart3, Crown, Sparkles, Layers, Layers2, Eye, EyeOff, ArrowLeft, Workflow } from 'lucide-react';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -7,7 +7,7 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { detectGeneratorFromLaunchCommand } from '../utils/detectGeneratorLaunch';
 
-type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections';
+type LibraryView = 'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui';
 
 interface HeaderProps {
     onOpenSettings: () => void;
@@ -326,6 +326,7 @@ const Header: React.FC<HeaderProps> = ({
       { id: 'model' as const, label: 'Model View' },
       { id: 'node' as const, label: 'Node View' },
       { id: 'collections' as const, label: 'Collections' },
+      { id: 'comfyui' as const, label: 'ComfyUI', icon: Workflow },
     ],
     [clustersCount]
   );
@@ -348,11 +349,15 @@ const Header: React.FC<HeaderProps> = ({
             <div className="min-w-0 max-w-full overflow-x-auto scrollbar-thin">
               <div className="app-top-segmented w-max">
                 {viewTabs.map((tab) => (
+                  (() => {
+                    const Icon = 'icon' in tab ? tab.icon : null;
+                    return (
                   <button
                     key={tab.id}
                     onClick={() => onLibraryViewChange(tab.id)}
                     className={`app-top-segment whitespace-nowrap ${libraryView === tab.id ? 'app-top-segment-active' : ''}`}
                   >
+                    {Icon && <Icon size={14} />}
                     <span>{tab.label}</span>
                     {tab.count ? (
                       <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
@@ -364,6 +369,8 @@ const Header: React.FC<HeaderProps> = ({
                       </span>
                     ) : null}
                   </button>
+                    );
+                  })()
                 ))}
               </div>
             </div>

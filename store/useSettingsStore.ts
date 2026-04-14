@@ -114,6 +114,9 @@ interface SettingsState {
   comfyUIEnabled: boolean;
   comfyUIServerUrl: string;
   comfyUILastConnectionStatus: 'unknown' | 'connected' | 'error';
+  comfyUIWorkspaceLastUrl: string;
+  comfyUIWorkspacePanelWidth: number;
+  comfyUIWorkspaceAutoOpenSelectedImage: boolean;
   generatorLaunchCommand: string;
   generatorLaunchWorkingDirectory: string;
 
@@ -148,6 +151,9 @@ interface SettingsState {
   setComfyUIEnabled: (value: boolean) => void;
   setComfyUIServerUrl: (url: string) => void;
   setComfyUIConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setComfyUIWorkspaceLastUrl: (url: string) => void;
+  setComfyUIWorkspacePanelWidth: (width: number) => void;
+  setComfyUIWorkspaceAutoOpenSelectedImage: (value: boolean) => void;
   setGeneratorLaunchCommand: (command: string) => void;
   setGeneratorLaunchWorkingDirectory: (directory: string) => void;
   resetState: () => void;
@@ -195,6 +201,9 @@ export const useSettingsStore = create<SettingsState>()(
       comfyUIEnabled: true,
       comfyUIServerUrl: 'http://127.0.0.1:8188',
       comfyUILastConnectionStatus: 'unknown',
+      comfyUIWorkspaceLastUrl: '',
+      comfyUIWorkspacePanelWidth: 360,
+      comfyUIWorkspaceAutoOpenSelectedImage: true,
       generatorLaunchCommand: '',
       generatorLaunchWorkingDirectory: '',
 
@@ -256,6 +265,9 @@ export const useSettingsStore = create<SettingsState>()(
       setComfyUIEnabled: (value) => set({ comfyUIEnabled: !!value }),
       setComfyUIServerUrl: (url) => set({ comfyUIServerUrl: url }),
       setComfyUIConnectionStatus: (status) => set({ comfyUILastConnectionStatus: status }),
+      setComfyUIWorkspaceLastUrl: (url) => set({ comfyUIWorkspaceLastUrl: url }),
+      setComfyUIWorkspacePanelWidth: (width) => set({ comfyUIWorkspacePanelWidth: Math.min(Math.max(Math.round(width) || 360, 280), 560) }),
+      setComfyUIWorkspaceAutoOpenSelectedImage: (value) => set({ comfyUIWorkspaceAutoOpenSelectedImage: !!value }),
       setGeneratorLaunchCommand: (command) => set({ generatorLaunchCommand: command }),
       setGeneratorLaunchWorkingDirectory: (directory) => set({ generatorLaunchWorkingDirectory: directory }),
 
@@ -289,6 +301,9 @@ export const useSettingsStore = create<SettingsState>()(
         comfyUIEnabled: true,
         comfyUIServerUrl: 'http://127.0.0.1:8188',
         comfyUILastConnectionStatus: 'unknown',
+        comfyUIWorkspaceLastUrl: '',
+        comfyUIWorkspacePanelWidth: 360,
+        comfyUIWorkspaceAutoOpenSelectedImage: true,
         generatorLaunchCommand: '',
         generatorLaunchWorkingDirectory: '',
       }),
@@ -358,6 +373,26 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.comfyUIEnabled !== 'boolean') {
           state.comfyUIEnabled = true;
+        }
+
+        if (state && typeof state.comfyUIWorkspaceLastUrl !== 'string') {
+          state.comfyUIWorkspaceLastUrl = '';
+        }
+
+        if (
+          state &&
+          (typeof state.comfyUIWorkspacePanelWidth !== 'number' ||
+            !Number.isFinite(state.comfyUIWorkspacePanelWidth))
+        ) {
+          state.comfyUIWorkspacePanelWidth = 360;
+        }
+
+        if (state) {
+          state.comfyUIWorkspacePanelWidth = Math.min(Math.max(Math.round(state.comfyUIWorkspacePanelWidth), 280), 560);
+        }
+
+        if (state && typeof state.comfyUIWorkspaceAutoOpenSelectedImage !== 'boolean') {
+          state.comfyUIWorkspaceAutoOpenSelectedImage = true;
         }
 
         if (state && typeof state.generatorLaunchCommand !== 'string') {

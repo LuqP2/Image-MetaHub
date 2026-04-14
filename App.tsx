@@ -32,6 +32,7 @@ import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import NodeView from './components/NodeView';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
+import ComfyUIWorkspace from './components/ComfyUIWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
 import BatchExportModal from './components/BatchExportModal';
@@ -257,6 +258,10 @@ export default function App() {
   const imageLookup = useMemo(() => {
     const lookup = new Map<string, IndexedImage>();
 
+    for (const image of safeImages) {
+      lookup.set(image.id, image);
+    }
+
     for (const image of safeFilteredImages) {
       lookup.set(image.id, image);
     }
@@ -268,7 +273,7 @@ export default function App() {
     }
 
     return lookup;
-  }, [safeClusterNavigationContext, safeFilteredImages]);
+  }, [safeClusterNavigationContext, safeFilteredImages, safeImages]);
 
   // --- Settings Store State ---
   const {
@@ -280,6 +285,7 @@ export default function App() {
     setLastViewedVersion,
     globalAutoWatch,
     generatorLaunchCommand,
+    comfyUIWorkspaceAutoOpenSelectedImage,
   } = useSettingsStore();
 
   // --- Local UI State ---
@@ -336,12 +342,13 @@ export default function App() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('0.10.0');
   const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections'>('library');
+  const [libraryView, setLibraryView] = useState<'library' | 'smart' | 'model' | 'node' | 'collections' | 'comfyui'>('library');
   const [nodeViewVisibleImages, setNodeViewVisibleImages] = useState<IndexedImage[]>([]);
   const [nodeViewResultImages, setNodeViewResultImages] = useState<IndexedImage[]>([]);
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
+  const [comfyUIWorkspaceImageId, setComfyUIWorkspaceImageId] = useState<string | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
@@ -1368,6 +1375,13 @@ export default function App() {
     setIsBatchExportModalOpen(true);
   }, [canUseBatchExport, showProModal]);
 
+  const handleOpenComfyUIWorkspace = useCallback((image?: IndexedImage | null) => {
+    if (image) {
+      setComfyUIWorkspaceImageId(image.id);
+    }
+    setLibraryView('comfyui');
+  }, []);
+
   const activeCollection = useMemo(
     () => safeCollections.find((collection) => collection.id === activeCollectionId) ?? null,
     [activeCollectionId, safeCollections],
@@ -1404,6 +1418,23 @@ export default function App() {
       ? nodeViewResultImages
       : safeFilteredImages;
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const comfyUIWorkspaceImage = useMemo(() => {
+    if (comfyUIWorkspaceImageId) {
+      return imageLookup.get(comfyUIWorkspaceImageId) ?? null;
+    }
+
+    if (!comfyUIWorkspaceAutoOpenSelectedImage) {
+      return null;
+    }
+
+    return previewImage || selectedImage || null;
+  }, [
+    comfyUIWorkspaceAutoOpenSelectedImage,
+    comfyUIWorkspaceImageId,
+    imageLookup,
+    previewImage,
+    selectedImage,
+  ]);
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -1916,6 +1947,13 @@ export default function App() {
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onVisibleImagesChange={setNodeViewVisibleImages}
                     onResultImagesChange={handleNodeViewResultImagesChange}
+                  />
+                ) : libraryView === 'comfyui' ? (
+                  <ComfyUIWorkspace
+                    image={comfyUIWorkspaceImage}
+                    isActive={libraryView === 'comfyui' && openImageModalEntries.length === 0}
+                    onOpenQueue={() => setIsQueueOpen(true)}
+                    onOpenSettings={handleOpenGeneratorIntegrations}
                   />
                 ) : (
                   <SmartLibrary
