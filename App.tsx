@@ -1726,6 +1726,7 @@ export default function App() {
           width={rightSidebarWidth}
           isResizing={isRightSidebarResizing}
           onResizeStart={handleRightSidebarResizeStart}
+          onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
         />
       )}
 
@@ -1868,6 +1869,7 @@ export default function App() {
                       setSelectedImageForGeneration(image);
                       setIsComfyUIGenerateModalOpen(true);
                     }}
+                    onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                     onCompare={(images) => {
                       setComparisonImages(images);
                       openComparisonModal();
@@ -1891,6 +1893,7 @@ export default function App() {
                           totalPages={totalPages}
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
+                          onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                         />
                       ) : (
                         <ImageTable
@@ -1898,6 +1901,7 @@ export default function App() {
                           onImageClick={handleImageSelection}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
+                          onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -1923,6 +1927,7 @@ export default function App() {
                         totalPages={totalPages}
                         onPageChange={setCurrentPage}
                         onBatchExport={handleOpenBatchExport}
+                        onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                         activeCollection={activeCollection}
                         isCollectionsView
                       />
@@ -1932,6 +1937,7 @@ export default function App() {
                         onImageClick={handleImageSelection}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
+                        onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                         activeCollection={activeCollection}
                         isCollectionsView
                       />
@@ -1943,6 +1949,7 @@ export default function App() {
                     selectedImages={safeSelectedImages}
                     onImageClick={handleImageSelection}
                     onBatchExport={handleOpenBatchExport}
+                    onOpenComfyUIWorkspace={handleOpenComfyUIWorkspace}
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onVisibleImagesChange={setNodeViewVisibleImages}
@@ -2014,6 +2021,10 @@ export default function App() {
             initialWindowOffset={modal.initialWindowOffset}
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
+            onOpenComfyUIWorkspace={(image) => {
+              handleOpenComfyUIWorkspace(image);
+              handleMinimizeImageModal(modal.modalId);
+            }}
           />
         ))}
 

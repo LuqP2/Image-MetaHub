@@ -15,7 +15,8 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Package,
   Play,
   Tag,
-  RefreshCw
+  RefreshCw,
+  Workflow
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
@@ -674,6 +675,7 @@ interface ImageGridProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   onBatchExport: () => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   // Deduplication support (optional)
@@ -694,6 +696,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   totalPages,
   onPageChange,
   onBatchExport,
+  onOpenComfyUIWorkspace,
   activeCollection = null,
   isCollectionsView = false,
   markedBestIds,
@@ -854,6 +857,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setIsComfyUIGenerateModalOpen(true);
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, canUseComfyUI, showProModal]);
+
+  const openComfyUIWorkspace = useCallback(() => {
+    if (!contextMenu.image) return;
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+    onOpenComfyUIWorkspace?.(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, canUseComfyUI, onOpenComfyUIWorkspace, showProModal]);
 
   const selectForComparison = useCallback(() => {
     if (!contextMenu.image) return;
@@ -1684,6 +1698,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span className="flex-1">Generate with ComfyUI</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
+            onClick={openComfyUIWorkspace}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Workflow className="w-4 h-4" />
+            <span className="flex-1">Open in ComfyUI Workspace</span>
             {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
         </div>

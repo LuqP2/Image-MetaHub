@@ -15,6 +15,7 @@ interface NodeViewProps {
   selectedImages: Set<string>;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   onBatchExport: () => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
   onVisibleImagesChange?: (images: IndexedImage[]) => void;
@@ -29,6 +30,7 @@ export const NodeView: React.FC<NodeViewProps> = ({
   selectedImages,
   onImageClick,
   onBatchExport,
+  onOpenComfyUIWorkspace,
   isQueueOpen = false,
   onToggleQueue,
   onVisibleImagesChange,
@@ -281,6 +283,7 @@ export const NodeView: React.FC<NodeViewProps> = ({
                 totalPages={totalPages}
                 onPageChange={setPage}
                 onBatchExport={onBatchExport}
+                onOpenComfyUIWorkspace={onOpenComfyUIWorkspace}
               />
             ) : (
               <ImageTable
@@ -288,6 +291,7 @@ export const NodeView: React.FC<NodeViewProps> = ({
                 onImageClick={onImageClick}
                 selectedImages={selectedImages}
                 onBatchExport={onBatchExport}
+                onOpenComfyUIWorkspace={onOpenComfyUIWorkspace}
               />
             )}
           </div>

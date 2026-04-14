@@ -32,6 +32,7 @@ interface GridToolbarProps {
   onDeleteSelected: () => void;
   onGenerateA1111: (image: IndexedImage) => void;
   onGenerateComfyUI: (image: IndexedImage) => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   onCompare: (images: IndexedImage[]) => void;
   onBatchExport: () => void;
 }
@@ -58,6 +59,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onDeleteSelected,
   onGenerateA1111,
   onGenerateComfyUI,
+  onOpenComfyUIWorkspace,
   onCompare,
   onBatchExport,
 }) => {
@@ -197,6 +199,18 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
     }
     if (firstSelectedImage) {
       onGenerateComfyUI(firstSelectedImage);
+    }
+    setGenerateDropdownOpen(false);
+  };
+
+  const handleOpenComfyUIWorkspace = () => {
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      setGenerateDropdownOpen(false);
+      return;
+    }
+    if (firstSelectedImage) {
+      onOpenComfyUIWorkspace?.(firstSelectedImage);
     }
     setGenerateDropdownOpen(false);
   };
@@ -401,6 +415,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         with ComfyUI
+                      </button>
+                      <button
+                        onClick={handleOpenComfyUIWorkspace}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Open ComfyUI workspace
                       </button>
                     </div>
                   )}

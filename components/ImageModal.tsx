@@ -80,6 +80,7 @@ interface ImageModalProps {
   initialWindowOffset?: number;
   isMinimized?: boolean;
   onMinimize?: () => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
 }
 
 interface ModalWindowState {
@@ -522,6 +523,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   initialWindowOffset = 0,
   isMinimized = false,
   onMinimize,
+  onOpenComfyUIWorkspace,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -2498,6 +2500,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Sparkles className="w-4 h-4" />
                 <span>View Workflow / Generate</span>
+                {!canUseComfyUI && initialized && <ProBadge size="sm" />}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!canUseComfyUI) {
+                    showProModal('comfyui');
+                    return;
+                  }
+                  onOpenComfyUIWorkspace?.(image);
+                }}
+                className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200 mb-2"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Open in ComfyUI Workspace</span>
                 {!canUseComfyUI && initialized && <ProBadge size="sm" />}
               </button>
 

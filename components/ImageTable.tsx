@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star, Workflow } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,6 +22,7 @@ interface ImageTableProps {
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
   selectedImages: Set<string>;
   onBatchExport: () => void;
+  onOpenComfyUIWorkspace?: (image: IndexedImage) => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
 }
@@ -64,6 +65,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   onImageClick,
   selectedImages,
   onBatchExport,
+  onOpenComfyUIWorkspace,
   activeCollection = null,
   isCollectionsView = false,
 }) => {
@@ -86,7 +88,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
   const removeImagesFromCollection = useImageStore((state) => state.removeImagesFromCollection);
   const updateCollection = useImageStore((state) => state.updateCollection);
-  const { canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
+  const { canUseComfyUI, canUseFileManagement, showProModal, initialized, canUseDuringTrialOrPro } = useFeatureAccess();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
   const {
@@ -226,6 +228,20 @@ const ImageTable: React.FC<ImageTableProps> = ({
     hideContextMenu();
     await reparseImages(targetImages);
   }, [getContextTargetImages, hideContextMenu, reparseImages]);
+
+  const handleOpenComfyUIWorkspace = useCallback(() => {
+    if (!contextMenu.image) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseComfyUI) {
+      showProModal('comfyui');
+      hideContextMenu();
+      return;
+    }
+    onOpenComfyUIWorkspace?.(contextMenu.image);
+    hideContextMenu();
+  }, [canUseComfyUI, contextMenu.image, hideContextMenu, onOpenComfyUIWorkspace, showProModal]);
 
   const openTransferModal = useCallback((mode: 'copy' | 'move') => {
     const targetImages = getContextTargetImages();
@@ -554,6 +570,18 @@ const ImageTable: React.FC<ImageTableProps> = ({
               </div>
             )}
           </div>
+
+          <button
+            onClick={handleOpenComfyUIWorkspace}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseComfyUI && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Workflow className="w-4 h-4" />
+            <span className="flex-1">Open in ComfyUI Workspace</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <div className="border-t border-gray-600 my-1"></div>
 
           {isCollectionsView && activeCollection && (
             <>
