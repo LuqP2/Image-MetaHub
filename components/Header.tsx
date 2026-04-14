@@ -333,8 +333,8 @@ const Header: React.FC<HeaderProps> = ({
   const utilityButtonClassName = 'app-top-icon-button';
 
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-4 py-2.5 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
-      <div className="container mx-auto flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-50 border-b border-gray-800/70 bg-gray-900/85 px-3 py-1 backdrop-blur-md shadow-lg shadow-black/20 transition-all duration-300">
+      <div className="container mx-auto flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <button
             onClick={onOpenLicense}
@@ -437,7 +437,7 @@ const Header: React.FC<HeaderProps> = ({
           <button
             onClick={handleLaunchGenerator}
             disabled={isLaunchingGenerator}
-            className={`app-top-pill h-9 px-3 text-xs font-semibold shadow-sm ${generatorButtonClassName}`}
+            className={`app-top-pill text-xs font-semibold shadow-sm ${generatorButtonClassName}`}
             title={generatorButtonTitle}
           >
             <Sparkles size={14} className={isLaunchingGenerator ? 'animate-pulse' : ''} />
@@ -449,7 +449,7 @@ const Header: React.FC<HeaderProps> = ({
               href="https://imagemetahub.com/getpro"
               target="_blank"
               rel="noopener noreferrer"
-              className="app-top-pill hidden h-9 border-amber-700/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
+              className="app-top-pill hidden border-amber-700/30 bg-amber-500/10 text-xs font-semibold text-amber-200 hover:border-amber-600/40 hover:bg-amber-500/15 hover:text-amber-100 lg:inline-flex"
             >
               Get Pro
             </a>
@@ -458,7 +458,7 @@ const Header: React.FC<HeaderProps> = ({
           <div className="app-top-segmented">
             <button
               onClick={() => setEnableSafeMode(!enableSafeMode)}
-              className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent ${enableSafeMode ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : 'text-gray-500 hover:text-gray-200'}`}
+              className={`${utilityButtonClassName} border-transparent bg-transparent ${enableSafeMode ? 'border-accent/40 bg-accent/15 text-accent hover:border-accent/50 hover:bg-accent/20 hover:text-accent' : 'text-gray-500 hover:text-gray-200'}`}
               title={enableSafeMode ? 'Safe Mode on' : 'Safe Mode off'}
             >
               {enableSafeMode ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -467,7 +467,7 @@ const Header: React.FC<HeaderProps> = ({
               href="https://github.com/LuqP2/Image-MetaHub/issues/new"
               target="_blank"
               rel="noopener noreferrer"
-              className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
+              className={`${utilityButtonClassName} border-transparent bg-transparent`}
               title="Report a bug or provide feedback"
             >
               <Bug size={16} />
@@ -480,7 +480,7 @@ const Header: React.FC<HeaderProps> = ({
                   showProModal('analytics');
                 }
               }}
-              className={`${utilityButtonClassName} relative h-8 w-8 border-transparent bg-transparent`}
+              className={`${utilityButtonClassName} relative border-transparent bg-transparent`}
               title={canUseAnalytics ? 'Analytics (Pro)' : 'Analytics (Pro Feature) - start trial'}
             >
               <BarChart3 size={16} />
@@ -490,7 +490,7 @@ const Header: React.FC<HeaderProps> = ({
             </button>
             <button
               onClick={onOpenSettings}
-              className={`${utilityButtonClassName} h-8 w-8 border-transparent bg-transparent`}
+              className={`${utilityButtonClassName} border-transparent bg-transparent`}
               title="Open Settings"
             >
               <Settings size={16} />

@@ -1772,7 +1772,7 @@ export default function App() {
           onSubmit={handleSaveCurrentFilteredAsCollection}
         />
 
-        <main className="mx-auto p-4 flex-1 flex flex-col min-h-0 w-full">
+        <main className="mx-auto p-2 flex-1 flex flex-col min-h-0 w-full">
           {showGeneratorSetupNotice && (
             <div className="my-4 flex items-center justify-between gap-3 rounded-lg border border-blue-700/40 bg-blue-900/30 p-3 text-blue-100">
               <div className="flex-1 text-sm">

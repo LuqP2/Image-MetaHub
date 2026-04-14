@@ -339,44 +339,47 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950">
-      <div className="flex min-h-[48px] items-center justify-between gap-3 border-b border-gray-800 bg-gray-900 px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-medium ${connectionClasses}`}>
-            {viewState.isLoading || isCheckingConnection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
-            <span className="truncate">{comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'}</span>
+      <div className="flex min-h-[32px] items-center justify-between gap-2 border-b border-gray-800 bg-gray-900 px-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <div
+            className={`inline-flex h-5 w-5 items-center justify-center rounded border text-xs ${connectionClasses}`}
+            title={`${comfyUILastConnectionStatus === 'connected' ? 'Connected' : loadFailure ? 'Load failed' : 'ComfyUI'} - ${viewState.url || targetUrl}`}
+          >
+            {viewState.isLoading || isCheckingConnection ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
           </div>
-          <div className="min-w-0 text-xs text-gray-400">
-            <div className="truncate font-mono" title={viewState.url || targetUrl}>{viewState.url || targetUrl}</div>
-            {connectionMessage && <div className="truncate text-gray-500">{connectionMessage}</div>}
-          </div>
+          {connectionMessage && (
+            <div className="max-w-[360px] truncate text-[11px] text-gray-500" title={connectionMessage}>
+              {connectionMessage}
+            </div>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={togglePanelCollapsed}
-            className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800"
+            className="inline-flex h-6 items-center gap-1 rounded border border-gray-700 px-2 text-[11px] font-medium text-gray-200 hover:bg-gray-800"
             title={isPanelCollapsed ? 'Show IMH context panel' : 'Hide IMH context panel'}
           >
-            {isPanelCollapsed ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {isPanelCollapsed ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             <span>Context</span>
           </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back">
-            <ArrowLeft className="h-4 w-4" />
+          <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back">
+            <ArrowLeft className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward">
-            <ArrowRight className="h-4 w-4" />
+          <button onClick={() => window.electronAPI?.comfyUIViewGoForward?.()} disabled={!viewState.canGoForward} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Forward">
+            <ArrowRight className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => window.electronAPI?.comfyUIViewReload?.()} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Reload">
-            <RefreshCw className="h-4 w-4" />
+          <button onClick={() => window.electronAPI?.comfyUIViewReload?.()} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Reload">
+            <RefreshCw className="h-3.5 w-3.5" />
           </button>
-          <button onClick={openExternally} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally">
-            <ExternalLink className="h-4 w-4" />
+          <button onClick={openExternally} className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open externally">
+            <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <button onClick={testConnection} disabled={isCheckingConnection} className="rounded-md border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50">
-            {isCheckingConnection ? 'Checking...' : 'Reconnect'}
+          <button onClick={testConnection} disabled={isCheckingConnection} className="h-6 rounded border border-gray-700 px-2 text-[11px] font-medium text-gray-200 hover:bg-gray-800 disabled:opacity-50">
+            {isCheckingConnection ? '...' : 'Check'}
           </button>
-          <button onClick={launchGenerator} disabled={isLaunchingGenerator || !generatorLaunchCommand.trim()} className="rounded-md border border-purple-500/40 bg-purple-500/15 px-3 py-1.5 text-xs font-medium text-purple-100 hover:bg-purple-500/25 disabled:opacity-50" title={generatorLaunchCommand.trim() ? 'Run saved launch command' : 'Add a launch command in Settings > Integrations'}>
-            {isLaunchingGenerator ? 'Launching...' : 'Launch'}
+          <button onClick={launchGenerator} disabled={isLaunchingGenerator || !generatorLaunchCommand.trim()} className="h-6 rounded border border-purple-500/40 bg-purple-500/15 px-2 text-[11px] font-medium text-purple-100 hover:bg-purple-500/25 disabled:opacity-50" title={generatorLaunchCommand.trim() ? 'Run saved launch command' : 'Add a launch command in Settings > Integrations'}>
+            {isLaunchingGenerator ? '...' : 'Launch'}
           </button>
         </div>
       </div>
