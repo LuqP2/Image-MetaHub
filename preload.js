@@ -148,6 +148,28 @@ const electronAPI = {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   launchGenerator: (payload) => ipcRenderer.invoke('launch-generator', payload),
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
+  comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
+  comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),
+  comfyUIViewHide: () => ipcRenderer.invoke('comfy-view-hide'),
+  comfyUIViewSetBounds: (payload) => ipcRenderer.invoke('comfy-view-set-bounds', payload),
+  comfyUIViewReload: () => ipcRenderer.invoke('comfy-view-reload'),
+  comfyUIViewGoBack: () => ipcRenderer.invoke('comfy-view-go-back'),
+  comfyUIViewGoForward: () => ipcRenderer.invoke('comfy-view-go-forward'),
+  comfyUIViewGetState: () => ipcRenderer.invoke('comfy-view-get-state'),
+  onComfyUIViewStateChanged: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('comfy-view-state-changed', handler);
+    return () => {
+      ipcRenderer.removeListener('comfy-view-state-changed', handler);
+    };
+  },
+  onComfyUIViewLoadFailed: (callback) => {
+    const handler = (event, ...args) => callback(...args);
+    ipcRenderer.on('comfy-view-load-failed', handler);
+    return () => {
+      ipcRenderer.removeListener('comfy-view-load-failed', handler);
+    };
+  },
   getDefaultCachePath: () => ipcRenderer.invoke('get-default-cache-path'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),

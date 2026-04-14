@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, WebContentsView } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -21,6 +21,10 @@ import {
   normalizeLauncherWorkingDirectory,
   resolveLauncherWorkingDirectory,
 } from './utils/generatorLauncher.mjs';
+import {
+  isComfyUIViewUrlAllowed,
+  normalizeComfyUIViewUrl,
+} from './utils/comfyUIViewSecurity.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,6 +121,16 @@ async function readVideoMetadataWithFfprobe(filePath) {
 }
 
 let mainWindow;
+let comfyUIView = null;
+let comfyUIViewConfiguredUrl = '';
+let comfyUIViewState = {
+  url: '',
+  title: '',
+  isLoading: false,
+  canGoBack: false,
+  canGoForward: false,
+  visible: false,
+};
 let skippedVersions = new Set();
 let isManualUpdateCheck = false;
 
@@ -358,6 +372,179 @@ function logRendererCrash(details = {}) {
   }
 }
 // --- End Settings Management ---
+
+function sanitizeViewBounds(bounds = {}) {
+  const numberOrZero = (value) => Number.isFinite(value) ? Math.round(value) : 0;
+  return {
+    x: Math.max(0, numberOrZero(bounds.x)),
+    y: Math.max(0, numberOrZero(bounds.y)),
+    width: Math.max(0, numberOrZero(bounds.width)),
+    height: Math.max(0, numberOrZero(bounds.height)),
+  };
+}
+
+function updateComfyUIViewState(patch = {}) {
+  const webContents = comfyUIView?.webContents;
+  comfyUIViewState = {
+    ...comfyUIViewState,
+    ...patch,
+    ...(webContents
+      ? {
+          url: webContents.getURL(),
+          title: webContents.getTitle(),
+          isLoading: webContents.isLoading(),
+          canGoBack: webContents.canGoBack(),
+          canGoForward: webContents.canGoForward(),
+        }
+      : {}),
+  };
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('comfy-view-state-changed', comfyUIViewState);
+  }
+
+  return comfyUIViewState;
+}
+
+function sendComfyUIViewLoadFailed(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('comfy-view-load-failed', payload);
+  }
+}
+
+function isComfyNavigationAllowed(url) {
+  return isComfyUIViewUrlAllowed(url, comfyUIViewConfiguredUrl);
+}
+
+async function openExternalIfSafe(url) {
+  const parsed = normalizeComfyUIViewUrl(url);
+  if (parsed) {
+    await shell.openExternal(parsed.toString());
+  }
+}
+
+function configureComfyUIViewHandlers(view) {
+  const contents = view.webContents;
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isComfyNavigationAllowed(url)) {
+      return { action: 'allow' };
+    }
+
+    openExternalIfSafe(url).catch((error) => {
+      console.warn('Failed to open external ComfyUI URL:', error);
+    });
+    return { action: 'deny' };
+  });
+
+  contents.on('will-navigate', (event, url) => {
+    if (isComfyNavigationAllowed(url)) {
+      return;
+    }
+
+    event.preventDefault();
+    openExternalIfSafe(url).catch((error) => {
+      console.warn('Failed to open external ComfyUI navigation:', error);
+    });
+  });
+
+  contents.on('did-start-loading', () => updateComfyUIViewState({ isLoading: true }));
+  contents.on('did-stop-loading', () => updateComfyUIViewState({ isLoading: false }));
+  contents.on('did-navigate', () => updateComfyUIViewState());
+  contents.on('did-navigate-in-page', () => updateComfyUIViewState());
+  contents.on('page-title-updated', () => updateComfyUIViewState());
+  contents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) {
+      return;
+    }
+
+    sendComfyUIViewLoadFailed({
+      errorCode,
+      errorDescription,
+      url: validatedURL,
+    });
+    updateComfyUIViewState({ isLoading: false });
+  });
+}
+
+function ensureComfyUIView() {
+  if (comfyUIView && !comfyUIView.webContents.isDestroyed()) {
+    return comfyUIView;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error('Main window is not available.');
+  }
+
+  if (!WebContentsView) {
+    throw new Error('Embedded ComfyUI view is not supported by this Electron version.');
+  }
+
+  comfyUIView = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      partition: 'persist:imagemetahub-comfyui',
+      backgroundThrottling: false,
+    },
+  });
+
+  comfyUIView.setVisible(false);
+  mainWindow.contentView.addChildView(comfyUIView);
+  configureComfyUIViewHandlers(comfyUIView);
+  updateComfyUIViewState({ visible: false });
+  return comfyUIView;
+}
+
+async function openComfyUIView({ url, bounds } = {}) {
+  const parsed = normalizeComfyUIViewUrl(url);
+  if (!parsed) {
+    return { success: false, error: 'Invalid ComfyUI URL.' };
+  }
+
+  comfyUIViewConfiguredUrl = parsed.toString();
+  const view = ensureComfyUIView();
+
+  if (bounds) {
+    view.setBounds(sanitizeViewBounds(bounds));
+  }
+
+  view.setVisible(true);
+  updateComfyUIViewState({ visible: true });
+
+  const currentUrl = view.webContents.getURL();
+  if (!currentUrl || !isComfyNavigationAllowed(currentUrl)) {
+    await view.webContents.loadURL(parsed.toString());
+  }
+
+  return { success: true, state: updateComfyUIViewState({ visible: true }) };
+}
+
+function showComfyUIView(bounds) {
+  const view = ensureComfyUIView();
+  if (bounds) {
+    view.setBounds(sanitizeViewBounds(bounds));
+  }
+  view.setVisible(true);
+  return { success: true, state: updateComfyUIViewState({ visible: true }) };
+}
+
+function hideComfyUIView() {
+  if (comfyUIView && !comfyUIView.webContents.isDestroyed()) {
+    comfyUIView.setVisible(false);
+  }
+  return { success: true, state: updateComfyUIViewState({ visible: false }) };
+}
+
+function setComfyUIViewBounds(bounds) {
+  if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+    return { success: false, error: 'ComfyUI view is not open.' };
+  }
+  comfyUIView.setBounds(sanitizeViewBounds(bounds));
+  return { success: true, state: updateComfyUIViewState() };
+}
 
 const launcherScriptsPath = path.join(app.getPath('userData'), 'launchers');
 async function writeLauncherScript(command) {
@@ -965,6 +1152,18 @@ async function createWindow(startupDirectory = null) {
     return { action: 'deny' };
   });
 
+  mainWindow.on('minimize', () => {
+    hideComfyUIView();
+  });
+
+  mainWindow.on('closed', () => {
+    if (comfyUIView && !comfyUIView.webContents.isDestroyed()) {
+      comfyUIView.webContents.close();
+    }
+    comfyUIView = null;
+    mainWindow = null;
+  });
+
   mainWindow.webContents.on('context-menu', (_event, params) => {
     if (!params.isEditable) {
       return;
@@ -1000,11 +1199,6 @@ async function createWindow(startupDirectory = null) {
       event.preventDefault();
       adjustZoom(-ZOOM_STEP);
     }
-  });
-
-  // Handle window closed
-  mainWindow.on('closed', () => {
-    mainWindow = null;
   });
 
   let persistWindowStateTimer = null;
@@ -1400,6 +1594,82 @@ function setupFileOperationHandlers() {
     } catch (error) {
       return { success: false, error: error?.message || 'Failed to open external URL.' };
     }
+  });
+
+  ipcMain.handle('comfy-view-open', async (event, payload) => {
+    try {
+      return await openComfyUIView(payload);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to open embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-show', async (event, payload) => {
+    try {
+      return showComfyUIView(payload?.bounds);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to show embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-hide', async () => {
+    try {
+      return hideComfyUIView();
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to hide embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-set-bounds', async (event, payload) => {
+    try {
+      return setComfyUIViewBounds(payload?.bounds ?? payload);
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to resize embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-reload', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      comfyUIView.webContents.reload();
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to reload embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-go-back', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      if (comfyUIView.webContents.canGoBack()) {
+        comfyUIView.webContents.goBack();
+      }
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to navigate embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-go-forward', async () => {
+    try {
+      if (!comfyUIView || comfyUIView.webContents.isDestroyed()) {
+        return { success: false, error: 'ComfyUI view is not open.' };
+      }
+      if (comfyUIView.webContents.canGoForward()) {
+        comfyUIView.webContents.goForward();
+      }
+      return { success: true, state: updateComfyUIViewState() };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Failed to navigate embedded ComfyUI.' };
+    }
+  });
+
+  ipcMain.handle('comfy-view-get-state', async () => {
+    return { success: true, state: updateComfyUIViewState() };
   });
 
   ipcMain.handle('get-default-cache-path', () => {
