@@ -371,7 +371,7 @@ export default function App() {
       setNodeViewResultImages([]);
     }
   }, [libraryView, nodeViewResultImages.length]);
-  const hasRightSidebar = Boolean(previewImage || isQueueOpen);
+  const hasRightSidebar = Boolean(isQueueOpen || (previewImage && libraryView !== 'comfyui'));
   const { leftWidth: sidebarWidth, rightWidth: rightSidebarWidth } = useMemo(
     () =>
       resolveSidebarWidths({
@@ -1520,6 +1520,20 @@ export default function App() {
       }>;
   }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
   const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
+  const shouldShowEmbeddedComfyUIView =
+    libraryView === 'comfyui' &&
+    !hasVisibleImageModal &&
+    !isSettingsModalOpen &&
+    !isHotkeyHelpOpen &&
+    !isCommandPaletteOpen &&
+    !isChangelogModalOpen &&
+    !isAnalyticsOpen &&
+    !isComparisonModalOpen &&
+    !isBatchExportModalOpen &&
+    !isSaveFilteredCollectionModalOpen &&
+    !isA1111GenerateModalOpen &&
+    !isComfyUIGenerateModalOpen &&
+    !proModalOpen;
 
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -1958,7 +1972,7 @@ export default function App() {
                 ) : libraryView === 'comfyui' ? (
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}
-                    isActive={libraryView === 'comfyui' && openImageModalEntries.length === 0}
+                    isActive={shouldShowEmbeddedComfyUIView}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenSettings={handleOpenGeneratorIntegrations}
                   />

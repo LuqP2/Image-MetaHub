@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle,
   Clipboard,
   ExternalLink,
@@ -37,6 +39,8 @@ const DEFAULT_VIEW_STATE: ComfyUIViewState = {
   canGoForward: false,
   visible: false,
 };
+
+const PANEL_COLLAPSED_STORAGE_KEY = 'image-metahub-comfyui-workspace-panel-collapsed';
 
 const formatValue = (value: unknown): string => {
   if (value === null || value === undefined || value === '') {
@@ -80,6 +84,12 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
   const [isLaunchingGenerator, setIsLaunchingGenerator] = useState(false);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    return window.localStorage.getItem(PANEL_COLLAPSED_STORAGE_KEY) === 'true';
+  });
 
   const comfyUIServerUrl = useSettingsStore((state) => state.comfyUIServerUrl);
   const comfyUILastConnectionStatus = useSettingsStore((state) => state.comfyUILastConnectionStatus);
@@ -97,6 +107,16 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const metadata = getWorkflowMetadata(image);
   const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.comfyUIViewOpen);
   const targetUrl = comfyUIWorkspaceLastUrl || comfyUIServerUrl;
+
+  const togglePanelCollapsed = useCallback(() => {
+    setIsPanelCollapsed((current) => {
+      const next = !current;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(PANEL_COLLAPSED_STORAGE_KEY, String(next));
+      }
+      return next;
+    });
+  }, []);
 
   const connectionClasses = useMemo(() => {
     if (comfyUILastConnectionStatus === 'connected') {
@@ -282,6 +302,9 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   };
 
   const handlePanelResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isPanelCollapsed) {
+      return;
+    }
     const resizeState = resizeStateRef.current;
     if (!resizeState) {
       return;
@@ -329,6 +352,14 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={togglePanelCollapsed}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-800"
+            title={isPanelCollapsed ? 'Show IMH context panel' : 'Hide IMH context panel'}
+          >
+            {isPanelCollapsed ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            <span>Context</span>
+          </button>
           <button onClick={() => window.electronAPI?.comfyUIViewGoBack?.()} disabled={!viewState.canGoBack} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-40" title="Back">
             <ArrowLeft className="h-4 w-4" />
           </button>
@@ -366,24 +397,47 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
           )}
         </div>
 
-        <div
-          className="w-1 cursor-ew-resize bg-gray-800 hover:bg-purple-500/50"
-          onPointerDown={beginPanelResize}
-          onPointerMove={handlePanelResize}
-          onPointerUp={endPanelResize}
-          onPointerCancel={endPanelResize}
-          title="Resize ComfyUI context panel"
-        />
+        {!isPanelCollapsed && (
+          <div
+            className="w-1 cursor-ew-resize bg-gray-800 hover:bg-purple-500/50"
+            onPointerDown={beginPanelResize}
+            onPointerMove={handlePanelResize}
+            onPointerUp={endPanelResize}
+            onPointerCancel={endPanelResize}
+            title="Resize ComfyUI context panel"
+          />
+        )}
 
-        <aside className="min-h-0 overflow-y-auto border-l border-gray-800 bg-gray-900/95 p-4" style={{ width: panelWidth }}>
+        <aside
+          className={`min-h-0 border-l border-gray-800 bg-gray-900/95 transition-[width] duration-200 ${
+            isPanelCollapsed ? 'overflow-hidden p-0' : 'overflow-y-auto p-4'
+          }`}
+          style={{ width: isPanelCollapsed ? 44 : panelWidth }}
+        >
+          {isPanelCollapsed ? (
+            <button
+              onClick={togglePanelCollapsed}
+              className="flex h-full w-full items-start justify-center pt-3 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+              title="Show IMH context panel"
+              aria-label="Show IMH context panel"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          ) : (
+          <>
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-gray-100">IMH Context</h2>
               <p className="text-xs text-gray-500">API-first workflow handoff</p>
             </div>
-            <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings">
-              <SlidersHorizontal className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button onClick={togglePanelCollapsed} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Hide IMH context panel">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button onClick={onOpenSettings} className="rounded p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100" title="Open integration settings">
+                <SlidersHorizontal className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {!image || !metadata ? (
@@ -473,6 +527,8 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
                 />
               </div>
             </div>
+          )}
+          </>
           )}
         </aside>
       </div>
