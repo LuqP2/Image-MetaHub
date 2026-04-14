@@ -1925,17 +1925,29 @@ function setupFileOperationHandlers() {
       const normalizedFilePath = path.normalize(filePath);
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
-      // Verify the file exists before trying to show it
+      // Verify the path exists before trying to open or show it
+      let stats;
       try {
-        await fs.access(normalizedFilePath);
-        console.log('✅ File exists:', normalizedFilePath);
+        stats = await fs.stat(normalizedFilePath);
+        console.log('✅ Path exists:', normalizedFilePath);
       } catch (accessError) {
-        console.error('❌ File does not exist:', normalizedFilePath, accessError);
-        return { success: false, error: `File does not exist: ${normalizedFilePath}` };
+        console.error('❌ Path does not exist:', normalizedFilePath, accessError);
+        return { success: false, error: `Path does not exist: ${normalizedFilePath}` };
+      }
+
+      if (stats.isDirectory()) {
+        const openError = await shell.openPath(normalizedFilePath);
+        if (openError) {
+          console.error('❌ shell.openPath failed for:', normalizedFilePath, openError);
+          return { success: false, error: openError };
+        }
+
+        console.log('✅ shell.openPath called for directory:', normalizedFilePath);
+        return { success: true };
       }
 
       shell.showItemInFolder(normalizedFilePath);
-      console.log('✅ shell.showItemInFolder called for:', normalizedFilePath);
+      console.log('✅ shell.showItemInFolder called for file:', normalizedFilePath);
 
       return { success: true };
     } catch (error) {
