@@ -196,6 +196,35 @@ describe('ImageGrid context menu', () => {
     expect(showContextMenuMock.mock.calls[0]?.[2]).toBe('D:/library');
   });
 
+  it('activates keyboard navigation when the thumbnail grid receives focus', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    const { container } = render(<Harness images={images} />);
+    const grid = container.querySelector<HTMLElement>('[data-area="grid"]');
+    expect(grid).toBeTruthy();
+
+    fireEvent.focus(grid!);
+    fireEvent.keyDown(document, { key: 'ArrowRight' });
+
+    expect(useImageStore.getState().focusedImageIndex).toBe(0);
+    expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
   it('shows collection actions in the image context menu', () => {
     const image = createImage({ id: 'img-1', name: 'alpha.png' });
     contextMenuStateMock.visible = true;

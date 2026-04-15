@@ -713,7 +713,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   // Decide what to render based on stacking
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
-  const gridRef = useRef<HTMLDivElement>(null);
+  const gridScopeRef = useRef<HTMLDivElement>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const virtualGridRef = useRef<React.ElementRef<typeof Grid>>(null);
   const gridKeyboardActiveRef = useRef(false);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
@@ -798,6 +800,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     copyRawMetadata,
     addTag
   } = useContextMenu();
+
+  const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
+
+  const setNonVirtualGridRef = useCallback((node: HTMLDivElement | null) => {
+    gridScopeRef.current = node;
+    gridScrollRef.current = node;
+  }, []);
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -1059,11 +1068,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
 
     e.preventDefault();
-    const rect = gridRef.current?.getBoundingClientRect();
+    const scrollElement = getGridScrollElement();
+    const rect = scrollElement?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+    const x = e.clientX - rect.left + (scrollElement?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (scrollElement?.scrollTop || 0);
 
     setIsSelecting(true);
     setSelectionStart({ x, y });
@@ -1071,17 +1081,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     // Preserve the current selection for additive/range marquee operations.
     const currentSelection = preserveExistingSelection ? new Set(selectedImages) : new Set<string>();
     setInitialSelectedImages(currentSelection);
-  }, [selectedImages]);
+  }, [getGridScrollElement, selectedImages]);
 
   useEffect(() => {
     const handleGlobalPointerDown = (event: MouseEvent) => {
-      if (!gridRef.current?.contains(event.target as Node)) {
+      if (!gridScopeRef.current?.contains(event.target as Node)) {
         gridKeyboardActiveRef.current = false;
       }
     };
 
     const handleGlobalFocusIn = (event: FocusEvent) => {
-      if (!gridRef.current?.contains(event.target as Node)) {
+      if (!gridScopeRef.current?.contains(event.target as Node)) {
         gridKeyboardActiveRef.current = false;
       }
     };
@@ -1108,11 +1118,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     // Schedule the intersection calculation for the next animation frame
     rafIdRef.current = requestAnimationFrame(() => {
-      const rect = gridRef.current?.getBoundingClientRect();
+      const scrollElement = getGridScrollElement();
+      const rect = scrollElement?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-      const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+      const x = e.clientX - rect.left + (scrollElement?.scrollLeft || 0);
+      const y = e.clientY - rect.top + (scrollElement?.scrollTop || 0);
 
       setSelectionEnd({ x, y });
 
@@ -1168,8 +1179,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         // DOM-based selection for existing rendered items
         imageCardsRef.current.forEach((element, imageId) => {
           const imageRect = element.getBoundingClientRect();
-          const scrollTop = gridRef.current?.scrollTop || 0;
-          const scrollLeft = gridRef.current?.scrollLeft || 0;
+          const scrollTop = scrollElement?.scrollTop || 0;
+          const scrollLeft = scrollElement?.scrollLeft || 0;
   
           const imageBox = {
             left: imageRect.left - rect.left + scrollLeft,
@@ -1195,7 +1206,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
+  }, [getGridScrollElement, isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1334,6 +1345,35 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
+
+  useEffect(() => {
+    if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {
+      return;
+    }
+
+    if (isInfinite) {
+      const columnCount = Math.max(1, columnCountRef.current);
+      virtualGridRef.current?.scrollToItem({
+        rowIndex: Math.floor(focusedImageIndex / columnCount),
+        columnIndex: focusedImageIndex % columnCount,
+        align: 'auto',
+      });
+      return;
+    }
+
+    const focusedImage = images[focusedImageIndex];
+    if (!focusedImage) {
+      return;
+    }
+
+    const focusedElement = imageCardsRef.current.get(focusedImage.id);
+    if (typeof focusedElement?.scrollIntoView === 'function') {
+      focusedElement.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+  }, [focusedImageIndex, images, isInfinite]);
 
   // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
@@ -1872,6 +1912,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return (
       <div className="flex flex-col h-full w-full">
          <div
+            ref={gridScopeRef}
             className="flex-1 outline-none"
             style={{ position: 'relative' }}
             data-area="grid"
@@ -1919,6 +1960,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
                 return (
                   <Grid
+                    ref={virtualGridRef}
                     columnCount={safeColumnCount}
                     columnWidth={imageSize + GAP_SIZE}
                     height={height}
@@ -1927,7 +1969,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     rowCount={rowCount}
                     rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
                     width={width}
-                    outerRef={gridRef}
+                    outerRef={gridScrollRef}
                     className="no-scrollbar-if-needed"
                     itemData={cellData}
                     itemKey={({ columnIndex, rowIndex, data }) => {
@@ -1976,7 +2018,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             className="absolute pointer-events-none z-30"
             style={{
               left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
-              top: `${Math.min(selectionStart.y, selectionEnd.y) - (gridRef.current?.scrollTop || 0)}px`,
+              top: `${Math.min(selectionStart.y, selectionEnd.y) - (getGridScrollElement()?.scrollTop || 0)}px`,
               width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
               height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
               border: '2px solid rgba(59, 130, 246, 0.8)',
@@ -1995,7 +2037,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   return (
     <div className="flex flex-col h-full w-full">
       <div
-        ref={gridRef}
+        ref={setNonVirtualGridRef}
         className="flex-1 p-4 outline-none overflow-auto"
         style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
         data-area="grid"
@@ -2010,7 +2052,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }}
         onClick={() => {
           gridKeyboardActiveRef.current = true;
-          gridRef.current?.focus();
+          gridScopeRef.current?.focus();
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
