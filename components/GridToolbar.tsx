@@ -20,6 +20,7 @@ import { SmartCollection, type IndexedImage } from '../types';
 import ActiveFilters from './ActiveFilters';
 import TagManagerModal from './TagManagerModal';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
+import Tooltip from './Tooltip';
 
 interface GridToolbarProps {
 
@@ -294,98 +295,122 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>
 
                 {/* Copy to Clipboard */}
-                <button
-                  onClick={handleCopyToClipboard}
-                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                  title="Copy to Clipboard"
-                  disabled={selectedCount !== 1}
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
+                <Tooltip label="Copy to Clipboard">
+                  <button
+                    onClick={handleCopyToClipboard}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    title="Copy to Clipboard"
+                    aria-label="Copy to Clipboard"
+                    disabled={selectedCount !== 1}
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </Tooltip>
 
                 {/* Show in Folder */}
-                <button
-                  onClick={handleShowInFolder}
-                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                  title="Show in Folder"
-                  disabled={selectedCount !== 1}
-                >
-                  <Folder className="w-4 h-4" />
-                </button>
+                <Tooltip label="Show in Folder">
+                  <button
+                    onClick={handleShowInFolder}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    title="Show in Folder"
+                    aria-label="Show in Folder"
+                    disabled={selectedCount !== 1}
+                  >
+                    <Folder className="w-4 h-4" />
+                  </button>
+                </Tooltip>
 
                 {/* Export */}
-                <button
-                  onClick={handleExport}
-                  className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                  title={selectedCount > 1 ? 'Export selected images' : 'Export'}
-                  disabled={selectedCount === 0}
-                >
-                  <Download className="w-4 h-4" />
-                </button>
+                <Tooltip label={selectedCount > 1 ? 'Export selected images' : 'Export'}>
+                  <button
+                    onClick={handleExport}
+                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                    title={selectedCount > 1 ? 'Export selected images' : 'Export'}
+                    aria-label={selectedCount > 1 ? 'Export selected images' : 'Export'}
+                    disabled={selectedCount === 0}
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </Tooltip>
 
                 {/* Favorites */}
-                <button
-                  onClick={handleToggleFavorites}
-                  className={`p-1.5 rounded transition-colors ${
-                    allFavorites
-                      ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
-                      : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
-                  }`}
-                  title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
-                >
-                  <Heart className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
-                </button>
+                <Tooltip label={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}>
+                  <button
+                    onClick={handleToggleFavorites}
+                    className={`p-1.5 rounded transition-colors ${
+                      allFavorites
+                        ? 'text-rose-400 hover:text-rose-300 hover:bg-gray-700'
+                        : 'text-gray-400 hover:text-rose-400 hover:bg-gray-700'
+                    }`}
+                    title={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
+                    aria-label={allFavorites ? 'Remove from Favorites' : 'Add to Favorites'}
+                  >
+                    <Heart className={`w-4 h-4 ${allFavorites ? 'fill-current' : ''}`} />
+                  </button>
+                </Tooltip>
 
-                <button
-                  onClick={handleReparseSelected}
-                  className={`p-1.5 rounded transition-colors ${
-                    isReparsing
-                      ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
-                      : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
-                  }`}
-                  title={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
-                  disabled={selectedCount === 0 || isReparsing}
-                >
-                  <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
-                </button>
+                <Tooltip label={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}>
+                  <button
+                    onClick={handleReparseSelected}
+                    className={`p-1.5 rounded transition-colors ${
+                      isReparsing
+                        ? 'text-cyan-300 bg-cyan-500/10 cursor-wait'
+                        : 'text-gray-400 hover:text-cyan-300 hover:bg-gray-700'
+                    }`}
+                    title={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
+                    aria-label={selectedCount === 1 ? 'Reparse metadata' : `Reparse selected (${selectedCount})`}
+                    disabled={selectedCount === 0 || isReparsing}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isReparsing ? 'animate-spin' : ''}`} />
+                  </button>
+                </Tooltip>
 
                  {/* Tagging */}
-                 <button
-                  onClick={handleTagClick}
-                  className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors"
-                  title="Add/Remove Tags"
-                >
-                  <Tag className="w-4 h-4" />
-                </button>
+                 <Tooltip label="Add/Remove Tags">
+                   <button
+                    onClick={handleTagClick}
+                    className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded transition-colors"
+                    title="Add/Remove Tags"
+                    aria-label="Add/Remove Tags"
+                  >
+                    <Tag className="w-4 h-4" />
+                  </button>
+                </Tooltip>
   
                 {/* Divider */}
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 {/* Compare */}
-                <button
-                  onClick={handleCompare}
-                  className={`p-1.5 rounded transition-colors ${
-                    selectedCount >= 2 && selectedCount <= 4
-                      ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
-                      : 'text-gray-600 cursor-not-allowed'
-                  }`}
-                  title={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
-                  disabled={selectedCount < 2 || selectedCount > 4}
-                >
-                  <GitCompare className="w-4 h-4" />
-                </button>
+                <Tooltip label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}>
+                  <button
+                    onClick={handleCompare}
+                    className={`p-1.5 rounded transition-colors ${
+                      selectedCount >= 2 && selectedCount <= 4
+                        ? 'text-gray-400 hover:text-purple-400 hover:bg-gray-700'
+                        : 'text-gray-600 cursor-not-allowed'
+                    }`}
+                    title={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
+                    aria-label={selectedCount >= 2 && selectedCount <= 4 ? `Compare ${selectedCount} Images` : 'Select between 2 and 4 images to compare'}
+                    disabled={selectedCount < 2 || selectedCount > 4}
+                  >
+                    <GitCompare className="w-4 h-4" />
+                  </button>
+                </Tooltip>
 
                 {/* Generate Dropdown */}
                 <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
-                    title="Generate"
-                    disabled={selectedCount !== 1}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
+                  <Tooltip label="Generate">
+                    <button
+                      onClick={() => setGenerateDropdownOpen(!generateDropdownOpen)}
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors flex items-center gap-0.5"
+                      title="Generate"
+                      aria-label="Generate"
+                      disabled={selectedCount !== 1}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                  </Tooltip>
                   {generateDropdownOpen && selectedCount === 1 && (
                     <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[160px] z-50">
                       <button
@@ -410,13 +435,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
                 <div className="w-px h-4 bg-gray-700 mx-1" />
 
                 {/* Delete */}
-                <button
-                  onClick={onDeleteSelected}
-                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
-                  title="Delete Selected"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <Tooltip label="Delete Selected">
+                  <button
+                    onClick={onDeleteSelected}
+                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                    title="Delete Selected"
+                    aria-label="Delete Selected"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </Tooltip>
                 
                 {hasActiveFilters && <div className="w-px h-6 bg-gray-600 mx-2 flex-shrink-0" />}
               </>
@@ -426,14 +454,16 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
               <>
                 {selectedCount > 0 && <div className="w-px h-4 bg-gray-700 mx-1" />}
                 <div className="relative" ref={collectionActionsRef}>
-                  <button
-                    onClick={() => setIsCollectionActionsOpen((open) => !open)}
-                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
-                    title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
-                    aria-label="Collection actions"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+                  <Tooltip label={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}>
+                    <button
+                      onClick={() => setIsCollectionActionsOpen((open) => !open)}
+                      className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                      title={`Collection actions for ${filteredImageActionCount} filtered image${filteredImageActionCount === 1 ? '' : 's'}`}
+                      aria-label="Collection actions"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
 
                   {isCollectionActionsOpen && (
                     <div className="absolute left-0 top-full mt-1 min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 py-1 shadow-xl z-50">
