@@ -720,12 +720,46 @@ export interface SelectedFiltersUpdate {
 export type AutomationRuleMatchMode = 'all' | 'any';
 export type AutomationTextField = 'prompt' | 'negativePrompt' | 'filename' | 'metadata';
 export type AutomationTextOperator = 'contains' | 'not_contains' | 'equals' | 'not_equals';
+export type AutomationConditionField =
+  | AutomationTextField
+  | 'model'
+  | 'lora'
+  | 'sampler'
+  | 'scheduler'
+  | 'generator'
+  | 'gpu'
+  | 'tag'
+  | 'autoTag'
+  | 'dimension'
+  | 'favorite'
+  | 'rating'
+  | 'steps'
+  | 'cfg'
+  | 'telemetry'
+  | 'verifiedTelemetry';
+export type AutomationConditionOperator =
+  | AutomationTextOperator
+  | 'includes'
+  | 'not_includes'
+  | 'is'
+  | 'is_not'
+  | 'at_least'
+  | 'at_most'
+  | 'between';
 
 export interface AutomationTextCondition {
   id: string;
   field: AutomationTextField;
   operator: AutomationTextOperator;
   value: string;
+}
+
+export interface AutomationConditionRow {
+  id: string;
+  field: AutomationConditionField;
+  operator: AutomationConditionOperator;
+  value: string;
+  valueEnd?: string;
 }
 
 export interface AutomationRuleFilterCriteria extends SelectedFiltersUpdate {
@@ -743,6 +777,7 @@ export interface AutomationRuleFilterCriteria extends SelectedFiltersUpdate {
 export interface AutomationRuleCriteria {
   matchMode: AutomationRuleMatchMode;
   textConditions: AutomationTextCondition[];
+  conditionRows?: AutomationConditionRow[];
   filters: AutomationRuleFilterCriteria;
 }
 

@@ -15,6 +15,7 @@ import {
   openPreferencesDatabase,
   PREFERENCES_STORE_NAMES,
 } from './preferencesDb';
+import { isConditionRowComplete, normalizeConditionRow } from '../utils/automationRuleRows';
 
 const STORE_NAME = PREFERENCES_STORE_NAMES.automationRules;
 
@@ -106,9 +107,16 @@ export function normalizeAutomationRuleCriteria(criteria: Partial<AutomationRule
         .filter((condition): condition is AutomationTextCondition => Boolean(condition))
     : [];
 
+  const conditionRows = Array.isArray(criteria?.conditionRows)
+    ? criteria.conditionRows
+        .map((row) => normalizeConditionRow(row))
+        .filter(isConditionRowComplete)
+    : [];
+
   return {
     matchMode: criteria?.matchMode === 'any' ? 'any' : 'all',
     textConditions,
+    conditionRows,
     filters: {
       searchQuery: typeof filters.searchQuery === 'string' ? filters.searchQuery.trim() : '',
       models: normalizeStringList(filters.models),

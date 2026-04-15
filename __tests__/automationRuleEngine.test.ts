@@ -100,6 +100,26 @@ describe('automation rule engine', () => {
     expect(imageMatchesAutomationRule(birdWithLora, rule)).toBe(false);
   });
 
+  it('matches the guided condition-row criteria directly', () => {
+    const birdWithoutLora = createImage({ id: 'bird-1', prompt: 'bright bird flying', loras: [] });
+    const birdWithLora = createImage({ id: 'bird-2', prompt: 'bright bird flying', loras: ['x'] });
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [
+          { id: 'prompt', field: 'prompt', operator: 'contains', value: 'bird' },
+          { id: 'lora', field: 'lora', operator: 'not_includes', value: 'x' },
+        ],
+        filters: {},
+      },
+      actions: { addTags: ['y'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(birdWithoutLora, rule)).toBe(true);
+    expect(imageMatchesAutomationRule(birdWithLora, rule)).toBe(false);
+  });
+
   it('does not apply disabled rules', () => {
     const rule = createRule({
       enabled: false,

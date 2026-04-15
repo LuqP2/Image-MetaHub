@@ -1,5 +1,6 @@
 import type {
   AutomationRule,
+  AutomationConditionRow,
   AutomationRuleFilterCriteria,
   AutomationTextCondition,
   ImageAnnotations,
@@ -28,6 +29,8 @@ export interface AutomationRuleApplyResult extends AutomationRulePreview {
 
 const normalize = (value: unknown): string =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const stripDimension = (value: string): string => value.replace(/\s+/g, '').toLowerCase();
 
 const normalizeList = (values: string[] | undefined): string[] =>
   Array.isArray(values)
@@ -86,6 +89,23 @@ const matchesTextCondition = (image: IndexedImage, condition: AutomationTextCond
   }
 
   switch (condition.operator) {
+    case 'not_contains':
+      return !haystack.includes(needle);
+    case 'equals':
+      return haystack === needle;
+    case 'not_equals':
+      return haystack !== needle;
+    case 'contains':
+    default:
+      return haystack.includes(needle);
+  }
+};
+
+const matchesTextOperator = (sourceValue: string, operator: string, targetValue: string): boolean => {
+  const haystack = normalize(sourceValue);
+  const needle = normalize(targetValue);
+  if (!needle) return true;
+  switch (operator) {
     case 'not_contains':
       return !haystack.includes(needle);
     case 'equals':
@@ -303,9 +323,113 @@ const matchesFilterCriteria = (image: IndexedImage, filters: AutomationRuleFilte
   return matchesAdvancedFilters(image, filters);
 };
 
+const getRowTextValue = (image: IndexedImage, field: AutomationConditionRow['field']): string => {
+  switch (field) {
+    case 'negativePrompt':
+      return image.negativePrompt ?? image.metadata?.normalizedMetadata?.negativePrompt ?? '';
+    case 'filename':
+      return image.name ?? '';
+    case 'metadata':
+      return image.metadataString ?? '';
+    case 'prompt':
+      return image.prompt ?? image.metadata?.normalizedMetadata?.prompt ?? '';
+    default:
+      return '';
+  }
+};
+
+const matchesNumberRow = (value: number | undefined, row: AutomationConditionRow): boolean => {
+  if (value === undefined || Number.isNaN(value)) return false;
+  const target = Number(row.value);
+  const targetEnd = Number(row.valueEnd);
+  if (!Number.isFinite(target)) return false;
+  switch (row.operator) {
+    case 'at_least':
+      return value >= target;
+    case 'at_most':
+      return value <= target;
+    case 'between':
+      return Number.isFinite(targetEnd) && value >= target && value <= targetEnd;
+    case 'not_equals':
+      return value !== target;
+    case 'equals':
+    default:
+      return value === target;
+  }
+};
+
+const matchesFacetRow = (values: Set<string>, row: AutomationConditionRow): boolean => {
+  const target = normalize(row.value);
+  if (!target) return true;
+  const hasValue = values.has(target);
+  return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasValue : hasValue;
+};
+
+const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): boolean => {
+  switch (row.field) {
+    case 'prompt':
+    case 'negativePrompt':
+    case 'filename':
+    case 'metadata':
+      return matchesTextOperator(getRowTextValue(image, row.field), row.operator, row.value);
+    case 'model':
+      return matchesFacetRow(getImageModelSet(image), row);
+    case 'lora':
+      return matchesFacetRow(getImageLoraSet(image), row);
+    case 'sampler':
+      return matchesFacetRow(makeValueSet([image.sampler]), row);
+    case 'scheduler':
+      return matchesFacetRow(makeValueSet([image.scheduler]), row);
+    case 'generator':
+      return matchesFacetRow(makeValueSet([getImageGenerator(image)]), row);
+    case 'gpu':
+      return matchesFacetRow(makeValueSet([getImageGpuDevice(image) ?? undefined]), row);
+    case 'tag':
+      return matchesFacetRow(makeValueSet(image.tags ?? []), row);
+    case 'autoTag':
+      return matchesFacetRow(makeValueSet(image.autoTags ?? []), row);
+    case 'dimension': {
+      const imageDimension = stripDimension(image.dimensions ?? '');
+      const target = stripDimension(row.value);
+      const hasDimension = Boolean(target) && imageDimension === target;
+      return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasDimension : hasDimension;
+    }
+    case 'favorite': {
+      const isFavorite = image.isFavorite === true;
+      return row.operator === 'is_not' ? !isFavorite : isFavorite;
+    }
+    case 'rating':
+      return matchesNumberRow(image.rating, row);
+    case 'steps':
+      return matchesNumberRow(image.steps, row);
+    case 'cfg':
+      return matchesNumberRow(image.cfgScale, row);
+    case 'telemetry': {
+      const hasTelemetry = hasTelemetryData(image);
+      return row.operator === 'is_not' ? !hasTelemetry : hasTelemetry;
+    }
+    case 'verifiedTelemetry': {
+      const hasVerified = hasVerifiedTelemetry(image);
+      return row.operator === 'is_not' ? !hasVerified : hasVerified;
+    }
+    default:
+      return false;
+  }
+};
+
 export function imageMatchesAutomationRule(image: IndexedImage, rule: AutomationRule): boolean {
   if (!rule.enabled) {
     return false;
+  }
+
+  if (rule.criteria.conditionRows?.length) {
+    const rowChecks = rule.criteria.conditionRows
+      .filter((row) => row.value.trim() || row.field === 'favorite' || row.field === 'telemetry' || row.field === 'verifiedTelemetry')
+      .map((row) => matchesConditionRow(image, row));
+    if (rowChecks.length === 0) return false;
+    return rule.criteria.matchMode === 'any'
+      ? rowChecks.some(Boolean)
+      : rowChecks.every(Boolean);
   }
 
   const filters = rule.criteria.filters ?? {};

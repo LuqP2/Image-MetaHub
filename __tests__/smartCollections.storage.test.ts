@@ -228,6 +228,7 @@ describe('smart collection storage', () => {
       criteria: {
         matchMode: 'all',
         textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+        conditionRows: [{ id: 'row-1', field: 'model', operator: 'includes', value: 'CyberRealistic' }],
         filters: {},
       },
       actions: { addTags: ['Animal'], addToCollectionIds: ['collection-1'] },
@@ -239,6 +240,9 @@ describe('smart collection storage', () => {
     expect(await getAllAutomationRules()).toMatchObject([
       {
         id: 'rule-1',
+        criteria: {
+          conditionRows: [{ id: 'row-1', field: 'model', operator: 'includes', value: 'CyberRealistic' }],
+        },
         actions: { addTags: ['animal'], addToCollectionIds: ['collection-1'] },
       },
     ]);

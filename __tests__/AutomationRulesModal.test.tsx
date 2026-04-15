@@ -12,8 +12,16 @@ describe('AutomationRulesModal', () => {
     useImageStore.setState({
       images: [],
       filteredImages: [],
-      availableTags: [],
-      recentTags: [],
+      availableModels: ['CyberRealistic'],
+      availableLoras: ['x'],
+      availableSamplers: ['Euler a'],
+      availableSchedulers: ['karras'],
+      availableGenerators: ['Automatic1111'],
+      availableGpuDevices: ['NVIDIA RTX'],
+      availableDimensions: ['512x768'],
+      availableTags: [{ name: 'animal', count: 1 }, { name: 'bird', count: 1 }],
+      availableAutoTags: [{ name: 'portrait', count: 1 }],
+      recentTags: ['animal'],
       automationRules: [],
       collections: [],
       selectedModels: ['CyberRealistic'],
@@ -28,25 +36,40 @@ describe('AutomationRulesModal', () => {
     cleanup();
   });
 
-  it('captures current sidebar filters into the draft rule', () => {
+  it('opens a clean guided editor for a new rule', () => {
     render(<AutomationRulesModal isOpen onClose={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /use current filters/i }));
+    expect(screen.getByRole('heading', { name: /new rule/i })).toBeTruthy();
+    expect(screen.getByText(/no conditions yet/i)).toBeTruthy();
 
-    expect((screen.getByLabelText('Checkpoints') as HTMLInputElement).value).toBe('CyberRealistic');
-    expect((screen.getByLabelText('Exclude LoRAs') as HTMLInputElement).value).toBe('x');
-    expect((screen.getByLabelText('Manual tags') as HTMLInputElement).value).toBe('bird');
+    fireEvent.click(screen.getByRole('button', { name: /add your first condition/i }));
+
+    expect((screen.getByLabelText('Condition field') as HTMLSelectElement).value).toBe('prompt');
+    expect((screen.getByLabelText('Condition operator') as HTMLSelectElement).value).toBe('contains');
+    expect(screen.getByLabelText('Prompt value')).toBeTruthy();
   });
 
-  it('creates a new rule from the editor', async () => {
+  it('captures current sidebar filters into editable condition rows', () => {
     render(<AutomationRulesModal isOpen onClose={() => {}} />);
 
-    fireEvent.change(screen.getByPlaceholderText('cat, dog, CyberRealistic...'), {
-      target: { value: 'cat' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('animal, realistic...'), {
-      target: { value: 'animal' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: /import current sidebar filters/i }));
+
+    const fields = screen.getAllByLabelText('Condition field') as HTMLSelectElement[];
+    const operators = screen.getAllByLabelText('Condition operator') as HTMLSelectElement[];
+
+    expect(fields.map((field) => field.value)).toEqual(['model', 'lora', 'tag']);
+    expect(operators.map((operator) => operator.value)).toEqual(['includes', 'not_includes', 'includes']);
+    expect((screen.getByLabelText('Checkpoint value') as HTMLSelectElement).value).toBe('CyberRealistic');
+    expect((screen.getByLabelText('LoRA value') as HTMLSelectElement).value).toBe('x');
+    expect((screen.getByLabelText('Manual Tag value') as HTMLSelectElement).value).toBe('bird');
+  });
+
+  it('creates a new rule from condition rows and guided actions', async () => {
+    render(<AutomationRulesModal isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /add your first condition/i }));
+    fireEvent.change(screen.getByLabelText('Prompt value'), { target: { value: 'cat' } });
+    fireEvent.change(screen.getByPlaceholderText('Add tag...'), { target: { value: 'animal' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.click(screen.getByRole('button', { name: /save rule/i }));
 
@@ -55,6 +78,7 @@ describe('AutomationRulesModal', () => {
     });
 
     const [rule] = useImageStore.getState().automationRules;
+    expect(rule.criteria.conditionRows?.[0]).toMatchObject({ field: 'prompt', operator: 'contains', value: 'cat' });
     expect(rule.criteria.textConditions[0]).toMatchObject({ field: 'prompt', operator: 'contains', value: 'cat' });
     expect(rule.actions.addTags).toEqual(['animal']);
   });

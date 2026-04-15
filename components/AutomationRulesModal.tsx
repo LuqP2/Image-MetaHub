@@ -1,73 +1,72 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Copy, Play, Plus, Power, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Copy, Play, Plus, Power, Trash2, X } from 'lucide-react';
 import type {
-  AdvancedFilters,
+  AutomationConditionField,
+  AutomationConditionOperator,
+  AutomationConditionRow,
   AutomationRule,
-  AutomationRuleCriteria,
-  AutomationRuleFilterCriteria,
-  AutomationTextCondition,
-  AutomationTextField,
-  AutomationTextOperator,
-  ImageRating,
   SmartCollection,
   TagInfo,
 } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import TagInputCombobox from './TagInputCombobox';
+import {
+  CONDITION_FIELD_LABELS,
+  OPERATOR_LABELS,
+  TEXT_CONDITION_FIELDS,
+  conditionRowsToCriteria,
+  createDefaultConditionRow,
+  filterCriteriaToConditionRows,
+  getConditionFieldOptions,
+  getConditionValueOptions,
+  getDefaultOperatorForField,
+  getOperatorsForField,
+  isConditionRowComplete,
+  normalizeConditionRow,
+  ruleToConditionRows,
+} from '../utils/automationRuleRows';
 
 interface AutomationRulesModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const TEXT_FIELDS: Array<{ value: AutomationTextField; label: string }> = [
-  { value: 'prompt', label: 'Prompt' },
-  { value: 'negativePrompt', label: 'Negative prompt' },
-  { value: 'filename', label: 'Filename' },
-  { value: 'metadata', label: 'Metadata' },
-];
+type PreviewState = {
+  matchCount: number;
+  changeCount: number;
+  tagChangeCount: number;
+  collectionChangeCount: number;
+};
 
-const TEXT_OPERATORS: Array<{ value: AutomationTextOperator; label: string }> = [
-  { value: 'contains', label: 'contains' },
-  { value: 'not_contains', label: 'does not contain' },
-  { value: 'equals', label: 'equals' },
-  { value: 'not_equals', label: 'does not equal' },
-];
+const emptyPreview: PreviewState = {
+  matchCount: 0,
+  changeCount: 0,
+  tagChangeCount: 0,
+  collectionChangeCount: 0,
+};
 
 const createId = () =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `rule-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const csvToList = (value: string, lower = false): string[] =>
-  Array.from(
-    new Set(
-      value
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .map((item) => lower ? item.toLowerCase() : item),
-    ),
-  );
-
-const listToCsv = (value: string[] | undefined): string => (value ?? []).join(', ');
-
-const emptyCriteria = (): AutomationRuleCriteria => ({
-  matchMode: 'all',
-  textConditions: [{ id: createId(), field: 'prompt', operator: 'contains', value: '' }],
-  filters: {
-    tagMatchMode: 'any',
-    favoriteFilterMode: 'neutral',
-    advancedFilters: {},
-  },
-});
+const inputClassName =
+  'w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const compactInputClassName =
+  'h-9 w-full rounded-lg border border-gray-700 bg-gray-800 px-2.5 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400';
 
 const createDraftRule = (): AutomationRule => ({
   id: createId(),
   name: 'New Rule',
   enabled: true,
-  criteria: emptyCriteria(),
+  criteria: {
+    matchMode: 'all',
+    textConditions: [],
+    conditionRows: [],
+    filters: { tagMatchMode: 'any', favoriteFilterMode: 'neutral', advancedFilters: {} },
+  },
   actions: { addTags: [], addToCollectionIds: [] },
   runOnNewImages: true,
   createdAt: Date.now(),
@@ -77,56 +76,47 @@ const createDraftRule = (): AutomationRule => ({
   lastChangeCount: 0,
 });
 
-const describeCriteria = (criteria: AutomationRuleCriteria): string => {
-  const parts: string[] = [];
-  const textCount = criteria.textConditions.filter((condition) => condition.value.trim()).length;
-  if (textCount > 0) parts.push(`${textCount} text`);
-
-  const filters = criteria.filters;
-  const filterCount = [
-    filters.searchQuery,
-    ...(filters.models ?? []),
-    ...(filters.excludedModels ?? []),
-    ...(filters.loras ?? []),
-    ...(filters.excludedLoras ?? []),
-    ...(filters.samplers ?? []),
-    ...(filters.excludedSamplers ?? []),
-    ...(filters.schedulers ?? []),
-    ...(filters.excludedSchedulers ?? []),
-    ...(filters.tags ?? []),
-    ...(filters.excludedTags ?? []),
-    ...(filters.autoTags ?? []),
-    ...(filters.excludedAutoTags ?? []),
-  ].filter(Boolean).length;
-  if (filterCount > 0) parts.push(`${filterCount} filters`);
-  if (filters.favoriteFilterMode && filters.favoriteFilterMode !== 'neutral') parts.push('favorite');
-  if (filters.ratings?.length) parts.push('rating');
-  if (filters.advancedFilters && Object.keys(filters.advancedFilters).length > 0) parts.push('advanced');
-
-  return parts.length > 0 ? parts.join(' + ') : 'No criteria yet';
+const describeCriteria = (rule: AutomationRule): string => {
+  const rows = ruleToConditionRows(rule);
+  if (rows.length === 0) return 'No conditions yet';
+  return `${rows.length} condition${rows.length === 1 ? '' : 's'} (${rule.criteria.matchMode})`;
 };
 
 const describeActions = (rule: AutomationRule, collectionNames: Map<string, string>): string => {
   const parts: string[] = [];
-  if (rule.actions.addTags.length > 0) {
-    parts.push(`tags: ${rule.actions.addTags.join(', ')}`);
-  }
+  if (rule.actions.addTags.length > 0) parts.push(`tags: ${rule.actions.addTags.join(', ')}`);
   if (rule.actions.addToCollectionIds.length > 0) {
     parts.push(`collections: ${rule.actions.addToCollectionIds.map((id) => collectionNames.get(id) ?? id).join(', ')}`);
   }
   return parts.length > 0 ? parts.join(' | ') : 'No actions yet';
 };
 
-const inputClassName =
-  'w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none transition-colors focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
-const labelClassName = 'mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400';
+const hasActions = (rule: AutomationRule): boolean =>
+  rule.actions.addTags.length > 0 || rule.actions.addToCollectionIds.length > 0;
 
-const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onClose }) => {
+const hasValidRows = (rows: AutomationConditionRow[]): boolean =>
+  rows.some((row) => isConditionRowComplete(normalizeConditionRow(row)));
+
+const buildRuleFromRows = (rule: AutomationRule, rows: AutomationConditionRow[]): AutomationRule => ({
+  ...rule,
+  criteria: conditionRowsToCriteria(rows, rule.criteria.matchMode),
+  updatedAt: Date.now(),
+});
+
+export default function AutomationRulesModal({ isOpen, onClose }: AutomationRulesModalProps) {
   const images = useImageStore((state) => state.images);
   const automationRules = useImageStore((state) => state.automationRules);
   const collections = useImageStore((state) => state.collections);
   const availableTags = useImageStore((state) => state.availableTags);
+  const availableAutoTags = useImageStore((state) => state.availableAutoTags);
   const recentTags = useImageStore((state) => state.recentTags);
+  const availableModels = useImageStore((state) => state.availableModels);
+  const availableLoras = useImageStore((state) => state.availableLoras);
+  const availableSamplers = useImageStore((state) => state.availableSamplers);
+  const availableSchedulers = useImageStore((state) => state.availableSchedulers);
+  const availableGenerators = useImageStore((state) => state.availableGenerators);
+  const availableGpuDevices = useImageStore((state) => state.availableGpuDevices);
+  const availableDimensions = useImageStore((state) => state.availableDimensions);
   const selectedModels = useImageStore((state) => state.selectedModels);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const selectedLoras = useImageStore((state) => state.selectedLoras);
@@ -157,8 +147,9 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AutomationRule>(() => createDraftRule());
+  const [rows, setRows] = useState<AutomationConditionRow[]>([]);
   const [tagInput, setTagInput] = useState('');
-  const [preview, setPreview] = useState({ matchCount: 0, changeCount: 0, tagChangeCount: 0, collectionChangeCount: 0 });
+  const [preview, setPreview] = useState<PreviewState>(emptyPreview);
   const [isApplying, setIsApplying] = useState(false);
 
   const collectionNames = useMemo(
@@ -166,131 +157,133 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
     [collections],
   );
 
+  const valueSource = useMemo(() => ({
+    images,
+    availableModels,
+    availableLoras,
+    availableSamplers,
+    availableSchedulers,
+    availableGenerators,
+    availableGpuDevices,
+    availableDimensions,
+    availableTags,
+    availableAutoTags,
+  }), [
+    availableAutoTags,
+    availableDimensions,
+    availableGenerators,
+    availableGpuDevices,
+    availableLoras,
+    availableModels,
+    availableSamplers,
+    availableSchedulers,
+    availableTags,
+    images,
+  ]);
+
+  const loadRuleForEditing = (rule: AutomationRule | null) => {
+    const nextRule = rule ?? createDraftRule();
+    setEditingRuleId(rule?.id ?? null);
+    setDraft(nextRule);
+    setRows(rule ? ruleToConditionRows(rule) : []);
+    setTagInput('');
+  };
+
   useEffect(() => {
     if (!isOpen) return;
-    if (automationRules.length > 0) {
-      const first = automationRules[0];
-      setEditingRuleId(first.id);
-      setDraft({ ...first, criteria: { ...first.criteria, filters: { ...first.criteria.filters } } });
-      return;
-    }
-    setEditingRuleId(null);
-    setDraft(createDraftRule());
+    loadRuleForEditing(automationRules[0] ?? null);
   }, [automationRules, isOpen]);
+
+  const ruleForPreview = useMemo(() => buildRuleFromRows(draft, rows), [draft, rows]);
 
   useEffect(() => {
     if (!isOpen) return;
     const timeoutId = window.setTimeout(() => {
-      setPreview(previewAutomationRule(draft));
+      setPreview(previewAutomationRule(ruleForPreview));
     }, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [draft, images, isOpen, previewAutomationRule]);
+  }, [isOpen, previewAutomationRule, ruleForPreview]);
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) return null;
 
   const isExistingRule = editingRuleId !== null && automationRules.some((rule) => rule.id === editingRuleId);
   const activeRuleCount = automationRules.filter((rule) => rule.enabled).length;
+  const canSave = draft.name.trim().length > 0 && hasValidRows(rows) && hasActions(draft);
 
   const updateDraft = (updates: Partial<AutomationRule>) => {
     setDraft((current) => ({ ...current, ...updates, updatedAt: Date.now() }));
   };
 
-  const updateCriteria = (updates: Partial<AutomationRuleCriteria>) => {
-    setDraft((current) => ({
-      ...current,
-      criteria: { ...current.criteria, ...updates },
-      updatedAt: Date.now(),
-    }));
+  const addConditionRow = () => {
+    setRows((current) => [...current, createDefaultConditionRow()]);
   };
 
-  const updateFilters = (updates: Partial<AutomationRuleFilterCriteria>) => {
-    setDraft((current) => ({
-      ...current,
-      criteria: {
-        ...current.criteria,
-        filters: { ...current.criteria.filters, ...updates },
-      },
-      updatedAt: Date.now(),
-    }));
+  const updateConditionRow = (rowId: string, updates: Partial<AutomationConditionRow>) => {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.id !== rowId) return row;
+        const fieldChanged = updates.field && updates.field !== row.field;
+        const nextField = updates.field ?? row.field;
+        return normalizeConditionRow({
+          ...row,
+          ...updates,
+          operator: fieldChanged ? getDefaultOperatorForField(nextField) : updates.operator ?? row.operator,
+          value: fieldChanged ? '' : updates.value ?? row.value,
+          valueEnd: fieldChanged ? '' : updates.valueEnd ?? row.valueEnd,
+        });
+      }),
+    );
   };
 
-  const updateTextCondition = (conditionId: string, updates: Partial<AutomationTextCondition>) => {
-    updateCriteria({
-      textConditions: draft.criteria.textConditions.map((condition) =>
-        condition.id === conditionId ? { ...condition, ...updates } : condition,
-      ),
+  const removeConditionRow = (rowId: string) => {
+    setRows((current) => current.filter((row) => row.id !== rowId));
+  };
+
+  const importCurrentFilters = () => {
+    const importedRows = filterCriteriaToConditionRows({
+      searchQuery,
+      models: selectedModels,
+      excludedModels,
+      loras: selectedLoras,
+      excludedLoras,
+      samplers: selectedSamplers,
+      excludedSamplers,
+      schedulers: selectedSchedulers,
+      excludedSchedulers,
+      generators: selectedGenerators,
+      excludedGenerators,
+      gpuDevices: selectedGpuDevices,
+      excludedGpuDevices,
+      tags: selectedTags,
+      excludedTags,
+      tagMatchMode: selectedTagsMatchMode,
+      autoTags: selectedAutoTags,
+      excludedAutoTags,
+      favoriteFilterMode,
+      ratings: selectedRatings,
+      advancedFilters,
     });
-  };
-
-  const addTextCondition = () => {
-    updateCriteria({
-      textConditions: [
-        ...draft.criteria.textConditions,
-        { id: createId(), field: 'prompt', operator: 'contains', value: '' },
-      ],
-    });
-  };
-
-  const removeTextCondition = (conditionId: string) => {
-    updateCriteria({
-      textConditions: draft.criteria.textConditions.filter((condition) => condition.id !== conditionId),
-    });
-  };
-
-  const useCurrentFilters = () => {
-    updateCriteria({
-      filters: {
-        searchQuery,
-        models: selectedModels,
-        excludedModels,
-        loras: selectedLoras,
-        excludedLoras,
-        samplers: selectedSamplers,
-        excludedSamplers,
-        schedulers: selectedSchedulers,
-        excludedSchedulers,
-        generators: selectedGenerators,
-        excludedGenerators,
-        gpuDevices: selectedGpuDevices,
-        excludedGpuDevices,
-        tags: selectedTags,
-        excludedTags,
-        tagMatchMode: selectedTagsMatchMode,
-        autoTags: selectedAutoTags,
-        excludedAutoTags,
-        favoriteFilterMode,
-        ratings: selectedRatings,
-        advancedFilters,
-      },
-    });
+    setRows(importedRows.length > 0 ? importedRows : [createDefaultConditionRow()]);
   };
 
   const handleSave = async (): Promise<AutomationRule | null> => {
+    if (!canSave) return null;
     const preparedRule = {
-      ...draft,
-      name: draft.name.trim() || 'Untitled Rule',
-      criteria: {
-        ...draft.criteria,
-        textConditions: draft.criteria.textConditions.filter((condition) => condition.value.trim()),
-      },
+      ...buildRuleFromRows(draft, rows),
+      name: draft.name.trim(),
     };
     const savedRule = isExistingRule
       ? await updateAutomationRule(editingRuleId as string, preparedRule)
       : await createAutomationRule(preparedRule);
-    if (savedRule) {
-      setEditingRuleId(savedRule.id);
-      setDraft(savedRule);
-    }
+    if (savedRule) loadRuleForEditing(savedRule);
     return savedRule;
   };
 
   const handleApply = async () => {
     setIsApplying(true);
     try {
-      const savedRule = isExistingRule ? draft : await handleSave();
-      const ruleId = isExistingRule ? editingRuleId : savedRule?.id;
+      const savedRule = isExistingRule ? await handleSave() : await handleSave();
+      const ruleId = savedRule?.id ?? editingRuleId;
       if (!ruleId) return;
       const result = await applyAutomationRuleNow(ruleId);
       if (result) setPreview(result);
@@ -300,8 +293,7 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
   };
 
   const handleDuplicate = (rule: AutomationRule) => {
-    setEditingRuleId(null);
-    setDraft({
+    const copy = {
       ...rule,
       id: createId(),
       name: `${rule.name} Copy`,
@@ -310,7 +302,10 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
       lastAppliedAt: null,
       lastMatchCount: 0,
       lastChangeCount: 0,
-    });
+    };
+    setEditingRuleId(null);
+    setDraft(copy);
+    setRows(ruleToConditionRows(rule));
   };
 
   const handleDelete = async (ruleId: string) => {
@@ -320,7 +315,12 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
   };
 
   const addTagsFromInput = (value: string) => {
-    const tags = csvToList(value, true);
+    const tags = Array.from(new Set(
+      value
+        .split(',')
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean),
+    ));
     if (tags.length === 0) return;
     updateDraft({
       actions: {
@@ -355,14 +355,11 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingRuleId(null);
-                  setDraft(createDraftRule());
-                }}
+                onClick={() => loadRuleForEditing(null)}
                 className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500"
               >
                 <Plus className="h-4 w-4" />
-                New
+                New Rule
               </button>
             </div>
           </div>
@@ -376,27 +373,21 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
               automationRules.map((rule) => {
                 const isActive = editingRuleId === rule.id;
                 return (
-                  <div
+                  <button
                     key={rule.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      setEditingRuleId(rule.id);
-                      setDraft({ ...rule, criteria: { ...rule.criteria, filters: { ...rule.criteria.filters } } });
-                    }}
-                    className={`rounded-lg border p-3 text-left transition-colors ${
+                    type="button"
+                    onClick={() => loadRuleForEditing(rule)}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
                       isActive ? 'border-blue-500/50 bg-blue-500/10' : 'border-gray-800 bg-gray-900/60 hover:border-gray-700'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-gray-100">{rule.name}</div>
-                        <div className="mt-1 text-xs text-gray-500">{describeCriteria(rule.criteria)}</div>
+                        <div className="mt-1 text-xs text-gray-500">{describeCriteria(rule)}</div>
                       </div>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                        rule.enabled
-                          ? 'border-emerald-700/50 bg-emerald-950/50 text-emerald-300'
-                          : 'border-gray-700 bg-gray-950 text-gray-500'
+                        rule.enabled ? 'border-emerald-700/50 bg-emerald-950/50 text-emerald-300' : 'border-gray-700 bg-gray-950 text-gray-500'
                       }`}>
                         {rule.enabled ? 'On' : 'Off'}
                       </span>
@@ -404,11 +395,7 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
                     <div className="mt-2 truncate text-xs text-gray-400" title={describeActions(rule, collectionNames)}>
                       {describeActions(rule, collectionNames)}
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
-                      <span>{rule.lastMatchCount ?? 0} matches</span>
-                      <span>{rule.lastChangeCount ?? 0} changes</span>
-                    </div>
-                  </div>
+                  </button>
                 );
               })
             )}
@@ -419,7 +406,7 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
           <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-white">{isExistingRule ? 'Edit Rule' : 'New Rule'}</h2>
-              <p className="mt-1 text-xs text-gray-500">Rules add tags or collection membership without removing existing curation.</p>
+              <p className="mt-1 text-xs text-gray-500">Build rules from simple rows: field, operator, value.</p>
             </div>
             <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white">
               <X className="h-5 w-5" />
@@ -429,21 +416,16 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
               <div className="space-y-5">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_180px]">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_180px]">
                   <label>
                     <span className={labelClassName}>Name</span>
-                    <input
-                      value={draft.name}
-                      onChange={(event) => updateDraft({ name: event.target.value })}
-                      className={inputClassName}
-                      placeholder="Rule name"
-                    />
+                    <input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} className={inputClassName} placeholder="Rule name" />
                   </label>
                   <label>
                     <span className={labelClassName}>Match</span>
                     <select
                       value={draft.criteria.matchMode}
-                      onChange={(event) => updateCriteria({ matchMode: event.target.value === 'any' ? 'any' : 'all' })}
+                      onChange={(event) => updateDraft({ criteria: conditionRowsToCriteria(rows, event.target.value === 'any' ? 'any' : 'all') })}
                       className={inputClassName}
                     >
                       <option value="all">All conditions</option>
@@ -451,54 +433,21 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
                     </select>
                   </label>
                   <label className="flex items-end gap-2 rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={draft.enabled}
-                      onChange={(event) => updateDraft({ enabled: event.target.checked })}
-                      className="mb-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
-                    />
+                    <input type="checkbox" checked={draft.enabled} onChange={(event) => updateDraft({ enabled: event.target.checked })} className="mb-1 h-4 w-4 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500" />
                     <span className="pb-0.5 text-sm text-gray-200">Enabled</span>
                   </label>
                 </div>
 
-                <div>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-gray-100">Text conditions</h3>
-                    <button type="button" onClick={addTextCondition} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
-                      Add condition
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    {draft.criteria.textConditions.map((condition) => (
-                      <div key={condition.id} className="grid gap-2 md:grid-cols-[160px_170px_minmax(0,1fr)_40px]">
-                        <select value={condition.field} onChange={(event) => updateTextCondition(condition.id, { field: event.target.value as AutomationTextField })} className={inputClassName}>
-                          {TEXT_FIELDS.map((field) => <option key={field.value} value={field.value}>{field.label}</option>)}
-                        </select>
-                        <select value={condition.operator} onChange={(event) => updateTextCondition(condition.id, { operator: event.target.value as AutomationTextOperator })} className={inputClassName}>
-                          {TEXT_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
-                        </select>
-                        <input
-                          value={condition.value}
-                          onChange={(event) => updateTextCondition(condition.id, { value: event.target.value })}
-                          className={inputClassName}
-                          placeholder="cat, dog, CyberRealistic..."
-                        />
-                        <button type="button" onClick={() => removeTextCondition(condition.id)} className="rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition">
-                          <X className="mx-auto h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <RuleFilterEditor
-                  draft={draft}
-                  updateFilters={updateFilters}
-                  useCurrentFilters={useCurrentFilters}
+                <WhenBuilder
+                  rows={rows}
+                  valueSource={valueSource}
+                  onAdd={addConditionRow}
+                  onImport={importCurrentFilters}
+                  onUpdate={updateConditionRow}
+                  onRemove={removeConditionRow}
                 />
 
-                <RuleActionsEditor
+                <ThenActions
                   draft={draft}
                   tagInput={tagInput}
                   setTagInput={setTagInput}
@@ -511,16 +460,17 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
                 />
               </div>
 
-              <RulePreviewPanel
+              <PreviewPanel
                 preview={preview}
+                canSave={canSave}
                 isExistingRule={isExistingRule}
                 isApplying={isApplying}
                 draft={draft}
                 editingRuleId={editingRuleId}
-                handleSave={handleSave}
-                handleApply={handleApply}
-                handleDuplicate={handleDuplicate}
-                handleDelete={handleDelete}
+                onSave={handleSave}
+                onApply={handleApply}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
                 updateAutomationRule={updateAutomationRule}
                 setDraft={setDraft}
               />
@@ -530,102 +480,202 @@ const AutomationRulesModal: React.FC<AutomationRulesModalProps> = ({ isOpen, onC
       </div>
     </div>
   );
-};
-
-interface RuleFilterEditorProps {
-  draft: AutomationRule;
-  updateFilters: (updates: Partial<AutomationRuleFilterCriteria>) => void;
-  useCurrentFilters: () => void;
 }
 
-const RuleFilterEditor: React.FC<RuleFilterEditorProps> = ({ draft, updateFilters, useCurrentFilters }) => {
-  const textFilters: Array<[string, keyof AutomationRuleFilterCriteria, boolean]> = [
-    ['Checkpoints', 'models', false],
-    ['Exclude checkpoints', 'excludedModels', false],
-    ['LoRAs', 'loras', false],
-    ['Exclude LoRAs', 'excludedLoras', false],
-    ['Manual tags', 'tags', true],
-    ['Exclude manual tags', 'excludedTags', true],
-    ['Auto-tags', 'autoTags', false],
-    ['Exclude auto-tags', 'excludedAutoTags', false],
-    ['Samplers', 'samplers', false],
-    ['Schedulers', 'schedulers', false],
-  ];
+interface WhenBuilderProps {
+  rows: AutomationConditionRow[];
+  valueSource: Parameters<typeof getConditionValueOptions>[1];
+  onAdd: () => void;
+  onImport: () => void;
+  onUpdate: (rowId: string, updates: Partial<AutomationConditionRow>) => void;
+  onRemove: (rowId: string) => void;
+}
 
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-100">Filter criteria</h3>
-        <button
-          type="button"
-          onClick={useCurrentFilters}
-          className="inline-flex items-center gap-2 rounded-lg border border-blue-700/50 bg-blue-950/30 px-3 py-1.5 text-xs text-blue-200 hover:bg-blue-900/40"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Use Current Filters
+const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onImport, onUpdate, onRemove }) => (
+  <section className="rounded-xl border border-gray-800 bg-gray-950/30 p-4">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-100">When</h3>
+        <p className="mt-1 text-xs text-gray-500">Add one line per condition.</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onImport} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
+          Import current sidebar filters
+        </button>
+        <button type="button" onClick={onAdd} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
+          <Plus className="h-3.5 w-3.5" />
+          Add condition
         </button>
       </div>
+    </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {textFilters.map(([label, key, lower]) => (
-          <label key={String(key)}>
-            <span className={labelClassName}>{label}</span>
-            <input
-              value={listToCsv(draft.criteria.filters[key] as string[])}
-              onChange={(event) => updateFilters({ [key]: csvToList(event.target.value, lower) })}
-              className={inputClassName}
-              placeholder="Comma separated"
-            />
-          </label>
+    {rows.length === 0 ? (
+      <button
+        type="button"
+        onClick={onAdd}
+        className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray-700 bg-gray-900/40 px-4 py-10 text-center text-gray-400 transition-colors hover:border-blue-600/50 hover:bg-blue-950/20 hover:text-blue-200"
+      >
+        <Plus className="mb-2 h-6 w-6" />
+        <span className="text-sm font-medium">No conditions yet</span>
+        <span className="mt-1 text-xs text-gray-500">Add your first condition</span>
+      </button>
+    ) : (
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <ConditionRowEditor
+            key={row.id}
+            row={row}
+            valueSource={valueSource}
+            onUpdate={(updates) => onUpdate(row.id, updates)}
+            onRemove={() => onRemove(row.id)}
+          />
         ))}
       </div>
+    )}
+  </section>
+);
 
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        <label>
-          <span className={labelClassName}>Search query</span>
-          <input
-            value={draft.criteria.filters.searchQuery ?? ''}
-            onChange={(event) => updateFilters({ searchQuery: event.target.value })}
-            className={inputClassName}
+interface ConditionRowEditorProps {
+  row: AutomationConditionRow;
+  valueSource: Parameters<typeof getConditionValueOptions>[1];
+  onUpdate: (updates: Partial<AutomationConditionRow>) => void;
+  onRemove: () => void;
+}
+
+const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSource, onUpdate, onRemove }) => {
+  const fieldOptions = getConditionFieldOptions();
+  const operatorOptions = getOperatorsForField(row.field);
+  const valueOptions = getConditionValueOptions(row.field, valueSource);
+  const isText = TEXT_CONDITION_FIELDS.includes(row.field);
+  const isBoolean = row.field === 'favorite' || row.field === 'telemetry' || row.field === 'verifiedTelemetry';
+  const isBetween = row.operator === 'between';
+
+  return (
+    <div className="grid gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-2 md:grid-cols-[170px_170px_minmax(0,1fr)_40px]">
+      <select
+        aria-label="Condition field"
+        value={row.field}
+        onChange={(event) => onUpdate({ field: event.target.value as AutomationConditionField })}
+        className={compactInputClassName}
+      >
+        {fieldOptions.map((field) => <option key={field.value} value={field.value}>{field.label}</option>)}
+      </select>
+      <select
+        aria-label="Condition operator"
+        value={row.operator}
+        onChange={(event) => onUpdate({ operator: event.target.value as AutomationConditionOperator })}
+        className={compactInputClassName}
+      >
+        {operatorOptions.map((operator) => <option key={operator} value={operator}>{OPERATOR_LABELS[operator]}</option>)}
+      </select>
+
+      <div className={isBetween ? 'grid gap-2 sm:grid-cols-2' : ''}>
+        {isBoolean ? (
+          <div className="flex h-9 items-center rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300">
+            {row.field === 'telemetry' ? 'present' : row.field === 'verifiedTelemetry' ? 'true' : 'favorite'}
+          </div>
+        ) : isText ? (
+          <SuggestInput
+            ariaLabel={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            value={row.value}
+            options={valueOptions}
+            onChange={(value) => onUpdate({ value })}
+            placeholder="Type or choose..."
           />
-        </label>
-        <label>
-          <span className={labelClassName}>Favorite</span>
+        ) : valueOptions.length > 0 && !['steps', 'cfg'].includes(row.field) ? (
           <select
-            value={draft.criteria.filters.favoriteFilterMode ?? 'neutral'}
-            onChange={(event) => updateFilters({ favoriteFilterMode: event.target.value as 'neutral' | 'include' | 'exclude' })}
-            className={inputClassName}
+            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            value={row.value}
+            onChange={(event) => onUpdate({ value: event.target.value })}
+            className={compactInputClassName}
           >
-            <option value="neutral">Ignore</option>
-            <option value="include">Only favorites</option>
-            <option value="exclude">Exclude favorites</option>
+            <option value="">Choose...</option>
+            {valueOptions.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
-        </label>
-        <label>
-          <span className={labelClassName}>Ratings</span>
+        ) : (
           <input
-            value={(draft.criteria.filters.ratings ?? []).join(', ')}
-            onChange={(event) => updateFilters({
-              ratings: csvToList(event.target.value)
-                .map((value) => Number(value))
-                .filter((value): value is ImageRating => [1, 2, 3, 4, 5].includes(value)),
-            })}
-            className={inputClassName}
-            placeholder="1, 2, 3..."
+            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
+            type="number"
+            value={row.value}
+            onChange={(event) => onUpdate({ value: event.target.value })}
+            className={compactInputClassName}
+            placeholder="Value"
           />
-        </label>
+        )}
+
+        {isBetween && (
+          <input
+            aria-label={`${CONDITION_FIELD_LABELS[row.field]} end value`}
+            type="number"
+            value={row.valueEnd ?? ''}
+            onChange={(event) => onUpdate({ valueEnd: event.target.value })}
+            className={compactInputClassName}
+            placeholder="To"
+          />
+        )}
       </div>
 
-      {draft.criteria.filters.advancedFilters && Object.keys(draft.criteria.filters.advancedFilters as AdvancedFilters).length > 0 && (
-        <p className="mt-3 rounded-lg border border-gray-800 bg-gray-950/40 px-3 py-2 text-xs text-gray-400">
-          Advanced filters captured from the sidebar: {Object.keys(draft.criteria.filters.advancedFilters).join(', ')}
-        </p>
+      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition">
+        <X className="mx-auto h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+interface SuggestInputProps {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+}
+
+const SuggestInput: React.FC<SuggestInputProps> = ({ value, options, onChange, placeholder, ariaLabel }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const filteredOptions = useMemo(() => {
+    const query = value.trim().toLowerCase();
+    return options
+      .filter((option) => !query || option.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [options, value]);
+
+  return (
+    <div className="relative">
+      <input
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+        className={compactInputClassName}
+        placeholder={placeholder}
+      />
+      {isOpen && filteredOptions.length > 0 && (
+        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 shadow-xl">
+          {filteredOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(option);
+                setIsOpen(false);
+              }}
+              className="block w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
+            >
+              {option}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
 };
 
-interface RuleActionsEditorProps {
+interface ThenActionsProps {
   draft: AutomationRule;
   tagInput: string;
   setTagInput: (value: string) => void;
@@ -637,7 +687,7 @@ interface RuleActionsEditorProps {
   tagSuggestionLimit: number;
 }
 
-const RuleActionsEditor: React.FC<RuleActionsEditorProps> = ({
+const ThenActions: React.FC<ThenActionsProps> = ({
   draft,
   tagInput,
   setTagInput,
@@ -648,11 +698,13 @@ const RuleActionsEditor: React.FC<RuleActionsEditorProps> = ({
   availableTags,
   tagSuggestionLimit,
 }) => (
-  <div>
-    <h3 className="mb-2 text-sm font-semibold text-gray-100">Actions</h3>
-    <div className="space-y-3">
+  <section className="rounded-xl border border-gray-800 bg-gray-950/30 p-4">
+    <h3 className="text-sm font-semibold text-gray-100">Then</h3>
+    <p className="mt-1 text-xs text-gray-500">Choose what this rule adds.</p>
+
+    <div className="mt-4 space-y-4">
       <div>
-        <span className={labelClassName}>Add tags</span>
+        <span className={labelClassName}>Add tag</span>
         <TagInputCombobox
           value={tagInput}
           onValueChange={setTagInput}
@@ -661,10 +713,10 @@ const RuleActionsEditor: React.FC<RuleActionsEditorProps> = ({
           availableTags={availableTags}
           excludedTags={draft.actions.addTags}
           suggestionLimit={tagSuggestionLimit}
-          mode="csv"
-          placeholder="animal, realistic..."
+          mode="single"
+          placeholder="Add tag..."
           wrapperClassName="relative"
-          inputClassName={inputClassName}
+          inputClassName={`${inputClassName} pr-14`}
           trailingContent={
             <button
               type="button"
@@ -697,7 +749,7 @@ const RuleActionsEditor: React.FC<RuleActionsEditorProps> = ({
       </div>
 
       <div>
-        <span className={labelClassName}>Add to collections</span>
+        <span className={labelClassName}>Add to collection</span>
         <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950/40 p-2">
           {collections.length === 0 ? (
             <div className="px-2 py-3 text-center text-xs text-gray-500">No collections yet.</div>
@@ -736,37 +788,39 @@ const RuleActionsEditor: React.FC<RuleActionsEditorProps> = ({
         />
         <span>
           <span className="block text-sm text-gray-200">Run on new or updated images</span>
-          <span className="mt-1 block text-xs text-gray-500">Manual apply is always available from this modal.</span>
+          <span className="mt-1 block text-xs text-gray-500">Manual apply is always available.</span>
         </span>
       </label>
     </div>
-  </div>
+  </section>
 );
 
-interface RulePreviewPanelProps {
-  preview: { matchCount: number; changeCount: number; tagChangeCount: number; collectionChangeCount: number };
+interface PreviewPanelProps {
+  preview: PreviewState;
+  canSave: boolean;
   isExistingRule: boolean;
   isApplying: boolean;
   draft: AutomationRule;
   editingRuleId: string | null;
-  handleSave: () => Promise<AutomationRule | null>;
-  handleApply: () => Promise<void>;
-  handleDuplicate: (rule: AutomationRule) => void;
-  handleDelete: (ruleId: string) => Promise<void>;
+  onSave: () => Promise<AutomationRule | null>;
+  onApply: () => Promise<void>;
+  onDuplicate: (rule: AutomationRule) => void;
+  onDelete: (ruleId: string) => Promise<void>;
   updateAutomationRule: (ruleId: string, updates: Partial<Omit<AutomationRule, 'id' | 'createdAt'>>) => Promise<AutomationRule | null>;
   setDraft: (rule: AutomationRule) => void;
 }
 
-const RulePreviewPanel: React.FC<RulePreviewPanelProps> = ({
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
   preview,
+  canSave,
   isExistingRule,
   isApplying,
   draft,
   editingRuleId,
-  handleSave,
-  handleApply,
-  handleDuplicate,
-  handleDelete,
+  onSave,
+  onApply,
+  onDuplicate,
+  onDelete,
   updateAutomationRule,
   setDraft,
 }) => (
@@ -791,21 +845,22 @@ const RulePreviewPanel: React.FC<RulePreviewPanelProps> = ({
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => void handleSave()}
-        disabled={!draft.name.trim()}
+        onClick={() => void onSave()}
+        disabled={!canSave}
         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Save Rule
       </button>
       <button
         type="button"
-        onClick={() => void handleApply()}
-        disabled={isApplying || !draft.name.trim()}
+        onClick={() => void onApply()}
+        disabled={isApplying || !canSave}
         className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-emerald-950/40 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Play className="h-4 w-4" />
         {isApplying ? 'Applying...' : 'Apply Now'}
       </button>
+
       {isExistingRule && editingRuleId && (
         <>
           <button
@@ -822,7 +877,7 @@ const RulePreviewPanel: React.FC<RulePreviewPanelProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => handleDuplicate(draft)}
+            onClick={() => onDuplicate(draft)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-800"
           >
             <Copy className="h-4 w-4" />
@@ -830,7 +885,7 @@ const RulePreviewPanel: React.FC<RulePreviewPanelProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => void handleDelete(editingRuleId)}
+            onClick={() => void onDelete(editingRuleId)}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-900/50 px-4 py-2 text-sm text-rose-200 transition-colors hover:bg-rose-950/40"
           >
             <Trash2 className="h-4 w-4" />
@@ -841,5 +896,3 @@ const RulePreviewPanel: React.FC<RulePreviewPanelProps> = ({
     </div>
   </aside>
 );
-
-export default AutomationRulesModal;
