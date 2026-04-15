@@ -523,4 +523,49 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().collections[0]?.imageIds).toEqual([catImage.id]);
     expect(useImageStore.getState().collections[0]?.imageCount).toBe(1);
   });
+
+  it('loads automation rules before auto-applying them to new images', async () => {
+    const catImage = createImage({
+      id: 'dir-1::startup-cat.png',
+      name: 'startup-cat.png',
+      prompt: 'cat portrait',
+      tags: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [catImage],
+      filteredImages: [catImage],
+      annotations: new Map(),
+      isAnnotationsLoaded: true,
+      isAutomationRulesLoaded: true,
+    });
+
+    await useImageStore.getState().createAutomationRule({
+      id: 'startup-rule',
+      name: 'Startup Cats',
+      enabled: true,
+      criteria: {
+        matchMode: 'all',
+        textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+        filters: {},
+      },
+      actions: { addTags: ['startup-animal'], addToCollectionIds: [] },
+      runOnNewImages: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    useImageStore.setState({
+      automationRules: [],
+      isAutomationRulesLoaded: false,
+    });
+
+    const result = await useImageStore.getState().applyEnabledAutomationRulesToImages([catImage]);
+
+    expect(result.some((preview) => preview.matchCount === 1 && preview.changeCount === 1)).toBe(true);
+    expect(useImageStore.getState().images[0]?.tags).toContain('startup-animal');
+    expect(useImageStore.getState().isAutomationRulesLoaded).toBe(true);
+  });
 });

@@ -2793,11 +2793,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             return applyAutomationRuleToCurrentState(rule, imagesToApply);
         },
         applyEnabledAutomationRulesToImages: async (imagesToApply) => {
-            const state = get();
-            if (!state.isAnnotationsLoaded || imagesToApply.length === 0) {
+            const initialState = get();
+            if (!initialState.isAnnotationsLoaded || imagesToApply.length === 0) {
                 return [];
             }
 
+            if (!initialState.isAutomationRulesLoaded) {
+                await get().loadAutomationRules();
+            }
+
+            const state = get();
             const rules = state.automationRules.filter((rule) => rule.enabled && rule.runOnNewImages);
             const previews: AutomationRulePreview[] = [];
             for (const rule of rules) {

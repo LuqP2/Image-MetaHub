@@ -120,6 +120,48 @@ describe('automation rule engine', () => {
     expect(imageMatchesAutomationRule(birdWithLora, rule)).toBe(false);
   });
 
+  it('keeps OR semantics for multiple values from the same facet row group', () => {
+    const fluxImage = createImage({ id: 'flux', models: ['Flux'] });
+    const sdxlImage = createImage({ id: 'sdxl', models: ['SDXL'] });
+    const otherImage = createImage({ id: 'other', models: ['Other'] });
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [
+          { id: 'model-1', field: 'model', operator: 'includes', value: 'Flux' },
+          { id: 'model-2', field: 'model', operator: 'includes', value: 'SDXL' },
+        ],
+        filters: {},
+      },
+      actions: { addTags: ['matched'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(fluxImage, rule)).toBe(true);
+    expect(imageMatchesAutomationRule(sdxlImage, rule)).toBe(true);
+    expect(imageMatchesAutomationRule(otherImage, rule)).toBe(false);
+  });
+
+  it('requires all excluded values from the same facet row group to be absent', () => {
+    const cleanImage = createImage({ id: 'clean', loras: [] });
+    const blockedImage = createImage({ id: 'blocked', loras: ['x'] });
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [
+          { id: 'lora-1', field: 'lora', operator: 'not_includes', value: 'x' },
+          { id: 'lora-2', field: 'lora', operator: 'not_includes', value: 'y' },
+        ],
+        filters: {},
+      },
+      actions: { addTags: ['matched'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(cleanImage, rule)).toBe(true);
+    expect(imageMatchesAutomationRule(blockedImage, rule)).toBe(false);
+  });
+
   it('does not apply disabled rules', () => {
     const rule = createRule({
       enabled: false,

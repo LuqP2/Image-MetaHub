@@ -365,6 +365,36 @@ const matchesFacetRow = (values: Set<string>, row: AutomationConditionRow): bool
   return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasValue : hasValue;
 };
 
+const GROUPABLE_ROW_FIELDS = new Set<AutomationConditionRow['field']>([
+  'model',
+  'lora',
+  'sampler',
+  'scheduler',
+  'generator',
+  'gpu',
+  'tag',
+  'autoTag',
+  'dimension',
+]);
+
+const getConditionRowGroupKey = (row: AutomationConditionRow): string | null => {
+  if (GROUPABLE_ROW_FIELDS.has(row.field)) {
+    return `${row.field}:${row.operator}`;
+  }
+  if (row.field === 'rating' && row.operator === 'equals') {
+    return `${row.field}:${row.operator}`;
+  }
+  return null;
+};
+
+const combineGroupedRowResults = (row: AutomationConditionRow, results: boolean[]): boolean => {
+  const exclusionOperator =
+    row.operator === 'not_includes' ||
+    row.operator === 'is_not' ||
+    row.operator === 'not_equals';
+  return exclusionOperator ? results.every(Boolean) : results.some(Boolean);
+};
+
 const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): boolean => {
   switch (row.field) {
     case 'prompt':
@@ -423,9 +453,31 @@ export function imageMatchesAutomationRule(image: IndexedImage, rule: Automation
   }
 
   if (rule.criteria.conditionRows?.length) {
-    const rowChecks = rule.criteria.conditionRows
-      .filter((row) => row.value.trim() || row.field === 'favorite' || row.field === 'telemetry' || row.field === 'verifiedTelemetry')
-      .map((row) => matchesConditionRow(image, row));
+    const rowChecks: boolean[] = [];
+    const groupedChecks = new Map<string, { row: AutomationConditionRow; results: boolean[] }>();
+    const rows = rule.criteria.conditionRows.filter((row) =>
+      row.value.trim() ||
+      row.field === 'favorite' ||
+      row.field === 'telemetry' ||
+      row.field === 'verifiedTelemetry',
+    );
+
+    for (const row of rows) {
+      const groupKey = getConditionRowGroupKey(row);
+      const result = matchesConditionRow(image, row);
+      if (!groupKey) {
+        rowChecks.push(result);
+        continue;
+      }
+      const group = groupedChecks.get(groupKey) ?? { row, results: [] };
+      group.results.push(result);
+      groupedChecks.set(groupKey, group);
+    }
+
+    for (const group of groupedChecks.values()) {
+      rowChecks.push(combineGroupedRowResults(group.row, group.results));
+    }
+
     if (rowChecks.length === 0) return false;
     return rule.criteria.matchMode === 'any'
       ? rowChecks.some(Boolean)
