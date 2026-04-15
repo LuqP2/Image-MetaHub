@@ -2023,7 +2023,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     itemData={cellData}
                     itemKey={({ columnIndex, rowIndex, data }) => {
                       const itemIndex = rowIndex * safeColumnCount + columnIndex;
-                      const item = data.items[itemIndex];
+                      const item = (data as CellData).items[itemIndex];
                       return item ? item.id : `empty-${rowIndex}-${columnIndex}`;
                     }}
                     style={{ overflowX: 'hidden' }}
