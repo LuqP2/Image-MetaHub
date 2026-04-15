@@ -4,6 +4,7 @@ import { IndexedImage, SmartCollection } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import CollectionCard from './CollectionCard';
+import AutomationRulesModal from './AutomationRulesModal';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useThumbnail } from '../hooks/useThumbnail';
 import {
@@ -74,6 +75,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingCollection, setEditingCollection] = useState<SmartCollection | null>(null);
+  const [automationRuleCollection, setAutomationRuleCollection] = useState<SmartCollection | null>(null);
 
   const selectedCollection = useMemo(
     () => collections.find((collection) => collection.id === activeCollectionId) ?? null,
@@ -130,7 +132,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
   };
 
   const handleCreateManualCollection = async (values: CollectionFormValues) => {
-    await createCollection({
+    const collection = await createCollection({
       kind: 'manual',
       name: values.name,
       description: values.description || undefined,
@@ -145,6 +147,9 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
       query: undefined,
     });
     setIsCreateModalOpen(false);
+    if (values.configureAutomationRules) {
+      setAutomationRuleCollection(collection);
+    }
   };
 
   const handleSaveCollection = async (values: CollectionFormValues) => {
@@ -401,6 +406,7 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         }}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateManualCollection}
+        showAutomationRulesOption
       />
 
       <CollectionFormModal
@@ -418,6 +424,13 @@ const CollectionsWorkspace: React.FC<CollectionsWorkspaceProps> = ({
         onSubmit={handleSaveCollection}
         showSourceTag
         showAutoUpdate
+      />
+
+      <AutomationRulesModal
+        isOpen={automationRuleCollection !== null}
+        onClose={() => setAutomationRuleCollection(null)}
+        initialCollectionId={automationRuleCollection?.id ?? null}
+        initialRuleName={automationRuleCollection ? `Add to ${automationRuleCollection.name}` : undefined}
       />
     </div>
   );

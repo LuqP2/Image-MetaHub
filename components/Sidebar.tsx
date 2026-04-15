@@ -1,11 +1,12 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
+import AutomationRulesModal from './AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 
@@ -96,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onReshuffle
 }) => {
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
+  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -111,6 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedGenerators = useImageStore((state) => state.excludedGenerators);
   const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
+  const automationRules = useImageStore((state) => state.automationRules);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const countFacetValues = useMemo(() => {
     if (isIndexing) {
@@ -275,6 +278,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
+  const activeAutomationRuleCount = automationRules.filter((rule) => rule.enabled).length;
 
   if (isCollapsed) {
     return (
@@ -318,6 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
+    <>
     <div
       data-area="sidebar"
       tabIndex={-1}
@@ -391,23 +396,39 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {onAddFolder && (
-          <div className="px-3 py-2 border-b border-gray-700">
+        <div className="px-3 py-2 border-b border-gray-700">
+          <div className={`grid gap-2 ${onAddFolder ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {onAddFolder && (
+              <button
+                onClick={onAddFolder}
+                disabled={isIndexing}
+                className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                  isIndexing
+                    ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+                }`}
+                title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              >
+                <Plus size={14} />
+                <span>Add Folder</span>
+              </button>
+            )}
             <button
-              onClick={onAddFolder}
-              disabled={isIndexing}
-              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-                isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-              }`}
-              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              type="button"
+              onClick={() => setIsAutomationRulesOpen(true)}
+              className="relative flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
+              title="Automation rules"
             >
-              <Plus size={14} />
-              <span>Add Folder</span>
+              <SlidersHorizontal size={14} />
+              <span>Rules</span>
+              {activeAutomationRuleCount > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
+                  {activeAutomationRuleCount}
+                </span>
+              )}
             </button>
           </div>
-        )}
+        </div>
 
         {children && React.isValidElement(children) ? (
           React.cloneElement(children as React.ReactElement<any>, {
@@ -475,6 +496,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </div>
+    <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
+    </>
   );
 };
 

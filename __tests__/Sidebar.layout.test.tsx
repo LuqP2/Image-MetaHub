@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Sidebar from '../components/Sidebar';
 import { useImageStore } from '../store/useImageStore';
@@ -77,7 +77,9 @@ describe('Sidebar layout', () => {
     );
 
     expect(screen.getByText('Folder content')).toBeTruthy();
-    expect(screen.getByText('Ratings, Favorites & Tags')).toBeTruthy();
     expect(screen.getByText('Sort Order')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /rules/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /rules/i }));
+    expect(screen.getByRole('dialog', { name: /automation rules/i })).toBeTruthy();
   });
 });
