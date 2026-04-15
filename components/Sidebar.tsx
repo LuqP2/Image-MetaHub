@@ -1,11 +1,12 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
+import AutomationRulesModal from './AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
 
@@ -96,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onReshuffle
 }) => {
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
+  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
@@ -111,6 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedGenerators = useImageStore((state) => state.excludedGenerators);
   const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
+  const automationRules = useImageStore((state) => state.automationRules);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
   const countFacetValues = useMemo(() => {
     if (isIndexing) {
@@ -275,6 +278,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
+  const activeAutomationRuleCount = automationRules.filter((rule) => rule.enabled).length;
 
   if (isCollapsed) {
     return (
@@ -318,6 +322,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   }
 
   return (
+    <>
     <div
       data-area="sidebar"
       tabIndex={-1}
@@ -421,6 +426,24 @@ const Sidebar: React.FC<SidebarProps> = ({
           children
         )}
 
+        <div className="border-b border-gray-800/80 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setIsAutomationRulesOpen(true)}
+            className="flex w-full items-center justify-between rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800/50 hover:text-white"
+          >
+            <span className="inline-flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-blue-300" />
+              Rules
+            </span>
+            {activeAutomationRuleCount > 0 && (
+              <span className="rounded-full border border-blue-700/50 bg-blue-950/60 px-2 py-0.5 text-[11px] text-blue-200">
+                {activeAutomationRuleCount}
+              </span>
+            )}
+          </button>
+        </div>
+
         <TagsAndFavorites />
 
         {generationFacets.length > 0 && (
@@ -475,6 +498,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </div>
+    <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
+    </>
   );
 };
 
