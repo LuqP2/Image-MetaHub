@@ -467,4 +467,60 @@ describe('useImageStore tri-state filters', () => {
 
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toContain('i.png');
   });
+
+  it('applies automation rules to annotations and collection membership', async () => {
+    const catImage = createImage({
+      id: 'dir-1::cat.png',
+      name: 'cat.png',
+      prompt: 'cat portrait',
+      tags: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [catImage],
+      filteredImages: [catImage],
+      annotations: new Map(),
+      isAnnotationsLoaded: true,
+      automationRules: [
+        {
+          id: 'rule-1',
+          name: 'Cats',
+          enabled: true,
+          criteria: {
+            matchMode: 'all',
+            textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+            filters: {},
+          },
+          actions: { addTags: ['animal'], addToCollectionIds: ['collection-1'] },
+          runOnNewImages: true,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      collections: [
+        {
+          id: 'collection-1',
+          kind: 'manual',
+          name: 'Animals',
+          sortIndex: 0,
+          imageIds: [],
+          snapshotImageIds: [],
+          excludedImageIds: [],
+          imageCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    const result = await useImageStore.getState().applyAutomationRuleNow('rule-1');
+
+    expect(result).toMatchObject({ matchCount: 1, changeCount: 2 });
+    expect(useImageStore.getState().images[0]?.tags).toEqual(['animal']);
+    expect(useImageStore.getState().annotations.get(catImage.id)?.tags).toEqual(['animal']);
+    expect(useImageStore.getState().collections[0]?.imageIds).toEqual([catImage.id]);
+    expect(useImageStore.getState().collections[0]?.imageCount).toBe(1);
+  });
 });
