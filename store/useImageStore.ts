@@ -2078,14 +2078,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                         selection.add(normalizedPath);
                     }
                 } else {
-                    // Single select: replace all with this folder
-                    // If clicking the same folder that's already the only selection, clear it
-                    if (selection.size === 1 && selection.has(normalizedPath)) {
-                        selection.clear();
-                    } else {
-                        selection.clear();
-                        selection.add(normalizedPath);
-                    }
+                    // Single select: always focus this folder. The clear button owns clearing.
+                    selection.clear();
+                    selection.add(normalizedPath);
                 }
 
                 const newState = { ...state, selectedFolders: selection };
