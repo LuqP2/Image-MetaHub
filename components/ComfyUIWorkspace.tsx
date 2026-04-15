@@ -27,6 +27,7 @@ import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 interface ComfyUIWorkspaceProps {
   image: IndexedImage | null;
   isActive: boolean;
+  suspendBrowser?: boolean;
   onOpenQueue: () => void;
   onOpenSettings: () => void;
 }
@@ -74,6 +75,7 @@ const getWorkflowMetadata = (image: IndexedImage | null): BaseMetadata | null =>
 const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   image,
   isActive,
+  suspendBrowser = false,
   onOpenQueue,
   onOpenSettings,
 }) => {
@@ -107,6 +109,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   const metadata = getWorkflowMetadata(image);
   const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.comfyUIViewOpen);
   const targetUrl = comfyUIWorkspaceLastUrl || comfyUIServerUrl;
+  const shouldShowBrowser = isActive && !suspendBrowser;
 
   const togglePanelCollapsed = useCallback(() => {
     setIsPanelCollapsed((current) => {
@@ -129,7 +132,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
   }, [comfyUILastConnectionStatus, loadFailure]);
 
   const syncBounds = useCallback(async () => {
-    if (!isActive || !isElectron || !browserHostRef.current) {
+    if (!shouldShowBrowser || !isElectron || !browserHostRef.current) {
       return;
     }
 
@@ -139,10 +142,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     }
 
     await window.electronAPI?.comfyUIViewSetBounds({ bounds });
-  }, [isActive, isElectron]);
+  }, [isElectron, shouldShowBrowser]);
 
   const openEmbeddedView = useCallback(async () => {
-    if (!isActive || !isElectron || !browserHostRef.current) {
+    if (!shouldShowBrowser || !isElectron || !browserHostRef.current) {
       return;
     }
 
@@ -154,10 +157,10 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
     } else if (result?.error) {
       setConnectionMessage(result.error);
     }
-  }, [isActive, isElectron, targetUrl]);
+  }, [isElectron, shouldShowBrowser, targetUrl]);
 
   useEffect(() => {
-    if (!isActive || !isElectron) {
+    if (!shouldShowBrowser || !isElectron) {
       window.electronAPI?.comfyUIViewHide?.();
       return;
     }
@@ -184,7 +187,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       window.removeEventListener('resize', handleResize);
       window.electronAPI?.comfyUIViewHide?.();
     };
-  }, [isActive, isElectron, openEmbeddedView, syncBounds]);
+  }, [isElectron, openEmbeddedView, shouldShowBrowser, syncBounds]);
 
   useEffect(() => {
     const unsubscribeState = window.electronAPI?.onComfyUIViewStateChanged?.((state) => {
@@ -387,13 +390,21 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1 bg-black">
           <div ref={browserHostRef} className="absolute inset-0" />
-          {(loadFailure || !viewState.visible) && (
+          {(suspendBrowser || loadFailure || !viewState.visible) && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gray-950 text-center">
               <div className="max-w-sm px-6">
-                <AlertTriangle className="mx-auto h-9 w-9 text-amber-300" />
-                <h3 className="mt-3 text-base font-semibold text-gray-100">ComfyUI is not visible yet</h3>
+                {suspendBrowser ? (
+                  <Loader2 className="mx-auto h-9 w-9 animate-spin text-purple-300" />
+                ) : (
+                  <AlertTriangle className="mx-auto h-9 w-9 text-amber-300" />
+                )}
+                <h3 className="mt-3 text-base font-semibold text-gray-100">
+                  {suspendBrowser ? 'ComfyUI browser paused during generation' : 'ComfyUI is not visible yet'}
+                </h3>
                 <p className="mt-2 text-sm text-gray-400">
-                  Start ComfyUI, check the endpoint, then reconnect. The browser will stay attached to this workspace.
+                  {suspendBrowser
+                    ? 'Image MetaHub is generating through the API and temporarily hides the embedded ComfyUI UI to reduce memory pressure.'
+                    : 'Start ComfyUI, check the endpoint, then reconnect. The browser will stay attached to this workspace.'}
                 </p>
               </div>
             </div>

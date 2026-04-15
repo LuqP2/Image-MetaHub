@@ -359,6 +359,9 @@ export default function App() {
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+  const isComfyUIQueueProcessing = useGenerationQueueStore((state) =>
+    state.items.some((item) => item.provider === 'comfyui' && item.status === 'processing')
+  );
 
   useEffect(() => {
     if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
@@ -1973,6 +1976,7 @@ export default function App() {
                   <ComfyUIWorkspace
                     image={comfyUIWorkspaceImage}
                     isActive={shouldShowEmbeddedComfyUIView}
+                    suspendBrowser={isComfyUIQueueProcessing}
                     onOpenQueue={() => setIsQueueOpen(true)}
                     onOpenSettings={handleOpenGeneratorIntegrations}
                   />

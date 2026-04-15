@@ -358,7 +358,7 @@ async function getCacheRootPath() {
   return app.getPath('userData');
 }
 
-function logRendererCrash(details = {}) {
+function logProcessEvent(details = {}) {
   try {
     const crashLogPath = path.join(app.getPath('userData'), 'renderer-crashes.log');
     const payload = {
@@ -368,8 +368,12 @@ function logRendererCrash(details = {}) {
 
     fsSync.appendFileSync(crashLogPath, `${JSON.stringify(payload)}\n`, 'utf8');
   } catch (error) {
-    console.error('Failed to write renderer crash log:', error);
+    console.error('Failed to write process event log:', error);
   }
+}
+
+function logRendererCrash(details = {}) {
+  logProcessEvent(details);
 }
 // --- End Settings Management ---
 
@@ -464,6 +468,23 @@ function configureComfyUIViewHandlers(view) {
       url: validatedURL,
     });
     updateComfyUIViewState({ isLoading: false });
+  });
+  contents.on('render-process-gone', (_event, details) => {
+    console.error('ComfyUI embedded renderer process gone:', details);
+    logRendererCrash({
+      kind: 'comfy-view-render-process-gone',
+      reason: details?.reason ?? null,
+      exitCode: details?.exitCode ?? null,
+      url: contents.getURL(),
+    });
+    updateComfyUIViewState({ visible: false, isLoading: false });
+  });
+  contents.on('unresponsive', () => {
+    console.error('ComfyUI embedded renderer became unresponsive');
+    logRendererCrash({
+      kind: 'comfy-view-unresponsive',
+      url: contents.getURL(),
+    });
   });
 }
 
@@ -1273,6 +1294,26 @@ async function createWindow(startupDirectory = null) {
 }
 
 // App event handlers
+app.on('child-process-gone', (_event, details) => {
+  console.error('Child process gone:', details);
+  logProcessEvent({
+    kind: 'child-process-gone',
+    type: details?.type ?? null,
+    reason: details?.reason ?? null,
+    exitCode: details?.exitCode ?? null,
+    serviceName: details?.serviceName ?? null,
+    name: details?.name ?? null,
+  });
+});
+
+app.on('gpu-process-crashed', (_event, killed) => {
+  console.error('GPU process crashed:', { killed });
+  logProcessEvent({
+    kind: 'gpu-process-crashed',
+    killed: Boolean(killed),
+  });
+});
+
 app.whenReady().then(async () => {
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
