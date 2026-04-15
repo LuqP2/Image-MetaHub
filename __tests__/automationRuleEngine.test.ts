@@ -162,6 +162,26 @@ describe('automation rule engine', () => {
     expect(imageMatchesAutomationRule(blockedImage, rule)).toBe(false);
   });
 
+  it('preserves all-tags semantics for grouped manual tag rows', () => {
+    const imageWithBothTags = createImage({ id: 'both', tags: ['animal', 'portrait'] });
+    const imageWithOneTag = createImage({ id: 'one', tags: ['animal'] });
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [
+          { id: 'tag-1', field: 'tag', operator: 'includes', value: 'animal', groupMode: 'all' },
+          { id: 'tag-2', field: 'tag', operator: 'includes', value: 'portrait', groupMode: 'all' },
+        ],
+        filters: {},
+      },
+      actions: { addTags: ['matched'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(imageWithBothTags, rule)).toBe(true);
+    expect(imageMatchesAutomationRule(imageWithOneTag, rule)).toBe(false);
+  });
+
   it('does not apply disabled rules', () => {
     const rule = createRule({
       enabled: false,

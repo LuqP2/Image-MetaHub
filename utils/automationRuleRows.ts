@@ -139,9 +139,10 @@ const addRowsFromValues = (
   field: AutomationConditionField,
   operator: AutomationConditionOperator,
   values: string[] | undefined,
+  groupMode?: AutomationConditionRow['groupMode'],
 ) => {
   for (const value of normalizeList(values, field === 'tag')) {
-    rows.push({ id: createRowId(), field, operator, value });
+    rows.push({ id: createRowId(), field, operator, value, groupMode });
   }
 };
 
@@ -197,6 +198,7 @@ export function normalizeConditionRow(row: Partial<AutomationConditionRow>): Aut
     operator,
     value: typeof row.value === 'string' ? row.value : '',
     valueEnd: typeof row.valueEnd === 'string' ? row.valueEnd : '',
+    groupMode: row.groupMode === 'all' || row.groupMode === 'any' ? row.groupMode : undefined,
   };
 }
 
@@ -251,7 +253,7 @@ export function filterCriteriaToConditionRows(filters: AutomationRuleFilterCrite
   addRowsFromValues(rows, 'generator', 'not_includes', filters.excludedGenerators);
   addRowsFromValues(rows, 'gpu', 'includes', filters.gpuDevices);
   addRowsFromValues(rows, 'gpu', 'not_includes', filters.excludedGpuDevices);
-  addRowsFromValues(rows, 'tag', 'includes', filters.tags);
+  addRowsFromValues(rows, 'tag', 'includes', filters.tags, filters.tagMatchMode === 'all' ? 'all' : undefined);
   addRowsFromValues(rows, 'tag', 'not_includes', filters.excludedTags);
   addRowsFromValues(rows, 'autoTag', 'includes', filters.autoTags);
   addRowsFromValues(rows, 'autoTag', 'not_includes', filters.excludedAutoTags);
@@ -349,7 +351,12 @@ const applyRowToFilters = (row: AutomationConditionRow, filters: AutomationRuleF
     case 'scheduler': pushFilterValue(filters, isExclude ? 'excludedSchedulers' : 'schedulers', row.value); break;
     case 'generator': pushFilterValue(filters, isExclude ? 'excludedGenerators' : 'generators', row.value); break;
     case 'gpu': pushFilterValue(filters, isExclude ? 'excludedGpuDevices' : 'gpuDevices', row.value); break;
-    case 'tag': pushFilterValue(filters, isExclude ? 'excludedTags' : 'tags', row.value, true); break;
+    case 'tag':
+      pushFilterValue(filters, isExclude ? 'excludedTags' : 'tags', row.value, true);
+      if (!isExclude && row.groupMode === 'all') {
+        filters.tagMatchMode = 'all';
+      }
+      break;
     case 'autoTag': pushFilterValue(filters, isExclude ? 'excludedAutoTags' : 'autoTags', row.value); break;
     case 'dimension':
       filters.advancedFilters = { ...filters.advancedFilters, dimension: row.value.trim() };

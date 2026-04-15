@@ -1,6 +1,6 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AutomationRulesModal from '../components/AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -33,6 +33,7 @@ describe('AutomationRulesModal', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
   });
 
@@ -81,5 +82,41 @@ describe('AutomationRulesModal', () => {
     expect(rule.criteria.conditionRows?.[0]).toMatchObject({ field: 'prompt', operator: 'contains', value: 'cat' });
     expect(rule.criteria.textConditions[0]).toMatchObject({ field: 'prompt', operator: 'contains', value: 'cat' });
     expect(rule.actions.addTags).toEqual(['animal']);
+  });
+
+  it('clears the editor after deleting the selected rule', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useImageStore.setState({
+      automationRules: [
+        {
+          id: 'rule-1',
+          name: 'Delete me',
+          enabled: true,
+          criteria: {
+            matchMode: 'all',
+            textConditions: [],
+            conditionRows: [{ id: 'row-1', field: 'prompt', operator: 'contains', value: 'cat' }],
+            filters: { tagMatchMode: 'any', favoriteFilterMode: 'neutral', advancedFilters: {} },
+          },
+          actions: { addTags: ['animal'], addToCollectionIds: [] },
+          runOnNewImages: true,
+          createdAt: 1,
+          updatedAt: 1,
+          lastAppliedAt: null,
+          lastMatchCount: 0,
+          lastChangeCount: 0,
+        },
+      ],
+    });
+
+    render(<AutomationRulesModal isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: /delete/i }).at(-1) as HTMLElement);
+
+    await waitFor(() => {
+      expect(useImageStore.getState().automationRules).toEqual([]);
+    });
+    expect(screen.getByRole('heading', { name: /new rule/i })).toBeTruthy();
+    expect(screen.getByText(/no conditions yet/i)).toBeTruthy();
   });
 });

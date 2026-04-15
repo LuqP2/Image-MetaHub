@@ -335,6 +335,8 @@ export default function AutomationRulesModal({
     const confirmed = window.confirm('Delete this rule? Existing tags and collection membership will stay in place.');
     if (!confirmed) return;
     await deleteAutomationRuleById(ruleId);
+    const nextRule = automationRules.find((rule) => rule.id !== ruleId) ?? null;
+    loadRuleForEditing(nextRule);
   };
 
   const addTagsFromInput = (value: string) => {

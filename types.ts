@@ -760,6 +760,7 @@ export interface AutomationConditionRow {
   operator: AutomationConditionOperator;
   value: string;
   valueEnd?: string;
+  groupMode?: AutomationRuleMatchMode;
 }
 
 export interface AutomationRuleFilterCriteria extends SelectedFiltersUpdate {

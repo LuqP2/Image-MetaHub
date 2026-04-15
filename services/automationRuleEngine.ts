@@ -392,6 +392,9 @@ const combineGroupedRowResults = (row: AutomationConditionRow, results: boolean[
     row.operator === 'not_includes' ||
     row.operator === 'is_not' ||
     row.operator === 'not_equals';
+  if (row.groupMode === 'all') {
+    return results.every(Boolean);
+  }
   return exclusionOperator ? results.every(Boolean) : results.some(Boolean);
 };
 

@@ -46,7 +46,7 @@ describe('automation rule condition rows', () => {
       expect.objectContaining({ field: 'prompt', operator: 'contains', value: 'dog' }),
       expect.objectContaining({ field: 'model', operator: 'includes', value: 'CyberRealistic' }),
       expect.objectContaining({ field: 'lora', operator: 'not_includes', value: 'x' }),
-      expect.objectContaining({ field: 'tag', operator: 'includes', value: 'bird' }),
+      expect.objectContaining({ field: 'tag', operator: 'includes', value: 'bird', groupMode: 'all' }),
       expect.objectContaining({ field: 'favorite', operator: 'is' }),
       expect.objectContaining({ field: 'rating', operator: 'equals', value: '5' }),
       expect.objectContaining({ field: 'steps', operator: 'between', value: '10', valueEnd: '20' }),
@@ -58,6 +58,8 @@ describe('automation rule condition rows', () => {
       { id: 'prompt', field: 'prompt', operator: 'contains', value: 'cat' },
       { id: 'model', field: 'model', operator: 'includes', value: 'CyberRealistic' },
       { id: 'lora', field: 'lora', operator: 'not_includes', value: 'x' },
+      { id: 'tag-all-1', field: 'tag', operator: 'includes', value: 'animal', groupMode: 'all' },
+      { id: 'tag-all-2', field: 'tag', operator: 'includes', value: 'portrait', groupMode: 'all' },
       { id: 'tag', field: 'tag', operator: 'not_includes', value: 'Hidden' },
       { id: 'steps', field: 'steps', operator: 'between', value: '10', valueEnd: '20' },
     ], 'all');
@@ -65,9 +67,11 @@ describe('automation rule condition rows', () => {
     expect(criteria.textConditions).toEqual([
       { id: 'prompt', field: 'prompt', operator: 'contains', value: 'cat' },
     ]);
-    expect(criteria.conditionRows).toHaveLength(5);
+    expect(criteria.conditionRows).toHaveLength(7);
     expect(criteria.filters.models).toEqual(['CyberRealistic']);
     expect(criteria.filters.excludedLoras).toEqual(['x']);
+    expect(criteria.filters.tags).toEqual(['animal', 'portrait']);
+    expect(criteria.filters.tagMatchMode).toBe('all');
     expect(criteria.filters.excludedTags).toEqual(['hidden']);
     expect(criteria.filters.advancedFilters?.steps).toEqual({ min: 10, max: 20 });
   });
