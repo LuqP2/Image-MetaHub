@@ -429,7 +429,6 @@ export default function AutomationRulesModal({
           <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-white">{isExistingRule ? 'Edit Rule' : 'New Rule'}</h2>
-              <p className="mt-1 text-xs text-gray-500">Build rules from simple rows: field, operator, value.</p>
             </div>
             <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 hover:bg-gray-800 hover:text-white">
               <X className="h-5 w-5" />
@@ -519,7 +518,6 @@ const WhenBuilder: React.FC<WhenBuilderProps> = ({ rows, valueSource, onAdd, onI
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-sm font-semibold text-gray-100">When</h3>
-        <p className="mt-1 text-xs text-gray-500">Add one line per condition.</p>
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={onImport} className="rounded-lg border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
@@ -671,7 +669,6 @@ const ThenActions: React.FC<ThenActionsProps> = ({
 }) => (
   <section className="rounded-xl border border-gray-800 bg-gray-950/30 p-4">
     <h3 className="text-sm font-semibold text-gray-100">Then</h3>
-    <p className="mt-1 text-xs text-gray-500">Choose what this rule adds.</p>
 
     <div className="mt-4 space-y-4">
       <div>
@@ -759,7 +756,6 @@ const ThenActions: React.FC<ThenActionsProps> = ({
         />
         <span>
           <span className="block text-sm text-gray-200">Run on new or updated images</span>
-          <span className="mt-1 block text-xs text-gray-500">Manual apply is always available.</span>
         </span>
       </label>
     </div>
