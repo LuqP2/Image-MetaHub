@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { type IndexedImage } from '../types';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useFeatureAccess } from './useFeatureAccess';
+import {
+  getClipboardErrorMessage,
+  getNormalizedMetadata,
+  hasPromptMetadata,
+  NO_METADATA_MESSAGE,
+} from '../utils/imageMetadata';
 
 interface ContextMenuState {
   x: number;
@@ -99,19 +105,21 @@ export const useContextMenu = () => {
   };
 
   const copyPrompt = () => {
-    const prompt = contextMenu.image?.prompt || (contextMenu.image?.metadata as any)?.prompt;
+    const prompt = contextMenu.image?.prompt || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.prompt : undefined);
     if (!prompt) return;
     copyToClipboardElectron(prompt, 'Prompt');
   };
 
   const copyNegativePrompt = () => {
-    const negativePrompt = contextMenu.image?.negativePrompt || (contextMenu.image?.metadata as any)?.negativePrompt;
+    const negativePrompt =
+      contextMenu.image?.negativePrompt ||
+      (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.negativePrompt : undefined);
     if (!negativePrompt) return;
     copyToClipboardElectron(negativePrompt, 'Negative Prompt');
   };
 
   const copySeed = () => {
-    const seed = contextMenu.image?.seed || (contextMenu.image?.metadata as any)?.seed;
+    const seed = contextMenu.image?.seed || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.seed : undefined);
     if (!seed) return;
     copyToClipboardElectron(String(seed), 'Seed');
   };
@@ -128,7 +136,7 @@ export const useContextMenu = () => {
   };
 
   const copyModel = () => {
-    const model = contextMenu.image?.models?.[0] || (contextMenu.image?.metadata as any)?.model;
+    const model = contextMenu.image?.models?.[0] || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.model : undefined);
     if (!model) return;
     copyToClipboardElectron(model, 'Model');
   };
@@ -194,9 +202,9 @@ export const useContextMenu = () => {
       // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error);
-      alert(`An unexpected error occurred during export: ${error.message}`);
+      alert(`An unexpected error occurred during export: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -209,9 +217,9 @@ export const useContextMenu = () => {
       return;
     }
 
-    const metadata = contextMenu.image.metadata?.normalizedMetadata;
-    if (!metadata || !metadata.prompt) {
-      alert('No metadata available for this image');
+    const metadata = getNormalizedMetadata(contextMenu.image);
+    if (!hasPromptMetadata(metadata)) {
+      alert(NO_METADATA_MESSAGE);
       hideContextMenu();
       return;
     }
@@ -226,11 +234,8 @@ export const useContextMenu = () => {
       await navigator.clipboard.writeText(formattedText);
 
       showNotification('Copied! Paste into A1111 prompt box and click the Blue Arrow.');
-    } catch (error: any) {
-      const errorMessage = error.message?.includes('clipboard')
-        ? 'Clipboard access denied. Please use HTTPS or localhost.'
-        : `Error: ${error.message}`;
-      alert(errorMessage);
+    } catch (error: unknown) {
+      alert(getClipboardErrorMessage(error));
     }
   };
 
@@ -243,9 +248,9 @@ export const useContextMenu = () => {
       return;
     }
 
-    const metadata = contextMenu.image.metadata?.normalizedMetadata;
-    if (!metadata || !metadata.prompt) {
-      alert('No metadata available for this image');
+    const metadata = getNormalizedMetadata(contextMenu.image);
+    if (!hasPromptMetadata(metadata)) {
+      alert(NO_METADATA_MESSAGE);
       hideContextMenu();
       return;
     }
@@ -280,10 +285,10 @@ export const useContextMenu = () => {
       } else {
         alert(result.error || 'Generation failed');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Stop progress polling on error
       stopPolling();
-      alert(`Error: ${error.message}`);
+      alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

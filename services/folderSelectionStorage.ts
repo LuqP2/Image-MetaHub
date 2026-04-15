@@ -2,7 +2,7 @@
 
 import { openPreferencesDatabase, PREFERENCES_STORE_NAMES } from './preferencesDb';
 
-export type StoredSelectionState = 'checked' | 'unchecked'; // Legacy type for migration
+type FolderSelectionV1Record = Record<string, 'checked' | 'unchecked'>;
 
 const STORE_NAME = PREFERENCES_STORE_NAMES.folderSelection;
 const RECORD_KEY = 'selection';
@@ -73,7 +73,7 @@ export async function loadSelectedFolders(): Promise<string[]> {
         // Migrate from Map format to Array format
         console.log('🔄 Migrating folder selection from v1 (Map) to v2 (Array) format');
         const selectedPaths: string[] = [];
-        const oldData = result.data as Record<string, StoredSelectionState>;
+        const oldData = result.data as FolderSelectionV1Record;
 
         Object.entries(oldData).forEach(([path, state]) => {
           if (state === 'checked') {
@@ -103,18 +103,6 @@ export async function loadSelectedFolders(): Promise<string[]> {
       resolve([...inMemorySelection]);
     };
   });
-}
-
-// Legacy function name for backward compatibility
-export async function loadFolderSelection(): Promise<Record<string, StoredSelectionState>> {
-  console.warn('loadFolderSelection() is deprecated. Use loadSelectedFolders() instead.');
-  const selectedPaths = await loadSelectedFolders();
-  // Convert array back to old format for backward compatibility
-  const legacyFormat: Record<string, StoredSelectionState> = {};
-  selectedPaths.forEach(path => {
-    legacyFormat[path] = 'checked';
-  });
-  return legacyFormat;
 }
 
 export async function saveSelectedFolders(selectedPaths: string[]): Promise<void> {
@@ -155,19 +143,6 @@ export async function saveSelectedFolders(selectedPaths: string[]): Promise<void
     console.error('IndexedDB save error for folder selection state:', error);
     disablePersistence(error);
   });
-}
-
-// Legacy function name for backward compatibility
-export async function saveFolderSelection(selection: Record<string, StoredSelectionState>): Promise<void> {
-  console.warn('saveFolderSelection() is deprecated. Use saveSelectedFolders() instead.');
-  // Convert old format to new format
-  const selectedPaths: string[] = [];
-  Object.entries(selection).forEach(([path, state]) => {
-    if (state === 'checked') {
-      selectedPaths.push(path);
-    }
-  });
-  await saveSelectedFolders(selectedPaths);
 }
 
 export async function loadExcludedFolders(): Promise<string[]> {
@@ -293,10 +268,4 @@ export async function clearSelectedFolders(): Promise<void> {
     console.error('IndexedDB delete error for folder selection state:', error);
     disablePersistence(error);
   });
-}
-
-// Legacy function name for backward compatibility
-export async function clearFolderSelection(): Promise<void> {
-  console.warn('clearFolderSelection() is deprecated. Use clearSelectedFolders() instead.');
-  await clearSelectedFolders();
 }

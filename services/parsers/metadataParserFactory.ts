@@ -19,28 +19,31 @@ function sanitizeJson(jsonString: string): string {
     return jsonString.replace(/:\s*NaN/g, ': null');
 }
 
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 // Case-insensitive metadata key lookup (PNG/iTXt tags sometimes come capitalized)
-function getCaseInsensitive<T = any>(obj: Record<string, any>, key: string): T | undefined {
+function getCaseInsensitive<T = unknown>(obj: UnknownRecord, key: string): T | undefined {
     const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-    return foundKey ? obj[foundKey] : undefined;
+    return foundKey ? (obj[foundKey] as T) : undefined;
 }
 
-function isComfyPromptOnlyGraph(metadata: Record<string, any>): boolean {
+function isComfyPromptOnlyGraph(metadata: UnknownRecord): boolean {
     return Object.entries(metadata).some(([key, value]) => {
         if (key === 'extra' || key === 'extraMetadata') {
             return false;
         }
 
-        return !!value &&
-            typeof value === 'object' &&
-            !Array.isArray(value) &&
+        return isRecord(value) &&
             'class_type' in value &&
             'inputs' in value;
     });
 }
 
 interface ParserModule {
-    parse: (metadata: any, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
+    parse: (metadata: ImageMetadata, fileBuffer?: ArrayBuffer) => BaseMetadata | Promise<BaseMetadata>;
     generator: string;
 }
 
@@ -56,16 +59,16 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
 
     // Check for Adobe Firefly C2PA/EXIF metadata (after DALL-E, similar structure)
     if ('c2pa_manifest' in metadata) {
-        const manifest = metadata.c2pa_manifest as any;
-        if (manifest?.['adobe:firefly'] || 
+        const manifest = metadata.c2pa_manifest;
+        if ((isRecord(manifest) && manifest['adobe:firefly']) || 
             (typeof manifest === 'string' && manifest.includes('adobe:firefly')) ||
-            (manifest?.['c2pa.actions'] && JSON.stringify(manifest['c2pa.actions']).includes('firefly'))) {
+            (isRecord(manifest) && manifest['c2pa.actions'] && JSON.stringify(manifest['c2pa.actions']).includes('firefly'))) {
             return { parse: (data: FireflyMetadata, fileBuffer?: ArrayBuffer) => parseFireflyMetadata(data, fileBuffer!), generator: 'Adobe Firefly' };
         }
     }
     if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-        const exif = metadata.exif_data as any;
-        if (exif?.['adobe:firefly'] || exif?.Software?.includes('Firefly')) {
+        const exif = metadata.exif_data as UnknownRecord;
+        if (exif['adobe:firefly'] || (typeof exif.Software === 'string' && exif.Software.includes('Firefly'))) {
             return { parse: (data: FireflyMetadata, fileBuffer?: ArrayBuffer) => parseFireflyMetadata(data, fileBuffer!), generator: 'Adobe Firefly' };
         }
     }
@@ -116,7 +119,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
 
     // MetaHub Save Video detection (video metadata stored in container comment)
-    if ('videometahub_data' in metadata || (metadata as any).media_type === 'video') {
+    const rawMetadata = metadata as UnknownRecord;
+    if ('videometahub_data' in metadata || rawMetadata.media_type === 'video') {
         return {
             parse: (data: VideoMetadata) => {
                 const result = parseVideoMetaHubMetadata(data);
@@ -135,10 +139,10 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     }
 
     // ComfyUI detection (case-insensitive, accepts stringified prompt/workflow)
-    const workflowCI = getCaseInsensitive<any>(metadata as any, 'workflow');
-    const promptCI = getCaseInsensitive<any>(metadata as any, 'prompt');
+    const workflowCI = getCaseInsensitive<unknown>(rawMetadata, 'workflow');
+    const promptCI = getCaseInsensitive<unknown>(rawMetadata, 'prompt');
     const promptLooksLikeGraph = typeof promptCI === 'string' && /"class_type"|"inputs"/.test(promptCI);
-    const promptOnlyGraph = isComfyPromptOnlyGraph(metadata as any);
+    const promptOnlyGraph = isComfyPromptOnlyGraph(rawMetadata);
     const hasParameters = 'parameters' in metadata &&
         typeof metadata.parameters === 'string' &&
         metadata.parameters.trim().length > 0;
@@ -147,8 +151,8 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
         return {
             parse: (data: ComfyUIMetadata) => {
                 // Parse workflow and prompt if they are strings
-                let workflow = workflowCI ?? (data as any).workflow;
-                let prompt = promptCI ?? (data as any).prompt;
+                let workflow = workflowCI ?? data.workflow;
+                let prompt = promptCI ?? data.prompt;
                 try {
                     if (typeof workflow === 'string') {
                         workflow = JSON.parse(sanitizeJson(workflow));
@@ -160,7 +164,7 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
                     console.error("Failed to parse ComfyUI workflow/prompt JSON:", e);
                 }
                 if (!workflow && !prompt && promptOnlyGraph) {
-                    prompt = data as any;
+                    prompt = data;
                 }
                 const resolvedParams = resolvePromptFromGraph(workflow, prompt);
                 return {

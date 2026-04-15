@@ -15,7 +15,6 @@ Este script atualiza automaticamente:
 - ✅ `package.json` - campo version
 - ✅ `ARCHITECTURE.md` - seção Current Version
 - ✅ `components/Header.tsx` - título do cabeçalho
-- ✅ `components/StatusBar.tsx` - versão no rodapé
 - ✅ `components/FolderSelector.tsx` - tela de boas-vindas (3 ocorrências)
 - ✅ `index.html` - título da página
 - ✅ `electron.mjs` - título da janela e mock update (2 ocorrências)
@@ -23,7 +22,7 @@ Este script atualiza automaticamente:
 - ✅ `components/ChangelogModal.tsx` - referência de versão
 - ✅ `public/CHANGELOG.md` - sincroniza com CHANGELOG.md
 
-**Total: 11 arquivos atualizados automaticamente!**
+**Total: 10 arquivos atualizados automaticamente!**
 
 ### 2. `npm run auto-release <version>`
 **Workflow completamente automatizado - RECOMENDADO**

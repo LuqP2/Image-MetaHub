@@ -37,13 +37,11 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const startClustering = useImageStore((state) => state.startClustering);
   const startAutoTagging = useImageStore((state) => state.startAutoTagging);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
-  // const selectedImages = useImageStore((state) => state.selectedImages); // Unused in this file directly
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
 
   const { itemsPerPage, setItemsPerPage, viewMode, toggleViewMode } = useSettingsStore();
-  // const { handleDeleteSelectedImages, clearSelection } = useImageSelection(); // Unused
   const { progressState: a1111Progress } = useA1111ProgressContext();
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -68,21 +66,18 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
           .map((id) => imageMap.get(id))
           .filter((image): image is IndexedImage => Boolean(image)),
       }))
-      .filter((entry) => entry.images.length >= 3); // Minimum 3 images per cluster
+      .filter((entry) => entry.images.length >= 3);
   }, [clusters, imageMap]);
 
   const sortedEntries = useMemo(() => {
-    // Separate locked and unlocked clusters
     const lockedImageIds = clusteringMetadata?.lockedImageIds || new Set();
     const unlocked: ClusterEntry[] = [];
     const locked: ClusterEntry[] = [];
 
     clusterEntries.forEach((entry) => {
-      // Count how many images in this cluster are locked
       const lockedCount = entry.images.filter((img) => lockedImageIds.has(img.id)).length;
       const lockedPercentage = entry.images.length > 0 ? lockedCount / entry.images.length : 0;
 
-      // If more than 50% of images are locked, mark cluster as locked
       if (lockedPercentage > 0.5) {
         locked.push(entry);
       } else {
@@ -90,28 +85,23 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
       }
     });
 
-    // Sort function based on selected sort mode
     const sortFunction = (a: ClusterEntry, b: ClusterEntry) => {
       if (sortBy === 'similarity') {
-        // Sort by similarity (higher similarity first)
         return b.cluster.similarityThreshold - a.cluster.similarityThreshold;
-      } else {
-        // Sort by count (more images first)
-        const imageCountDelta = b.images.length - a.images.length;
-        if (imageCountDelta !== 0) {
-          return imageCountDelta;
-        }
-        return b.cluster.size - a.cluster.size;
       }
+
+      const imageCountDelta = b.images.length - a.images.length;
+      if (imageCountDelta !== 0) {
+        return imageCountDelta;
+      }
+      return b.cluster.size - a.cluster.size;
     };
 
     unlocked.sort(sortFunction);
     locked.sort(sortFunction);
 
-    // Limit locked preview to only 5 clusters (for teaser effect)
     const lockedPreview = locked.slice(0, 5);
 
-    // Return unlocked first, then limited locked preview
     return [...unlocked, ...lockedPreview];
   }, [clusterEntries, clusteringMetadata, sortBy]);
 
@@ -264,7 +254,6 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
           <div className="min-h-0 overflow-auto pr-1">
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {paginatedEntries.map((entry) => {
-                // Check if majority of images in this cluster are locked
                 const lockedImageIds = clusteringMetadata?.lockedImageIds || new Set();
                 const lockedCount = entry.images.filter((img) => lockedImageIds.has(img.id)).length;
                 const lockedPercentage = entry.images.length > 0 ? lockedCount / entry.images.length : 0;

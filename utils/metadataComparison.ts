@@ -9,7 +9,10 @@ import { BaseMetadata } from '../types';
  * Compare two values for equality
  * Handles strings (case-insensitive), numbers, arrays, and objects
  */
-export function compareField(field: string, valueA: any, valueB: any): boolean {
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export function compareField(field: string, valueA: unknown, valueB: unknown): boolean {
   // Handle null/undefined cases
   if (valueA === null || valueA === undefined) {
     return valueB === null || valueB === undefined;
@@ -42,7 +45,7 @@ export function compareField(field: string, valueA: any, valueB: any): boolean {
       const itemB = valueB[index];
 
       // If array items are objects (like LoRA info)
-      if (typeof item === 'object' && typeof itemB === 'object') {
+      if (isPlainObject(item) && isPlainObject(itemB)) {
         return JSON.stringify(item) === JSON.stringify(itemB);
       }
 
@@ -52,7 +55,7 @@ export function compareField(field: string, valueA: any, valueB: any): boolean {
   }
 
   // Object comparison (deep equality via JSON)
-  if (typeof valueA === 'object' && typeof valueB === 'object') {
+  if (isPlainObject(valueA) && isPlainObject(valueB)) {
     return JSON.stringify(valueA) === JSON.stringify(valueB);
   }
 
@@ -88,8 +91,8 @@ export function getMetadataDifferences(
 
   // Compare each field
   allKeys.forEach(field => {
-    const valueA = (metadataA as any)[field];
-    const valueB = (metadataB as any)[field];
+    const valueA = metadataA[field];
+    const valueB = metadataB[field];
 
     if (!compareField(field, valueA, valueB)) {
       differences.add(field);
@@ -148,7 +151,7 @@ export const FIELD_DISPLAY_ORDER = [
  * Format a field value for display
  * Handles special formatting for arrays, numbers, etc.
  */
-export function formatFieldValue(field: string, value: any): string {
+export function formatFieldValue(field: string, value: unknown): string {
   if (value === null || value === undefined) {
     return 'N/A';
   }
@@ -159,9 +162,13 @@ export function formatFieldValue(field: string, value: any): string {
 
     // Format LoRA info objects
     return value.map(item => {
-      if (typeof item === 'object' && item !== null) {
+      if (isPlainObject(item)) {
         // LoRAInfo object: { name, weight, ... }
-        const name = item.name || item.model_name || 'Unknown';
+        const name = typeof item.name === 'string'
+          ? item.name
+          : typeof item.model_name === 'string'
+            ? item.model_name
+            : 'Unknown';
         const weight = item.weight !== undefined ? item.weight : item.model_weight;
         if (weight !== undefined) {
           return `${name} (${weight})`;

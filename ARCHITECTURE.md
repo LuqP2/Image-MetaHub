@@ -256,7 +256,6 @@ The Smart Library is a separate browsing mode for similarity-based organization.
 * `components/StackCard.tsx`
 * `components/StackExpandedView.tsx`
 * `components/DeduplicationHelper.tsx`
-* `components/SmartCollectionsSidebar.tsx`
 
 **Engines**
 

@@ -1,4 +1,5 @@
 import { BaseMetadata } from '../types';
+import { getCfgScale } from './imageMetadata';
 
 /**
  * Formats metadata into A1111-compatible string format that can be pasted
@@ -44,7 +45,7 @@ export function formatMetadataForA1111(metadata: BaseMetadata): string {
   }
 
   // CFG Scale - handle both cfg_scale and cfgScale
-  const cfgScale = metadata.cfg_scale || (metadata as any).cfgScale;
+  const cfgScale = getCfgScale(metadata);
   if (cfgScale !== undefined && cfgScale !== null) {
     params.push(`CFG scale: ${cfgScale}`);
   }

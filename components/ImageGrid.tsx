@@ -38,7 +38,6 @@ import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 
-// --- ImageCard Component ---
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -136,7 +135,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const dragResetTimeoutRef = useRef<number | null>(null);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
-  // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const directories = useImageStore((state) => state.directories);
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
@@ -148,7 +146,6 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
   const isVideo = isVideoFileName(image.name, image.fileType);
 
-  // Extract filename to display based on showFullFilePath setting
   const relativeImagePath = getRelativeImagePath(image);
   const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
   const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
@@ -157,16 +154,13 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     ? abbreviatePathForDisplay(fullImagePath)
     : relativeImagePath.split(/[/\\]/).pop() || image.name;
 
-  // Lazy load thumbnails only when visible in viewport
   const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
-    rootMargin: '1200px', // Start loading well ahead of fast scrolling
-    freezeOnceVisible: true, // Once loaded, stay loaded
+    rootMargin: '1200px',
+    freezeOnceVisible: true,
   });
 
-  // Only request thumbnail when visible (or about to be visible)
   useThumbnail(isVisible ? image : null);
 
-  // Merge refs: combine intersectionRef with cardRef
   const mergedRef = useCallback(
     (node: HTMLDivElement | null) => {
       intersectionRef(node);
@@ -508,20 +502,18 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
 });
 
 
-// Type guard for ImageStack
 function isImageStack(item: IndexedImage | ImageStack): item is ImageStack {
   return (item as ImageStack).coverImage !== undefined;
 }
 
 const GAP_SIZE = 16;
-const ITEM_HEIGHT_RATIO = 1.0; // Square images for now
+const ITEM_HEIGHT_RATIO = 1.0;
 const CARD_HEIGHT_RATIO = 1.2;
 const FILENAME_HEIGHT = 40;
 
 const getItemHeight = (imageSize: number, showFilenames: boolean): number =>
   (imageSize * CARD_HEIGHT_RATIO) + (showFilenames ? FILENAME_HEIGHT : 0);
 
-// --- Virtualized Cell Component ---
 interface CellData {
   items: (IndexedImage | ImageStack)[];
   columnCount: number;
@@ -565,14 +557,12 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
 
   const index = rowIndex * columnCount + columnIndex;
 
-  // Handle empty cells
   if (index >= items.length) {
     return <div style={style} />;
   }
 
   const item = items[index];
 
-  // Render Stack
   if (isImageStack(item)) {
     const isSensitive = enableSafeMode &&
       sensitiveTagSet && sensitiveTagSet.size > 0 &&
@@ -591,11 +581,9 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
           onClick={() => onStackClick(item)}
           data-image-id={item.coverImage.id}
         >
-          {/* Back cards effect */}
           <div className="absolute top-[-4px] left-[4px] right-[-4px] bottom-[4px] bg-gray-700 rounded-lg border border-gray-600 shadow-sm z-0"></div>
           <div className="absolute top-[-8px] left-[8px] right-[-8px] bottom-[8px] bg-gray-800 rounded-lg border border-gray-700 shadow-sm z-[-1]"></div>
 
-          {/* Main Card */}
           <div className="relative z-10 w-full h-full">
             <ImageCard
               image={item.coverImage}
@@ -616,7 +604,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isBlurred={isSensitive && enableSafeMode && blurSensitiveImages}
             />
 
-            {/* Stack Badge */}
             <div className="absolute top-2 right-2 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-md backdrop-blur-md z-20 border border-white/10 shadow-sm">
               +{item.count}
             </div>
@@ -629,7 +616,6 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     );
   }
 
-  // Render Single Image
   const image = item;
   const isFocused = focusedImageIndex === index;
   const isSensitive = enableSafeMode &&
@@ -653,7 +639,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         isSelected={selectedImages.has(image.id)}
         isFocused={isFocused}
         onImageLoad={handleImageLoad}
-        onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
+        onContextMenu={(img, e) => handleContextMenu(img, e)}
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
@@ -676,12 +662,10 @@ interface ImageGridProps {
   onBatchExport: () => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
-  // Deduplication support (optional)
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
 
-// Custom Inner Element to ensure clicks on empty space are detected
 const InnerGridElement = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((props, ref) => (
   <div ref={ref} {...props} data-grid-background="true" />
 ));
@@ -703,14 +687,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const itemsPerPage = useSettingsStore((state) => state.itemsPerPage);
   const showFilenames = useSettingsStore((state) => state.showFilenames);
 
-  // --- Stacking Logic (Must be top-level) ---
   const isStackingEnabled = useImageStore((state) => state.isStackingEnabled);
   const setStackingEnabled = useImageStore((state) => state.setStackingEnabled);
   const setViewingStackPrompt = useImageStore((state) => state.setViewingStackPrompt);
   const setSearchQuery = useImageStore((state) => state.setSearchQuery);
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
-  
-  // Decide what to render based on stacking
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
   const gridRef = useRef<HTMLDivElement>(null);
@@ -721,13 +702,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const lastWarmupWindowRef = useRef<string>('');
   const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
 
-  // Missing state restored
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
   const enableSafeMode = useSettingsStore((state) => state.enableSafeMode);
   const directories = useImageStore((state) => state.directories);
-  
-  // Needed for filter effect
   const filterAndSortImages = useImageStore((state) => state.filterAndSortImages);
 
   const focusedImageIndex = useImageStore((state) => state.focusedImageIndex);
@@ -742,7 +720,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
 
-  // Drag-to-select states
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
@@ -814,7 +791,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const queuedComparisonFirstImageId = queuedComparisonImages[0]?.id;
 
   const handleAddTag = useCallback(() => {
-    // Calculate effective target count
     const isContextImageSelected = contextMenu.image && selectedImages.has(contextMenu.image.id);
     const effectiveCount = contextMenu.image 
         ? (isContextImageSelected ? selectedCount : 1)
@@ -1030,21 +1006,17 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
   }, [getContextTargetImages, transferMode]);
 
-  // Drag-to-select handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) {
       return;
     }
 
-    // Only start selection if clicking on the grid background (not on an interactive element)
     const target = e.target as HTMLElement;
-    
-    // Check if clicked element is interactive or part of an image card
-    // We look up the tree for buttons, inputs, or our specific image card containers
+
     const isInteractive = target.closest('button') || 
                           target.closest('a') || 
                           target.closest('input') || 
-                          target.closest('[data-image-id]'); // Check for image container
+                          target.closest('[data-image-id]');
 
     if (isInteractive) {
       return;
@@ -1052,10 +1024,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
     const preserveExistingSelection = e.ctrlKey || e.metaKey || e.shiftKey;
 
-    // Clicking background deselects everything unless we're in additive/range selection mode
     if (!preserveExistingSelection) {
         useImageStore.setState({ selectedImages: new Set() });
-        setFocusedImageIndex(-1); // Also clear focus
+        setFocusedImageIndex(-1);
     }
 
     e.preventDefault();
@@ -1068,7 +1039,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setIsSelecting(true);
     setSelectionStart({ x, y });
     setSelectionEnd({ x, y });
-    // Preserve the current selection for additive/range marquee operations.
     const currentSelection = preserveExistingSelection ? new Set(selectedImages) : new Set<string>();
     setInitialSelectedImages(currentSelection);
   }, [selectedImages]);
@@ -1095,18 +1065,15 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     };
   }, []);
 
-  // Throttled with requestAnimationFrame for performance
   const rafIdRef = useRef<number | null>(null);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isSelecting || !selectionStart) return;
 
-    // Cancel any pending animation frame
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
     }
 
-    // Schedule the intersection calculation for the next animation frame
     rafIdRef.current = requestAnimationFrame(() => {
       const rect = gridRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -1116,7 +1083,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
       setSelectionEnd({ x, y });
 
-      // Calculate which images are within the selection box (LOGICAL COORDINATES - relative to content top-left)
       const box = {
         left: Math.min(selectionStart.x, x),
         right: Math.max(selectionStart.x, x),
@@ -1128,8 +1094,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       const newSelection = new Set(preserveExistingSelection ? initialSelectedImages : []);
 
       if (isInfinite) {
-        // Coordinate-based selection for virtualized grid
-        // OPTIMIZED: only check items that intersect with the selection box row/col range
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
         const itemHeight = getItemHeight(imageSize, showFilenames);
@@ -1165,7 +1129,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             }
         }
       } else {
-        // DOM-based selection for existing rendered items
         imageCardsRef.current.forEach((element, imageId) => {
           const imageRect = element.getBoundingClientRect();
           const scrollTop = gridRef.current?.scrollTop || 0;
@@ -1178,7 +1141,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             bottom: imageRect.bottom - rect.top + scrollTop,
           };
   
-          // Check if boxes intersect
           const intersects = !(
             imageBox.right < box.left ||
             imageBox.left > box.right ||
@@ -1203,8 +1165,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setSelectionEnd(null);
   }, []);
 
-  // ALL HOOKS MUST BE BEFORE ANY EARLY RETURNS
-  // Sync focusedImageIndex when previewImage changes
   useEffect(() => {
     if (previewImage) {
       const index = images.findIndex(img => img.id === previewImage.id);
@@ -1212,50 +1172,41 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         setFocusedImageIndex(index);
       }
     }
-  }, [previewImage?.id]); // ✅ Removed focusedImageIndex to break circular dependency
+  }, [previewImage?.id]);
 
-  // Adjust focusedImageIndex when changing pages via arrow keys
   useEffect(() => {
     if (focusedImageIndex === -1 && images.length > 0 && gridKeyboardActiveRef.current) {
-      // Quando volta de página, vai para última imagem
       setFocusedImageIndex(images.length - 1);
       setPreviewImage(images[images.length - 1]);
     }
-  }, [images.length]); // ✅ Removed focusedImageIndex to break circular dependency
+  }, [images.length]);
 
-  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check if we're in a modal, command palette, or text input
       const target = e.target as HTMLElement;
       const isInModal = document.querySelector('[role="dialog"]') !== null;
       const isInCommandPalette = document.querySelector('.command-palette, [data-command-palette]') !== null;
       const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
-      // Block navigation if in modal/command palette or typing (except for Enter which should still work)
       if (isInModal || isInCommandPalette) {
         return;
       }
 
-      // For arrow keys and page navigation, require grid focus
       const needsFocus = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'].includes(e.key);
       if (needsFocus && !gridKeyboardActiveRef.current) {
         return;
       }
 
-      // Enter key works globally when an image is focused (fixes Issue #21)
       if (e.key === 'Enter' && !isTyping) {
         const currentIndex = focusedImageIndex ?? -1;
         if (currentIndex >= 0 && currentIndex < images.length) {
           e.preventDefault();
           e.stopPropagation();
 
-          // Alt+Enter = Open image in fullscreen mode (hide metadata panel)
           if (e.altKey) {
             sessionStorage.setItem('openImageFullscreen', 'true');
             onImageClick(images[currentIndex], e as any);
           } else {
-            // Regular Enter = Open modal normally
             sessionStorage.removeItem('openImageFullscreen');
             onImageClick(images[currentIndex], e as any);
           }
@@ -1273,12 +1224,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           setFocusedImageIndex(nextIndex);
           setPreviewImage(images[nextIndex]);
         } else if (currentPage < totalPages) {
-          // Chegou no final da página, vai pra próxima
           onPageChange(currentPage + 1);
           setFocusedImageIndex(0);
-          nextIndex = -1; // Wait for page change
+          nextIndex = -1;
         } else {
-            nextIndex = -1; // End of list
+            nextIndex = -1;
         }
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -1287,12 +1237,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           setFocusedImageIndex(nextIndex);
           setPreviewImage(images[nextIndex]);
         } else if (currentPage > 1) {
-          // Chegou no início da página, vai pra anterior
           onPageChange(currentPage - 1);
-          setFocusedImageIndex(-1); // Será ajustado quando as imagens mudarem
-          nextIndex = -1; // Wait for page change
+          setFocusedImageIndex(-1);
+          nextIndex = -1;
         } else {
-            nextIndex = -1; // Start of list
+            nextIndex = -1;
         }
       } else if (e.key === 'PageDown') {
         e.preventDefault();
@@ -1320,14 +1269,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         nextIndex = -1;
       }
 
-      // Sync selection if navigation occurred and no modifiers (or Shift) are held
-      // Standard Windows behavior: Arrow key moves focus AND selects, deselecting others (unless Ctrl is held)
       if (nextIndex !== -1 && nextIndex !== currentIndex) {
          if (!e.ctrlKey && !e.shiftKey) {
              useImageStore.setState({ selectedImages: new Set([images[nextIndex].id]) });
          }
-         // TODO: Implement Shift range selection if needed, but for now just preserving Selection if Ctrl is held,
-         // or resetting if neither. (User request: "Arrow key -> all should lose selection" [except new one])
       }
     };
 
@@ -1335,7 +1280,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
 
-  // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
     if (!isSelecting) return;
 
@@ -1353,13 +1297,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     filterAndSortImages();
   }, [filterAndSortImages, sensitiveTags, blurSensitiveImages, enableSafeMode]);
 
-  // Memoized callbacks - MUST be before early return
   const handleContextMenu = useCallback((image: IndexedImage, e: React.MouseEvent) => {
     const directoryPath = directories.find(d => d.id === image.directoryId)?.path;
     showContextMenu(e, image, directoryPath);
   }, [directories, showContextMenu]);
 
-  // Memoized cardRef callback factory
   const createCardRef = useCallback((imageId: string) => {
     const existing = cardRefCallbacksRef.current.get(imageId);
     if (existing) {
@@ -1800,20 +1742,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     </>
   );
 
-  // --- Stacking Logic ---
-  // Decide what to render based on stacking
-  // const itemsToRender = isStackingEnabled ? stackedItems : images; // Moved to top
-
-
-  // Handle drill-down
-
   const handleStackClick = React.useCallback((stack: ImageStack) => {
-    // Set search query to the prompt of the stack
     const prompt = stack.coverImage.metadata?.normalizedMetadata?.prompt || stack.coverImage.metadata?.positive_prompt;
     if (prompt) {
         setSearchQuery(prompt);
-        setStackingEnabled(false); // Disable stacking when drilling down to see individual items
-        setViewingStackPrompt(prompt); // Enable "Back to Stacks" mode
+        setStackingEnabled(false);
+        setViewingStackPrompt(prompt);
     }
   }, [setStackingEnabled, setViewingStackPrompt]);
 
@@ -1847,14 +1781,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     };
   }, [isInfinite, itemsToRender, currentPage]);
 
-  // Use itemsToRender for calculations
-  // const isInfinite = itemsPerPage === -1; // Moved to top
   const isEmpty = itemsToRender.length === 0;
 
-
-  // Dummy handler for image loading since aspect ratio tracking was removed but prop is required
   const handleImageLoad = useCallback((id: string, aspectRatio: number) => {
-    // No-op
   }, []);
 
   if (isEmpty) {
@@ -1894,7 +1823,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 const safeColumnCount = columnCount > 0 ? columnCount : 1;
                 const rowCount = Math.ceil(itemsToRender.length / safeColumnCount);
                 
-                // Update ref for selection logic
                 columnCountRef.current = safeColumnCount;
 
                 const cellData: CellData = {
