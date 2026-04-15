@@ -234,6 +234,7 @@ export default function App() {
   const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const loadCollections = useImageStore((state) => state.loadCollections);
+  const loadAutomationRules = useImageStore((state) => state.loadAutomationRules);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
@@ -514,6 +515,10 @@ export default function App() {
   useEffect(() => {
     loadCollections();
   }, [loadCollections]);
+
+  useEffect(() => {
+    loadAutomationRules();
+  }, [loadAutomationRules]);
 
   // Initialize license and keep trial opt-in
   useEffect(() => {

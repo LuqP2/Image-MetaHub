@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -21,6 +21,17 @@ import {
   resolveSmartCollectionImages,
   saveSmartCollection,
 } from '../services/imageAnnotationsStorage';
+import {
+    deleteAutomationRule,
+    getAllAutomationRules,
+    normalizeAutomationRule,
+    saveAutomationRule,
+} from '../services/automationRulesStorage';
+import {
+    applyAutomationRuleToImages,
+    previewAutomationRule,
+    type AutomationRulePreview,
+} from '../services/automationRuleEngine';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
@@ -262,6 +273,21 @@ const syncCollectionCounts = (collections: SmartCollection[], images: IndexedIma
         ),
     );
 
+const uniqueIds = (imageIds: string[]): string[] =>
+    Array.from(new Set(imageIds.filter((imageId) => typeof imageId === 'string' && imageId.trim().length > 0)));
+
+const addImagesToCollectionRecord = (collection: SmartCollection, imageIds: string[]): SmartCollection => {
+    const nextImageIds = uniqueIds([...(collection.imageIds ?? []), ...imageIds]);
+    return normalizeSmartCollection(
+        {
+            ...collection,
+            imageIds: nextImageIds,
+            updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+    );
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -390,6 +416,8 @@ interface ImageState {
   selectedImages: Set<string>;
   activeImageScope: IndexedImage[] | null;
   collections: SmartCollection[];
+  automationRules: AutomationRule[];
+  isAutomationRulesLoaded: boolean;
   activeCollectionId: string | null;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
@@ -521,9 +549,16 @@ interface ImageState {
   setSelectedImage: (image: IndexedImage | null) => void;
   setActiveImageScope: (images: IndexedImage[] | null) => void;
   loadCollections: () => Promise<void>;
+  loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
   updateCollection: (collectionId: string, updates: Partial<Omit<SmartCollection, 'id' | 'createdAt'>>) => Promise<SmartCollection | null>;
   deleteCollectionById: (collectionId: string) => Promise<void>;
+  createAutomationRule: (rule: Omit<AutomationRule, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<AutomationRule>;
+  updateAutomationRule: (ruleId: string, updates: Partial<Omit<AutomationRule, 'id' | 'createdAt'>>) => Promise<AutomationRule | null>;
+  deleteAutomationRuleById: (ruleId: string) => Promise<void>;
+  previewAutomationRule: (rule: AutomationRule, images?: IndexedImage[]) => AutomationRulePreview;
+  applyAutomationRuleNow: (ruleId: string, images?: IndexedImage[]) => Promise<AutomationRulePreview | null>;
+  applyEnabledAutomationRulesToImages: (images: IndexedImage[]) => Promise<AutomationRulePreview[]>;
   setActiveCollectionId: (collectionId: string | null) => void;
   reorderCollections: (orderedCollectionIds: string[]) => Promise<void>;
   addImagesToCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
@@ -858,6 +893,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             return _updateState(state, merged);
         });
 
+        if (get().isAnnotationsLoaded) {
+            void get().importMetadataTags(updatesToMerge);
+        }
         maybeQueueLineageBuild(700);
 
         traceCacheDebug('store:flushPendingMerges', () => ({
@@ -921,6 +959,109 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
         return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
+    };
+
+    const applyAutomationRuleToCurrentState = async (
+        rule: AutomationRule,
+        sourceImages?: IndexedImage[],
+    ): Promise<AutomationRulePreview> => {
+        const sourceIds = sourceImages && sourceImages.length > 0
+            ? new Set(sourceImages.map((image) => image.id))
+            : null;
+        let preview: AutomationRulePreview = {
+            matchedImageIds: [],
+            matchCount: 0,
+            changeCount: 0,
+            tagChangeCount: 0,
+            collectionChangeCount: 0,
+        };
+        let updatedRule: AutomationRule | null = null;
+        let annotationsToPersist: ImageAnnotations[] = [];
+        let collectionsToPersist: SmartCollection[] = [];
+        const tagCatalogUpdates = new Set<string>();
+
+        set(state => {
+            const targetImages = sourceIds
+                ? state.images.filter((image) => sourceIds.has(image.id))
+                : state.images;
+            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections);
+            preview = {
+                matchedImageIds: result.matchedImageIds,
+                matchCount: result.matchCount,
+                changeCount: result.changeCount,
+                tagChangeCount: result.tagChangeCount,
+                collectionChangeCount: result.collectionChangeCount,
+            };
+
+            const nextAnnotations = new Map(state.annotations);
+            for (const annotation of result.updatedAnnotations) {
+                nextAnnotations.set(annotation.imageId, annotation);
+            }
+
+            annotationsToPersist = result.updatedAnnotations;
+            rule.actions.addTags.forEach((tag) => {
+                const normalized = normalizeTagName(tag);
+                if (normalized) {
+                    tagCatalogUpdates.add(normalized);
+                }
+            });
+
+            const collectionAddMap = result.collectionImageAdds;
+            collectionsToPersist = [];
+            const nextCollections = state.collections.map((collection) => {
+                const adds = collectionAddMap.get(collection.id);
+                if (!adds || adds.length === 0) {
+                    return collection;
+                }
+
+                const updatedCollection = addImagesToCollectionRecord(collection, adds);
+                collectionsToPersist.push(updatedCollection);
+                return updatedCollection;
+            });
+
+            updatedRule = normalizeAutomationRule({
+                ...rule,
+                lastAppliedAt: Date.now(),
+                lastMatchCount: preview.matchCount,
+                lastChangeCount: preview.changeCount,
+                updatedAt: Date.now(),
+            });
+
+            const updatedImages = annotationsToPersist.length > 0
+                ? applyAnnotationsToImages(state.images, nextAnnotations)
+                : state.images;
+            const syncedCollections = collectionsToPersist.length > 0
+                ? syncCollectionCounts(nextCollections, updatedImages)
+                : state.collections;
+            const nextRules = state.automationRules.map((existingRule) =>
+                existingRule.id === rule.id ? updatedRule as AutomationRule : existingRule
+            );
+
+            const newState = {
+                ...state,
+                annotations: nextAnnotations,
+                images: updatedImages,
+                collections: syncedCollections,
+                automationRules: nextRules,
+            };
+
+            return { ...newState, ...filterAndSort(newState) };
+        });
+
+        await Promise.all([
+            annotationsToPersist.length > 0 ? bulkSaveAnnotations(annotationsToPersist) : Promise.resolve(),
+            ...Array.from(tagCatalogUpdates).map((tagName) => ensureManualTagExists(tagName)),
+            ...collectionsToPersist.map((collection) => saveSmartCollection(collection)),
+            updatedRule ? saveAutomationRule(updatedRule) : Promise.resolve(),
+        ]).catch(error => {
+            console.error('Failed to apply automation rule:', error);
+        });
+
+        if (annotationsToPersist.length > 0 || tagCatalogUpdates.size > 0) {
+            await get().refreshAvailableTags();
+        }
+
+        return preview;
     };
 
     let lineageBuildTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1756,6 +1897,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImages: new Set(),
         activeImageScope: null,
         collections: [],
+        automationRules: [],
+        isAutomationRulesLoaded: false,
         activeCollectionId: null,
         focusedImageIndex: null,
         isStackingEnabled: false,
@@ -2284,13 +2427,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             flushPendingImages(true);
-            flushPendingMerges();
+        flushPendingMerges();
             set(state => {
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
                 const merged = state.images.map(img => updates.get(img.id) ?? img);
                 return _updateState(state, merged);
             });
 
+            if (get().isAnnotationsLoaded) {
+                void get().importMetadataTags(updatedImages);
+            }
             maybeQueueLineageBuild(700);
         },
 
@@ -2550,6 +2696,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
         },
+        loadAutomationRules: async () => {
+            const rules = await getAllAutomationRules();
+            set({
+                automationRules: rules,
+                isAutomationRulesLoaded: true,
+            });
+        },
         createCollection: async (collection) => {
             const state = get();
             const nextSortIndex = getNextCollectionSortIndex(state.collections);
@@ -2578,6 +2731,79 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
 
             return nextCollection;
+        },
+        createAutomationRule: async (rule) => {
+            const nextRule = normalizeAutomationRule({
+                ...rule,
+                id: rule.id ?? crypto.randomUUID(),
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+            });
+
+            await saveAutomationRule(nextRule);
+
+            set((state) => ({
+                automationRules: [...state.automationRules, nextRule],
+                isAutomationRulesLoaded: true,
+            }));
+
+            return nextRule;
+        },
+        updateAutomationRule: async (ruleId, updates) => {
+            const currentRule = get().automationRules.find((rule) => rule.id === ruleId);
+            if (!currentRule) {
+                return null;
+            }
+
+            const nextRule = normalizeAutomationRule({
+                ...currentRule,
+                ...updates,
+                updatedAt: Date.now(),
+            });
+
+            await saveAutomationRule(nextRule);
+
+            set((state) => ({
+                automationRules: state.automationRules.map((rule) => rule.id === ruleId ? nextRule : rule),
+            }));
+
+            return nextRule;
+        },
+        deleteAutomationRuleById: async (ruleId) => {
+            await deleteAutomationRule(ruleId);
+            set((state) => ({
+                automationRules: state.automationRules.filter((rule) => rule.id !== ruleId),
+            }));
+        },
+        previewAutomationRule: (rule, imagesToPreview) => {
+            const state = get();
+            return previewAutomationRule(
+                rule,
+                imagesToPreview && imagesToPreview.length > 0 ? imagesToPreview : state.images,
+                state.annotations,
+                state.collections,
+            );
+        },
+        applyAutomationRuleNow: async (ruleId, imagesToApply) => {
+            const rule = get().automationRules.find((entry) => entry.id === ruleId);
+            if (!rule) {
+                return null;
+            }
+
+            return applyAutomationRuleToCurrentState(rule, imagesToApply);
+        },
+        applyEnabledAutomationRulesToImages: async (imagesToApply) => {
+            const state = get();
+            if (!state.isAnnotationsLoaded || imagesToApply.length === 0) {
+                return [];
+            }
+
+            const rules = state.automationRules.filter((rule) => rule.enabled && rule.runOnNewImages);
+            const previews: AutomationRulePreview[] = [];
+            for (const rule of rules) {
+                previews.push(await applyAutomationRuleToCurrentState(rule, imagesToApply));
+            }
+            return previews;
         },
         updateCollection: async (collectionId, updates) => {
             const currentCollection = get().collections.find((collection) => collection.id === collectionId);
@@ -3733,43 +3959,45 @@ export const useImageStore = create<ImageState>((set, get) => {
                 updatedAnnotations.push(updatedAnnotation);
             }
 
-            if (updatedAnnotations.length === 0) return;
+            if (updatedAnnotations.length > 0) {
+                // Update state
+                set(state => {
+                    const newAnnotations = new Map(state.annotations);
+                    for (const annotation of updatedAnnotations) {
+                        newAnnotations.set(annotation.imageId, annotation);
+                    }
 
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
+                    const updatedImages = state.images.map(img => {
+                        const annotation = newAnnotations.get(img.id);
+                        return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
+                    });
 
-                const updatedImages = state.images.map(img => {
-                    const annotation = newAnnotations.get(img.id);
-                    return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
+                    const newState = {
+                        ...state,
+                        annotations: newAnnotations,
+                        images: updatedImages,
+                    };
+
+                    return { ...newState, ...filterAndSort(newState) };
                 });
 
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
+                const importedTagNames = Array.from(new Set(
+                    updatedAnnotations.flatMap(annotation => annotation.tags)
+                ));
 
-                return { ...newState, ...filterAndSort(newState) };
-            });
+                // Persist annotations
+                await Promise.all([
+                    bulkSaveAnnotations(updatedAnnotations),
+                    ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
+                ]).catch(error => {
+                    console.error('Failed to import metadata tags:', error);
+                });
 
-            const importedTagNames = Array.from(new Set(
-                updatedAnnotations.flatMap(annotation => annotation.tags)
-            ));
+                // Refresh available tags
+                await get().refreshAvailableTags();
+            }
 
-            // Persist annotations
-            await Promise.all([
-                bulkSaveAnnotations(updatedAnnotations),
-                ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
-            ]).catch(error => {
-                console.error('Failed to import metadata tags:', error);
-            });
-
-            // Refresh available tags
-            await get().refreshAvailableTags();
+            await get().applyEnabledAutomationRulesToImages(images);
         },
 
         flushPendingImages: () => {
@@ -3871,6 +4099,8 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedImages: new Set(),
             activeImageScope: null,
             collections: [],
+            automationRules: [],
+            isAutomationRulesLoaded: false,
             activeCollectionId: null,
             searchQuery: '',
             availableModels: [],
