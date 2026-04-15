@@ -1349,7 +1349,7 @@ export function useImageLoader() {
 
     const processNewWatchedFiles = useCallback(async (
         directory: Directory,
-        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string }>
+        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }>
     ) => {
         try {
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
@@ -1364,7 +1364,7 @@ export function useImageLoader() {
             const existingIds = new Set(images.map(img => img.id));
             const newFiles = normalizedFiles.filter(file => {
                 const imageId = `${directory.id}::${file.relativePath || file.normalizedName}`;
-                return !existingIds.has(imageId);
+                return file.forceReindex === true || !existingIds.has(imageId);
             });
 
             if (newFiles.length === 0) {

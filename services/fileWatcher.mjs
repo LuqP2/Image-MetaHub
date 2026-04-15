@@ -7,7 +7,9 @@ const activeWatchers = new Map();
 
 // Pending files for batching (directoryId -> Map(filePath -> { forceReindex }))
 const pendingFiles = new Map();
+const pendingRemovals = new Map();
 const processingTimeouts = new Map();
+const removalTimeouts = new Map();
 
 const WATCHER_READY_TIMEOUT_MS = 10000;
 
@@ -21,6 +23,18 @@ const shouldUsePolling = (dirPath) => {
 const isPermissionError = (error) => {
   const code = error?.code;
   return code === 'EPERM' || code === 'EACCES';
+};
+
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
+
+const isMediaFile = (filePath) => IMAGE_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
+
+const toRelativePath = (rootPath, targetPath) => {
+  const relativePath = path.relative(rootPath, targetPath);
+  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return path.basename(targetPath);
+  }
+  return relativePath.replace(/\\/g, '/');
 };
 
 const sendWatcherDebug = (mainWindow, message) => {
@@ -116,11 +130,10 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
 
       if (ext === '.json') {
         const basePath = filePath.slice(0, -ext.length);
-        const matches = imageExts
+        const matches = IMAGE_EXTENSIONS
           .map((imageExt) => `${basePath}${imageExt}`)
           .filter((candidate) => fs.existsSync(candidate));
         if (matches.length === 0) {
@@ -130,11 +143,65 @@ export function startWatching(directoryId, dirPath, mainWindow) {
         return;
       }
 
-      if (!imageExts.includes(ext)) {
+      if (!IMAGE_EXTENSIONS.includes(ext)) {
         return;
       }
 
       enqueueImage(filePath, false);
+    });
+
+    watcher.on('change', (filePath) => {
+      if (!isMediaFile(filePath) && path.extname(filePath).toLowerCase() !== '.json') {
+        return;
+      }
+
+      if (path.extname(filePath).toLowerCase() === '.json') {
+        const basePath = filePath.slice(0, -path.extname(filePath).length);
+        IMAGE_EXTENSIONS
+          .map((imageExt) => `${basePath}${imageExt}`)
+          .filter((candidate) => fs.existsSync(candidate))
+          .forEach((match) => enqueueImage(match, true));
+        return;
+      }
+
+      enqueueImage(filePath, true);
+    });
+
+    const enqueueRemoval = (removedPath, kind) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] ${kind === 'folder' ? 'Folder' : 'File'} removed: ${removedPath}`);
+      if (!pendingRemovals.has(directoryId)) {
+        pendingRemovals.set(directoryId, { files: new Map(), folders: new Map() });
+      }
+
+      const relativePath = toRelativePath(dirPath, removedPath);
+      const targetMap = kind === 'folder'
+        ? pendingRemovals.get(directoryId).folders
+        : pendingRemovals.get(directoryId).files;
+
+      targetMap.set(removedPath, {
+        name: path.basename(removedPath),
+        path: removedPath,
+        relativePath,
+      });
+
+      if (removalTimeouts.has(directoryId)) {
+        clearTimeout(removalTimeouts.get(directoryId));
+      }
+
+      removalTimeouts.set(directoryId, setTimeout(() => {
+        processRemovalBatch(directoryId, mainWindow);
+      }, 500));
+    };
+
+    watcher.on('unlink', (filePath) => {
+      if (!isMediaFile(filePath)) {
+        return;
+      }
+      enqueueRemoval(filePath, 'file');
+    });
+
+    watcher.on('unlinkDir', (folderPath) => {
+      enqueueRemoval(folderPath, 'folder');
     });
 
     watcher.on('error', (error) => {
@@ -179,7 +246,12 @@ export function stopWatching(directoryId) {
       clearTimeout(processingTimeouts.get(directoryId));
       processingTimeouts.delete(directoryId);
     }
+    if (removalTimeouts.has(directoryId)) {
+      clearTimeout(removalTimeouts.get(directoryId));
+      removalTimeouts.delete(directoryId);
+    }
     pendingFiles.delete(directoryId);
+    pendingRemovals.delete(directoryId);
   }
 
   return { success: true };
@@ -242,4 +314,23 @@ function processBatch(directoryId, dirPath, mainWindow) {
 
   pendingFiles.delete(directoryId);
   processingTimeouts.delete(directoryId);
+}
+
+function processRemovalBatch(directoryId, mainWindow) {
+  const removals = pendingRemovals.get(directoryId);
+
+  if (!removals || (removals.files.size === 0 && removals.folders.size === 0)) return;
+
+  const files = Array.from(removals.files.values());
+  const folders = Array.from(removals.folders.values());
+  sendWatcherDebug(mainWindow, `[FileWatcher] Processing removal batch for ${directoryId}, ${files.length} files, ${folders.length} folders`);
+
+  sendToRenderer(mainWindow, 'watched-files-removed', {
+    directoryId,
+    files,
+    folders,
+  });
+
+  pendingRemovals.delete(directoryId);
+  removalTimeouts.delete(directoryId);
 }

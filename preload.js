@@ -184,6 +184,11 @@ const electronAPI = {
     ipcRenderer.on('new-images-detected', subscription);
     return () => ipcRenderer.removeListener('new-images-detected', subscription);
   },
+  onWatchedFilesRemoved: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('watched-files-removed', subscription);
+    return () => ipcRenderer.removeListener('watched-files-removed', subscription);
+  },
   onWatcherDebug: (callback) => {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('watcher-debug', subscription);
