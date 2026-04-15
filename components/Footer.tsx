@@ -34,6 +34,7 @@ interface FooterProps {
   }>;
   onWindowSelect?: (id: string) => void;
   onWindowClose?: (id: string) => void;
+  sticky?: boolean;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -66,6 +67,7 @@ const Footer: React.FC<FooterProps> = ({
   windowItems = [],
   onWindowSelect,
   onWindowClose,
+  sticky = true,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -135,7 +137,7 @@ const Footer: React.FC<FooterProps> = ({
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
-    <footer className="sticky bottom-0 z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
+    <footer className={`${sticky ? 'sticky bottom-0' : 'relative'} z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up`}>
       {windowItems.length > 0 && (
         <div className="relative border-b border-gray-800/60 px-4 py-2">
           {hoveredWindowItem?.isMinimized && previewLeft !== null && (

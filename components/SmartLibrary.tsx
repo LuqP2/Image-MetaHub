@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Layers, Sparkles } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -55,6 +55,9 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
   const [stackPage, setStackPage] = useState(1);
   const [clusterPage, setClusterPage] = useState(1);
   const [sortBy, setSortBy] = useState<'count' | 'similarity'>('count');
+  const stackScrollRef = useRef<HTMLDivElement | null>(null);
+  const stackScrollTopRef = useRef(0);
+  const shouldRestoreStackScrollRef = useRef(false);
 
   const imageMap = useMemo(() => {
     return new Map(safeFilteredImages.map((image) => [image.id, image]));
@@ -185,6 +188,30 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
     }
   };
 
+  const handleOpenCluster = (clusterId: string) => {
+    stackScrollTopRef.current = stackScrollRef.current?.scrollTop ?? 0;
+    setExpandedClusterId(clusterId);
+  };
+
+  const handleBackToStacks = () => {
+    shouldRestoreStackScrollRef.current = true;
+    setClusterNavigationContext(null);
+    setExpandedClusterId(null);
+  };
+
+  useEffect(() => {
+    if (activeCluster || !shouldRestoreStackScrollRef.current) {
+      return;
+    }
+
+    shouldRestoreStackScrollRef.current = false;
+    requestAnimationFrame(() => {
+      if (stackScrollRef.current) {
+        stackScrollRef.current.scrollTop = stackScrollTopRef.current;
+      }
+    });
+  }, [activeCluster]);
+
   return (
     <section className="flex flex-col h-full min-h-0">
       {(clusteringProgress || autoTaggingProgress) && (
@@ -240,10 +267,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
             cluster={activeCluster.cluster}
             images={paginatedClusterImages}
             allImages={activeClusterImages}
-            onBack={() => {
-              setClusterNavigationContext(null);
-              setExpandedClusterId(null);
-            }}
+            onBack={handleBackToStacks}
             viewMode={viewMode}
             currentPage={clusterPage}
             totalPages={clusterTotalPages}
@@ -261,7 +285,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
             </p>
           </div>
         ) : (
-          <div className="min-h-0 overflow-auto pr-1">
+          <div ref={stackScrollRef} className="h-full min-h-0 overflow-auto pr-1">
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {paginatedEntries.map((entry) => {
                 // Check if majority of images in this cluster are locked
@@ -275,7 +299,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
                     key={entry.cluster.id}
                     cluster={entry.cluster}
                     images={entry.images}
-                    onOpen={() => setExpandedClusterId(entry.cluster.id)}
+                    onOpen={() => handleOpenCluster(entry.cluster.id)}
                     isLocked={isLocked}
                   />
                 );
@@ -310,6 +334,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
         queueCount={queueCount}
         isQueueOpen={isQueueOpen}
         onToggleQueue={onToggleQueue}
+        sticky={false}
       />
     </section>
   );
