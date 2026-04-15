@@ -396,23 +396,39 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {onAddFolder && (
-          <div className="px-3 py-2 border-b border-gray-700">
+        <div className="px-3 py-2 border-b border-gray-700">
+          <div className={`grid gap-2 ${onAddFolder ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {onAddFolder && (
+              <button
+                onClick={onAddFolder}
+                disabled={isIndexing}
+                className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                  isIndexing
+                    ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+                }`}
+                title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              >
+                <Plus size={14} />
+                <span>Add Folder</span>
+              </button>
+            )}
             <button
-              onClick={onAddFolder}
-              disabled={isIndexing}
-              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-                isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-              }`}
-              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              type="button"
+              onClick={() => setIsAutomationRulesOpen(true)}
+              className="relative flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
+              title="Automation rules"
             >
-              <Plus size={14} />
-              <span>Add Folder</span>
+              <SlidersHorizontal size={14} />
+              <span>Rules</span>
+              {activeAutomationRuleCount > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
+                  {activeAutomationRuleCount}
+                </span>
+              )}
             </button>
           </div>
-        )}
+        </div>
 
         {children && React.isValidElement(children) ? (
           React.cloneElement(children as React.ReactElement<any>, {
@@ -425,24 +441,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           children
         )}
-
-        <div className="border-b border-gray-800/80 px-3 py-2">
-          <button
-            type="button"
-            onClick={() => setIsAutomationRulesOpen(true)}
-            className="flex w-full items-center justify-between rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 text-sm text-gray-300 transition-colors hover:border-gray-700 hover:bg-gray-800/50 hover:text-white"
-          >
-            <span className="inline-flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-blue-300" />
-              Rules
-            </span>
-            {activeAutomationRuleCount > 0 && (
-              <span className="rounded-full border border-blue-700/50 bg-blue-950/60 px-2 py-0.5 text-[11px] text-blue-200">
-                {activeAutomationRuleCount}
-              </span>
-            )}
-          </button>
-        </div>
 
         <TagsAndFavorites />
 

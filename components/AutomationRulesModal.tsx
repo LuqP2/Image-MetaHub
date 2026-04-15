@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Play, Plus, Power, Trash2, X } from 'lucide-react';
 import type {
   AutomationConditionField,
@@ -30,6 +30,8 @@ import {
 interface AutomationRulesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCollectionId?: string | null;
+  initialRuleName?: string;
 }
 
 type PreviewState = {
@@ -103,7 +105,12 @@ const buildRuleFromRows = (rule: AutomationRule, rows: AutomationConditionRow[])
   updatedAt: Date.now(),
 });
 
-export default function AutomationRulesModal({ isOpen, onClose }: AutomationRulesModalProps) {
+export default function AutomationRulesModal({
+  isOpen,
+  onClose,
+  initialCollectionId = null,
+  initialRuleName,
+}: AutomationRulesModalProps) {
   const images = useImageStore((state) => state.images);
   const automationRules = useImageStore((state) => state.automationRules);
   const collections = useImageStore((state) => state.collections);
@@ -151,6 +158,7 @@ export default function AutomationRulesModal({ isOpen, onClose }: AutomationRule
   const [tagInput, setTagInput] = useState('');
   const [preview, setPreview] = useState<PreviewState>(emptyPreview);
   const [isApplying, setIsApplying] = useState(false);
+  const didInitializeForOpenRef = useRef(false);
 
   const collectionNames = useMemo(
     () => new Map(collections.map((collection) => [collection.id, collection.name])),
@@ -190,9 +198,24 @@ export default function AutomationRulesModal({ isOpen, onClose }: AutomationRule
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      didInitializeForOpenRef.current = false;
+      return;
+    }
+    if (didInitializeForOpenRef.current) return;
+    didInitializeForOpenRef.current = true;
+    if (initialCollectionId) {
+      const nextRule = createDraftRule();
+      nextRule.name = initialRuleName ?? 'New Collection Rule';
+      nextRule.actions.addToCollectionIds = [initialCollectionId];
+      setEditingRuleId(null);
+      setDraft(nextRule);
+      setRows([]);
+      setTagInput('');
+      return;
+    }
     loadRuleForEditing(automationRules[0] ?? null);
-  }, [automationRules, isOpen]);
+  }, [automationRules, initialCollectionId, initialRuleName, isOpen]);
 
   const ruleForPreview = useMemo(() => buildRuleFromRows(draft, rows), [draft, rows]);
 
