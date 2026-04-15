@@ -641,6 +641,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
+  const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
@@ -1524,11 +1525,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
-      if (event.key === 'Enter' && event.altKey) {
+      if (eventMatchesKeybinding(event, toggleFullscreenKeybinding)) {
         event.preventDefault();
         event.stopPropagation();
-        toggleFullscreen(); // Toggle fullscreen ON/OFF
+        toggleFullscreen();
         return;
       }
 
@@ -1588,6 +1588,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     onNavigatePrevious,
     previewKeymap,
     toggleFullscreen,
+    toggleFullscreenKeybinding,
   ]);
 
   useEffect(() => {
@@ -1939,7 +1940,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                  title="Exit fullscreen"
+                  title={`Exit fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
@@ -1978,7 +1979,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title="Fullscreen"
+                  title={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
