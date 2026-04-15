@@ -25,6 +25,7 @@ interface DestinationOption {
   rootDirectory: Directory;
   name: string;
   path: string;
+  realPath?: string;
   relativePath: string;
   depth: number;
 }
@@ -57,6 +58,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>('');
   const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
   const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
+  const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
 
   const imageCount = images.length;
   const firstImage = images[0];
@@ -99,6 +101,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     if (!isOpen) {
       setSubfolderOptions([]);
       setIsLoadingSubfolders(false);
+      setSubfolderLoadError(null);
       return;
     }
 
@@ -108,20 +111,32 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
       const canListSubfolders = typeof window !== 'undefined' && window.electronAPI?.listSubfolders;
       if (!canListSubfolders || sortedDirectories.length === 0) {
         setSubfolderOptions([]);
+        setSubfolderLoadError(null);
         return;
       }
 
       setIsLoadingSubfolders(true);
+      setSubfolderLoadError(null);
       const loadedOptions: DestinationOption[] = [];
+      const visitedRealPaths = new Set<string>();
 
       const visit = async (rootDirectory: Directory, folderPath: string, depth: number) => {
         const result = await window.electronAPI!.listSubfolders(folderPath);
         if (!result.success) {
+          if (!cancelled) {
+            setSubfolderLoadError(result.error || 'Some subfolders could not be loaded.');
+          }
           return;
         }
 
         const subfolders = [...(result.subfolders ?? [])].sort((a, b) => a.name.localeCompare(b.name));
         for (const subfolder of subfolders) {
+          const visitKey = (subfolder.realPath || subfolder.path).replace(/\\/g, '/').toLowerCase();
+          if (visitedRealPaths.has(visitKey)) {
+            continue;
+          }
+          visitedRealPaths.add(visitKey);
+
           const relativePath = getRelativePath(rootDirectory.path, subfolder.path);
           if (!relativePath) {
             continue;
@@ -132,6 +147,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
             rootDirectory,
             name: subfolder.name,
             path: subfolder.path,
+            realPath: subfolder.realPath,
             relativePath,
             depth,
           });
@@ -142,6 +158,8 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
       try {
         for (const directory of sortedDirectories) {
+          const rootKey = directory.path.replace(/\\/g, '/').toLowerCase();
+          visitedRealPaths.add(rootKey);
           await visit(directory, directory.path, 1);
         }
       } finally {
@@ -260,6 +278,16 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
               {isLoadingSubfolders && (
                 <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-400">
                   Loading subfolders...
+                </div>
+              )}
+              {!isLoadingSubfolders && subfolderLoadError && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  {subfolderLoadError}
+                </div>
+              )}
+              {!isLoadingSubfolders && !subfolderLoadError && destinationOptions.length === sortedDirectories.length && (
+                <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-400">
+                  No subfolders found. Root folders are still available.
                 </div>
               )}
             </div>
