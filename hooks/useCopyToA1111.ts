@@ -1,6 +1,13 @@
 import { useState, useCallback } from 'react';
 import { IndexedImage } from '../types';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
+import {
+  getClipboardErrorMessage,
+  getNormalizedMetadata,
+  hasPromptMetadata,
+  NO_METADATA_MESSAGE,
+  TEMPORARY_STATUS_TIMEOUT_MS,
+} from '../utils/imageMetadata';
 
 interface CopyStatus {
   success: boolean;
@@ -12,14 +19,14 @@ export function useCopyToA1111() {
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
 
   const copyToA1111 = useCallback(async (image: IndexedImage) => {
-    const metadata = image.metadata?.normalizedMetadata;
+    const metadata = getNormalizedMetadata(image);
 
-    if (!metadata || !metadata.prompt) {
+    if (!hasPromptMetadata(metadata)) {
       setCopyStatus({
         success: false,
-        message: 'No metadata available for this image',
+        message: NO_METADATA_MESSAGE,
       });
-      setTimeout(() => setCopyStatus(null), 5000);
+      setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
       return;
     }
 
@@ -39,19 +46,16 @@ export function useCopyToA1111() {
       });
 
       // Clear status after 5 seconds
-      setTimeout(() => setCopyStatus(null), 5000);
-    } catch (error: any) {
-      // Handle clipboard API errors (e.g., HTTP context, permissions)
-      const errorMessage = error.message?.includes('clipboard')
-        ? 'Clipboard access denied. Please use HTTPS or localhost.'
-        : `Error: ${error.message}`;
+      setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
+    } catch (error: unknown) {
+      const errorMessage = getClipboardErrorMessage(error);
 
       setCopyStatus({
         success: false,
         message: errorMessage,
       });
 
-      setTimeout(() => setCopyStatus(null), 5000);
+      setTimeout(() => setCopyStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
     } finally {
       setIsCopying(false);
     }

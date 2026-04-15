@@ -12,6 +12,35 @@ interface Dimensions {
   height: number;
 }
 
+interface VideoProbeStream {
+  r_frame_rate?: string | number;
+  avg_frame_rate?: string | number;
+  nb_frames?: string | number;
+  width?: number;
+  height?: number;
+  codec_name?: string;
+  codec_type?: string;
+}
+
+interface VideoProbeFormat {
+  duration?: string | number;
+  format_name?: string;
+  tags?: {
+    comment?: string;
+    description?: string;
+    title?: string;
+  };
+}
+
+interface VideoProbePayload {
+  streams?: VideoProbeStream[];
+  format?: VideoProbeFormat;
+}
+
+type MetadataRecord = Record<string, unknown>;
+
+const getErrorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
+
 export interface MetadataEngineResult {
   file: string;
   sha256: string;
@@ -57,19 +86,19 @@ const parseFrameRate = (value: unknown): number | null => {
   return num / den;
 };
 
-const buildVideoInfoFromProbe = (stream: any, format: any): VideoInfo => {
-  const frameRate = parseFrameRate(stream?.r_frame_rate) ?? parseFrameRate(stream?.avg_frame_rate);
-  const frameCount = typeof stream?.nb_frames === 'string' ? Number(stream.nb_frames) : stream?.nb_frames;
-  const durationValue = typeof format?.duration === 'string' ? Number(format.duration) : format?.duration;
+const buildVideoInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFormat): VideoInfo => {
+  const frameRate = parseFrameRate(stream.r_frame_rate) ?? parseFrameRate(stream.avg_frame_rate);
+  const frameCount = typeof stream.nb_frames === 'string' ? Number(stream.nb_frames) : stream.nb_frames;
+  const durationValue = typeof format.duration === 'string' ? Number(format.duration) : format.duration;
 
   return {
     frame_rate: Number.isFinite(frameRate) ? frameRate : null,
     frame_count: Number.isFinite(frameCount) ? frameCount : null,
     duration_seconds: Number.isFinite(durationValue) ? durationValue : null,
-    width: typeof stream?.width === 'number' ? stream.width : null,
-    height: typeof stream?.height === 'number' ? stream.height : null,
-    codec: stream?.codec_name || null,
-    format: format?.format_name || null,
+    width: typeof stream.width === 'number' ? stream.width : null,
+    height: typeof stream.height === 'number' ? stream.height : null,
+    codec: stream.codec_name || null,
+    format: format.format_name || null,
   };
 };
 
@@ -85,10 +114,10 @@ async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment
       filePath,
     ], { encoding: 'utf8' });
 
-    const payload = JSON.parse(stdout);
-    const format = payload?.format ?? {};
+    const payload = JSON.parse(stdout) as VideoProbePayload;
+    const format = payload.format ?? {};
     const tags = format.tags ?? {};
-    const streams = Array.isArray(payload?.streams) ? payload.streams : [];
+    const streams = Array.isArray(payload.streams) ? payload.streams : [];
     const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
 
     return {
@@ -187,7 +216,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   }
 
   if (chunks.workflow) {
-    const comfyMetadata: Record<string, any> = {};
+    const comfyMetadata: MetadataRecord = {};
     comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata as ImageMetadata;
@@ -385,7 +414,7 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
     rawSource = 'video';
     const videoMetadata = await readVideoMetadataWithFfprobe(absolutePath);
     if (videoMetadata) {
-      const raw: Record<string, any> = {
+      const raw: MetadataRecord = {
         description: videoMetadata.description,
         comment: videoMetadata.comment,
         title: videoMetadata.title,
@@ -394,8 +423,8 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
       if (videoMetadata.comment) {
         try {
           raw.videometahub_data = JSON.parse(videoMetadata.comment);
-        } catch (err: any) {
-          errors.push(`Failed to parse video metadata JSON: ${err?.message ?? 'unknown error'}`);
+        } catch (err: unknown) {
+          errors.push(`Failed to parse video metadata JSON: ${getErrorMessage(err)}`);
         }
       }
 
@@ -427,14 +456,15 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   if (rawMetadata) {
     try {
       // ComfyUI workflows sometimes come as stringified JSON with NaN; sanitize first
-      if (typeof (rawMetadata as any).workflow === 'string') {
-        (rawMetadata as any).workflow = JSON.parse(sanitizeJson((rawMetadata as any).workflow));
+      const rawRecord = rawMetadata as MetadataRecord;
+      if (typeof rawRecord.workflow === 'string') {
+        rawRecord.workflow = JSON.parse(sanitizeJson(rawRecord.workflow));
       }
-      if (typeof (rawMetadata as any).prompt === 'string') {
-        (rawMetadata as any).prompt = JSON.parse(sanitizeJson((rawMetadata as any).prompt));
+      if (typeof rawRecord.prompt === 'string') {
+        rawRecord.prompt = JSON.parse(sanitizeJson(rawRecord.prompt));
       }
-    } catch (err: any) {
-      errors.push(`Failed to parse workflow/prompt JSON: ${err?.message ?? 'unknown error'}`);
+    } catch (err: unknown) {
+      errors.push(`Failed to parse workflow/prompt JSON: ${getErrorMessage(err)}`);
     }
 
     metadata = await normalizeMetadata(rawMetadata, arrayBuffer);
@@ -498,14 +528,14 @@ export async function parseFiles(filePaths: string[]): Promise<MetadataEngineRes
     try {
       const parsed = await parseImageFile(file);
       results.push(parsed);
-    } catch (err: any) {
+    } catch (err: unknown) {
       results.push({
         file: path.resolve(file),
         sha256: '',
         rawMetadata: null,
         metadata: null,
         rawSource: 'unknown',
-        errors: [`Failed to parse file: ${err?.message ?? 'unknown error'}`],
+        errors: [`Failed to parse file: ${getErrorMessage(err)}`],
         dimensions: null,
         schema_version: SCHEMA_VERSION,
         _telemetry: {

@@ -4,6 +4,7 @@
  */
 
 import { IndexedImage } from '../types';
+import { getImageAnalytics } from './imageMetadata';
 
 /**
  * Checks if an image has verified telemetry data from MetaHub Save Node
@@ -16,9 +17,7 @@ import { IndexedImage } from '../types';
  * - VRAM peak (optional, only for CUDA GPUs)
  */
 export function hasVerifiedTelemetry(image: IndexedImage): boolean {
-  // Try both analytics and _analytics (underscore version is used in normalizedMetadata)
-  const analytics = image.metadata?.normalizedMetadata?.analytics ||
-                    (image.metadata?.normalizedMetadata as any)?._analytics;
+  const analytics = getImageAnalytics(image);
 
   if (!analytics) {
     return false;
@@ -52,9 +51,7 @@ export function getTelemetryQuality(image: IndexedImage): 'verified' | 'partial'
     return 'verified';
   }
 
-  // Try both analytics and _analytics (underscore version is used in normalizedMetadata)
-  const analytics = image.metadata?.normalizedMetadata?.analytics ||
-                    (image.metadata?.normalizedMetadata as any)?._analytics;
+  const analytics = getImageAnalytics(image);
 
   // Check if at least some analytics exist
   if (analytics && (analytics.generation_time_ms || analytics.gpu_device)) {

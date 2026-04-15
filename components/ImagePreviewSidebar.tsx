@@ -21,7 +21,6 @@ import TagInputCombobox from './TagInputCombobox';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 
-// Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
     return lora;
@@ -37,7 +36,6 @@ const formatLoRA = (lora: string | LoRAInfo): string => {
   return name;
 };
 
-// Helper function to format generation time: 87ms, 1.5s, or 2m 15s
 const formatGenerationTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   const seconds = ms / 1000;
@@ -47,11 +45,9 @@ const formatGenerationTime = (ms: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-// Helper function to format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
 const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   const vramGb = vramMb / 1024;
 
-  // Known GPU VRAM mappings
   const gpuVramMap: Record<string, number> = {
     '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
     'A100': 40, 'A6000': 48, 'V100': 16,
@@ -93,7 +89,6 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
-// Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -178,7 +173,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
-  // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
@@ -271,9 +265,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      // You can add a notification here if you want
-    }).catch(err => {
+    navigator.clipboard.writeText(text).catch(err => {
       console.error(`Failed to copy ${type}:`, err);
     });
   };
@@ -318,7 +310,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     hideContextMenu();
   };
 
-  // Tag management handlers
   const handleAddTag = (value = tagInput) => {
     if (!value.trim() || !activeImage) return;
     addTagToImage(activeImage.id, value);
@@ -337,7 +328,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const handlePromoteAutoTag = async (tag: string) => {
     if (!activeImage) return;
-    // Add as manual tag and remove from auto-tags
     await addTagToImage(activeImage.id, tag);
     removeAutoTagFromImage(activeImage.id, tag);
   };
@@ -925,5 +915,4 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   );
 };
 
-// Memoize to prevent unnecessary re-renders
 export default React.memo(ImagePreviewSidebar);

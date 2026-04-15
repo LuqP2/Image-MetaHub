@@ -79,7 +79,7 @@ const STOP_WORDS = new Set([
 
 export function tokenizeForSimilarity(text: string): Set<string> {
   // Remove A1111 weight syntax: (term:1.2) or [term:0.8]
-  const cleanedText = text.replace(/[(\[]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g, '$1');
+  const cleanedText = text.replace(/(?:\(|\[)\s*([^\])]+?)\s*:\s*[\d.]+\s*(?:\)|\])/g, '$1');
 
   const tokens = cleanedText
     .toLowerCase()
@@ -88,7 +88,7 @@ export function tokenizeForSimilarity(text: string): Set<string> {
     .map((token) => token.trim())
     .filter((token) => token.length > 0)
     // Remove parentheses/brackets artifacts
-    .map((token) => token.replace(/^[(\[]+|[)\]]+$/g, ''))
+    .map((token) => token.replace(/^(?:\(|\[)+|(?:\)|\])+$/g, ''))
     .filter((token) => token.length > 0)
     .filter((token) => !STOP_WORDS.has(token))
     .filter((token) => !/^\d+$/.test(token)); // Remove pure numbers

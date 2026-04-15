@@ -6,10 +6,10 @@ import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/me
 // Helper component for individual metadata fields
 const MetadataField: FC<{
   label: string;
-  value: any;
+  value: unknown;
   onCopy?: () => void;
   multiline?: boolean;
-  otherValue?: any;
+  otherValue?: unknown;
   isDiffMode?: boolean;
   field?: string;
 }> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field }) => {

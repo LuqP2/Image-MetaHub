@@ -29,6 +29,42 @@ interface SamplerCache {
   timestamp: number;
 }
 
+interface A1111SamplerInfo {
+  name: string;
+}
+
+interface A1111ModelInfo {
+  title?: string;
+  model_name?: string;
+  name?: string;
+}
+
+interface A1111LoraInfo {
+  name?: string;
+  alias?: string;
+  filename?: string;
+}
+
+interface A1111Txt2ImgResult {
+  images?: string[];
+}
+
+type A1111WorkflowMetadata = BaseMetadata & {
+  cfgScale?: number;
+  batch_size?: number;
+  numberOfImages?: number;
+};
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+};
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+
 export class A1111ApiClient {
   private config: A1111Config;
   private samplerCache: SamplerCache | null = null;
@@ -66,8 +102,8 @@ export class A1111ApiClient {
       }
 
       return { success: true };
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         return {
           success: false,
           error: 'Connection timeout. Is A1111 running?',
@@ -75,7 +111,7 @@ export class A1111ApiClient {
       }
       return {
         success: false,
-        error: `Connection failed: ${error.message}`,
+        error: `Connection failed: ${getErrorMessage(error)}`,
       };
     }
   }
@@ -106,14 +142,14 @@ export class A1111ApiClient {
         return [];
       }
 
-      const samplers = await response.json();
-      const list = samplers.map((s: any) => s.name);
+      const samplers = (await response.json()) as A1111SamplerInfo[];
+      const list = samplers.map((sampler) => sampler.name).filter(isString);
 
       // Update cache
       this.samplerCache = { list, timestamp: Date.now() };
       return list;
-    } catch (error: any) {
-      console.warn('Failed to fetch samplers list:', error.message);
+    } catch (error: unknown) {
+      console.warn('Failed to fetch samplers list:', getErrorMessage(error));
       return [];
     }
   }
@@ -142,15 +178,15 @@ export class A1111ApiClient {
         return [];
       }
 
-      const models = await response.json();
+      const models = (await response.json()) as A1111ModelInfo[];
       const list = models
-        .map((m: any) => m.title || m.model_name || m.name)
-        .filter((value: any) => typeof value === 'string' && value.length > 0);
+        .map((model) => model.title || model.model_name || model.name)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
 
       this.modelCache = { list, timestamp: Date.now() };
       return list;
-    } catch (error: any) {
-      console.warn('Failed to fetch model list:', error.message);
+    } catch (error: unknown) {
+      console.warn('Failed to fetch model list:', getErrorMessage(error));
       return [];
     }
   }
@@ -179,15 +215,15 @@ export class A1111ApiClient {
         return [];
       }
 
-      const loras = await response.json();
+      const loras = (await response.json()) as A1111LoraInfo[];
       const list = loras
-        .map((l: any) => l.name || l.alias || l.filename)
-        .filter((value: any) => typeof value === 'string' && value.length > 0);
+        .map((lora) => lora.name || lora.alias || lora.filename)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
 
       this.loraCache = { list, timestamp: Date.now() };
       return list;
-    } catch (error: any) {
-      console.warn('Failed to fetch LoRA list:', error.message);
+    } catch (error: unknown) {
+      console.warn('Failed to fetch LoRA list:', getErrorMessage(error));
       return [];
     }
   }
@@ -227,12 +263,14 @@ export class A1111ApiClient {
    * Convert BaseMetadata to A1111 API format
    */
   private async metadataToA1111Params(metadata: BaseMetadata): Promise<A1111SendParams> {
+    const workflowMetadata = metadata as A1111WorkflowMetadata;
+
     // Get sampler from metadata
     const samplerName = metadata.sampler || metadata.scheduler;
     const mappedSampler = await this.matchSampler(samplerName || 'Euler a');
 
     // Extract CFG scale - handle both cfgScale and cfg_scale
-    const cfgScale = (metadata as any).cfgScale || metadata.cfg_scale || 7.0;
+    const cfgScale = workflowMetadata.cfgScale || metadata.cfg_scale || 7.0;
 
     return {
       prompt: metadata.prompt || '',
@@ -257,7 +295,7 @@ export class A1111ApiClient {
     try {
       const params = await this.metadataToA1111Params(metadata);
 
-      const requestBody: any = {
+      const requestBody: Record<string, unknown> = {
         prompt: params.prompt,
         negative_prompt: params.negative_prompt,
         steps: params.steps,
@@ -302,7 +340,7 @@ export class A1111ApiClient {
         };
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as A1111Txt2ImgResult;
 
       return {
         success: true,
@@ -311,9 +349,9 @@ export class A1111ApiClient {
           : 'Parameters sent to A1111 successfully!',
         images: result.images,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[A1111] Request failed:', error);
-      if (error.name === 'AbortError') {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         return {
           success: false,
           error: 'Request timeout. Generation may take longer.',
@@ -321,7 +359,7 @@ export class A1111ApiClient {
       }
       return {
         success: false,
-        error: `Failed to send to A1111: ${error.message}`,
+        error: `Failed to send to A1111: ${getErrorMessage(error)}`,
       };
     }
   }
@@ -347,8 +385,8 @@ export class A1111ApiClient {
       }
 
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 }

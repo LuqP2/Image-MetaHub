@@ -12,9 +12,11 @@ import { useSettingsStore } from './store/useSettingsStore';
 
 // Expose stores globally for debugging
 if (process.env.NODE_ENV === 'development') {
-  (window as any).useLicenseStore = useLicenseStore;
-  (window as any).useImageStore = useImageStore;
-  (window as any).useSettingsStore = useSettingsStore;
+  Object.assign(window, {
+    useLicenseStore,
+    useImageStore,
+    useSettingsStore,
+  });
   console.log('🔧 [DEV] Stores exposed globally: useLicenseStore, useImageStore, useSettingsStore');
 }
 

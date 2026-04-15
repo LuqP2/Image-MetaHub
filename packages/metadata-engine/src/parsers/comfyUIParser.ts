@@ -1,5 +1,6 @@
 import { resolveAll } from './comfyui/traversalEngine';
-import { ParserNode, NodeRegistry } from './comfyui/nodeRegistry';
+import { NodeRegistry } from './comfyui/nodeRegistry';
+import type { ParserNode } from './comfyui/types';
 import { cleanPrompt, cleanLoraName } from '../utils/promptCleaner';
 
 // Lazy-loaded zlib for Node.js environment

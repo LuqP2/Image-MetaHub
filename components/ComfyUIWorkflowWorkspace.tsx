@@ -70,8 +70,22 @@ const formatJson = (value: unknown): string => {
   }
   try {
     return JSON.stringify(value, null, 2);
-  } catch {
+  } catch (error) {
+    console.warn('[ComfyUIWorkflowWorkspace] Failed to format workflow JSON', error);
     return '';
+  }
+};
+
+const parseStoredJson = <T,>(value: string | null, label: string): T | null => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    console.warn(`[ComfyUIWorkflowWorkspace] Failed to parse ${label}`, error);
+    return null;
   }
 };
 
@@ -358,23 +372,8 @@ export const ComfyUIWorkflowWorkspace: React.FC<ComfyUIWorkflowWorkspaceProps> =
     const storedLoras = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_LORAS') : null;
     const storedRandomSeed = typeof window !== 'undefined' ? localStorage.getItem('IMH_COMFYUI_LAST_RANDOM_SEED') : null;
 
-    let parsedModel: ComfyUIModelResource | null = null;
-    if (storedModel) {
-      try {
-        parsedModel = JSON.parse(storedModel);
-      } catch {
-        parsedModel = null;
-      }
-    }
-
-    let parsedLoras: ComfyUILoRAConfig[] = [];
-    if (storedLoras) {
-      try {
-        parsedLoras = JSON.parse(storedLoras);
-      } catch {
-        parsedLoras = [];
-      }
-    }
+    const parsedModel = parseStoredJson<ComfyUIModelResource>(storedModel, 'stored ComfyUI model');
+    const parsedLoras = parseStoredJson<ComfyUILoRAConfig[]>(storedLoras, 'stored ComfyUI LoRAs') ?? [];
 
     const nextWorkflowMode = workflowAnalysis.originalAvailable
       ? (storedMode || 'original')

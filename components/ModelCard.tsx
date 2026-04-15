@@ -19,8 +19,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
 
   const previewImage = images[previewIndex] ?? images[0] ?? null;
   const thumbnail = useResolvedThumbnail(previewImage);
-  
-  // Use the hook to load the thumbnail handling changes in previewImage
+
   useThumbnail(previewImage);
 
   React.useEffect(() => {

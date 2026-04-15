@@ -2597,6 +2597,9 @@ function setupFileOperationHandlers() {
         }
         lastProgressAt = now;
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('export-batch-progress', {
             exportId: progressId,
             mode: 'folder',
@@ -2606,8 +2609,8 @@ function setupFileOperationHandlers() {
             failedCount,
             stage,
           });
-        } catch (err) {
-          // ignore sender errors (window closed)
+        } catch (error) {
+          console.warn('[Electron] Failed to send export progress update', error);
         }
       };
 
@@ -2676,6 +2679,9 @@ function setupFileOperationHandlers() {
         }
         lastProgressAt = now;
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('export-batch-progress', {
             exportId: progressId,
             mode: 'zip',
@@ -2685,8 +2691,8 @@ function setupFileOperationHandlers() {
             failedCount,
             stage,
           });
-        } catch (err) {
-          // ignore sender errors (window closed)
+        } catch (error) {
+          console.warn('[Electron] Failed to send export progress update', error);
         }
       };
 
@@ -2772,6 +2778,9 @@ function setupFileOperationHandlers() {
       const progressTransferId = transferId ? String(transferId) : null;
       const sendProgress = (stage = 'copying', statusText) => {
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('transfer-indexed-images-progress', {
             transferId: progressTransferId,
             mode,
@@ -2782,8 +2791,8 @@ function setupFileOperationHandlers() {
             stage,
             statusText,
           });
-        } catch {
-          // ignore sender errors
+        } catch (error) {
+          console.warn('[Electron] Failed to send transfer progress update', error);
         }
       };
 

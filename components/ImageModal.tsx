@@ -215,7 +215,6 @@ type ContextMenuState =
       selectionText: string;
     };
 
-// Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
     return lora;
@@ -231,7 +230,6 @@ const formatLoRA = (lora: string | LoRAInfo): string => {
   return name;
 };
 
-// Format generation time: 87ms, 1.5s, or 2m 15s
 const formatGenerationTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   const seconds = ms / 1000;
@@ -249,11 +247,9 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-// Format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
 const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   const vramGb = vramMb / 1024;
 
-  // Known GPU VRAM mappings
   const gpuVramMap: Record<string, number> = {
     '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
     'A100': 40, 'A6000': 48, 'V100': 16,
@@ -287,7 +283,6 @@ const isVideoFileName = (fileName: string, fileType?: string | null): boolean =>
   return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
-// Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -314,7 +309,6 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   );
 };
 
-// Helper to format time
 const formatTime = (seconds: number) => {
   if (!Number.isFinite(seconds)) return '0:00';
   const mins = Math.floor(seconds / 60);
@@ -330,13 +324,11 @@ const VideoPlayer: React.FC<{
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   
-  // State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   
-  // Persistent state
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('video_player_volume');
     return saved ? parseFloat(saved) : 1;
@@ -348,7 +340,6 @@ const VideoPlayer: React.FC<{
     return localStorage.getItem('video_player_loop') === 'true';
   });
 
-  // Apply properties when video ref changes or state changes
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
@@ -393,8 +384,6 @@ const VideoPlayer: React.FC<{
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
-      // Auto-enable loop for short videos (< 5s) if not manually set? 
-      // For now, respect user preference only to avoid confusion.
     }
   };
 
@@ -564,29 +553,23 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
 
-  // Zoom and pan states
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
 
-  // ComfyUI integration hooks
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
-  // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
-  // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
-  // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const setImageRating = useImageStore((state) => state.setImageRating);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
@@ -601,12 +584,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
-  // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore(
     useCallback(
       (state) => state.images.find((candidate) => candidate.id === image.id),
@@ -634,7 +615,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
 
-  // State for tag input
   const [tagInput, setTagInput] = useState('');
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
@@ -684,7 +664,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     });
   }, [applyModalWindowStyles]);
 
-  // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
     if (window.electronAPI?.toggleFullscreen) {
       const result = await window.electronAPI.toggleFullscreen();
@@ -717,18 +696,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }, 1500);
   }, [clearMediaOverlayHideTimer]);
 
-  // Listen for fullscreen changes from Electron
   useEffect(() => {
     if (!isActive) {
       return;
     }
 
-    // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
     const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
       setIsFullscreen(data.isFullscreen ?? false);
     });
 
-    // Listen for fullscreen-state-check events (periodic check for state changes)
     const unsubscribeFullscreenStateCheck = window.electronAPI?.onFullscreenStateCheck?.((data) => {
       setIsFullscreen(data.isFullscreen ?? false);
     });
@@ -739,7 +715,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [isActive]);
 
-  // Initialize fullscreen mode from sessionStorage (backward compatibility)
   useEffect(() => {
     if (!isActive) {
       return;
@@ -909,7 +884,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
-   // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
   const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
     ...nMeta,
@@ -931,7 +905,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
      topics: [],
   } as BaseMetadata : nMeta;
 
-  // If we have shadow duration, we might need a way to override video info if it exists, or just use it in display
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds;
 
 
@@ -1062,7 +1035,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     try {
-      // Usar navigator.clipboard (funciona tanto no Electron quanto no browser)
       await navigator.clipboard.writeText(text);
 
       const notification = document.createElement('div');
@@ -1199,7 +1171,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       alert('Cannot determine file location: directory path is missing.');
       return;
     }
-    // The showInExplorer utility can handle the full path directly
     showInExplorer(`${directoryPath}/${image.name}`);
   };
 
@@ -1222,13 +1193,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     try {
-      // 1. Ask user for destination directory
       const destResult = await window.electronAPI.showDirectoryDialog();
       if (destResult.canceled || !destResult.path) {
-        return; // User cancelled
+        return;
       }
       const destDir = destResult.path;
-      // Get safe paths using joinPaths
       const sourcePathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
       if (!sourcePathResult.success || !sourcePathResult.path) {
         throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
@@ -1241,21 +1210,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourcePath = sourcePathResult.path;
       const destPath = destPathResult.path;
 
-      // 2. Read the source file
       const readResult = await window.electronAPI.readFile(sourcePath);
       if (!readResult.success || !readResult.data) {
         alert(`Failed to read original file: ${readResult.error}`);
         return;
       }
 
-      // 3. Write the new file
       const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
       if (!writeResult.success) {
         alert(`Failed to export image: ${writeResult.error}`);
         return;
       }
 
-      // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
     } catch (error) {
@@ -1265,14 +1231,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  // Reset zoom and pan when image changes
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     revealMediaOverlay();
   }, [image.id, revealMediaOverlay]);
 
-  // Reset zoom and pan when entering/exiting fullscreen
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -1280,22 +1244,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
     clearMediaOverlayHideTimer();
   }, [clearMediaOverlayHideTimer, isFullscreen]);
 
-  // Zoom handlers
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(1, zoom + delta), 5); // Min 1x, Max 5x
+    const newZoom = Math.min(Math.max(1, zoom + delta), 5);
 
     setZoom(newZoom);
 
-    // Reset pan if zooming out to 1x
     if (newZoom === 1) {
       setPan({ x: 0, y: 0 });
     }
   }, [zoom]);
 
-  // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!(e.target instanceof Element) || !e.target.closest('img, video, canvas, [data-media-element="true"]')) {
       return;
@@ -1366,7 +1327,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     const loadImage = async () => {
       if (!isMounted) return;
 
-      // Validate directoryPath before attempting to load (prevents recursion)
       if (!directoryPath && window.electronAPI) {
         console.error('Cannot load image: directoryPath is undefined');
         if (isMounted && !hasPreview) {
@@ -1441,7 +1401,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     focusInput();
   }, [isFullscreen, toggleFullscreen]);
 
-  // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {
     const imageContainer = imageContainerRef.current;
     if (imageContainer) {
@@ -1462,14 +1421,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
-      const imageToDelete = image; // Capture reference
+      const imageToDelete = image;
 
-      // Navigate to next/previous image BEFORE deletion to keep modal open
-      // Check if we have other images to navigate to
       const hasMoreImages = totalImages > 1;
       
       if (hasMoreImages) {
-        // Prefer next image, fallback to previous if at the end
         if (currentIndex < totalImages - 1) {
           onNavigateNext?.();
         } else {
@@ -1481,7 +1437,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (result.success) {
         onImageDeleted?.(idToDelete);
         
-        // Only close if we didn't have anywhere to navigate (last image deleted)
         if (!hasMoreImages) {
           onClose();
         }
@@ -1497,7 +1452,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
       if (hotkeyManager.areHotkeysPaused()) {
         return;
       }
@@ -1505,15 +1459,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (isRenaming) return;
       const isTypingContext = isTypingElement(event.target);
 
-      // Let focused text fields handle their own Escape behavior.
       if (event.key === 'Escape') {
         if (isTypingContext) {
           return;
         }
 
-        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
+      event.stopPropagation();
         if (isFullscreen) {
-          // Call toggleFullscreen to actually exit Electron fullscreen
           toggleFullscreen();
         } else {
           onClose();
@@ -1653,7 +1605,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  // Tag management handlers
   const handleAddTag = (value = tagInput) => {
     if (!value.trim()) return;
     addTagToImage(image.id, value);
@@ -1669,7 +1620,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const handlePromoteAutoTag = async (tag: string) => {
-    // Add as manual tag and remove from auto-tags
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
   };
@@ -2906,13 +2856,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-// Wrap with React.memo to avoid churn during metadata updates while still
-// invalidating on the props that change visible window state.
 export default React.memo(ImageModal, (prevProps, nextProps) => {
-  // Return true if props are EQUAL (skip re-render)
-  // Return false if props are DIFFERENT (re-render)
-
-  // Helper to compare tag arrays
   const tagsEqual = (tags1?: string[], tags2?: string[]) => {
     if (!tags1 && !tags2) return true;
     if (!tags1 || !tags2) return false;
@@ -2935,5 +2879,5 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
     prevProps.isMinimized === nextProps.isMinimized;
 
-  return propsEqual; // true = skip re-render, false = re-render
+  return propsEqual;
 });
