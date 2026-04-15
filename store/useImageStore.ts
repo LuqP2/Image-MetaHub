@@ -523,6 +523,7 @@ interface ImageState {
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
+  renameImageRecord: (imageId: string, newRelativePath: string) => IndexedImage | null;
   clearImages: (directoryId?: string) => void;
   setImageThumbnail: (
     imageId: string,
@@ -2484,6 +2485,65 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
             maybeQueueLineageBuild(500);
+        },
+
+        renameImageRecord: (imageId, newRelativePath) => {
+            let renamedImage: IndexedImage | null = null;
+            const normalizedRelativePath = newRelativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+
+            set(state => {
+                const sourceImage = state.images.find(img => img.id === imageId);
+                if (!sourceImage || !sourceImage.directoryId) {
+                    renamedImage = null;
+                    return state;
+                }
+
+                const nextImageId = `${sourceImage.directoryId}::${normalizedRelativePath}`;
+                const nextFileName = normalizedRelativePath.split('/').pop() || normalizedRelativePath;
+                const nextImage: IndexedImage = {
+                    ...sourceImage,
+                    id: nextImageId,
+                    name: normalizedRelativePath,
+                    handle: {
+                        ...(sourceImage.handle as any),
+                        name: nextFileName,
+                    } as FileSystemFileHandle,
+                };
+                renamedImage = nextImage;
+
+                const updatedImages = state.images.map(img => img.id === imageId ? nextImage : img);
+                const selectedImages = new Set(Array.from(state.selectedImages).map(id => id === imageId ? nextImageId : id));
+                const annotations = new Map(state.annotations);
+                const annotation = annotations.get(imageId);
+                if (annotation) {
+                    annotations.delete(imageId);
+                    annotations.set(nextImageId, {
+                        ...annotation,
+                        imageId: nextImageId,
+                        updatedAt: Date.now(),
+                    });
+                }
+
+                const replaceImage = (image: IndexedImage | null) => image?.id === imageId ? nextImage : image;
+                const resultState = {
+                    ...state,
+                    images: updatedImages,
+                    selectedImages,
+                    annotations,
+                    selectedImage: replaceImage(state.selectedImage),
+                    previewImage: replaceImage(state.previewImage),
+                    comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
+                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
+                };
+
+                return {
+                    ...resultState,
+                    ...filterAndSort(resultState),
+                };
+            });
+
+            maybeQueueLineageBuild(500);
+            return renamedImage;
         },
 
         setImageThumbnail: (imageId, data) => {

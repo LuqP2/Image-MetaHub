@@ -216,7 +216,6 @@ export default function App() {
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const removeImage = useImageStore((state) => state.removeImage);
   const removeImages = useImageStore((state) => state.removeImages);
-  const updateImage = useImageStore((state) => state.updateImage);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
   const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
@@ -1311,9 +1310,19 @@ export default function App() {
     }
   }, [removeImage, setSelectedImage]);
 
-  const handleImageRenamed = useCallback((imageId: string, newName: string) => {
-    updateImage(imageId, newName);
-  }, [updateImage]);
+  const handleImageRenamed = useCallback((oldImageId: string, newImageId: string) => {
+    if (oldImageId === newImageId) {
+      return;
+    }
+
+    setOpenImageModals((current) =>
+      current.map((modal) => ({
+        ...modal,
+        imageId: modal.imageId === oldImageId ? newImageId : modal.imageId,
+        navigationImageIds: modal.navigationImageIds.map((id) => id === oldImageId ? newImageId : id),
+      }))
+    );
+  }, []);
 
   const handleActivateImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) => {

@@ -15,7 +15,8 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Package,
   Play,
   Tag,
-  RefreshCw
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
@@ -37,6 +38,7 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
+import RenameImageModal from './RenameImageModal';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -47,6 +49,7 @@ interface ImageCardProps {
   isFocused?: boolean;
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
+  onRenameRequest?: (image: IndexedImage) => void;
   baseWidth: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
@@ -129,7 +132,7 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const thumbnail = useResolvedThumbnail(image);
   const suppressNextClickRef = useRef(false);
@@ -490,6 +493,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       {showFilenames && (
         <div className="mt-2 w-full min-h-[2.25rem] px-1">
           <p
+            role={onRenameRequest ? 'button' : undefined}
             className="text-[11px] leading-tight text-center text-gray-400"
             style={{
               display: '-webkit-box',
@@ -498,6 +502,14 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               overflow: 'hidden',
             }}
             title={fullDisplayName}
+            onDoubleClick={(event) => {
+              if (!onRenameRequest) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              onRenameRequest(image);
+            }}
           >
             {displayName}
           </p>
@@ -532,6 +544,7 @@ interface CellData {
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
+  handleRenameRequest: (image: IndexedImage) => void;
   comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
   markedBestIds?: Set<string>;
@@ -553,6 +566,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     imageSize,
     handleImageLoad,
     handleContextMenu,
+    handleRenameRequest,
     comparisonFirstImageId,
     createCardRef,
     markedBestIds,
@@ -608,6 +622,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isFocused={false}
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
+              onRenameRequest={handleRenameRequest}
               baseWidth={imageSize}
               isComparisonFirst={false}
               cardRef={createCardRef(item.id)}
@@ -654,6 +669,7 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         isFocused={isFocused}
         onImageLoad={handleImageLoad}
         onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
+        onRenameRequest={handleRenameRequest}
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
@@ -757,6 +773,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
@@ -1010,6 +1027,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     setIsTransferModalOpen(true);
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
+
+  const openRenameModal = useCallback((image: IndexedImage | null | undefined) => {
+    if (!image) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setRenameImage(image);
+    hideContextMenu();
+  }, [canUseFileManagement, hideContextMenu, showProModal]);
 
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
@@ -1653,6 +1685,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           </button>
 
           <button
+            onClick={() => openRenameModal(contextMenu.image)}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="flex-1">Rename...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
             onClick={() => openTransferModal('copy')}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
@@ -1765,6 +1807,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         statusText={transferStatusText}
         progress={transferProgress}
         onConfirm={handleTransferConfirm}
+      />
+
+      <RenameImageModal
+        isOpen={!!renameImage}
+        image={renameImage}
+        onClose={() => setRenameImage(null)}
       />
 
       {/* Generate Variation Modal */}
@@ -1948,6 +1996,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
+                    handleRenameRequest: openRenameModal,
                     comparisonFirstImageId: queuedComparisonFirstImageId,
                     createCardRef,
                     markedBestIds,
@@ -2090,8 +2139,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 isSelected={selectedImages.has(item.coverImage.id)}
                                 isFocused={false}
                                 onImageLoad={handleImageLoad}
-                                onContextMenu={(img, e) => handleContextMenu(img, e)}
-                                baseWidth={imageSize}
+                onContextMenu={(img, e) => handleContextMenu(img, e)}
+                onRenameRequest={openRenameModal}
+                baseWidth={imageSize}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.id)}
                                 isMarkedBest={markedBestIds?.has(item.coverImage.id)}
@@ -2125,6 +2175,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 isFocused={isFocused}
                 onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
+                onRenameRequest={openRenameModal}
                 baseWidth={imageSize}
                 isComparisonFirst={queuedComparisonFirstImageId === image.id}
                 cardRef={createCardRef(image.id)}

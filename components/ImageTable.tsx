@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star, Pencil } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -16,6 +16,7 @@ import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipCl
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import RenameImageModal from './RenameImageModal';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -79,6 +80,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const collections = useImageStore((state) => state.collections);
@@ -244,6 +246,21 @@ const ImageTable: React.FC<ImageTableProps> = ({
     setIsTransferModalOpen(true);
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
+
+  const openRenameModal = useCallback((image: IndexedImage | null | undefined) => {
+    if (!image) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setRenameImage(image);
+    hideContextMenu();
+  }, [canUseFileManagement, hideContextMenu, showProModal]);
 
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
@@ -679,6 +696,16 @@ const ImageTable: React.FC<ImageTableProps> = ({
           </button>
 
           <button
+            onClick={() => openRenameModal(contextMenu.image)}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="flex-1">Rename...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
             onClick={() => openTransferModal('copy')}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
@@ -745,6 +772,12 @@ const ImageTable: React.FC<ImageTableProps> = ({
         statusText={transferStatusText}
         progress={transferProgress}
         onConfirm={handleTransferConfirm}
+      />
+
+      <RenameImageModal
+        isOpen={!!renameImage}
+        image={renameImage}
+        onClose={() => setRenameImage(null)}
       />
     </div>
   );
