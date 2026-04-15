@@ -1,11 +1,12 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { IndexedImage } from '../types';
 
+const renameIndexedImageMock = vi.hoisted(() => vi.fn());
 const showContextMenuMock = vi.fn();
 const hideContextMenuMock = vi.fn();
 const contextMenuStateMock = {
@@ -32,6 +33,15 @@ vi.mock('../hooks/useContextMenu', () => ({
     copyRawMetadata: vi.fn(),
     addTag: vi.fn(),
   }),
+}));
+
+vi.mock('../services/imageRenameService', () => ({
+  getRenameBasename: (image: IndexedImage) => {
+    const fileName = image.name.replace(/\\/g, '/').split('/').pop() || image.name;
+    const dotIndex = fileName.lastIndexOf('.');
+    return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+  },
+  renameIndexedImage: renameIndexedImageMock,
 }));
 
 vi.mock('../hooks/useThumbnail', () => ({
@@ -149,6 +159,12 @@ describe('ImageGrid context menu', () => {
   beforeEach(() => {
     showContextMenuMock.mockReset();
     hideContextMenuMock.mockReset();
+    renameIndexedImageMock.mockReset();
+    renameIndexedImageMock.mockResolvedValue({
+      success: true,
+      newImageId: 'dir-1::renamed.png',
+      newRelativePath: 'renamed.png',
+    });
     contextMenuStateMock.visible = false;
     contextMenuStateMock.image = undefined;
     useImageStore.getState().resetState();
@@ -223,6 +239,61 @@ describe('ImageGrid context menu', () => {
 
     expect(useImageStore.getState().focusedImageIndex).toBe(0);
     expect(useImageStore.getState().previewImage?.id).toBe('img-1');
+  });
+
+  it('renames a thumbnail inline after double-clicking the filename', async () => {
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+
+    useSettingsStore.setState({ showFilenames: true } as any);
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={[image]} />);
+
+    fireEvent.doubleClick(screen.getByText('alpha.png'));
+    const input = screen.getByRole('textbox', { name: /rename alpha\.png/i }) as HTMLInputElement;
+
+    expect(input.value).toBe('alpha');
+    fireEvent.change(input, { target: { value: 'beta' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(renameIndexedImageMock).toHaveBeenCalledWith(image, 'beta');
+    });
+  });
+
+  it('starts inline rename from the image context menu', () => {
+    const image = createImage({ id: 'img-1', name: 'alpha.png' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={[image]} />);
+
+    fireEvent.click(screen.getByText('Rename...'));
+
+    expect(screen.getByRole('textbox', { name: /rename alpha\.png/i })).toBeTruthy();
+    expect(hideContextMenuMock).toHaveBeenCalled();
   });
 
   it('shows collection actions in the image context menu', () => {

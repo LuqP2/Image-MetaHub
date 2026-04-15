@@ -38,7 +38,7 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
-import RenameImageModal from './RenameImageModal';
+import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 
 // --- ImageCard Component ---
 interface ImageCardProps {
@@ -50,6 +50,8 @@ interface ImageCardProps {
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   onRenameRequest?: (image: IndexedImage) => void;
+  onRenameComplete?: () => void;
+  isRenaming?: boolean;
   baseWidth: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
@@ -132,12 +134,17 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
   const suppressNextClickRef = useRef(false);
   const dragResetTimeoutRef = useRef<number | null>(null);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const submittingRenameRef = useRef(false);
+  const cancelingRenameRef = useRef(false);
 
   // aspectRatio state removed as unused
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
@@ -211,6 +218,61 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isRenaming) {
+      submittingRenameRef.current = false;
+      cancelingRenameRef.current = false;
+      setIsSubmittingRename(false);
+      return;
+    }
+
+    setRenameValue(getRenameBasename(image));
+    requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+  }, [image, isRenaming]);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!isRenaming || submittingRenameRef.current) {
+      return;
+    }
+
+    const nextValue = renameValue.trim();
+    if (nextValue === getRenameBasename(image)) {
+      onRenameComplete?.();
+      return;
+    }
+
+    submittingRenameRef.current = true;
+    setIsSubmittingRename(true);
+    try {
+      const result = await renameIndexedImage(image, nextValue);
+      if (!result.success) {
+        alert(result.error || 'Failed to rename image.');
+        requestAnimationFrame(() => {
+          renameInputRef.current?.focus();
+          renameInputRef.current?.select();
+        });
+        return;
+      }
+
+      onRenameComplete?.();
+    } finally {
+      submittingRenameRef.current = false;
+      setIsSubmittingRename(false);
+    }
+  }, [image, isRenaming, onRenameComplete, renameValue]);
+
+  const handleRenameCancel = useCallback(() => {
+    if (isSubmittingRename) {
+      return;
+    }
+
+    cancelingRenameRef.current = true;
+    onRenameComplete?.();
+  }, [isSubmittingRename, onRenameComplete]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -490,29 +552,61 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           </div>
         )}
       </div>
-      {showFilenames && (
+      {(showFilenames || isRenaming) && (
         <div className="mt-2 w-full min-h-[2.25rem] px-1">
-          <p
-            role={onRenameRequest ? 'button' : undefined}
-            className="text-[11px] leading-tight text-center text-gray-400"
-            style={{
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-              overflow: 'hidden',
-            }}
-            title={fullDisplayName}
-            onDoubleClick={(event) => {
-              if (!onRenameRequest) {
-                return;
-              }
-              event.preventDefault();
-              event.stopPropagation();
-              onRenameRequest(image);
-            }}
-          >
-            {displayName}
-          </p>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              aria-label={`Rename ${image.name}`}
+              className="h-8 w-full rounded-md border border-blue-500/70 bg-gray-950 px-2 text-center text-[11px] leading-tight text-white outline-none ring-2 ring-blue-500/30 disabled:cursor-wait disabled:opacity-70"
+              disabled={isSubmittingRename}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onBlur={() => {
+                if (cancelingRenameRef.current) {
+                  cancelingRenameRef.current = false;
+                  return;
+                }
+                void handleRenameSubmit();
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleRenameSubmit();
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  handleRenameCancel();
+                }
+              }}
+            />
+          ) : (
+            <p
+              role={onRenameRequest ? 'button' : undefined}
+              className="text-[11px] leading-tight text-center text-gray-400"
+              style={{
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 2,
+                overflow: 'hidden',
+              }}
+              title={fullDisplayName}
+              onDoubleClick={(event) => {
+                if (!onRenameRequest) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                onRenameRequest(image);
+              }}
+            >
+              {displayName}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -545,6 +639,8 @@ interface CellData {
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
   handleRenameRequest: (image: IndexedImage) => void;
+  handleRenameComplete: () => void;
+  renamingImageId: string | null;
   comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
   markedBestIds?: Set<string>;
@@ -567,6 +663,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     handleImageLoad,
     handleContextMenu,
     handleRenameRequest,
+    handleRenameComplete,
+    renamingImageId,
     comparisonFirstImageId,
     createCardRef,
     markedBestIds,
@@ -623,6 +721,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
               onRenameRequest={handleRenameRequest}
+              onRenameComplete={handleRenameComplete}
+              isRenaming={renamingImageId === item.coverImage.id}
               baseWidth={imageSize}
               isComparisonFirst={false}
               cardRef={createCardRef(item.id)}
@@ -670,6 +770,8 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         onImageLoad={handleImageLoad}
         onContextMenu={(img, e) => handleContextMenu(img, e)} // Adapter for context menu signature
         onRenameRequest={handleRenameRequest}
+        onRenameComplete={handleRenameComplete}
+        isRenaming={renamingImageId === image.id}
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
@@ -773,7 +875,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
-  const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
+  const [renamingImageId, setRenamingImageId] = useState<string | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
@@ -789,6 +891,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         .filter(Boolean)
     );
   }, [sensitiveTags]);
+  const showFilenameArea = showFilenames || renamingImageId !== null;
 
 
 
@@ -1028,7 +1131,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
 
-  const openRenameModal = useCallback((image: IndexedImage | null | undefined) => {
+  const openInlineRename = useCallback((image: IndexedImage | null | undefined) => {
     if (!image) {
       hideContextMenu();
       return;
@@ -1039,9 +1142,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       return;
     }
 
-    setRenameImage(image);
+    setRenamingImageId(image.id);
     hideContextMenu();
   }, [canUseFileManagement, hideContextMenu, showProModal]);
+
+  const closeInlineRename = useCallback(() => {
+    setRenamingImageId(null);
+  }, []);
 
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
@@ -1175,7 +1282,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         // OPTIMIZED: only check items that intersect with the selection box row/col range
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
-        const itemHeight = getItemHeight(imageSize, showFilenames);
+        const itemHeight = getItemHeight(imageSize, showFilenameArea);
         const rowHeight = itemHeight + GAP_SIZE;
 
         const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
@@ -1238,7 +1345,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [getGridScrollElement, isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
+  }, [getGridScrollElement, isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenameArea]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1685,7 +1792,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           </button>
 
           <button
-            onClick={() => openRenameModal(contextMenu.image)}
+            onClick={() => openInlineRename(contextMenu.image)}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
           >
@@ -1807,12 +1914,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         statusText={transferStatusText}
         progress={transferProgress}
         onConfirm={handleTransferConfirm}
-      />
-
-      <RenameImageModal
-        isOpen={!!renameImage}
-        image={renameImage}
-        onClose={() => setRenameImage(null)}
       />
 
       {/* Generate Variation Modal */}
@@ -1996,7 +2097,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
-                    handleRenameRequest: openRenameModal,
+                    handleRenameRequest: openInlineRename,
+                    handleRenameComplete: closeInlineRename,
+                    renamingImageId,
                     comparisonFirstImageId: queuedComparisonFirstImageId,
                     createCardRef,
                     markedBestIds,
@@ -2016,7 +2119,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     overscanColumnCount={1}
                     overscanRowCount={4}
                     rowCount={rowCount}
-                    rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
+                    rowHeight={getItemHeight(imageSize, showFilenameArea) + GAP_SIZE}
                     width={width}
                     outerRef={gridScrollRef}
                     className="no-scrollbar-if-needed"
@@ -2124,7 +2227,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     <div 
                         key={item.id}
                         className="relative group cursor-pointer"
-                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenames) }}
+                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenameArea) }}
                         onClick={() => handleStackClick(item)}
                     >
                         {/* Back cards effect */}
@@ -2140,7 +2243,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 isFocused={false}
                                 onImageLoad={handleImageLoad}
                 onContextMenu={(img, e) => handleContextMenu(img, e)}
-                onRenameRequest={openRenameModal}
+                onRenameRequest={openInlineRename}
+                onRenameComplete={closeInlineRename}
+                isRenaming={renamingImageId === item.coverImage.id}
                 baseWidth={imageSize}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.id)}
@@ -2175,7 +2280,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 isFocused={isFocused}
                 onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
-                onRenameRequest={openRenameModal}
+                onRenameRequest={openInlineRename}
+                onRenameComplete={closeInlineRename}
+                isRenaming={renamingImageId === image.id}
                 baseWidth={imageSize}
                 isComparisonFirst={queuedComparisonFirstImageId === image.id}
                 cardRef={createCardRef(image.id)}
