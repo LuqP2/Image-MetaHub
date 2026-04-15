@@ -41,8 +41,8 @@ export const FACET_CONDITION_FIELDS: AutomationConditionField[] = [
   'dimension',
 ];
 export const NUMBER_CONDITION_FIELDS: AutomationConditionField[] = ['rating', 'steps', 'cfg'];
-export const BOOLEAN_CONDITION_FIELDS: AutomationConditionField[] = ['favorite', 'telemetry', 'verifiedTelemetry'];
-const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
+export const BOOLEAN_CONDITION_FIELDS: AutomationConditionField[] = ['favorite'];
+const ALL_CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'prompt',
   'negativePrompt',
   'filename',
@@ -63,6 +63,25 @@ const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'telemetry',
   'verifiedTelemetry',
 ];
+const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
+  'prompt',
+  'negativePrompt',
+  'filename',
+  'metadata',
+  'model',
+  'lora',
+  'sampler',
+  'scheduler',
+  'generator',
+  'gpu',
+  'tag',
+  'autoTag',
+  'dimension',
+  'favorite',
+  'rating',
+  'steps',
+  'cfg',
+];
 
 export const CONDITION_FIELD_LABELS: Record<AutomationConditionField, string> = {
   prompt: 'Prompt',
@@ -82,15 +101,15 @@ export const CONDITION_FIELD_LABELS: Record<AutomationConditionField, string> = 
   rating: 'Rating',
   steps: 'Steps',
   cfg: 'CFG',
-  telemetry: 'Telemetry',
-  verifiedTelemetry: 'Verified Telemetry',
+  telemetry: 'Performance Data',
+  verifiedTelemetry: 'Verified Performance Data',
 };
 
 export const OPERATOR_LABELS: Record<AutomationConditionOperator, string> = {
   contains: 'contains',
   not_contains: 'does not contain',
   equals: 'equals',
-  not_equals: 'does not equal',
+  not_equals: 'is not exactly',
   includes: 'includes',
   not_includes: 'does not include',
   is: 'is',
@@ -138,7 +157,7 @@ export function getConditionFieldOptions(): Array<{ value: AutomationConditionFi
 
 export function getOperatorsForField(field: AutomationConditionField): AutomationConditionOperator[] {
   if (TEXT_CONDITION_FIELDS.includes(field)) {
-    return ['contains', 'not_contains', 'equals', 'not_equals'];
+    return ['contains', 'not_contains'];
   }
   if (FACET_CONDITION_FIELDS.includes(field)) {
     return ['includes', 'not_includes'];
@@ -163,7 +182,7 @@ export function createDefaultConditionRow(): AutomationConditionRow {
 }
 
 const normalizeField = (field: unknown): AutomationConditionField =>
-  CONDITION_FIELD_VALUES.includes(field as AutomationConditionField)
+  ALL_CONDITION_FIELD_VALUES.includes(field as AutomationConditionField)
     ? field as AutomationConditionField
     : 'prompt';
 
@@ -201,12 +220,12 @@ export function ruleToConditionRows(rule: AutomationRule): AutomationConditionRo
 
   const rows: AutomationConditionRow[] = [];
   for (const condition of rule.criteria.textConditions ?? []) {
-    rows.push({
+    rows.push(normalizeConditionRow({
       id: condition.id || createRowId(),
       field: condition.field,
       operator: condition.operator,
       value: condition.value,
-    });
+    }));
   }
 
   rows.push(...filterCriteriaToConditionRows(rule.criteria.filters));
@@ -256,18 +275,6 @@ export function filterCriteriaToConditionRows(filters: AutomationRuleFilterCrite
   }
   if (advanced.steps) rows.push(...rangeToRows('steps', advanced.steps));
   if (advanced.cfg) rows.push(...rangeToRows('cfg', advanced.cfg));
-  if (advanced.telemetryState === 'present' || advanced.telemetryState === 'missing') {
-    rows.push({
-      id: createRowId(),
-      field: 'telemetry',
-      operator: advanced.telemetryState === 'present' ? 'is' : 'is_not',
-      value: 'present',
-    });
-  }
-  if (advanced.hasVerifiedTelemetry === true) {
-    rows.push({ id: createRowId(), field: 'verifiedTelemetry', operator: 'is', value: 'true' });
-  }
-
   return rows;
 }
 
@@ -401,8 +408,6 @@ export function getConditionValueOptions(
     case 'autoTag': return source.availableAutoTags.map((tag) => tag.name);
     case 'dimension': return source.availableDimensions;
     case 'rating': return ['1', '2', '3', '4', '5'];
-    case 'telemetry': return ['present'];
-    case 'verifiedTelemetry': return ['true'];
     case 'favorite': return ['true'];
     case 'prompt':
     case 'negativePrompt':

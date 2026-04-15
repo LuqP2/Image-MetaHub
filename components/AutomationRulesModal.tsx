@@ -545,13 +545,14 @@ interface ConditionRowEditorProps {
 const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSource, onUpdate, onRemove }) => {
   const fieldOptions = getConditionFieldOptions();
   const operatorOptions = getOperatorsForField(row.field);
-  const valueOptions = getConditionValueOptions(row.field, valueSource);
   const isText = TEXT_CONDITION_FIELDS.includes(row.field);
+  const valueOptions = isText ? [] : getConditionValueOptions(row.field, valueSource);
   const isBoolean = row.field === 'favorite' || row.field === 'telemetry' || row.field === 'verifiedTelemetry';
   const isBetween = row.operator === 'between';
+  const valueContainerClassName = `min-w-0 md:col-span-2 ${isBetween ? 'grid gap-2 sm:grid-cols-2' : ''}`.trim();
 
   return (
-    <div className="grid gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-2 md:grid-cols-[170px_170px_minmax(0,1fr)_40px]">
+    <div className="grid gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px]">
       <select
         aria-label="Condition field"
         value={row.field}
@@ -569,18 +570,22 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
         {operatorOptions.map((operator) => <option key={operator} value={operator}>{OPERATOR_LABELS[operator]}</option>)}
       </select>
 
-      <div className={isBetween ? 'grid gap-2 sm:grid-cols-2' : ''}>
+      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition">
+        <X className="mx-auto h-4 w-4" />
+      </button>
+
+      <div className={valueContainerClassName}>
         {isBoolean ? (
-          <div className="flex h-9 items-center rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300">
+          <div className="flex h-9 w-full items-center rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300">
             {row.field === 'telemetry' ? 'present' : row.field === 'verifiedTelemetry' ? 'true' : 'favorite'}
           </div>
         ) : isText ? (
-          <SuggestInput
-            ariaLabel={`${CONDITION_FIELD_LABELS[row.field]} value`}
+          <input
+            aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
             value={row.value}
-            options={valueOptions}
-            onChange={(value) => onUpdate({ value })}
-            placeholder="Type or choose..."
+            onChange={(event) => onUpdate({ value: event.target.value })}
+            className={compactInputClassName}
+            placeholder="Type here..."
           />
         ) : valueOptions.length > 0 && !['steps', 'cfg'].includes(row.field) ? (
           <select
@@ -614,63 +619,6 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
           />
         )}
       </div>
-
-      <button type="button" onClick={onRemove} className="h-9 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-rose-300" title="Remove condition">
-        <X className="mx-auto h-4 w-4" />
-      </button>
-    </div>
-  );
-};
-
-interface SuggestInputProps {
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  placeholder: string;
-  ariaLabel: string;
-}
-
-const SuggestInput: React.FC<SuggestInputProps> = ({ value, options, onChange, placeholder, ariaLabel }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const filteredOptions = useMemo(() => {
-    const query = value.trim().toLowerCase();
-    return options
-      .filter((option) => !query || option.toLowerCase().includes(query))
-      .slice(0, 8);
-  }, [options, value]);
-
-  return (
-    <div className="relative">
-      <input
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => {
-          onChange(event.target.value);
-          setIsOpen(true);
-        }}
-        onFocus={() => setIsOpen(true)}
-        onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
-        className={compactInputClassName}
-        placeholder={placeholder}
-      />
-      {isOpen && filteredOptions.length > 0 && (
-        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 shadow-xl">
-          {filteredOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                onChange(option);
-                setIsOpen(false);
-              }}
-              className="block w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700"
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

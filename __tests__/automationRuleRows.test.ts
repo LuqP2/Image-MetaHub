@@ -89,7 +89,7 @@ describe('automation rule condition rows', () => {
       expect.objectContaining({ field: 'lora', operator: 'not_includes', value: 'x' }),
       expect.objectContaining({ field: 'autoTag', operator: 'includes', value: 'portrait' }),
       expect.objectContaining({ field: 'favorite', operator: 'is_not' }),
-      expect.objectContaining({ field: 'verifiedTelemetry', operator: 'is' }),
     ]));
+    expect(rows.some((row) => row.field === 'telemetry' || row.field === 'verifiedTelemetry')).toBe(false);
   });
 });
