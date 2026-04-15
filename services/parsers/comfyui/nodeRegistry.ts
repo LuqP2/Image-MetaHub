@@ -906,12 +906,25 @@ export const NodeRegistry: Record<string, NodeDefinition> = {
 ImpactWildcardProcessor: {
   category: 'UTILS',
   roles: ['SOURCE'],
-  inputs: {},
+  inputs: { populated_text: { type: 'STRING' }, wildcard_text: { type: 'STRING' } },
   outputs: { STRING: { type: 'STRING' } },
   param_mapping: {
     prompt: {
       source: 'custom_extractor',
-      extractor: (node: ParserNode) => {
+      extractor: (node: ParserNode, state, graph, traverseFromLink) => {
+        const linkedTextInputs = [node.inputs?.populated_text, node.inputs?.wildcard_text];
+        for (const linkedTextInput of linkedTextInputs) {
+          if (Array.isArray(linkedTextInput) && linkedTextInput.length === 2) {
+            const tracedText = traverseFromLink(linkedTextInput as any, state, graph, []);
+            if (tracedText !== null && tracedText !== undefined) {
+              const cleanedTracedText = extractors.cleanWildcardText(String(tracedText));
+              if (cleanedTracedText) {
+                return cleanedTracedText;
+              }
+            }
+          }
+        }
+
         const text = extractors.getWildcardOrPopulatedText(node);
         return extractors.cleanWildcardText(text);
       }

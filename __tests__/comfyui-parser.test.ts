@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseComfyUIMetadataEnhanced, resolvePromptFromGraph } from '../services/parsers/comfyUIParser';
+import { parseComfyUIMetadataEnhanced, resolvePromptFromGraph, resolveWorkflowFactsFromGraph } from '../services/parsers/comfyUIParser';
 import { parseImageMetadata } from '../services/parsers/metadataParserFactory';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -46,6 +46,54 @@ describe('ComfyUI Parser - Prompt Sources', () => {
 
     expect(result.prompt).toBe('Visualize a long, eel-like mutant lizard with overlapping plates of translucent skin. Place it in a fossilized ocean desert where waves are frozen into glassy dunes.');
     expect(result._telemetry.unknown_nodes_count).toBe(0);
+  });
+
+  it('should handle ImpactWildcardProcessor populated_text links without treating them as text', () => {
+    const prompt = {
+      '1': {
+        class_type: 'KSampler',
+        inputs: {
+          seed: 12345,
+          steps: 20,
+          cfg: 7,
+          sampler_name: 'euler',
+          scheduler: 'normal',
+          denoise: 1,
+          positive: ['2', 0],
+          negative: ['5', 0],
+        },
+      },
+      '2': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: ['3', 0],
+        },
+      },
+      '3': {
+        class_type: 'ImpactWildcardProcessor',
+        inputs: {
+          populated_text: ['4', 0],
+        },
+        widgets_values: ['', 'fallback populated prompt', 'populate'],
+      },
+      '4': {
+        class_type: 'ImpactWildcardProcessor',
+        inputs: {},
+        widgets_values: ['upstream template prompt', 'upstream populated prompt', 'populate'],
+      },
+      '5': {
+        class_type: 'CLIPTextEncode',
+        inputs: {
+          text: '',
+        },
+      },
+    };
+
+    expect(() => resolvePromptFromGraph(undefined, prompt)).not.toThrow();
+    expect(resolvePromptFromGraph(undefined, prompt).prompt).toBe('upstream populated prompt');
+
+    const facts = resolveWorkflowFactsFromGraph(undefined, prompt);
+    expect(facts?.prompts.positive).toBe('upstream populated prompt');
   });
 });
 
