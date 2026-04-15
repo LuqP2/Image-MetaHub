@@ -182,6 +182,21 @@ describe('automation rule engine', () => {
     expect(imageMatchesAutomationRule(imageWithOneTag, rule)).toBe(false);
   });
 
+  it('matches imported global search rows across searchable image fields', () => {
+    const image = createImage({ id: 'cat', prompt: 'cat portrait', metadataString: '' });
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [{ id: 'search', field: 'search', operator: 'contains', value: 'cat' }],
+        filters: {},
+      },
+      actions: { addTags: ['matched'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(image, rule)).toBe(true);
+  });
+
   it('does not apply disabled rules', () => {
     const rule = createRule({
       enabled: false,

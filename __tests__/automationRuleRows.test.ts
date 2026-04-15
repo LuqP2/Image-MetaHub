@@ -55,6 +55,7 @@ describe('automation rule condition rows', () => {
 
   it('converts rows back to compatible criteria without losing includes and excludes', () => {
     const criteria = conditionRowsToCriteria([
+      { id: 'search', field: 'search', operator: 'contains', value: 'garden' },
       { id: 'prompt', field: 'prompt', operator: 'contains', value: 'cat' },
       { id: 'model', field: 'model', operator: 'includes', value: 'CyberRealistic' },
       { id: 'lora', field: 'lora', operator: 'not_includes', value: 'x' },
@@ -67,7 +68,8 @@ describe('automation rule condition rows', () => {
     expect(criteria.textConditions).toEqual([
       { id: 'prompt', field: 'prompt', operator: 'contains', value: 'cat' },
     ]);
-    expect(criteria.conditionRows).toHaveLength(7);
+    expect(criteria.conditionRows).toHaveLength(8);
+    expect(criteria.filters.searchQuery).toBe('garden');
     expect(criteria.filters.models).toEqual(['CyberRealistic']);
     expect(criteria.filters.excludedLoras).toEqual(['x']);
     expect(criteria.filters.tags).toEqual(['animal', 'portrait']);
@@ -88,7 +90,7 @@ describe('automation rule condition rows', () => {
     });
 
     expect(rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: 'metadata', operator: 'contains', value: 'cat' }),
+      expect.objectContaining({ field: 'search', operator: 'contains', value: 'cat' }),
       expect.objectContaining({ field: 'model', operator: 'includes', value: 'CyberRealistic' }),
       expect.objectContaining({ field: 'lora', operator: 'not_includes', value: 'x' }),
       expect.objectContaining({ field: 'autoTag', operator: 'includes', value: 'portrait' }),

@@ -22,7 +22,7 @@ const STORE_NAME = PREFERENCES_STORE_NAMES.automationRules;
 const inMemoryRules = new Map<string, AutomationRule>();
 let isPersistenceDisabled = false;
 
-const TEXT_FIELDS: AutomationTextField[] = ['prompt', 'negativePrompt', 'filename', 'metadata'];
+const TEXT_FIELDS: AutomationTextField[] = ['prompt', 'negativePrompt', 'filename', 'metadata', 'search'];
 const TEXT_OPERATORS: AutomationTextOperator[] = ['contains', 'not_contains', 'equals', 'not_equals'];
 const RATINGS = new Set<ImageRating>([1, 2, 3, 4, 5]);
 

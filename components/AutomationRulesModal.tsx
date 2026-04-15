@@ -253,6 +253,7 @@ export default function AutomationRulesModal({
           operator: fieldChanged ? getDefaultOperatorForField(nextField) : updates.operator ?? row.operator,
           value: fieldChanged ? '' : updates.value ?? row.value,
           valueEnd: fieldChanged ? '' : updates.valueEnd ?? row.valueEnd,
+          groupMode: fieldChanged ? undefined : updates.groupMode ?? row.groupMode,
         });
       }),
     );

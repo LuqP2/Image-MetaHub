@@ -718,7 +718,7 @@ export interface SelectedFiltersUpdate {
 }
 
 export type AutomationRuleMatchMode = 'all' | 'any';
-export type AutomationTextField = 'prompt' | 'negativePrompt' | 'filename' | 'metadata';
+export type AutomationTextField = 'prompt' | 'negativePrompt' | 'filename' | 'metadata' | 'search';
 export type AutomationTextOperator = 'contains' | 'not_contains' | 'equals' | 'not_equals';
 export type AutomationConditionField =
   | AutomationTextField

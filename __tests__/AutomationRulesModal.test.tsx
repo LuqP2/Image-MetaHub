@@ -84,6 +84,34 @@ describe('AutomationRulesModal', () => {
     expect(rule.actions.addTags).toEqual(['animal']);
   });
 
+  it('clears imported tag group mode when the row changes field', async () => {
+    useImageStore.setState({
+      selectedModels: [],
+      excludedLoras: [],
+      selectedTags: ['bird'],
+      selectedTagsMatchMode: 'all',
+    });
+
+    render(<AutomationRulesModal isOpen onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /import current sidebar filters/i }));
+    fireEvent.change(screen.getByLabelText('Condition field'), { target: { value: 'model' } });
+    fireEvent.change(screen.getByLabelText('Checkpoint value'), { target: { value: 'CyberRealistic' } });
+    fireEvent.change(screen.getByPlaceholderText('Add tag...'), { target: { value: 'animal' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    fireEvent.click(screen.getByRole('button', { name: /save rule/i }));
+
+    await waitFor(() => {
+      expect(useImageStore.getState().automationRules).toHaveLength(1);
+    });
+    const row = useImageStore.getState().automationRules[0]?.criteria.conditionRows?.[0];
+    expect(row).toMatchObject({
+      field: 'model',
+      value: 'CyberRealistic',
+    });
+    expect(row?.groupMode).toBeUndefined();
+  });
+
   it('clears the editor after deleting the selected rule', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     useImageStore.setState({

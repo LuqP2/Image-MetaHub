@@ -69,6 +69,8 @@ const getImageLoraSet = (image: IndexedImage): Set<string> => {
 
 const getTextFieldValue = (image: IndexedImage, condition: AutomationTextCondition): string => {
   switch (condition.field) {
+    case 'search':
+      return getSearchText(image);
     case 'negativePrompt':
       return image.negativePrompt ?? image.metadata?.normalizedMetadata?.negativePrompt ?? '';
     case 'filename':
@@ -325,6 +327,8 @@ const matchesFilterCriteria = (image: IndexedImage, filters: AutomationRuleFilte
 
 const getRowTextValue = (image: IndexedImage, field: AutomationConditionRow['field']): string => {
   switch (field) {
+    case 'search':
+      return getSearchText(image);
     case 'negativePrompt':
       return image.negativePrompt ?? image.metadata?.normalizedMetadata?.negativePrompt ?? '';
     case 'filename':
@@ -401,6 +405,7 @@ const combineGroupedRowResults = (row: AutomationConditionRow, results: boolean[
 const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): boolean => {
   switch (row.field) {
     case 'prompt':
+    case 'search':
     case 'negativePrompt':
     case 'filename':
     case 'metadata':

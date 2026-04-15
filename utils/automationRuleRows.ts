@@ -28,7 +28,7 @@ export interface ConditionValueSource {
 
 export interface CurrentRuleFiltersSnapshot extends AutomationRuleFilterCriteria {}
 
-export const TEXT_CONDITION_FIELDS: AutomationConditionField[] = ['prompt', 'negativePrompt', 'filename', 'metadata'];
+export const TEXT_CONDITION_FIELDS: AutomationConditionField[] = ['prompt', 'negativePrompt', 'filename', 'metadata', 'search'];
 export const FACET_CONDITION_FIELDS: AutomationConditionField[] = [
   'model',
   'lora',
@@ -43,6 +43,7 @@ export const FACET_CONDITION_FIELDS: AutomationConditionField[] = [
 export const NUMBER_CONDITION_FIELDS: AutomationConditionField[] = ['rating', 'steps', 'cfg'];
 export const BOOLEAN_CONDITION_FIELDS: AutomationConditionField[] = ['favorite'];
 const ALL_CONDITION_FIELD_VALUES: AutomationConditionField[] = [
+  'search',
   'prompt',
   'negativePrompt',
   'filename',
@@ -64,6 +65,7 @@ const ALL_CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'verifiedTelemetry',
 ];
 const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
+  'search',
   'prompt',
   'negativePrompt',
   'filename',
@@ -84,6 +86,7 @@ const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
 ];
 
 export const CONDITION_FIELD_LABELS: Record<AutomationConditionField, string> = {
+  search: 'Search',
   prompt: 'Prompt',
   negativePrompt: 'Negative Prompt',
   filename: 'Filename',
@@ -238,7 +241,7 @@ export function filterCriteriaToConditionRows(filters: AutomationRuleFilterCrite
   const rows: AutomationConditionRow[] = [];
 
   if (filters.searchQuery?.trim()) {
-    rows.push({ id: createRowId(), field: 'metadata', operator: 'contains', value: filters.searchQuery.trim() });
+    rows.push({ id: createRowId(), field: 'search', operator: 'contains', value: filters.searchQuery.trim() });
   }
 
   addRowsFromValues(rows, 'model', 'includes', filters.models);
@@ -315,6 +318,12 @@ export function conditionRowsToCriteria(
 
   for (const row of completeRows) {
     if (isTextField(row.field) && isTextOperator(row.operator)) {
+      if (row.field === 'search') {
+        if (row.operator === 'contains') {
+          filters.searchQuery = row.value.trim();
+        }
+        continue;
+      }
       textConditions.push({ id: row.id, field: row.field, operator: row.operator, value: row.value.trim() });
       continue;
     }
@@ -420,6 +429,7 @@ export function getConditionValueOptions(
     case 'negativePrompt':
     case 'filename':
     case 'metadata':
+    case 'search':
       return getTextValueSuggestions(field, source.images);
     default:
       return [];
@@ -444,6 +454,17 @@ export function getTextValueSuggestions(field: AutomationConditionField, images:
 
 const getTextForField = (field: AutomationConditionField, image: IndexedImage): string => {
   switch (field) {
+    case 'search':
+      return [
+        image.name,
+        image.prompt,
+        image.negativePrompt,
+        image.metadataString,
+        ...(image.models ?? []),
+        ...(image.loras ?? []).map((lora) => typeof lora === 'string' ? lora : lora?.name ?? lora?.model_name ?? ''),
+        image.sampler,
+        image.scheduler,
+      ].filter(Boolean).join(' ');
     case 'negativePrompt': return image.negativePrompt ?? image.metadata?.normalizedMetadata?.negativePrompt ?? '';
     case 'filename': return image.name ?? '';
     case 'metadata': return image.metadataString ?? '';
