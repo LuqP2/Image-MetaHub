@@ -717,6 +717,54 @@ export interface SelectedFiltersUpdate {
   excludedGpuDevices?: string[];
 }
 
+export type AutomationRuleMatchMode = 'all' | 'any';
+export type AutomationTextField = 'prompt' | 'negativePrompt' | 'filename' | 'metadata';
+export type AutomationTextOperator = 'contains' | 'not_contains' | 'equals' | 'not_equals';
+
+export interface AutomationTextCondition {
+  id: string;
+  field: AutomationTextField;
+  operator: AutomationTextOperator;
+  value: string;
+}
+
+export interface AutomationRuleFilterCriteria extends SelectedFiltersUpdate {
+  searchQuery?: string;
+  tags?: string[];
+  excludedTags?: string[];
+  tagMatchMode?: TagMatchMode;
+  autoTags?: string[];
+  excludedAutoTags?: string[];
+  favoriteFilterMode?: InclusionFilterMode;
+  ratings?: ImageRating[];
+  advancedFilters?: AdvancedFilters;
+}
+
+export interface AutomationRuleCriteria {
+  matchMode: AutomationRuleMatchMode;
+  textConditions: AutomationTextCondition[];
+  filters: AutomationRuleFilterCriteria;
+}
+
+export interface AutomationRuleAction {
+  addTags: string[];
+  addToCollectionIds: string[];
+}
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  criteria: AutomationRuleCriteria;
+  actions: AutomationRuleAction;
+  runOnNewImages: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastAppliedAt?: number | null;
+  lastMatchCount?: number;
+  lastChangeCount?: number;
+}
+
 export interface IndexedImage {
   id: string; // Unique ID, e.g., file path
   name: string;
