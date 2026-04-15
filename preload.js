@@ -151,6 +151,7 @@ const electronAPI = {
   comfyUIViewOpen: (payload) => ipcRenderer.invoke('comfy-view-open', payload),
   comfyUIViewShow: (payload) => ipcRenderer.invoke('comfy-view-show', payload),
   comfyUIViewHide: () => ipcRenderer.invoke('comfy-view-hide'),
+  comfyUIViewSuspend: () => ipcRenderer.invoke('comfy-view-suspend'),
   comfyUIViewSetBounds: (payload) => ipcRenderer.invoke('comfy-view-set-bounds', payload),
   comfyUIViewReload: () => ipcRenderer.invoke('comfy-view-reload'),
   comfyUIViewGoBack: () => ipcRenderer.invoke('comfy-view-go-back'),

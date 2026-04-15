@@ -161,7 +161,11 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
 
   useEffect(() => {
     if (!shouldShowBrowser || !isElectron) {
-      window.electronAPI?.comfyUIViewHide?.();
+      if (suspendBrowser) {
+        window.electronAPI?.comfyUIViewSuspend?.();
+      } else {
+        window.electronAPI?.comfyUIViewHide?.();
+      }
       return;
     }
 
@@ -187,7 +191,7 @@ const ComfyUIWorkspace: React.FC<ComfyUIWorkspaceProps> = ({
       window.removeEventListener('resize', handleResize);
       window.electronAPI?.comfyUIViewHide?.();
     };
-  }, [isElectron, openEmbeddedView, shouldShowBrowser, syncBounds]);
+  }, [isElectron, openEmbeddedView, shouldShowBrowser, suspendBrowser, syncBounds]);
 
   useEffect(() => {
     const unsubscribeState = window.electronAPI?.onComfyUIViewStateChanged?.((state) => {

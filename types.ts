@@ -104,6 +104,7 @@ export interface ElectronAPI {
   comfyUIViewOpen: (payload: { url: string; bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewShow: (payload?: { bounds?: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewHide: () => Promise<ComfyUIViewResult>;
+  comfyUIViewSuspend: () => Promise<ComfyUIViewResult>;
   comfyUIViewSetBounds: (payload: { bounds: ComfyUIViewBounds }) => Promise<ComfyUIViewResult>;
   comfyUIViewReload: () => Promise<ComfyUIViewResult>;
   comfyUIViewGoBack: () => Promise<ComfyUIViewResult>;
