@@ -814,7 +814,20 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group grid items-center ${
         isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
       onClick={(e) => onImageClick(image, e)}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          onImageClick(image, e);
+        }
+      }}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
       style={{ height: '64px', gridTemplateColumns }}
     >

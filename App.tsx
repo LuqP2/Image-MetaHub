@@ -1869,7 +1869,7 @@ export default function App() {
                       ) : (
                         <ImageTable
                           images={paginatedImages}
-                          onImageClick={handleImageSelection}
+                          onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
                         />
@@ -1903,7 +1903,7 @@ export default function App() {
                     ) : (
                       <ImageTable
                         images={paginatedImages}
-                        onImageClick={handleImageSelection}
+                        onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}

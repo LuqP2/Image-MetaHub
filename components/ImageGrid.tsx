@@ -323,10 +323,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             if (e.ctrlKey || e.metaKey) {
               toggleImageSelection(image.id);
             } else {
-              useImageStore.setState({
-                selectedImages: new Set([image.id]),
-                previewImage: image
-              });
+              setPreviewImage(image);
             }
           } else {
             onImageClick(image, e);
@@ -1269,11 +1266,6 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         nextIndex = -1;
       }
 
-      if (nextIndex !== -1 && nextIndex !== currentIndex) {
-         if (!e.ctrlKey && !e.shiftKey) {
-             useImageStore.setState({ selectedImages: new Set([images[nextIndex].id]) });
-         }
-      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
