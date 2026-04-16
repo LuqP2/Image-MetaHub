@@ -40,10 +40,7 @@ export function useImageSelection() {
         if (event.ctrlKey || event.metaKey) {
             toggleImageSelection(image.id);
         } else {
-            // Single selection: Clear previous, set new selected image, AND update the set
-            // The set update is critical for the Selection Toolbar to appear
             setSelectedImage(image);
-            useImageStore.setState({ selectedImages: new Set([image.id]) });
         }
     }, [toggleImageSelection, setSelectedImage, setFocusedImageIndex]);
 

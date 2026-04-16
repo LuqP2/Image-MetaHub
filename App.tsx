@@ -1310,14 +1310,26 @@ export default function App() {
     }
   }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
 
-  const handleOpenImageModalInBackground = useCallback((image: IndexedImage) => {
-    const navigationSource =
-      safeClusterNavigationContext.length > 0
+  const handleOpenImageModalInBackground = useCallback((
+    image: IndexedImage,
+    navigationImageOverride?: IndexedImage[],
+    navigationSourceOverride?: OpenImageModalState['navigationSource']
+  ) => {
+    const hasNavigationOverride = Boolean(navigationImageOverride?.length);
+    const navigationSource = hasNavigationOverride
+      ? navigationImageOverride!
+      : safeClusterNavigationContext.length > 0
         ? safeClusterNavigationContext
-        : safeFilteredImages;
+        : safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
-      safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+      navigationSourceOverride ?? (
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered'
+      );
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -1353,7 +1365,7 @@ export default function App() {
         },
       ];
     });
-  }, [safeClusterNavigationContext, safeFilteredImages]);
+  }, [safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
@@ -1869,7 +1881,7 @@ export default function App() {
                       ) : (
                         <ImageTable
                           images={paginatedImages}
-                          onImageClick={handleImageSelection}
+                          onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
                         />
@@ -1903,7 +1915,7 @@ export default function App() {
                     ) : (
                       <ImageTable
                         images={paginatedImages}
-                        onImageClick={handleImageSelection}
+                        onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
@@ -1927,6 +1939,9 @@ export default function App() {
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onBatchExport={handleOpenBatchExport}
+                    onOpenImageInBackground={(image, navigationImages) => {
+                      handleOpenImageModalInBackground(image, navigationImages, 'cluster');
+                    }}
                   />
                 )}
               </div>

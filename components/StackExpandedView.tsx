@@ -17,6 +17,7 @@ interface StackExpandedViewProps {
   onPageChange: (page: number) => void;
   onBack: () => void;
   onBatchExport: () => void;
+  onOpenImageInBackground?: (image: IndexedImage, navigationImages: IndexedImage[]) => void;
 }
 
 const StackExpandedView: React.FC<StackExpandedViewProps> = ({
@@ -29,12 +30,12 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
   onPageChange,
   onBack,
   onBatchExport,
+  onOpenImageInBackground,
 }) => {
   const selectedImage = useImageStore((state) => state.selectedImage);
   const selectedImages = useImageStore((state) => state.selectedImages);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
-  const clearImageSelection = useImageStore((state) => state.clearImageSelection);
   const setFocusedImageIndex = useImageStore((state) => state.setFocusedImageIndex);
   const setClusterNavigationContext = useImageStore((state) => state.setClusterNavigationContext);
 
@@ -124,13 +125,18 @@ const StackExpandedView: React.FC<StackExpandedViewProps> = ({
         return;
       }
 
-      clearImageSelection();
       setClusterNavigationContext(allImages);
+      if (event.button === 1 && onOpenImageInBackground) {
+        event.preventDefault();
+        onOpenImageInBackground(image, allImages);
+        return;
+      }
+
       setSelectedImage(image);
     },
     [
       allImages,
-      clearImageSelection,
+      onOpenImageInBackground,
       safeSelectedImages,
       selectedImage,
       setFocusedImageIndex,
