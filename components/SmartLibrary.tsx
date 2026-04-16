@@ -22,9 +22,15 @@ interface SmartLibraryProps {
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
   onBatchExport: () => void;
+  onOpenImageInBackground?: (image: IndexedImage, navigationImages: IndexedImage[]) => void;
 }
 
-const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onToggleQueue, onBatchExport }) => {
+const SmartLibrary: React.FC<SmartLibraryProps> = ({
+  isQueueOpen = false,
+  onToggleQueue,
+  onBatchExport,
+  onOpenImageInBackground,
+}) => {
   const filteredImages = useImageStore((state) => state.filteredImages);
   const clusters = useImageStore((state) => state.clusters);
   const directories = useImageStore((state) => state.directories);
@@ -239,6 +245,7 @@ const SmartLibrary: React.FC<SmartLibraryProps> = ({ isQueueOpen = false, onTogg
             totalPages={clusterTotalPages}
             onPageChange={setClusterPage}
             onBatchExport={onBatchExport}
+            onOpenImageInBackground={onOpenImageInBackground}
           />
         ) : paginatedEntries.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400">
