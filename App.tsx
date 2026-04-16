@@ -1320,10 +1320,16 @@ export default function App() {
       ? navigationImageOverride!
       : safeClusterNavigationContext.length > 0
         ? safeClusterNavigationContext
-        : safeFilteredImages;
+        : safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
-      navigationSourceOverride ?? (safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered');
+      navigationSourceOverride ?? (
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered'
+      );
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -1359,7 +1365,7 @@ export default function App() {
         },
       ];
     });
-  }, [safeClusterNavigationContext, safeFilteredImages]);
+  }, [safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
