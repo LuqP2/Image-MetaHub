@@ -1,35 +1,21 @@
 import { IndexedImage } from '../types';
 import cacheManager from './cacheManager';
 import { useImageStore } from '../store/useImageStore';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 12;
 const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
 
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
 const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
-  if (image.fileType && image.fileType.startsWith('video/')) {
-    return true;
-  }
-  const imageName = image.name?.toLowerCase() || '';
-  for (const ext of VIDEO_EXTENSIONS) {
-    if (imageName.endsWith(ext)) {
-      return true;
-    }
-  }
-  if (file?.type?.startsWith('video/')) {
-    return true;
-  }
-  const fileName = file?.name?.toLowerCase() || '';
-  for (const ext of VIDEO_EXTENSIONS) {
-    if (fileName.endsWith(ext)) {
-      return true;
-    }
-  }
-  return false;
+  return isVideoFileName(image.name, image.fileType) || (file ? isVideoFileName(file.name, file.type) : false);
+};
+
+const isAudioAsset = (image: IndexedImage, file?: File): boolean => {
+  return isAudioFileName(image.name, image.fileType) || (file ? isAudioFileName(file.name, file.type) : false);
 };
 
 const waitForVideoEvent = (video: HTMLVideoElement, eventName: string): Promise<void> =>
@@ -501,6 +487,11 @@ class ThumbnailManager {
     try {
       if (image.thumbnailUrl) {
         setSafe({ status: 'ready', thumbnailUrl: image.thumbnailUrl });
+        return;
+      }
+
+      if (isAudioAsset(image)) {
+        setSafe({ status: 'ready', thumbnailUrl: null });
         return;
       }
 

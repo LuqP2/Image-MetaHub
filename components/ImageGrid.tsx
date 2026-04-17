@@ -14,6 +14,7 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   EyeOff,
   Package,
   Play,
+  Music,
   Tag,
   RefreshCw
 } from 'lucide-react';
@@ -37,6 +38,7 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 interface ImageCardProps {
   image: IndexedImage;
@@ -53,16 +55,6 @@ interface ImageCardProps {
   isMarkedArchived?: boolean;   // For deduplication: marked for archive
   isBlurred?: boolean;
 }
-
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
 
 const isTypingTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) {
@@ -90,6 +82,16 @@ const joinDisplayPath = (basePath: string, relativePath: string): string => {
   }
 
   return `${normalizedBase}/${normalizedRelative}`;
+};
+
+const formatAudioDuration = (seconds?: number | null): string | null => {
+  if (seconds == null || !Number.isFinite(seconds)) {
+    return null;
+  }
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const abbreviatePathForDisplay = (relativePath: string): string => {
@@ -145,6 +147,8 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const toggleImageSelection = useImageStore((state) => state.toggleImageSelection);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const isAudio = isAudioFileName(image.name, image.fileType);
+  const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
 
   const relativeImagePath = getRelativeImagePath(image);
   const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
@@ -182,7 +186,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       return;
     }
 
-    if (isVideo) {
+    if (isVideo || isAudio) {
       setImageUrl(null);
       return;
     }
@@ -193,7 +197,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     }
 
     setImageUrl(null);
-  }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
+  }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
 
   useEffect(() => {
     return () => {
@@ -422,6 +426,18 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               <p className="text-xs">Preview unavailable</p>
             </div>
           </div>
+        ) : isAudio ? (
+          <div className="flex h-full w-full items-center justify-center bg-gray-900">
+            <div className="flex flex-col items-center gap-2 px-3 text-center text-gray-300">
+              <div className="rounded-full border border-cyan-400/30 bg-cyan-400/10 p-3 text-cyan-200">
+                <Music className="h-7 w-7" />
+              </div>
+              <span className="max-w-full truncate text-xs font-medium text-gray-200">Audio</span>
+              {audioDuration && (
+                <span className="rounded bg-black/30 px-2 py-0.5 font-mono text-[11px] text-gray-300">{audioDuration}</span>
+              )}
+            </div>
+          </div>
         ) : imageUrl ? (
           <img
             src={imageUrl}
@@ -441,6 +457,12 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             <div className="rounded-full bg-black/50 p-2 shadow-lg">
               <Play className="h-6 w-6 text-white/90" />
             </div>
+          </div>
+        )}
+
+        {isAudio && (
+          <div className="absolute right-2 bottom-2 z-10 rounded-full bg-black/50 p-1.5 text-cyan-100 shadow-lg pointer-events-none">
+            <Music className="h-4 w-4" />
           </div>
         )}
 
