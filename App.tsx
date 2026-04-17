@@ -2050,7 +2050,7 @@ export default function App() {
 
         {hasActiveVisibleImageModal && (
           <div
-            className="fixed inset-0 z-[58] bg-transparent"
+            className="fixed inset-0 z-[54] bg-transparent"
             onClick={handleDeactivateImageModal}
             aria-hidden="true"
           />
