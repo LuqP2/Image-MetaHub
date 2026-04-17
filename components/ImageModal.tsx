@@ -31,6 +31,8 @@ import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import AudioPlayer from './AudioPlayer';
+import { isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -394,15 +396,10 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
+const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
+  `(${SUPPORTED_MEDIA_EXTENSIONS.map((ext) => ext.replace('.', '\\.')).join('|')})$`,
+  'i'
+);
 
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -638,7 +635,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -765,8 +762,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveImage = imageFromStore ?? image;
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
-  const showA1111Actions = !isVideo && a1111Enabled;
-  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const isAudio = isAudioFileName(image.name, image.fileType);
+  const isPlayableMedia = isVideo || isAudio;
+  const showA1111Actions = !isPlayableMedia && a1111Enabled;
+  const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const currentTags = liveImage.tags || [];
@@ -1076,10 +1075,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
      topics: [],
   } as BaseMetadata : nMeta;
 
-  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds;
+  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
 
 
   const videoInfo = (nMeta as any)?.video;
+  const audioInfo = (nMeta as any)?.audio;
   const motionModel = (nMeta as any)?.motion_model;
 
   useEffect(() => {
@@ -1296,7 +1296,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const copyImage = async () => {
     hideContextMenu();
-    if (isVideo) {
+    if (isPlayableMedia) {
       return;
     }
     const result = await copyImageToClipboard(image, directoryPath);
@@ -1424,7 +1424,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!(e.target instanceof Element) || !e.target.closest('img, video, canvas, [data-media-element="true"]')) {
+    if (!(e.target instanceof Element) || !e.target.closest('img, video, audio, canvas, [data-media-element="true"]')) {
       return;
     }
 
@@ -1488,7 +1488,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     let isMounted = true;
     const hasPreview = Boolean(preferredThumbnailUrl);
 
-    setImageUrl(isVideo ? null : (preferredThumbnailUrl ?? null));
+    setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -1535,14 +1535,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
     };
 
-    if (!isVideo) {
+    if (!isPlayableMedia) {
       prefetchNeighbors();
     }
 
     return () => {
       isMounted = false;
     };
-  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isVideo]);
+  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isPlayableMedia]);
 
   const handleToggleFavorite = useCallback(() => {
     toggleFavorite(image.id);
@@ -1569,16 +1569,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     const imageContainer = imageContainerRef.current;
-    if (imageContainer) {
+    if (imageContainer && !isPlayableMedia) {
       imageContainer.addEventListener('wheel', handleWheel, { passive: false });
     }
 
     return () => {
-      if (imageContainer) {
+      if (imageContainer && !isPlayableMedia) {
         imageContainer.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [handleWheel]);
+  }, [handleWheel, isPlayableMedia]);
 
   const handleDelete = useCallback(async () => {
     if (isIndexing) {
@@ -1777,7 +1777,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     if (!isRenaming) {
-      setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+      setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
     }
   }, [image.name, isRenaming]);
 
@@ -1926,7 +1926,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         void confirmRename();
                       } else if (event.key === 'Escape') {
                         setIsRenaming(false);
-                        setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                        setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
                       }
                     }}
                     className="min-w-0 flex-1 rounded-lg border border-gray-600 bg-gray-900 px-2 py-1 text-sm font-semibold text-white outline-none transition-colors focus:border-blue-500"
@@ -1942,7 +1942,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <button
                     onClick={() => {
                       setIsRenaming(false);
-                      setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                      setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
                     }}
                     className="rounded-lg bg-gray-700 px-2.5 py-1 text-xs font-medium text-gray-100 transition-colors hover:bg-gray-600"
                     title="Cancel rename"
@@ -2036,14 +2036,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
           } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
-          onMouseDown={isVideo ? undefined : handleMouseDown}
-          onMouseMove={isVideo ? undefined : handleMouseMove}
-          onMouseUp={isVideo ? undefined : handleMouseUp}
-          onMouseLeave={isVideo ? undefined : handleMouseUp}
-          style={{ cursor: !isVideo && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+          onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
+          onMouseMove={isPlayableMedia ? undefined : handleMouseMove}
+          onMouseUp={isPlayableMedia ? undefined : handleMouseUp}
+          onMouseLeave={isPlayableMedia ? undefined : handleMouseUp}
+          style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
           {imageUrl ? (
-            isVideo ? (
+            isAudio ? (
+              <div data-no-window-drag="true" className="h-full w-full" onContextMenu={handleContextMenu}>
+                <AudioPlayer
+                  key={image.id}
+                  src={imageUrl}
+                  title={image.name}
+                  autoPlay
+                  onContextMenu={handleContextMenu}
+                />
+              </div>
+            ) : isVideo ? (
               <div data-no-window-drag="true" className="max-h-full max-w-full">
                 <VideoPlayer
                   key={image.id}
@@ -2103,7 +2113,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
             {currentIndex + 1} / {totalImages}
           </div>
 
-          {!isVideo && (
+          {!isPlayableMedia && (
             <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
@@ -2465,6 +2475,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
                             return formats[0];
                           })()} 
                         />
+                      </div>
+                    )}
+                    {audioInfo && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {effectiveDuration != null && (
+                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                        )}
+                        <MetadataItem label="Audio Codec" value={audioInfo.codec} />
+                        <MetadataItem label="Audio Format" value={audioInfo.format} />
+                        <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                        <MetadataItem label="Channels" value={audioInfo.channels} />
+                        <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                       </div>
                     )}
                     {motionModel?.name && (
@@ -2965,8 +2987,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <>
               <button
                 onClick={copyImage}
-                className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isVideo ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
-                disabled={isVideo}
+                className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isPlayableMedia ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
+                disabled={isPlayableMedia}
               >
                 <Copy className="w-4 h-4" />
                 Copy to Clipboard

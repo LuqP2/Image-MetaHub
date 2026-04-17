@@ -4,7 +4,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Star } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -16,6 +16,7 @@ import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipCl
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -29,19 +30,19 @@ interface ImageTableProps {
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
 type SortDirection = 'asc' | 'desc' | null;
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
-
 const getRelativeImagePath = (image: IndexedImage): string => {
   const [, relativePath = ''] = image.id.split('::');
   return relativePath || image.name;
+};
+
+const formatAudioDuration = (seconds?: number | null): string | null => {
+  if (seconds == null || !Number.isFinite(seconds)) {
+    return null;
+  }
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const joinDisplayPath = (basePath: string, relativePath: string): string => {
@@ -768,6 +769,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const isAudio = isAudioFileName(image.name, image.fileType);
+  const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
   const relativeImagePath = getRelativeImagePath(image);
   const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
   const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
@@ -788,7 +791,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (isVideo) {
+    if (isVideo || isAudio) {
       setImageUrl(null);
       setIsLoading(false);
       return;
@@ -802,7 +805,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
 
     setImageUrl(null);
     setIsLoading(true);
-  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -835,6 +838,22 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
         <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+          ) : isAudio ? (
+            <>
+              <div className="flex h-full w-full flex-col items-center justify-center bg-gray-900 text-cyan-200">
+                <Music className="h-5 w-5" />
+                {audioDuration && (
+                  <span className="mt-0.5 font-mono text-[9px] text-gray-300">{audioDuration}</span>
+                )}
+              </div>
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
           ) : imageUrl ? (
             <>
               <img

@@ -151,7 +151,7 @@ It reads:
 * PNG `tEXt` / `iTXt`
 * JPEG/WEBP EXIF/XMP/comment payloads
 * sidecar-style embedded JSON where applicable
-* video container metadata and `ffprobe` output for supported video formats
+* video/audio container metadata and `ffprobe` output for supported media formats
 
 The output is then normalized by `services/parsers/metadataParserFactory.ts`, which dispatches to generator-specific parsers such as:
 

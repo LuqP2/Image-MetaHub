@@ -4,7 +4,7 @@ import { type IndexedImage } from '../types';
  * Parser version - increment when parser logic changes significantly
  * This ensures cache is invalidated when parsing rules change
  */
-export const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
+export const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
 
 // Simplified metadata structure for the JSON cache
 export interface CacheImageMetadata {

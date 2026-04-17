@@ -78,7 +78,8 @@ export interface ElectronAPI {
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
   readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
-  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; error?: string }>;
+  readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
+  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
@@ -266,6 +267,15 @@ export interface VideoInfo {
   codec?: string | null;
 }
 
+export interface AudioInfo {
+  duration_seconds?: number | null;
+  codec?: string | null;
+  format?: string | null;
+  sample_rate?: number | null;
+  channels?: number | null;
+  bit_rate?: number | null;
+}
+
 export interface MotionModelInfo {
   name?: string | null;
   hash?: string | null;
@@ -296,8 +306,9 @@ export interface ImageLineage {
 
 export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
-  media_type?: 'image' | 'video';
+  media_type?: 'image' | 'video' | 'audio';
   video?: VideoInfo | null;
+  audio?: AudioInfo | null;
   motion_model?: MotionModelInfo | null;
   generationType?: GenerationType;
   lineage?: ImageLineage | null;
@@ -375,7 +386,7 @@ export interface AdvancedFilters {
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
   generationModes?: Array<'txt2img' | 'img2img'>;
-  mediaTypes?: Array<'image' | 'video'>;
+  mediaTypes?: Array<'image' | 'video' | 'audio'>;
   telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;
