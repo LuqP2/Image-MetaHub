@@ -20,6 +20,8 @@ import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import AudioPlayer from './AudioPlayer';
 
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
@@ -77,16 +79,6 @@ const formatDurationSeconds = (seconds: number): string => {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}m ${remainingSeconds}s`;
-};
-
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
 };
 
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
@@ -179,8 +171,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const activeImage = previewImageFromStore || previewImage;
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
-  const showA1111Actions = !isVideo && a1111Enabled;
-  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const isAudio = !!activeImage && isAudioFileName(activeImage.name, activeImage.fileType);
+  const showA1111Actions = !isVideo && !isAudio && a1111Enabled;
+  const showComfyUIActions = !isVideo && !isAudio && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
@@ -204,7 +197,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     }
 
     const hasPreview = Boolean(preferredThumbnailUrl);
-    setImageUrl(isVideo ? null : preferredThumbnailUrl);
+    setImageUrl(isVideo || isAudio ? null : preferredThumbnailUrl);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -229,7 +222,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
+  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo, isAudio]);
 
   useEffect(() => {
     if (!contextMenu.visible) {
@@ -261,6 +254,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
   const videoInfo = (nMeta as any)?.video;
+  const audioInfo = (nMeta as any)?.audio;
   const motionModel = (nMeta as any)?.motion_model;
 
   const copyToClipboard = (text: string, type: string) => {
@@ -380,7 +374,13 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
           {imageUrl ? (
-            isVideo ? (
+            isAudio ? (
+              <AudioPlayer
+                src={imageUrl}
+                title={activeImage.name}
+                compact
+              />
+            ) : isVideo ? (
               <video
                 src={imageUrl}
                 className="max-w-full max-h-96 object-contain"
@@ -560,6 +560,18 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   )}
                   <MetadataItem label="Video Codec" value={videoInfo.codec} />
                   <MetadataItem label="Video Format" value={videoInfo.format} />
+                </div>
+              )}
+              {audioInfo && (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {audioInfo.duration_seconds != null && (
+                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(audioInfo.duration_seconds))} />
+                  )}
+                  <MetadataItem label="Audio Codec" value={audioInfo.codec} />
+                  <MetadataItem label="Audio Format" value={audioInfo.format} />
+                  <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                  <MetadataItem label="Channels" value={audioInfo.channels} />
+                  <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                 </div>
               )}
               {motionModel?.name && (
