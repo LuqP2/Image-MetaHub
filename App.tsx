@@ -1988,6 +1988,7 @@ export default function App() {
         {openImageModalEntries.map((modal) => (
           <ImageModal
             key={modal.modalId}
+            modalId={modal.modalId}
             image={modal.image}
             onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}

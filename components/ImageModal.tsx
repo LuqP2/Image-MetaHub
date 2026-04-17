@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
@@ -64,6 +64,7 @@ const buildTagSuggestions = (
 };
 
 interface ImageModalProps {
+  modalId?: string;
   image: IndexedImage;
   onClose: () => void;
   onImageDeleted?: (imageId: string) => void;
@@ -124,8 +125,76 @@ const DEFAULT_MODAL_MAX_WIDTH = 1600;
 const DEFAULT_MODAL_MAX_HEIGHT = 1080;
 const MODAL_MIN_VISIBLE_WIDTH = 120;
 const MODAL_RECOVERABLE_TOP_HEIGHT = 80;
+const WINDOW_PROXY_ANIMATION_DURATION_MS = 140;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const getFooterWindowElement = (modalId?: string): HTMLElement | null => {
+  if (!modalId || typeof document === 'undefined') {
+    return null;
+  }
+
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[data-image-modal-window-id]')
+  ).find((element) => element.dataset.imageModalWindowId === modalId) ?? null;
+};
+
+const shouldSkipWindowAnimation = (animationsEnabled: boolean) =>
+  !animationsEnabled ||
+  typeof window === 'undefined' ||
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const animateWindowProxy = async (fromRect: DOMRect, toRect: DOMRect, zIndex: number) => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const proxy = document.createElement('div');
+  const scaleX = Math.max(toRect.width / Math.max(fromRect.width, 1), 0.04);
+  const scaleY = Math.max(toRect.height / Math.max(fromRect.height, 1), 0.04);
+
+  proxy.style.position = 'fixed';
+  proxy.style.left = `${fromRect.left}px`;
+  proxy.style.top = `${fromRect.top}px`;
+  proxy.style.width = `${fromRect.width}px`;
+  proxy.style.height = `${fromRect.height}px`;
+  proxy.style.border = '1px solid rgba(148, 163, 184, 0.45)';
+  proxy.style.borderRadius = '12px';
+  proxy.style.background = 'rgba(31, 41, 55, 0.72)';
+  proxy.style.boxShadow = '0 18px 45px rgba(0, 0, 0, 0.35)';
+  proxy.style.pointerEvents = 'none';
+  proxy.style.transformOrigin = 'top left';
+  proxy.style.willChange = 'transform, opacity';
+  proxy.style.zIndex = `${Math.max(zIndex + 1, 100)}`;
+
+  document.body.appendChild(proxy);
+
+  try {
+    if (typeof proxy.animate !== 'function') {
+      return;
+    }
+
+    const animation = proxy.animate(
+      [
+        { opacity: 0.72, transform: 'translate3d(0, 0, 0) scale(1, 1)' },
+        {
+          opacity: 0.18,
+          transform: `translate3d(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px, 0) scale(${scaleX}, ${scaleY})`,
+        },
+      ],
+      {
+        duration: WINDOW_PROXY_ANIMATION_DURATION_MS,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+      }
+    );
+
+    await animation.finished;
+  } catch {
+    // Animation cancellation should not block the window action.
+  } finally {
+    proxy.remove();
+  }
+};
 
 const getModalViewportMetrics = () => {
   if (typeof window === 'undefined') {
@@ -515,6 +584,7 @@ const VideoPlayer: React.FC<{
 
 
 const ImageModal: React.FC<ImageModalProps> = ({
+  modalId,
   image,
   onClose,
   onImageDeleted,
@@ -570,8 +640,46 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
+  const isMinimizeAnimatingRef = useRef(false);
+  const wasMinimizedRef = useRef(isMinimized);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const enableAnimations = useSettingsStore((state) => state.enableAnimations);
+
+  useEffect(() => {
+    if (!isMinimized) {
+      isMinimizeAnimatingRef.current = false;
+    }
+  }, [isMinimized]);
+
+  useLayoutEffect(() => {
+    const wasMinimized = wasMinimizedRef.current;
+    wasMinimizedRef.current = isMinimized;
+
+    if (isMinimized || !wasMinimized || shouldSkipWindowAnimation(enableAnimations)) {
+      return;
+    }
+
+    const modalElement = modalShellRef.current;
+    const targetElement = getFooterWindowElement(modalId);
+
+    if (!modalElement || !targetElement) {
+      return;
+    }
+
+    const modalRect = modalElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+
+    modalElement.style.pointerEvents = 'none';
+    modalElement.style.opacity = '0';
+
+    const restoreModalInteractivity = () => {
+      modalElement.style.pointerEvents = '';
+      modalElement.style.opacity = '';
+    };
+
+    void animateWindowProxy(targetRect, modalRect, zIndex).then(restoreModalInteractivity, restoreModalInteractivity);
+  }, [enableAnimations, isMinimized, modalId, zIndex]);
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1641,6 +1749,33 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeAutoTagFromImage(image.id, tag);
   };
 
+  const handleMinimizeWithAnimation = useCallback(async () => {
+    if (!onMinimize || isMinimizeAnimatingRef.current) {
+      return;
+    }
+
+    const modalElement = modalShellRef.current;
+    const targetElement = getFooterWindowElement(modalId);
+
+    if (!modalElement || !targetElement || shouldSkipWindowAnimation(enableAnimations)) {
+      onMinimize();
+      return;
+    }
+
+    const modalRect = modalElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+
+    isMinimizeAnimatingRef.current = true;
+    modalElement.style.pointerEvents = 'none';
+    modalElement.style.opacity = '0';
+
+    try {
+      await animateWindowProxy(modalRect, targetRect, zIndex);
+    } finally {
+      onMinimize();
+    }
+  }, [enableAnimations, modalId, onMinimize, zIndex]);
+
   const handlePromoteAutoTag = async (tag: string) => {
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
@@ -1655,9 +1790,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     : 'border-gray-800/70 shadow-lg ring-1 ring-white/5';
   const titleBarStateClass = isActive
     ? 'border-gray-800 bg-gray-950/95'
-    : 'border-gray-900 bg-gray-950/80';
+    : 'border-gray-700 bg-gray-800/95';
   const titleTextClass = isActive ? 'text-gray-100' : 'text-gray-400';
   const titleMetaClass = isActive ? 'text-gray-500' : 'text-gray-600';
+  const modalEntryAnimationClass = !enableAnimations || (wasMinimizedRef.current && !isMinimized)
+    ? ''
+    : 'animate-in fade-in zoom-in-95';
 
   return (
     <div
@@ -1673,7 +1811,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           isFullscreen 
             ? 'fixed inset-0 h-full w-full rounded-none'
             : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
-        } pointer-events-auto flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+        } pointer-events-auto flex flex-col ${modalEntryAnimationClass} ${isWindowInteractionActive ? 'select-none' : ''}`}
         onPointerDown={() => onActivate?.()}
         onClick={(e) => {
           e.stopPropagation();
@@ -1781,7 +1919,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <Pencil className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={onMinimize}
+                onClick={() => void handleMinimizeWithAnimation()}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Minimize window"
@@ -2907,6 +3045,7 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.isIndexing === nextProps.isIndexing &&
     prevProps.zIndex === nextProps.zIndex &&
     prevProps.isActive === nextProps.isActive &&
+    prevProps.modalId === nextProps.modalId &&
     prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
     prevProps.isMinimized === nextProps.isMinimized;
 
