@@ -122,6 +122,8 @@ const MIN_MODAL_WIDTH = 760;
 const MIN_MODAL_HEIGHT = 520;
 const DEFAULT_MODAL_MAX_WIDTH = 1600;
 const DEFAULT_MODAL_MAX_HEIGHT = 1080;
+const MODAL_MIN_VISIBLE_WIDTH = 120;
+const MODAL_RECOVERABLE_TOP_HEIGHT = 80;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -184,18 +186,36 @@ const createMaximizedModalWindow = (): ModalWindowState => {
   };
 };
 
+const getRecoverableModalPositionBounds = (width: number, height: number) => {
+  const metrics = getModalViewportMetrics();
+  const visibleWidth = Math.min(MODAL_MIN_VISIBLE_WIDTH, Math.max(1, width));
+  const recoverableTopHeight = Math.min(MODAL_RECOVERABLE_TOP_HEIGHT, Math.max(1, height));
+  const minX = -width + visibleWidth;
+  const maxX = metrics.viewportWidth - visibleWidth;
+  const minY = 0;
+  const maxY = Math.max(0, metrics.viewportHeight - recoverableTopHeight);
+
+  return {
+    minX: Math.min(minX, maxX),
+    maxX: Math.max(minX, maxX),
+    minY: Math.min(minY, maxY),
+    maxY: Math.max(minY, maxY),
+  };
+};
+
 const clampModalWindowToViewport = (windowState: ModalWindowState): ModalWindowState => {
   const metrics = getModalViewportMetrics();
   const maxWidth = Math.max(metrics.minWidth, metrics.viewportWidth - metrics.margin * 2);
   const maxHeight = Math.max(metrics.minHeight, metrics.viewportHeight - metrics.margin * 2);
   const width = clamp(windowState.width, metrics.minWidth, maxWidth);
   const height = clamp(windowState.height, metrics.minHeight, maxHeight);
+  const bounds = getRecoverableModalPositionBounds(width, height);
 
   return {
     width,
     height,
-    x: clamp(windowState.x, metrics.margin, metrics.viewportWidth - metrics.margin - width),
-    y: clamp(windowState.y, metrics.margin, metrics.viewportHeight - metrics.margin - height),
+    x: clamp(windowState.x, bounds.minX, bounds.maxX),
+    y: clamp(windowState.y, bounds.minY, bounds.maxY),
   };
 };
 
@@ -778,17 +798,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const currentWindow = liveModalWindowRef.current;
 
       if (modalInteraction.mode === 'drag') {
+        const bounds = getRecoverableModalPositionBounds(currentWindow.width, currentWindow.height);
+
         scheduleModalWindowPaint({
           ...currentWindow,
           x: clamp(
             modalInteraction.initialX + (event.clientX - modalInteraction.startX),
-            metrics.margin,
-            metrics.viewportWidth - metrics.margin - currentWindow.width
+            bounds.minX,
+            bounds.maxX
           ),
           y: clamp(
             modalInteraction.initialY + (event.clientY - modalInteraction.startY),
-            metrics.margin,
-            metrics.viewportHeight - metrics.margin - currentWindow.height
+            bounds.minY,
+            bounds.maxY
           ),
         });
         return;
@@ -821,7 +843,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (resizeFromLeft) {
         nextX = clamp(
           modalInteraction.initialX + deltaX,
-          metrics.margin,
+          -modalInteraction.initialWidth + MODAL_MIN_VISIBLE_WIDTH,
           modalInteraction.initialX + modalInteraction.initialWidth - metrics.minWidth
         );
         nextWidth = modalInteraction.initialWidth - (nextX - modalInteraction.initialX);
@@ -838,7 +860,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (resizeFromTop) {
         nextY = clamp(
           modalInteraction.initialY + deltaY,
-          metrics.margin,
+          0,
           modalInteraction.initialY + modalInteraction.initialHeight - metrics.minHeight
         );
         nextHeight = modalInteraction.initialHeight - (nextY - modalInteraction.initialY);
