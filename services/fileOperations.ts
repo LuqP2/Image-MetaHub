@@ -1,8 +1,13 @@
 // File operations service for Electron environment
 import { IndexedImage } from '../types';
+import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 // Check if we're running in Electron
 const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
+const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
+  `(${SUPPORTED_MEDIA_EXTENSIONS.map((ext) => ext.replace('.', '\\.')).join('|')})$`,
+  'i'
+);
 
 export interface FileOperationsResult {
   success: boolean;
@@ -116,8 +121,7 @@ export class FileOperations {
    * Validate filename
    */
   static validateFilename(filename: string): { valid: boolean; error?: string } {
-    // Remove common image extension for validation
-    const nameWithoutExt = filename.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, '');
+    const nameWithoutExt = filename.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, '');
     
     if (!nameWithoutExt.trim()) {
       return { valid: false, error: 'Filename cannot be empty' };

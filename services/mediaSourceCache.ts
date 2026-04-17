@@ -1,5 +1,6 @@
 import { IndexedImage } from '../types';
 import { thumbnailManager } from './thumbnailManager';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 type CacheEntry = {
   url: string;
@@ -14,21 +15,8 @@ type MediaSourceLoadOptions = {
 
 const MAX_CACHE_ENTRIES = 12;
 
-const resolveImageMimeType = (fileName: string): string => {
-  const lowerName = fileName.toLowerCase();
-  if (lowerName.endsWith('.mp4')) return 'video/mp4';
-  if (lowerName.endsWith('.webm')) return 'video/webm';
-  if (lowerName.endsWith('.mkv')) return 'video/x-matroska';
-  if (lowerName.endsWith('.mov')) return 'video/quicktime';
-  if (lowerName.endsWith('.avi')) return 'video/x-msvideo';
-  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
-  if (lowerName.endsWith('.webp')) return 'image/webp';
-  if (lowerName.endsWith('.gif')) return 'image/gif';
-  return 'image/png';
-};
-
 const createImageUrlFromFileData = (data: unknown, fileName: string): { url: string; revoke: boolean } => {
-  const mimeType = resolveImageMimeType(fileName);
+  const mimeType = inferMimeTypeFromName(fileName, 'image/png');
 
   if (typeof data === 'string') {
     return { url: `data:${mimeType};base64,${data}`, revoke: false };

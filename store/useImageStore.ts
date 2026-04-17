@@ -36,6 +36,7 @@ import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetN
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
+import { resolveMediaType } from '../utils/mediaTypes.js';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -1711,21 +1712,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                         return advancedFilters.generationModes.includes(explicitGenerationType);
                     }
 
-                    const isVideo =
-                        normalizedMetadata?.media_type === 'video' ||
-                        (image.fileType ?? '').startsWith('video/');
+                    const mediaType = normalizedMetadata?.media_type ?? resolveMediaType(image.name, image.fileType);
+                    const isGeneratedImageCandidate = mediaType !== 'video' && mediaType !== 'audio';
 
-                    return !isVideo && advancedFilters.generationModes.includes('txt2img');
+                    return isGeneratedImageCandidate && advancedFilters.generationModes.includes('txt2img');
                 });
             }
             if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
                 results = results.filter(image => {
                     const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
-                    const fileType = image.fileType ?? '';
+                    const inferredMediaType = resolveMediaType(image.name, image.fileType);
                     const resolvedMediaType =
-                        metadataMediaType === 'video' || fileType.startsWith('video/')
-                            ? 'video'
-                            : 'image';
+                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+                            ? metadataMediaType
+                            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                                ? inferredMediaType
+                                : 'image';
                     return advancedFilters.mediaTypes.includes(resolvedMediaType);
                 });
             }
