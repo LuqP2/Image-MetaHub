@@ -116,8 +116,9 @@ Supported media types:
 
 * **Images**: PNG, JPG, JPEG, WEBP, GIF
 * **Video**: MP4, WEBM, MKV, MOV, AVI
+* **Audio**: MP3, WAV, FLAC, OGG, OGA, M4A, AAC, OPUS, AIFF, AIF, WMA
 
-For video metadata, Image MetaHub uses container metadata plus `ffprobe` when available to extract duration, codec, frame count, and resolution.
+For video and audio metadata, Image MetaHub uses container metadata plus `ffprobe` when available to extract duration, codec, frame count, resolution, sample rate, channels, and bit rate. Audio files can be indexed even when a codec is not playable by Chromium/Electron on the current system.
 
 ### MetaHub Save Node
 
