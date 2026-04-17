@@ -118,6 +118,11 @@ type ModalInteractionState =
         | 'bottom-right';
     };
 
+type DetailsSidebarResizeState = {
+  startX: number;
+  startWidth: number;
+} | null;
+
 const MODAL_MARGIN = 20;
 const MIN_MODAL_WIDTH = 760;
 const MIN_MODAL_HEIGHT = 520;
@@ -126,6 +131,9 @@ const DEFAULT_MODAL_MAX_HEIGHT = 1080;
 const MODAL_MIN_VISIBLE_WIDTH = 120;
 const MODAL_RECOVERABLE_TOP_HEIGHT = 80;
 const WINDOW_PROXY_ANIMATION_DURATION_MS = 140;
+const DETAILS_SIDEBAR_DEFAULT_WIDTH = 340;
+const DETAILS_SIDEBAR_MIN_WIDTH = 300;
+const DETAILS_SIDEBAR_MAX_RATIO = 0.7;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -143,6 +151,15 @@ const shouldSkipWindowAnimation = (animationsEnabled: boolean) =>
   !animationsEnabled ||
   typeof window === 'undefined' ||
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const clampDetailsSidebarWidth = (width: number, modalWidth: number) => {
+  const maxWidth = Math.max(
+    DETAILS_SIDEBAR_MIN_WIDTH,
+    Math.floor(modalWidth * DETAILS_SIDEBAR_MAX_RATIO)
+  );
+
+  return clamp(width, DETAILS_SIDEBAR_MIN_WIDTH, maxWidth);
+};
 
 const animateWindowProxy = async (fromRect: DOMRect, toRect: DOMRect, zIndex: number) => {
   if (typeof document === 'undefined') {
@@ -621,8 +638,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
-  const [sidebarWidth, setSidebarWidth] = useState(340);
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DETAILS_SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizeState, setSidebarResizeState] = useState<DetailsSidebarResizeState>(null);
+  const isResizingSidebar = sidebarResizeState !== null;
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -1680,27 +1698,52 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [clearMediaOverlayHideTimer]);
 
   useEffect(() => {
-    if (!isResizingSidebar) return;
+    if (!sidebarResizeState || typeof window === 'undefined') {
+      return;
+    }
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (modalShellRef.current) {
-        const modalRect = modalShellRef.current.getBoundingClientRect();
-        const newWidth = modalRect.right - e.clientX;
-        setSidebarWidth(Math.max(300, Math.min(newWidth, Math.floor(modalRect.width * 0.7))));
+    const handlePointerMove = (event: PointerEvent) => {
+      const modalRect = modalShellRef.current?.getBoundingClientRect();
+      if (!modalRect) {
+        return;
       }
+
+      const deltaX = event.clientX - sidebarResizeState.startX;
+      const nextWidth = sidebarResizeState.startWidth - deltaX;
+      setSidebarWidth(clampDetailsSidebarWidth(nextWidth, modalRect.width));
     };
 
-    const handleMouseUp = () => {
-      setIsResizingSidebar(false);
+    const handlePointerUp = () => {
+      setSidebarResizeState(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
-  }, [isResizingSidebar]);
+  }, [sidebarResizeState]);
+
+  const handleDetailsSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    });
+  }, [sidebarWidth]);
 
   useEffect(() => {
     if (!isRenaming) {
@@ -2110,27 +2153,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
         {/* Metadata Panel */}
         {showSidebar && (
         <>
-          {!showSidebarOnBottom && (
-             <div
-               onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
-               className={`w-1 cursor-col-resize hover:bg-gray-500/50 bg-gray-800/80 shrink-0 transition-colors ${isResizingSidebar ? 'bg-gray-500/80 z-50' : 'z-40'}`}
-               title="Resize sidebar"
-             />
-          )}
         <div
           data-window-drag-region="details"
           className={`w-full ${
             showSidebarOnBottom
               ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
-              : 'h-full border-l border-transparent'
+              : `h-full border-l border-transparent ${isResizingSidebar ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`
           } relative flex flex-col`}
           style={
             showSidebarOnBottom
               ? {}
-              : { width: sidebarWidth, minWidth: 300, maxWidth: "70%" }
+              : { width: sidebarWidth, minWidth: DETAILS_SIDEBAR_MIN_WIDTH, maxWidth: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
           }
           onContextMenu={handleSelectionContextMenu}
         >
+          {!showSidebarOnBottom && (
+            <div
+              onPointerDown={handleDetailsSidebarResizeStart}
+              className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+              title="Drag to resize details sidebar"
+            >
+              <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+            </div>
+          )}
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
