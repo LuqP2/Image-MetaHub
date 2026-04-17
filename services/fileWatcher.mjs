@@ -1,6 +1,7 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
+import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
@@ -95,15 +96,15 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
     });
 
-    const enqueueImage = (imagePath, forceReindex = false) => {
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${imagePath}`);
+    const enqueueMedia = (mediaPath, forceReindex = false) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${imagePath}`);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
-      const existing = pendingMap.get(imagePath);
-      pendingMap.set(imagePath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
+      const existing = pendingMap.get(mediaPath);
+      pendingMap.set(mediaPath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
 
       if (processingTimeouts.has(directoryId)) {
         clearTimeout(processingTimeouts.get(directoryId));
@@ -116,25 +117,24 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
 
       if (ext === '.json') {
         const basePath = filePath.slice(0, -ext.length);
-        const matches = imageExts
-          .map((imageExt) => `${basePath}${imageExt}`)
+        const matches = SUPPORTED_MEDIA_EXTENSIONS
+          .map((mediaExt) => `${basePath}${mediaExt}`)
           .filter((candidate) => fs.existsSync(candidate));
         if (matches.length === 0) {
           return;
         }
-        matches.forEach((match) => enqueueImage(match, true));
+        matches.forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      if (!imageExts.includes(ext)) {
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
         return;
       }
 
-      enqueueImage(filePath, false);
+      enqueueMedia(filePath, false);
     });
 
     watcher.on('error', (error) => {

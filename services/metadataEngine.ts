@@ -149,7 +149,7 @@ async function readMediaMetadataWithFfprobe(filePath: string): Promise<{ comment
       comment: tags.comment,
       description: tags.description,
       title: tags.title,
-      video: videoStream ? buildVideoInfoFromProbe(videoStream, format) : null,
+      video: videoStream ? buildVideoInfoFromProbe(videoStream, format) : buildVideoInfoFromProbe({}, format),
       audio: audioStream ? buildAudioInfoFromProbe(audioStream, format) : null,
     };
   } catch (error) {
