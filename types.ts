@@ -266,6 +266,15 @@ export interface VideoInfo {
   codec?: string | null;
 }
 
+export interface AudioInfo {
+  duration_seconds?: number | null;
+  codec?: string | null;
+  format?: string | null;
+  sample_rate?: number | null;
+  channels?: number | null;
+  bit_rate?: number | null;
+}
+
 export interface MotionModelInfo {
   name?: string | null;
   hash?: string | null;
@@ -296,8 +305,9 @@ export interface ImageLineage {
 
 export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
-  media_type?: 'image' | 'video';
+  media_type?: 'image' | 'video' | 'audio';
   video?: VideoInfo | null;
+  audio?: AudioInfo | null;
   motion_model?: MotionModelInfo | null;
   generationType?: GenerationType;
   lineage?: ImageLineage | null;
@@ -375,7 +385,7 @@ export interface AdvancedFilters {
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
   generationModes?: Array<'txt2img' | 'img2img'>;
-  mediaTypes?: Array<'image' | 'video'>;
+  mediaTypes?: Array<'image' | 'video' | 'audio'>;
   telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;
