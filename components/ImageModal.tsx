@@ -1652,7 +1652,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const modalShellStateClass = isActive
     ? 'border-gray-800 shadow-2xl ring-1 ring-white/10'
-    : 'border-gray-800/70 shadow-lg ring-1 ring-white/5 opacity-90';
+    : 'border-gray-800/70 shadow-lg ring-1 ring-white/5';
   const titleBarStateClass = isActive
     ? 'border-gray-800 bg-gray-950/95'
     : 'border-gray-900 bg-gray-950/80';

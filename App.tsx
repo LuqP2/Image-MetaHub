@@ -1511,6 +1511,9 @@ export default function App() {
   const hasActiveVisibleImageModal = openImageModalEntries.some(
     (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
   );
+  const libraryContentFocusClass = hasActiveVisibleImageModal
+    ? 'blur-[1px] opacity-95'
+    : 'blur-0 opacity-100';
 
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -1867,7 +1870,7 @@ export default function App() {
                   />
                 )}
 
-              <div className="flex-1 min-h-0">
+              <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
@@ -2006,8 +2009,9 @@ export default function App() {
 
         {hasActiveVisibleImageModal && (
           <div
-            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
+            className="fixed inset-0 z-[58] bg-transparent"
             onClick={handleDeactivateImageModal}
+            aria-hidden="true"
           />
         )}
 
