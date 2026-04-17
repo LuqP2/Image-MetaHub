@@ -56,6 +56,14 @@ interface OpenImageModalState {
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
+  windowState?: ImageModalWindowState;
+}
+
+interface ImageModalWindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
@@ -1255,6 +1263,34 @@ export default function App() {
     );
   }, []);
 
+  const handleImageModalWindowStateChange = useCallback((
+    modalId: string,
+    windowState: ImageModalWindowState
+  ) => {
+    setOpenImageModals((current) => {
+      const targetIndex = current.findIndex((modal) => modal.modalId === modalId);
+      if (targetIndex === -1) {
+        return current;
+      }
+
+      const targetModal = current[targetIndex];
+      const currentWindowState = targetModal.windowState;
+      if (
+        currentWindowState &&
+        currentWindowState.x === windowState.x &&
+        currentWindowState.y === windowState.y &&
+        currentWindowState.width === windowState.width &&
+        currentWindowState.height === windowState.height
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+      next[targetIndex] = { ...targetModal, windowState };
+      return next;
+    });
+  }, []);
+
   const handleDeactivateImageModal = useCallback(() => {
     setActiveImageModalId(null);
     if (useImageStore.getState().selectedImage !== null) {
@@ -2003,6 +2039,8 @@ export default function App() {
             isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
             onActivate={() => handleActivateImageModal(modal.modalId)}
             initialWindowOffset={modal.initialWindowOffset}
+            initialWindowState={modal.windowState}
+            onWindowStateChange={(windowState) => handleImageModalWindowStateChange(modal.modalId, windowState)}
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
           />

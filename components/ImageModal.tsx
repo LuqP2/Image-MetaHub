@@ -79,6 +79,8 @@ interface ImageModalProps {
   isActive?: boolean;
   onActivate?: () => void;
   initialWindowOffset?: number;
+  initialWindowState?: ModalWindowState;
+  onWindowStateChange?: (windowState: ModalWindowState) => void;
   isMinimized?: boolean;
   onMinimize?: () => void;
 }
@@ -119,8 +121,10 @@ type ModalInteractionState =
     };
 
 type DetailsSidebarResizeState = {
+  axis: 'horizontal' | 'vertical';
   startX: number;
-  startWidth: number;
+  startY: number;
+  startSize: number;
 } | null;
 
 const MODAL_MARGIN = 20;
@@ -132,7 +136,9 @@ const MODAL_MIN_VISIBLE_WIDTH = 120;
 const MODAL_RECOVERABLE_TOP_HEIGHT = 80;
 const WINDOW_PROXY_ANIMATION_DURATION_MS = 140;
 const DETAILS_SIDEBAR_DEFAULT_WIDTH = 340;
+const DETAILS_SIDEBAR_DEFAULT_HEIGHT = 320;
 const DETAILS_SIDEBAR_MIN_WIDTH = 300;
+const DETAILS_SIDEBAR_MIN_HEIGHT = 240;
 const DETAILS_SIDEBAR_MAX_RATIO = 0.7;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -159,6 +165,15 @@ const clampDetailsSidebarWidth = (width: number, modalWidth: number) => {
   );
 
   return clamp(width, DETAILS_SIDEBAR_MIN_WIDTH, maxWidth);
+};
+
+const clampDetailsSidebarHeight = (height: number, modalHeight: number) => {
+  const maxHeight = Math.max(
+    DETAILS_SIDEBAR_MIN_HEIGHT,
+    Math.floor(modalHeight * DETAILS_SIDEBAR_MAX_RATIO)
+  );
+
+  return clamp(height, DETAILS_SIDEBAR_MIN_HEIGHT, maxHeight);
 };
 
 const animateWindowProxy = async (fromRect: DOMRect, toRect: DOMRect, zIndex: number) => {
@@ -616,6 +631,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   isActive = true,
   onActivate,
   initialWindowOffset = 0,
+  initialWindowState,
+  onWindowStateChange,
   isMinimized = false,
   onMinimize,
 }) => {
@@ -639,12 +656,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
   const [sidebarWidth, setSidebarWidth] = useState(DETAILS_SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarHeight, setSidebarHeight] = useState(DETAILS_SIDEBAR_DEFAULT_HEIGHT);
   const [sidebarResizeState, setSidebarResizeState] = useState<DetailsSidebarResizeState>(null);
   const isResizingSidebar = sidebarResizeState !== null;
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
+    if (initialWindowState) {
+      return clampModalWindowToViewport(initialWindowState);
+    }
+
     const defaultWindow = createDefaultModalWindow();
     return clampModalWindowToViewport({
       ...defaultWindow,
@@ -885,7 +907,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     modalWindowRef.current = modalWindow;
     liveModalWindowRef.current = modalWindow;
     applyModalWindowStyles(modalWindow);
-  }, [applyModalWindowStyles, modalWindow]);
+    onWindowStateChange?.(modalWindow);
+  }, [applyModalWindowStyles, modalWindow, onWindowStateChange]);
 
   useEffect(() => {
     return () => {
@@ -1141,11 +1164,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       initialY: currentWindow.y,
     });
   }, [isFullscreen, isWindowMaximized]);
-
-  const resetModalWindow = useCallback(() => {
-    setIsWindowMaximized(false);
-    setModalWindow(createDefaultModalWindow());
-  }, []);
 
   const toggleWindowMaximize = useCallback(() => {
     if (isWindowMaximized) {
@@ -1708,9 +1726,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      const deltaX = event.clientX - sidebarResizeState.startX;
-      const nextWidth = sidebarResizeState.startWidth - deltaX;
-      setSidebarWidth(clampDetailsSidebarWidth(nextWidth, modalRect.width));
+      if (sidebarResizeState.axis === 'horizontal') {
+        const deltaX = event.clientX - sidebarResizeState.startX;
+        const nextWidth = sidebarResizeState.startSize - deltaX;
+        setSidebarWidth(clampDetailsSidebarWidth(nextWidth, modalRect.width));
+        return;
+      }
+
+      const deltaY = event.clientY - sidebarResizeState.startY;
+      const nextHeight = sidebarResizeState.startSize - deltaY;
+      setSidebarHeight(clampDetailsSidebarHeight(nextHeight, modalRect.height));
     };
 
     const handlePointerUp = () => {
@@ -1721,7 +1746,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     window.addEventListener('pointerup', handlePointerUp);
     window.addEventListener('pointercancel', handlePointerUp);
     window.addEventListener('blur', handlePointerUp);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = sidebarResizeState.axis === 'horizontal' ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
 
     return () => {
@@ -1734,16 +1759,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [sidebarResizeState]);
 
-  const handleDetailsSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const handleDetailsSidebarResizeStart = useCallback((
+    event: React.PointerEvent<HTMLDivElement>,
+    axis: 'horizontal' | 'vertical'
+  ) => {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
 
     setSidebarResizeState({
+      axis,
       startX: event.clientX,
-      startWidth: sidebarWidth,
+      startY: event.clientY,
+      startSize: axis === 'horizontal' ? sidebarWidth : sidebarHeight,
     });
-  }, [sidebarWidth]);
+  }, [sidebarHeight, sidebarWidth]);
 
   useEffect(() => {
     if (!isRenaming) {
@@ -1799,6 +1829,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     const modalElement = modalShellRef.current;
     const targetElement = getFooterWindowElement(modalId);
+    onWindowStateChange?.(clampModalWindowToViewport(liveModalWindowRef.current));
 
     if (!modalElement || !targetElement || shouldSkipWindowAnimation(enableAnimations)) {
       onMinimize();
@@ -1817,7 +1848,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     } finally {
       onMinimize();
     }
-  }, [enableAnimations, modalId, onMinimize, zIndex]);
+  }, [enableAnimations, modalId, onMinimize, onWindowStateChange, zIndex]);
 
   const handlePromoteAutoTag = async (tag: string) => {
     await addTagToImage(image.id, tag);
@@ -2041,29 +2072,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {onNavigatePrevious && (
             <button
-              onClick={onNavigatePrevious}
-              className={`absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              data-no-window-drag="true"
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNavigatePrevious();
+              }}
+              className="absolute inset-y-0 left-0 z-20 w-16 cursor-pointer bg-gradient-to-r from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              aria-label="Previous image"
               title="Previous image"
-            >
-              ←
-            </button>
+            />
           )}
           {onNavigateNext && (
             <button
-              onClick={onNavigateNext}
-              className={`absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              data-no-window-drag="true"
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNavigateNext();
+              }}
+              className="absolute inset-y-0 right-0 z-20 w-16 cursor-pointer bg-gradient-to-l from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              aria-label="Next image"
               title="Next image"
-            >
-              →
-            </button>
+            />
           )}
 
-          <div data-no-window-drag="true" className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
+          <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
 
           {!isVideo && (
-            <div data-no-window-drag="true" className={`absolute bottom-4 left-4 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
+            <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
                 disabled={zoom >= 5}
@@ -2096,9 +2137,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
-          <div data-no-window-drag="true" className={`absolute top-4 right-4 flex flex-col items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
+          <div data-no-window-drag="true" className={`absolute top-4 right-4 z-30 flex items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
             {isFullscreen ? (
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-row items-center gap-2">
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
@@ -2116,7 +2157,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-row items-center gap-2">
                 <button
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
@@ -2130,13 +2171,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   title={showSidebar ? 'Hide sidebar' : 'Show sidebar'}
                 >
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={resetModalWindow}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title="Reset window"
-                >
-                  <Repeat className="h-4 w-4" />
                 </button>
                 <button
                   onClick={toggleFullscreen}
@@ -2157,19 +2191,27 @@ const ImageModal: React.FC<ImageModalProps> = ({
           data-window-drag-region="details"
           className={`w-full ${
             showSidebarOnBottom
-              ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
+              ? `border-t border-gray-800/80 ${isResizingSidebar ? 'transition-none' : 'transition-[height] duration-300 ease-in-out'}`
               : `h-full border-l border-transparent ${isResizingSidebar ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`
           } relative flex flex-col`}
           style={
             showSidebarOnBottom
-              ? {}
+              ? { height: sidebarHeight, minHeight: DETAILS_SIDEBAR_MIN_HEIGHT, maxHeight: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
               : { width: sidebarWidth, minWidth: DETAILS_SIDEBAR_MIN_WIDTH, maxWidth: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
           }
           onContextMenu={handleSelectionContextMenu}
         >
-          {!showSidebarOnBottom && (
+          {showSidebarOnBottom ? (
             <div
-              onPointerDown={handleDetailsSidebarResizeStart}
+              onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'vertical')}
+              className="absolute inset-x-0 top-0 z-50 flex h-3 -translate-y-1/2 cursor-row-resize items-center justify-center touch-none"
+              title="Drag to resize details sidebar"
+            >
+              <div className={`h-1 w-16 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+            </div>
+          ) : (
+            <div
+              onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'horizontal')}
               className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
               title="Drag to resize details sidebar"
             >
@@ -3092,6 +3134,10 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.isActive === nextProps.isActive &&
     prevProps.modalId === nextProps.modalId &&
     prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
+    prevProps.initialWindowState?.x === nextProps.initialWindowState?.x &&
+    prevProps.initialWindowState?.y === nextProps.initialWindowState?.y &&
+    prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
+    prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized;
 
   return propsEqual;
