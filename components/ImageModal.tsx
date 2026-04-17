@@ -1650,6 +1650,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     return null;
   }
 
+  const modalShellStateClass = isActive
+    ? 'border-gray-800 shadow-2xl ring-1 ring-white/10'
+    : 'border-gray-800/70 shadow-lg ring-1 ring-white/5 opacity-90';
+  const titleBarStateClass = isActive
+    ? 'border-gray-800 bg-gray-950/95'
+    : 'border-gray-900 bg-gray-950/80';
+  const titleTextClass = isActive ? 'text-gray-100' : 'text-gray-400';
+  const titleMetaClass = isActive ? 'text-gray-500' : 'text-gray-600';
+
   return (
     <div
       className={`fixed inset-0 transition-all duration-300 ${
@@ -1663,7 +1672,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         className={`${
           isFullscreen 
             ? 'fixed inset-0 h-full w-full rounded-none'
-            : 'fixed bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
+            : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
         } pointer-events-auto flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
         onPointerDown={() => onActivate?.()}
         onClick={(e) => {
@@ -1684,7 +1693,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullscreen && (
           <div
-            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 backdrop-blur-sm cursor-move"
+            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm cursor-move transition-colors duration-150 ${titleBarStateClass}`}
             onPointerDown={handleWindowSurfacePointerDown}
             onDoubleClick={toggleWindowMaximize}
           >
@@ -1730,11 +1739,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+                <div className={`truncate text-sm font-semibold ${titleTextClass}`} title={image.name}>
                   {image.name}
                 </div>
               )}
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
+              <div className={`flex items-center gap-2 text-[11px] ${titleMetaClass}`}>
                 <span className="min-w-0 truncate" title={imageFullPath}>
                   {imageFullPath}
                 </span>
