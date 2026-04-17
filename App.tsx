@@ -1052,6 +1052,10 @@ export default function App() {
           ? 'scope'
           : 'filtered';
 
+    const existingModalForSelectedImage = openImageModals.find((modal) => modal.imageId === selectedImage.id);
+    const selectedModalId = existingModalForSelectedImage?.modalId ?? `image-modal-${Date.now()}-${selectedImage.id}`;
+    setActiveImageModalId(selectedModalId);
+
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
       const existingModal = current.find((modal) => modal.imageId === selectedImage.id);
@@ -1090,12 +1094,10 @@ export default function App() {
             ? 'scope'
             : 'filtered';
 
-      const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
-
       return [
         ...current,
         {
-          modalId,
+          modalId: selectedModalId,
           imageId: selectedImage.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
@@ -1105,7 +1107,7 @@ export default function App() {
         },
       ];
     });
-  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
