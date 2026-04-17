@@ -56,6 +56,14 @@ interface OpenImageModalState {
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
+  windowState?: ImageModalWindowState;
+}
+
+interface ImageModalWindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
@@ -1044,6 +1052,10 @@ export default function App() {
           ? 'scope'
           : 'filtered';
 
+    const existingModalForSelectedImage = openImageModals.find((modal) => modal.imageId === selectedImage.id);
+    const selectedModalId = existingModalForSelectedImage?.modalId ?? `image-modal-${Date.now()}-${selectedImage.id}`;
+    setActiveImageModalId(selectedModalId);
+
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
       const existingModal = current.find((modal) => modal.imageId === selectedImage.id);
@@ -1082,12 +1094,10 @@ export default function App() {
             ? 'scope'
             : 'filtered';
 
-      const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
-
       return [
         ...current,
         {
-          modalId,
+          modalId: selectedModalId,
           imageId: selectedImage.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
@@ -1097,7 +1107,7 @@ export default function App() {
         },
       ];
     });
-  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -1177,14 +1187,22 @@ export default function App() {
       .filter((modal) => !modal.isMinimized)
       .sort((left, right) => right.zIndex - left.zIndex)[0];
     const nextActiveModalId = nextActiveModal?.modalId ?? null;
+    const currentActiveModal = activeImageModalId
+      ? openImageModals.find((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
+      : null;
 
-    if (nextActiveModalId !== activeImageModalId) {
+    if (selectedImageId && nextActiveModalId !== activeImageModalId) {
       setActiveImageModalId(nextActiveModalId);
       return;
     }
 
-    if (nextActiveModal) {
-      const nextActiveImage = getImageByIdFromStore(nextActiveModal.imageId);
+    if (activeImageModalId && !currentActiveModal) {
+      setActiveImageModalId(nextActiveModalId);
+      return;
+    }
+
+    if (currentActiveModal) {
+      const nextActiveImage = getImageByIdFromStore(currentActiveModal.imageId);
       if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
         setSelectedImage(nextActiveImage);
       }
@@ -1247,17 +1265,40 @@ export default function App() {
     );
   }, []);
 
-  const handleMinimizeAllImageModals = useCallback(() => {
+  const handleImageModalWindowStateChange = useCallback((
+    modalId: string,
+    windowState: ImageModalWindowState
+  ) => {
     setOpenImageModals((current) => {
-      if (current.every((modal) => modal.isMinimized)) {
+      const targetIndex = current.findIndex((modal) => modal.modalId === modalId);
+      if (targetIndex === -1) {
         return current;
       }
 
-      return current.map((modal) => (
-        modal.isMinimized ? modal : { ...modal, isMinimized: true }
-      ));
+      const targetModal = current[targetIndex];
+      const currentWindowState = targetModal.windowState;
+      if (
+        currentWindowState &&
+        currentWindowState.x === windowState.x &&
+        currentWindowState.y === windowState.y &&
+        currentWindowState.width === windowState.width &&
+        currentWindowState.height === windowState.height
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+      next[targetIndex] = { ...targetModal, windowState };
+      return next;
     });
   }, []);
+
+  const handleDeactivateImageModal = useCallback(() => {
+    setActiveImageModalId(null);
+    if (useImageStore.getState().selectedImage !== null) {
+      setSelectedImage(null);
+    }
+  }, [setSelectedImage]);
 
   const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
@@ -1505,7 +1546,12 @@ export default function App() {
         isMinimized: boolean;
       }>;
   }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
-  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
+  const hasActiveVisibleImageModal = openImageModalEntries.some(
+    (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
+  );
+  const libraryContentFocusClass = hasActiveVisibleImageModal
+    ? 'blur-[1px] opacity-95'
+    : 'blur-0 opacity-100';
 
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -1862,7 +1908,7 @@ export default function App() {
                   />
                 )}
 
-              <div className="flex-1 min-h-0">
+              <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
@@ -1980,6 +2026,7 @@ export default function App() {
         {openImageModalEntries.map((modal) => (
           <ImageModal
             key={modal.modalId}
+            modalId={modal.modalId}
             image={modal.image}
             onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}
@@ -1994,15 +2041,18 @@ export default function App() {
             isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
             onActivate={() => handleActivateImageModal(modal.modalId)}
             initialWindowOffset={modal.initialWindowOffset}
+            initialWindowState={modal.windowState}
+            onWindowStateChange={(windowState) => handleImageModalWindowStateChange(modal.modalId, windowState)}
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
           />
         ))}
 
-        {hasVisibleImageModal && (
+        {hasActiveVisibleImageModal && (
           <div
-            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
-            onClick={handleMinimizeAllImageModals}
+            className="fixed inset-0 z-[54] bg-transparent"
+            onClick={handleDeactivateImageModal}
+            aria-hidden="true"
           />
         )}
 

@@ -102,20 +102,7 @@ const ImageLineageSection: React.FC<ImageLineageSectionProps> = ({
     () => getDerivedImages(image.id, 4),
     [getDerivedImages, image.id, derivedImageIds, lineageBuildState.lastBuiltAt]
   );
-  const isResolving = lineageBuildState.status === 'building' || lineageBuildState.status === 'scheduled';
-
   if (!resolvedLineage && derivedImages.length === 0) {
-    if (isResolving) {
-      return (
-        <div className="space-y-2 rounded-lg border border-blue-200/70 bg-blue-50/60 p-3 text-sm text-gray-700 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-gray-200">
-          <div className="font-semibold text-gray-800 dark:text-gray-100">Lineage</div>
-          <div className="rounded-md border border-dashed border-gray-300 bg-white/70 px-3 py-2 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-300">
-            Resolving lineage in the background...
-          </div>
-        </div>
-      );
-    }
-
     return null;
   }
 
