@@ -21,6 +21,10 @@ import {
   normalizeLauncherWorkingDirectory,
   resolveLauncherWorkingDirectory,
 } from './utils/generatorLauncher.mjs';
+import {
+  inferMimeTypeFromName,
+  isSupportedMediaFileName,
+} from './utils/mediaTypes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +34,7 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
+const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
 
 // Get platform-specific icon
 function getIconPath() {
@@ -43,26 +47,13 @@ function getIconPath() {
 }
 
 const execFileAsync = promisify(execFile);
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 const DEFAULT_WINDOW_WIDTH = 1400;
 const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 
-const getMimeTypeFromName = (name) => {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
-  return 'application/octet-stream';
-};
+const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
 
 const parseFrameRate = (value) => {
   if (typeof value !== 'string' || !value.includes('/')) {
@@ -91,7 +82,31 @@ const buildVideoInfoFromProbe = (stream, format) => {
   };
 };
 
-async function readVideoMetadataWithFfprobe(filePath) {
+const normalizeProbeNumber = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const buildAudioInfoFromProbe = (stream, format) => {
+  const durationValue = normalizeProbeNumber(stream?.duration) ?? normalizeProbeNumber(format?.duration);
+
+  return {
+    duration_seconds: durationValue,
+    codec: stream?.codec_name || null,
+    format: format?.format_name || null,
+    sample_rate: normalizeProbeNumber(stream?.sample_rate),
+    channels: normalizeProbeNumber(stream?.channels),
+    bit_rate: normalizeProbeNumber(stream?.bit_rate) ?? normalizeProbeNumber(format?.bit_rate),
+  };
+};
+
+async function readMediaMetadataWithFfprobe(filePath) {
   const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
   const { stdout } = await execFileAsync(ffprobePath, [
     '-v', 'quiet',
@@ -106,14 +121,20 @@ async function readVideoMetadataWithFfprobe(filePath) {
   const format = payload?.format ?? {};
   const tags = format.tags ?? {};
   const streams = Array.isArray(payload?.streams) ? payload.streams : [];
-  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? null;
+  const audioStream = streams.find((stream) => stream?.codec_type === 'audio') ?? null;
 
   return {
     comment: tags.comment,
     description: tags.description,
     title: tags.title,
-    video: buildVideoInfoFromProbe(videoStream, format),
+    video: videoStream ? buildVideoInfoFromProbe(videoStream, format) : null,
+    audio: audioStream ? buildAudioInfoFromProbe(audioStream, format) : null,
   };
+}
+
+async function readVideoMetadataWithFfprobe(filePath) {
+  return readMediaMetadataWithFfprobe(filePath);
 }
 
 let mainWindow;
@@ -1154,10 +1175,7 @@ async function statMediaEntries(directory, entries, baseDirectory) {
     if (!entry.isFile()) {
       return false;
     }
-    const lowerName = entry.name.toLowerCase();
-    const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
-    const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
-    return isImage || isVideo;
+    return isSupportedMediaFileName(entry.name);
   });
 
   const fileRecords = await mapWithConcurrency(mediaEntries, FILE_STAT_CONCURRENCY, async (entry) => {
@@ -2199,7 +2217,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('read-video-metadata', async (event, args) => {
+  const handleReadMediaMetadata = async (args) => {
     try {
       const filePath = args?.filePath;
       if (!filePath) {
@@ -2214,7 +2232,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
-      const metadata = await readVideoMetadataWithFfprobe(filePath);
+      const metadata = await readMediaMetadataWithFfprobe(filePath);
       return { success: true, ...metadata };
     } catch (error) {
       const isBinaryMissing = error?.code === 'ENOENT' || error?.message?.includes('ffprobe');
@@ -2223,7 +2241,10 @@ function setupFileOperationHandlers() {
         error: isBinaryMissing ? 'FFPROBE_NOT_FOUND' : (error?.message || String(error)),
       };
     }
-  });
+  };
+
+  ipcMain.handle('read-media-metadata', async (event, args) => handleReadMediaMetadata(args));
+  ipcMain.handle('read-video-metadata', async (event, args) => handleReadMediaMetadata(args));
 
   // Handle getting skipped versions
   ipcMain.handle('get-skipped-versions', () => {
