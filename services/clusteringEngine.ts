@@ -315,7 +315,21 @@ function mergeSimilarClusters(
 
   const comparisonChunk = 2000;
   let pendingComparisons = 0;
+  let accountedComparisons = 0;
+  const totalPairComparisons = (clusters.length * (clusters.length - 1)) / 2;
   const minJaccard = Math.max(0, (threshold - 0.4) / 0.6);
+
+  const recordComparisons = (count: number) => {
+    if (count <= 0) return;
+    accountedComparisons += count;
+    if (!onComparisonProgress) return;
+
+    pendingComparisons += count;
+    if (pendingComparisons >= comparisonChunk) {
+      onComparisonProgress(pendingComparisons);
+      pendingComparisons = 0;
+    }
+  };
 
   const jaccardFromTokens = (a: Set<string>, b: Set<string>): number => {
     if (a.size === 0 && b.size === 0) return 1;
@@ -335,6 +349,7 @@ function mergeSimilarClusters(
   for (let i = 0; i < clusters.length; i++) {
     parent.set(i, i);
   }
+  let componentCount = clusters.length;
 
   // Track similarities of merged pairs for each group
   const groupSimilarities = new Map<number, number[]>();
@@ -351,6 +366,7 @@ function mergeSimilarClusters(
     const rootJ = find(j);
     if (rootI !== rootJ) {
       parent.set(rootI, rootJ);
+      componentCount -= 1;
       // Track similarity for this merge
       if (!groupSimilarities.has(rootJ)) {
         groupSimilarities.set(rootJ, []);
@@ -359,36 +375,103 @@ function mergeSimilarClusters(
     }
   }
 
-  // Compare all pairs
-  for (let i = 0; i < clusters.length; i++) {
-    for (let j = i + 1; j < clusters.length; j++) {
-      const jaccard = jaccardFromTokens(clusters[i].tokens, clusters[j].tokens);
-      if (jaccard < minJaccard) {
-        if (onComparisonProgress) {
-          pendingComparisons += 1;
-          if (pendingComparisons >= comparisonChunk) {
-            onComparisonProgress(pendingComparisons);
-            pendingComparisons = 0;
-          }
+  const requiredOverlap = (a: Set<string>, b: Set<string>): number => {
+    return Math.ceil((minJaccard * (a.size + b.size)) / (1 + minJaccard));
+  };
+
+  const comparePair = (i: number, j: number): boolean => {
+    if (componentCount === 1) {
+      return true;
+    }
+
+    if (find(i) === find(j)) {
+      recordComparisons(1);
+      return false;
+    }
+
+    const jaccard = jaccardFromTokens(clusters[i].tokens, clusters[j].tokens);
+    if (jaccard < minJaccard) {
+      recordComparisons(1);
+      return false;
+    }
+
+    const levenshtein = normalizedLevenshtein(
+      clusters[i].basePrompt,
+      clusters[j].basePrompt,
+      (threshold - jaccard * 0.6) / 0.4
+    );
+    const similarity = jaccard * 0.6 + levenshtein * 0.4;
+
+    if (similarity >= threshold) {
+      union(i, j, similarity);
+    }
+
+    recordComparisons(1);
+    return false;
+  };
+
+  const compareCandidatePairs = (): boolean => {
+    if (minJaccard <= 0) {
+      return false;
+    }
+
+    const tokenPostings = new Map<string, number[]>();
+    for (let i = 0; i < clusters.length; i++) {
+      for (const token of clusters[i].tokens) {
+        const postings = tokenPostings.get(token);
+        if (postings) {
+          postings.push(i);
+        } else {
+          tokenPostings.set(token, [i]);
         }
+      }
+    }
+
+    const postingWork = [...tokenPostings.values()].reduce(
+      (sum, postings) => sum + (postings.length * (postings.length - 1)) / 2,
+      0
+    );
+
+    if (postingWork >= totalPairComparisons) {
+      return false;
+    }
+
+    const overlapCounts = new Map<number, number>();
+    for (const postings of tokenPostings.values()) {
+      for (let a = 0; a < postings.length; a++) {
+        const i = postings[a];
+        for (let b = a + 1; b < postings.length; b++) {
+          const j = postings[b];
+          const key = i * clusters.length + j;
+          overlapCounts.set(key, (overlapCounts.get(key) || 0) + 1);
+        }
+      }
+    }
+
+    for (const [key, overlap] of overlapCounts.entries()) {
+      const i = Math.floor(key / clusters.length);
+      const j = key % clusters.length;
+      if (overlap < requiredOverlap(clusters[i].tokens, clusters[j].tokens)) {
         continue;
       }
 
-      const levenshtein = normalizedLevenshtein(
-        clusters[i].basePrompt,
-        clusters[j].basePrompt
-      );
-      const similarity = jaccard * 0.6 + levenshtein * 0.4;
-
-      if (similarity >= threshold) {
-        union(i, j, similarity);
+      if (comparePair(i, j)) {
+        break;
       }
+    }
 
-      if (onComparisonProgress) {
-        pendingComparisons += 1;
-        if (pendingComparisons >= comparisonChunk) {
-          onComparisonProgress(pendingComparisons);
-          pendingComparisons = 0;
+    recordComparisons(totalPairComparisons - accountedComparisons);
+    return true;
+  };
+
+  if (!compareCandidatePairs()) {
+    // Compare all pairs
+    pairwiseScan:
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        if (comparePair(i, j)) {
+          recordComparisons(totalPairComparisons - accountedComparisons);
+          break pairwiseScan;
         }
       }
     }
