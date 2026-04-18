@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import Analytics from '../components/Analytics';
 import { useImageStore } from '../store/useImageStore';
+import { useLicenseStore } from '../store/useLicenseStore';
 import type { IndexedImage } from '../types';
 
 const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
@@ -22,6 +23,7 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
 describe('Analytics Explorer', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
+    useLicenseStore.setState({ initialized: true, licenseStatus: 'pro' });
 
     const images = [
       createImage({

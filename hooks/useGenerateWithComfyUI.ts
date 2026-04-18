@@ -10,6 +10,13 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useComfyUIProgressContext } from '../contexts/ComfyUIProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
 import { ComfyUISourceImagePolicy, ComfyUIWorkflowMode } from '../services/comfyUIWorkflowBuilder';
+import {
+  hasPromptMetadata,
+  mergeNormalizedMetadata,
+  NO_METADATA_MESSAGE,
+  getRequestedImageCount,
+  TEMPORARY_STATUS_TIMEOUT_MS,
+} from '../utils/imageMetadata';
 
 interface GenerateStatus {
   success: boolean;
@@ -42,17 +49,14 @@ export function useGenerateWithComfyUI() {
 
   const generateWithComfyUI = useCallback(
     async (image: IndexedImage, params?: GenerateParams) => {
-      // Merge custom params with original metadata if provided
-      const metadata = params?.customMetadata
-        ? { ...image.metadata?.normalizedMetadata, ...params.customMetadata }
-        : image.metadata?.normalizedMetadata;
+      const metadata = mergeNormalizedMetadata(image, params?.customMetadata);
 
-      if (!metadata || !metadata.prompt) {
+      if (!hasPromptMetadata(metadata)) {
         setGenerateStatus({
           success: false,
-          message: 'No metadata available for this image',
+          message: NO_METADATA_MESSAGE,
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
 
@@ -61,14 +65,11 @@ export function useGenerateWithComfyUI() {
           success: false,
           message: 'ComfyUI server URL not configured. Please check Settings.',
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
 
-      const numberOfImages =
-        (params?.customMetadata as any)?.batch_size ||
-        (params?.customMetadata as any)?.numberOfImages ||
-        1;
+      const numberOfImages = getRequestedImageCount(params?.customMetadata);
 
       const jobId = createJob({
         provider: 'comfyui',
@@ -93,7 +94,7 @@ export function useGenerateWithComfyUI() {
           success: true,
           message: 'Generation queued. Waiting for current ComfyUI job to finish.',
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
       setActiveJob('comfyui', jobId);
@@ -144,14 +145,15 @@ export function useGenerateWithComfyUI() {
         }
 
         // Clear status after 5 seconds
-        setTimeout(() => setGenerateStatus(null), 5000);
-      } catch (error: any) {
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         setGenerateStatus({
           success: false,
-          message: `Error: ${error.message}`,
+          message: `Error: ${errorMessage}`,
         });
 
-        setJobStatus(jobId, 'failed', { error: error.message });
+        setJobStatus(jobId, 'failed', { error: errorMessage });
         const { activeJobs } = useGenerationQueueStore.getState();
         if (activeJobs.comfyui === jobId) {
           setActiveJob('comfyui', null);
@@ -160,7 +162,7 @@ export function useGenerateWithComfyUI() {
         // Stop progress tracking on error
         stopTracking();
 
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
       } finally {
         setIsGenerating(false);
       }

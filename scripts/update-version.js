@@ -85,17 +85,7 @@ updateFile(
 );
 
 // ============================================================
-// 4. components/StatusBar.tsx - Footer version display
-// ============================================================
-updateFile(
-  'components/StatusBar.tsx',
-  /v\d+\.\d+\.\d+(-[a-z0-9.-]+)?/,
-  `v${NEW_VERSION}`,
-  'StatusBar.tsx version display'
-);
-
-// ============================================================
-// 5. components/FolderSelector.tsx - Welcome screen (all occurrences)
+// 4. components/FolderSelector.tsx - Welcome screen (all occurrences)
 // ============================================================
 updateFile(
   'components/FolderSelector.tsx',
@@ -105,7 +95,7 @@ updateFile(
 );
 
 // ============================================================
-// 6. index.html - Page title
+// 5. index.html - Page title
 // ============================================================
 updateFile(
   'index.html',
@@ -115,7 +105,7 @@ updateFile(
 );
 
 // ============================================================
-// 7. electron.mjs - Window title fallback
+// 6. electron.mjs - Window title fallback
 // ============================================================
 updateFile(
   'electron.mjs',
@@ -125,7 +115,7 @@ updateFile(
 );
 
 // ============================================================
-// 8. electron.mjs - Mock update info version
+// 7. electron.mjs - Mock update info version
 // ============================================================
 updateFile(
   'electron.mjs',
@@ -135,7 +125,7 @@ updateFile(
 );
 
 // ============================================================
-// 9. cli.ts - CLI version
+// 8. cli.ts - CLI version
 // ============================================================
 updateFile(
   'cli.ts',
@@ -145,7 +135,7 @@ updateFile(
 );
 
 // ============================================================
-// 10. components/ChangelogModal.tsx - Message from dev
+// 9. components/ChangelogModal.tsx - Message from dev
 // ============================================================
 // Note: This one is optional and may need manual adjustment
 // for the description text based on the release content
@@ -161,7 +151,7 @@ if (changelogUpdated) {
 }
 
 // ============================================================
-// 11. Sync CHANGELOG.md to public/ (if needed for build)
+// 10. Sync CHANGELOG.md to public/ (if needed for build)
 // ============================================================
 try {
   const changelog = readFileSync('CHANGELOG.md', 'utf8');

@@ -356,12 +356,22 @@ describe('useImageStore tri-state filters', () => {
         },
       } as any,
     });
+    const audioImage = createImage({
+      name: 'song.mp3',
+      id: 'dir-1::song.mp3',
+      fileType: 'audio/mpeg',
+      metadata: {
+        normalizedMetadata: {
+          media_type: 'audio',
+        },
+      } as any,
+    });
 
     useImageStore.getState().resetState();
     useImageStore.setState({
       directories: [directory],
-      images: [txt2imgImage, img2imgImage, videoImage],
-      filteredImages: [txt2imgImage, img2imgImage, videoImage],
+      images: [txt2imgImage, img2imgImage, videoImage, audioImage],
+      filteredImages: [txt2imgImage, img2imgImage, videoImage, audioImage],
       sortOrder: 'asc',
     });
 
@@ -374,6 +384,12 @@ describe('useImageStore tri-state filters', () => {
       generationModes: ['img2img'],
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['img2img.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: [],
+      mediaTypes: ['audio'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['song.mp3']);
   });
 
   it('filters by multiple selected ratings with OR logic', () => {

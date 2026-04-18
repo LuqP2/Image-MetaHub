@@ -1,8 +1,10 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { SettingRow } from './SettingRow';
 import { SettingsPanel } from './SettingsPanel';
 import { SettingsSectionCard } from './SettingsSectionCard';
+import { SettingSwitch } from './SettingSwitch';
 
 const themeOptions = [
   { id: 'system', name: 'System', colors: ['#525252', '#a3a3a3'] },
@@ -16,9 +18,11 @@ const themeOptions = [
 export const AppearanceSettingsPanel: React.FC = () => {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
+  const enableAnimations = useSettingsStore((state) => state.enableAnimations);
+  const setEnableAnimations = useSettingsStore((state) => state.setEnableAnimations);
 
   return (
-    <SettingsPanel title="Appearance" description="Choose the app theme.">
+    <SettingsPanel title="Appearance" description="Choose the app theme and motion preferences.">
       <SettingsSectionCard title="Theme">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {themeOptions.map((option) => (
@@ -48,6 +52,14 @@ export const AppearanceSettingsPanel: React.FC = () => {
             </button>
           ))}
         </div>
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Motion">
+        <SettingRow
+          label="Enable animations"
+          description="Use small interface animations, including modal minimize and restore."
+          control={<SettingSwitch checked={enableAnimations} onChange={setEnableAnimations} />}
+        />
       </SettingsSectionCard>
     </SettingsPanel>
   );

@@ -19,8 +19,8 @@ export interface ComfyUIConfig {
   timeout?: number;
 }
 
-export interface WorkflowOverrides extends ComfyUIWorkflowOverrides {}
-export interface LoRAConfig extends ComfyUILoRAConfig {}
+export type WorkflowOverrides = ComfyUIWorkflowOverrides;
+export type LoRAConfig = ComfyUILoRAConfig;
 
 export interface ComfyUIResponse {
   success: boolean;
@@ -39,6 +39,53 @@ export interface ComfyUIProgressUpdate {
     prompt_id?: string;
   };
 }
+
+type ComfyUISystemStats = Record<string, unknown>;
+
+type ComfyUIObjectInfoOptions = [unknown[]];
+
+interface ComfyUIObjectInfoNode {
+  input?: {
+    required?: Record<string, ComfyUIObjectInfoOptions>;
+  };
+}
+
+type ComfyUIObjectInfo = Record<string, ComfyUIObjectInfoNode>;
+
+type ComfyWorkflowMetadata = BaseMetadata & {
+  cfgScale?: number;
+  batch_size?: number;
+  numberOfImages?: number;
+  denoise?: number;
+};
+
+type ComfyWorkflowInputValue = string | number | boolean | [string, number];
+type ComfyWorkflowNode = {
+  class_type: string;
+  inputs: Record<string, ComfyWorkflowInputValue>;
+};
+type ComfyWorkflowGraph = Record<string, ComfyWorkflowNode>;
+
+const getErrorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
+
+const isString = (value: unknown): value is string => typeof value === 'string';
+
+const isProgressUpdate = (value: unknown): value is ComfyUIProgressUpdate => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as { type?: unknown; data?: { node?: unknown; value?: unknown; max?: unknown; prompt_id?: unknown } };
+  if (record.type !== 'status' && record.type !== 'progress' && record.type !== 'executing' && record.type !== 'executed') {
+    return false;
+  }
+
+  if (!record.data || typeof record.data !== 'object') {
+    return false;
+  }
+
+  return true;
+};
 
 export interface PrepareWorkflowParams {
   image: IndexedImage;
@@ -76,7 +123,7 @@ export function normalizeLoopbackServerUrl(serverUrl: string): string {
       return parsed.toString().replace(/\/$/, '');
     }
   } catch {
-    // Ignore malformed URLs and use the original value.
+    console.warn('[ComfyUIApiClient] Ignoring malformed server URL', serverUrl);
   }
 
   return serverUrl;
@@ -119,8 +166,8 @@ export class ComfyUIApiClient {
       }
 
       return { success: true };
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         return {
           success: false,
           error: 'Connection timeout. Is ComfyUI running?',
@@ -138,7 +185,7 @@ export class ComfyUIApiClient {
   /**
    * Get system stats from ComfyUI server
    */
-  async getSystemStats(): Promise<any> {
+  async getSystemStats(): Promise<ComfyUISystemStats> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -154,9 +201,9 @@ export class ComfyUIApiClient {
         throw new Error(`Failed to fetch system stats: ${response.status}`);
       }
 
-      return await response.json();
-    } catch (error: any) {
-      console.warn('Failed to fetch system stats:', error.message);
+      return (await response.json()) as ComfyUISystemStats;
+    } catch (error: unknown) {
+      console.warn('Failed to fetch system stats:', getErrorMessage(error));
       throw error;
     }
   }
@@ -164,7 +211,7 @@ export class ComfyUIApiClient {
   /**
    * Get available nodes, models, samplers from ComfyUI
    */
-  async getObjectInfo(): Promise<any> {
+  async getObjectInfo(): Promise<ComfyUIObjectInfo> {
     try {
       const controller = new AbortController();
       const timeoutMs = Math.max(this.config.timeout || 10000, 60000);
@@ -181,12 +228,12 @@ export class ComfyUIApiClient {
         throw new Error(`Failed to fetch object info: ${response.status}`);
       }
 
-      return await response.json();
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
+      return (await response.json()) as ComfyUIObjectInfo;
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         throw new Error('Timed out loading ComfyUI object info. Large installs may need longer to answer /object_info.');
       }
-      console.warn('Failed to fetch object info:', error.message);
+      console.warn('Failed to fetch object info:', getErrorMessage(error));
       throw error;
     }
   }
@@ -197,8 +244,10 @@ export class ComfyUIApiClient {
    * Supports model and LoRA overrides for customization
    */
   buildWorkflowFromMetadata(metadata: BaseMetadata, overrides?: WorkflowOverrides): ComfyUIExecutionPayload {
+    const workflowMetadata = metadata as ComfyWorkflowMetadata;
+
     // Extract CFG scale - handle both cfgScale and cfg_scale
-    const cfgScale = (metadata as any).cfgScale || metadata.cfg_scale || 7.0;
+    const cfgScale = workflowMetadata.cfgScale || metadata.cfg_scale || 7.0;
 
     // Use override model if provided, otherwise use metadata model or default
     const modelName = overrides?.model?.name || metadata.model || "sd_xl_base_1.0.safetensors";
@@ -207,7 +256,7 @@ export class ComfyUIApiClient {
     const loras = overrides?.loras || [];
     let currentNodeId = 1;
 
-    const workflow: any = {};
+    const workflow: ComfyWorkflowGraph = {};
 
     // Node 1: CheckpointLoader
     workflow["1"] = {
@@ -277,7 +326,7 @@ export class ComfyUIApiClient {
     };
     currentNodeId++;
 
-    const batchSizeRaw = (metadata as any).batch_size ?? (metadata as any).numberOfImages;
+    const batchSizeRaw = workflowMetadata.batch_size ?? workflowMetadata.numberOfImages;
     const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0
       ? Math.min(10, Math.floor(batchSizeRaw))
       : 1;
@@ -482,10 +531,10 @@ export class ComfyUIApiClient {
         message: 'Workflow queued successfully! Check ComfyUI for results.',
         prompt_id: result.prompt_id,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[ComfyUI] Request failed:', error);
 
-      if (error.name === 'AbortError') {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         return {
           success: false,
           error: 'Request timeout. Generation may take longer.',
@@ -503,7 +552,7 @@ export class ComfyUIApiClient {
   /**
    * Get execution history for a specific prompt
    */
-  async getHistory(promptId: string): Promise<any> {
+  async getHistory(promptId: string): Promise<ComfyUISystemStats> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -519,9 +568,9 @@ export class ComfyUIApiClient {
         throw new Error(`Failed to fetch history: ${response.status}`);
       }
 
-      return await response.json();
-    } catch (error: any) {
-      console.warn('Failed to fetch history:', error.message);
+      return (await response.json()) as ComfyUISystemStats;
+    } catch (error: unknown) {
+      console.warn('Failed to fetch history:', getErrorMessage(error));
       throw error;
     }
   }
@@ -529,7 +578,7 @@ export class ComfyUIApiClient {
   /**
    * Get current queue status
    */
-  async getQueue(): Promise<any> {
+  async getQueue(): Promise<ComfyUISystemStats> {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
@@ -545,9 +594,9 @@ export class ComfyUIApiClient {
         throw new Error(`Failed to fetch queue: ${response.status}`);
       }
 
-      return await response.json();
-    } catch (error: any) {
-      console.warn('Failed to fetch queue:', error.message);
+      return (await response.json()) as ComfyUISystemStats;
+    } catch (error: unknown) {
+      console.warn('Failed to fetch queue:', getErrorMessage(error));
       throw error;
     }
   }
@@ -568,11 +617,11 @@ export class ComfyUIApiClient {
 
       this.ws.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data);
+          const message: unknown = JSON.parse(event.data);
 
           // Forward progress updates to callback
-          if (message.type === 'progress' || message.type === 'executing' || message.type === 'executed' || message.type === 'status') {
-            onProgress(message as ComfyUIProgressUpdate);
+          if (isProgressUpdate(message)) {
+            onProgress(message);
           }
         } catch (error) {
           console.warn('[ComfyUI] Failed to parse WebSocket message:', error);
@@ -593,7 +642,7 @@ export class ComfyUIApiClient {
         console.log('[ComfyUI] WebSocket disconnected');
         this.ws = null;
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[ComfyUI] Failed to connect WebSocket:', error);
       const comfyError = handleComfyUIError(error);
       throw comfyError;
@@ -631,8 +680,8 @@ export class ComfyUIApiClient {
       }
 
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 

@@ -8,52 +8,126 @@
  */
 
 /**
- * Calculate Levenshtein distance between two strings
- * Classic dynamic programming algorithm O(n*m)
+ * Calculate Levenshtein distance between two strings.
+ *
+ * When maxDistance is provided, this uses a bounded band and may return any
+ * value above maxDistance once the strings can no longer match the caller's
+ * threshold. That keeps clustering fast for very long tag-heavy prompts.
  */
-function levenshteinDistance(str1: string, str2: string): number {
-  const len1 = str1.length;
-  const len2 = str2.length;
+function levenshteinDistance(str1: string, str2: string, maxDistance = Infinity): number {
+  let len1 = str1.length;
+  let len2 = str2.length;
 
-  // Create a 2D array for memoization
-  const matrix: number[][] = Array(len1 + 1)
-    .fill(null)
-    .map(() => Array(len2 + 1).fill(0));
+  if (len1 === 0) return len2;
+  if (len2 === 0) return len1;
 
-  // Initialize first row and column
-  for (let i = 0; i <= len1; i++) {
-    matrix[i][0] = i;
+  let start = 0;
+  while (start < len1 && start < len2 && str1[start] === str2[start]) {
+    start++;
   }
+
+  while (
+    len1 > start &&
+    len2 > start &&
+    str1[len1 - 1] === str2[len2 - 1]
+  ) {
+    len1--;
+    len2--;
+  }
+
+  str1 = str1.slice(start, len1);
+  str2 = str2.slice(start, len2);
+  len1 = str1.length;
+  len2 = str2.length;
+
+  if (len1 === 0) return len2;
+  if (len2 === 0) return len1;
+
+  if (len1 > len2) {
+    [str1, str2] = [str2, str1];
+    [len1, len2] = [len2, len1];
+  }
+
+  const bounded = Number.isFinite(maxDistance);
+  const limit = bounded ? Math.floor(maxDistance) : len2;
+
+  if (bounded && len2 - len1 > limit) {
+    return limit + 1;
+  }
+
+  const previous = new Array<number>(len2 + 1);
+  const current = new Array<number>(len2 + 1);
   for (let j = 0; j <= len2; j++) {
-    matrix[0][j] = j;
+    previous[j] = j;
   }
 
-  // Fill in the rest of the matrix
+  const unreachable = limit + 1;
+
   for (let i = 1; i <= len1; i++) {
-    for (let j = 1; j <= len2; j++) {
+    current[0] = i;
+    let rowMin = current[0];
+
+    const jStart = bounded ? Math.max(1, i - limit) : 1;
+    const jEnd = bounded ? Math.min(len2, i + limit) : len2;
+
+    for (let j = 1; j < jStart; j++) {
+      current[j] = unreachable;
+    }
+
+    for (let j = jStart; j <= jEnd; j++) {
       const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1, // deletion
-        matrix[i][j - 1] + 1, // insertion
-        matrix[i - 1][j - 1] + cost // substitution
+      const distance = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost
       );
+      current[j] = distance;
+      if (distance < rowMin) {
+        rowMin = distance;
+      }
+    }
+
+    for (let j = jEnd + 1; j <= len2; j++) {
+      current[j] = unreachable;
+    }
+
+    if (bounded && rowMin > limit) {
+      return limit + 1;
+    }
+
+    for (let j = 0; j <= len2; j++) {
+      previous[j] = current[j];
     }
   }
 
-  return matrix[len1][len2];
+  return previous[len2];
 }
 
 /**
  * Normalized Levenshtein similarity (0-1 scale)
  * 1.0 = identical strings, 0.0 = completely different
  */
-export function normalizedLevenshtein(str1: string, str2: string): number {
+export function normalizedLevenshtein(
+  str1: string,
+  str2: string,
+  minSimilarity = 0
+): number {
   if (str1 === str2) return 1.0;
   if (str1.length === 0 && str2.length === 0) return 1.0;
   if (str1.length === 0 || str2.length === 0) return 0.0;
 
-  const distance = levenshteinDistance(str1, str2);
   const maxLen = Math.max(str1.length, str2.length);
+  const boundedMinSimilarity = Math.max(0, Math.min(1, minSimilarity));
+  const maxDistance =
+    boundedMinSimilarity > 0
+      ? Math.floor((1 - boundedMinSimilarity) * maxLen)
+      : Infinity;
+
+  const distance = levenshteinDistance(str1, str2, maxDistance);
+
+  if (boundedMinSimilarity > 0 && distance > maxDistance) {
+    return 0.0;
+  }
 
   return 1 - distance / maxLen;
 }
@@ -79,7 +153,7 @@ const STOP_WORDS = new Set([
 
 export function tokenizeForSimilarity(text: string): Set<string> {
   // Remove A1111 weight syntax: (term:1.2) or [term:0.8]
-  const cleanedText = text.replace(/[(\[]\s*([^)\]]+?)\s*:\s*[\d.]+\s*[)\]]/g, '$1');
+  const cleanedText = text.replace(/(?:\(|\[)\s*([^\])]+?)\s*:\s*[\d.]+\s*(?:\)|\])/g, '$1');
 
   const tokens = cleanedText
     .toLowerCase()
@@ -88,7 +162,7 @@ export function tokenizeForSimilarity(text: string): Set<string> {
     .map((token) => token.trim())
     .filter((token) => token.length > 0)
     // Remove parentheses/brackets artifacts
-    .map((token) => token.replace(/^[(\[]+|[)\]]+$/g, ''))
+    .map((token) => token.replace(/^(?:\(|\[)+|(?:\)|\])+$/g, ''))
     .filter((token) => token.length > 0)
     .filter((token) => !STOP_WORDS.has(token))
     .filter((token) => !/^\d+$/.test(token)); // Remove pure numbers

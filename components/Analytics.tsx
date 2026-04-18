@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, BarChart3, Calendar, CheckCircle2, Cpu, Filter, Heart, Layers, Sparkles, Timer, X, Zap } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import type { AdvancedFilters } from '../types';
@@ -57,7 +58,7 @@ const sameRange = (current: AdvancedFilters['steps'], min?: number, max?: number
   Boolean(current?.maxExclusive) === Boolean(max !== undefined);
 const compareSelectClass = 'min-w-0 w-full truncate rounded-xl border border-gray-700 bg-gray-950/70 px-3 py-2 pr-8 text-sm text-gray-200';
 
-const StatCard = ({ label, value, meta, icon: Icon }: { label: string; value: string; meta?: string; icon: React.ComponentType<any> }) => (
+const StatCard = ({ label, value, meta, icon: Icon }: { label: string; value: string; meta?: string; icon: LucideIcon }) => (
   <div className={`${card} min-w-0 p-4`}>
     <div className="mb-3 flex items-center gap-3">
       <div className="rounded-xl border border-gray-700 bg-gray-950/70 p-2"><Icon size={18} className="text-cyan-300" /></div>

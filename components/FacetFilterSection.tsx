@@ -122,6 +122,20 @@ const FacetFilterSection: React.FC<FacetFilterSectionProps> = ({
                 placeholder={searchPlaceholder ?? `Filter ${title.toLowerCase()}...`}
                 className="w-full bg-transparent text-sm text-gray-200 outline-none placeholder:text-gray-500"
               />
+              {query.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setQuery('');
+                  }}
+                  className="rounded-md p-0.5 text-gray-500 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                  title={`Clear ${title.toLowerCase()} search`}
+                  aria-label={`Clear ${title.toLowerCase()} search`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </label>
           )}
 

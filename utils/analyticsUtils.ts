@@ -1,5 +1,6 @@
 import { IndexedImage } from '../types';
 import { formatLocalDateKey } from './dateFilterUtils';
+import { getImageAnalytics } from './imageMetadata';
 
 export type PeriodPreset = '7days' | '30days' | '90days' | 'thisMonth' | 'all';
 
@@ -66,11 +67,12 @@ export function periodPresetToDays(preset: PeriodPreset): number | null {
       return 30;
     case '90days':
       return 90;
-    case 'thisMonth':
+    case 'thisMonth': {
       // Calculate days from start of current month
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       return Math.ceil((now.getTime() - startOfMonth.getTime()) / (24 * 60 * 60 * 1000));
+    }
     case 'all':
       return null; // null means no filter
     default:
@@ -532,8 +534,7 @@ export function calculatePerformanceAverages(images: IndexedImage[]): Performanc
   let timeCount = 0;
 
   images.forEach((img) => {
-    const analytics = img.metadata?.normalizedMetadata?.analytics ||
-                      (img.metadata?.normalizedMetadata as any)?._analytics;
+    const analytics = getImageAnalytics(img);
 
     if (analytics) {
       if (typeof analytics.steps_per_second === 'number' && analytics.steps_per_second > 0) {
@@ -577,8 +578,7 @@ export function calculatePerformanceByGPU(images: IndexedImage[]): GPUPerformanc
   }>();
 
   images.forEach((img) => {
-    const analytics = img.metadata?.normalizedMetadata?.analytics ||
-                      (img.metadata?.normalizedMetadata as any)?._analytics;
+    const analytics = getImageAnalytics(img);
 
     if (analytics?.gpu_device && typeof analytics.gpu_device === 'string') {
       const stats = gpuStats.get(analytics.gpu_device) || {
@@ -637,8 +637,7 @@ export function calculateGenerationTimeDistribution(images: IndexedImage[]): Gen
   ];
 
   images.forEach((img) => {
-    const analytics = img.metadata?.normalizedMetadata?.analytics ||
-                      (img.metadata?.normalizedMetadata as any)?._analytics;
+    const analytics = getImageAnalytics(img);
 
     if (analytics?.generation_time_ms && typeof analytics.generation_time_ms === 'number') {
       const bucket = buckets.find(
@@ -684,8 +683,7 @@ export function calculatePerformanceTimeline(
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    const analytics = img.metadata?.normalizedMetadata?.analytics ||
-                      (img.metadata?.normalizedMetadata as any)?._analytics;
+    const analytics = getImageAnalytics(img);
 
     if (analytics) {
       const entry = timelineMap.get(key) || {
@@ -872,10 +870,6 @@ export interface AnalyticsExplorerData {
 
 const SESSION_GAP_MS = 60 * 60 * 1000;
 const RATING_VALUES = [1, 2, 3, 4, 5] as const;
-
-const getImageAnalytics = (image: IndexedImage) =>
-  image.metadata?.normalizedMetadata?.analytics ||
-  (image.metadata?.normalizedMetadata as { _analytics?: Record<string, unknown> } | undefined)?._analytics;
 
 export const getImageGenerator = (image: IndexedImage): string => {
   const generator = image.metadata?.normalizedMetadata?.generator;

@@ -4,7 +4,7 @@
  * These extractors provide declarative, composable logic for common extraction patterns.
  */
 
-import { ParserNode } from './nodeRegistry';
+import { ParserNode } from './types';
 
 /**
  * Concatenates multiple text inputs into a single string.

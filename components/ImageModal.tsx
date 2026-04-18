@@ -1,4 +1,4 @@
-import React, { useEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
@@ -32,6 +32,8 @@ import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
 import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import AudioPlayer from './AudioPlayer';
+import { isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -65,6 +67,7 @@ const buildTagSuggestions = (
 };
 
 interface ImageModalProps {
+  modalId?: string;
   image: IndexedImage;
   onClose: () => void;
   onImageDeleted?: (imageId: string) => void;
@@ -79,6 +82,8 @@ interface ImageModalProps {
   isActive?: boolean;
   onActivate?: () => void;
   initialWindowOffset?: number;
+  initialWindowState?: ModalWindowState;
+  onWindowStateChange?: (windowState: ModalWindowState) => void;
   isMinimized?: boolean;
   onMinimize?: () => void;
 }
@@ -118,13 +123,113 @@ type ModalInteractionState =
         | 'bottom-right';
     };
 
+type DetailsSidebarResizeState = {
+  axis: 'horizontal' | 'vertical';
+  startX: number;
+  startY: number;
+  startSize: number;
+} | null;
+
 const MODAL_MARGIN = 20;
 const MIN_MODAL_WIDTH = 760;
 const MIN_MODAL_HEIGHT = 520;
 const DEFAULT_MODAL_MAX_WIDTH = 1600;
 const DEFAULT_MODAL_MAX_HEIGHT = 1080;
+const MODAL_MIN_VISIBLE_WIDTH = 120;
+const MODAL_RECOVERABLE_TOP_HEIGHT = 80;
+const WINDOW_PROXY_ANIMATION_DURATION_MS = 140;
+const DETAILS_SIDEBAR_DEFAULT_WIDTH = 340;
+const DETAILS_SIDEBAR_DEFAULT_HEIGHT = 320;
+const DETAILS_SIDEBAR_MIN_WIDTH = 300;
+const DETAILS_SIDEBAR_MIN_HEIGHT = 240;
+const DETAILS_SIDEBAR_MAX_RATIO = 0.7;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const getFooterWindowElement = (modalId?: string): HTMLElement | null => {
+  if (!modalId || typeof document === 'undefined') {
+    return null;
+  }
+
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[data-image-modal-window-id]')
+  ).find((element) => element.dataset.imageModalWindowId === modalId) ?? null;
+};
+
+const shouldSkipWindowAnimation = (animationsEnabled: boolean) =>
+  !animationsEnabled ||
+  typeof window === 'undefined' ||
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const clampDetailsSidebarWidth = (width: number, modalWidth: number) => {
+  const maxWidth = Math.max(
+    DETAILS_SIDEBAR_MIN_WIDTH,
+    Math.floor(modalWidth * DETAILS_SIDEBAR_MAX_RATIO)
+  );
+
+  return clamp(width, DETAILS_SIDEBAR_MIN_WIDTH, maxWidth);
+};
+
+const clampDetailsSidebarHeight = (height: number, modalHeight: number) => {
+  const maxHeight = Math.max(
+    DETAILS_SIDEBAR_MIN_HEIGHT,
+    Math.floor(modalHeight * DETAILS_SIDEBAR_MAX_RATIO)
+  );
+
+  return clamp(height, DETAILS_SIDEBAR_MIN_HEIGHT, maxHeight);
+};
+
+const animateWindowProxy = async (fromRect: DOMRect, toRect: DOMRect, zIndex: number) => {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const proxy = document.createElement('div');
+  const scaleX = Math.max(toRect.width / Math.max(fromRect.width, 1), 0.04);
+  const scaleY = Math.max(toRect.height / Math.max(fromRect.height, 1), 0.04);
+
+  proxy.style.position = 'fixed';
+  proxy.style.left = `${fromRect.left}px`;
+  proxy.style.top = `${fromRect.top}px`;
+  proxy.style.width = `${fromRect.width}px`;
+  proxy.style.height = `${fromRect.height}px`;
+  proxy.style.border = '1px solid rgba(148, 163, 184, 0.45)';
+  proxy.style.borderRadius = '12px';
+  proxy.style.background = 'rgba(31, 41, 55, 0.72)';
+  proxy.style.boxShadow = '0 18px 45px rgba(0, 0, 0, 0.35)';
+  proxy.style.pointerEvents = 'none';
+  proxy.style.transformOrigin = 'top left';
+  proxy.style.willChange = 'transform, opacity';
+  proxy.style.zIndex = `${Math.max(zIndex + 1, 100)}`;
+
+  document.body.appendChild(proxy);
+
+  try {
+    if (typeof proxy.animate !== 'function') {
+      return;
+    }
+
+    const animation = proxy.animate(
+      [
+        { opacity: 0.72, transform: 'translate3d(0, 0, 0) scale(1, 1)' },
+        {
+          opacity: 0.18,
+          transform: `translate3d(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px, 0) scale(${scaleX}, ${scaleY})`,
+        },
+      ],
+      {
+        duration: WINDOW_PROXY_ANIMATION_DURATION_MS,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+      }
+    );
+
+    await animation.finished;
+  } catch {
+    // Animation cancellation should not block the window action.
+  } finally {
+    proxy.remove();
+  }
+};
 
 const getModalViewportMetrics = () => {
   if (typeof window === 'undefined') {
@@ -185,18 +290,36 @@ const createMaximizedModalWindow = (): ModalWindowState => {
   };
 };
 
+const getRecoverableModalPositionBounds = (width: number, height: number) => {
+  const metrics = getModalViewportMetrics();
+  const visibleWidth = Math.min(MODAL_MIN_VISIBLE_WIDTH, Math.max(1, width));
+  const recoverableTopHeight = Math.min(MODAL_RECOVERABLE_TOP_HEIGHT, Math.max(1, height));
+  const minX = -width + visibleWidth;
+  const maxX = metrics.viewportWidth - visibleWidth;
+  const minY = 0;
+  const maxY = Math.max(0, metrics.viewportHeight - recoverableTopHeight);
+
+  return {
+    minX: Math.min(minX, maxX),
+    maxX: Math.max(minX, maxX),
+    minY: Math.min(minY, maxY),
+    maxY: Math.max(minY, maxY),
+  };
+};
+
 const clampModalWindowToViewport = (windowState: ModalWindowState): ModalWindowState => {
   const metrics = getModalViewportMetrics();
   const maxWidth = Math.max(metrics.minWidth, metrics.viewportWidth - metrics.margin * 2);
   const maxHeight = Math.max(metrics.minHeight, metrics.viewportHeight - metrics.margin * 2);
   const width = clamp(windowState.width, metrics.minWidth, maxWidth);
   const height = clamp(windowState.height, metrics.minHeight, maxHeight);
+  const bounds = getRecoverableModalPositionBounds(width, height);
 
   return {
     width,
     height,
-    x: clamp(windowState.x, metrics.margin, metrics.viewportWidth - metrics.margin - width),
-    y: clamp(windowState.y, metrics.margin, metrics.viewportHeight - metrics.margin - height),
+    x: clamp(windowState.x, bounds.minX, bounds.maxX),
+    y: clamp(windowState.y, bounds.minY, bounds.maxY),
   };
 };
 
@@ -216,7 +339,6 @@ type ContextMenuState =
       selectionText: string;
     };
 
-// Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
     return lora;
@@ -232,7 +354,6 @@ const formatLoRA = (lora: string | LoRAInfo): string => {
   return name;
 };
 
-// Format generation time: 87ms, 1.5s, or 2m 15s
 const formatGenerationTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   const seconds = ms / 1000;
@@ -250,11 +371,9 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-// Format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
 const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   const vramGb = vramMb / 1024;
 
-  // Known GPU VRAM mappings
   const gpuVramMap: Record<string, number> = {
     '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
     'A100': 40, 'A6000': 48, 'V100': 16,
@@ -278,17 +397,11 @@ const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   return `${vramGb.toFixed(1)} GB`;
 };
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
+const SUPPORTED_MEDIA_EXTENSION_REGEX = new RegExp(
+  `(${SUPPORTED_MEDIA_EXTENSIONS.map((ext) => ext.replace('.', '\\.')).join('|')})$`,
+  'i'
+);
 
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
-
-// Helper component for consistently rendering metadata items
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -315,7 +428,6 @@ const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPromp
   );
 };
 
-// Helper to format time
 const formatTime = (seconds: number) => {
   if (!Number.isFinite(seconds)) return '0:00';
   const mins = Math.floor(seconds / 60);
@@ -331,13 +443,11 @@ const VideoPlayer: React.FC<{
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   
-  // State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   
-  // Persistent state
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('video_player_volume');
     return saved ? parseFloat(saved) : 1;
@@ -349,7 +459,6 @@ const VideoPlayer: React.FC<{
     return localStorage.getItem('video_player_loop') === 'true';
   });
 
-  // Apply properties when video ref changes or state changes
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
@@ -394,8 +503,6 @@ const VideoPlayer: React.FC<{
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
-      // Auto-enable loop for short videos (< 5s) if not manually set? 
-      // For now, respect user preference only to avoid confusion.
     }
   };
 
@@ -507,6 +614,7 @@ const VideoPlayer: React.FC<{
 
 
 const ImageModal: React.FC<ImageModalProps> = ({
+  modalId,
   image,
   onClose,
   onImageDeleted,
@@ -521,12 +629,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
   isActive = true,
   onActivate,
   initialWindowOffset = 0,
+  initialWindowState,
+  onWindowStateChange,
   isMinimized = false,
   onMinimize,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [newName, setNewName] = useState(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+  const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -543,12 +653,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const [showPerformance, setShowPerformance] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'details' | 'workflow'>('details');
-  const [sidebarWidth, setSidebarWidth] = useState(340);
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DETAILS_SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarHeight, setSidebarHeight] = useState(DETAILS_SIDEBAR_DEFAULT_HEIGHT);
+  const [sidebarResizeState, setSidebarResizeState] = useState<DetailsSidebarResizeState>(null);
+  const isResizingSidebar = sidebarResizeState !== null;
   const [detailsPlacement, setDetailsPlacement] = useState<'right' | 'bottom'>('right');
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [modalWindow, setModalWindow] = useState<ModalWindowState>(() => {
+    if (initialWindowState) {
+      return clampModalWindowToViewport(initialWindowState);
+    }
+
     const defaultWindow = createDefaultModalWindow();
     return clampModalWindowToViewport({
       ...defaultWindow,
@@ -562,32 +678,64 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveModalWindowRef = useRef<ModalWindowState>(modalWindow);
   const modalPaintFrameRef = useRef<number | null>(null);
   const restoredModalWindowRef = useRef<ModalWindowState | null>(null);
+  const isMinimizeAnimatingRef = useRef(false);
+  const wasMinimizedRef = useRef(isMinimized);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
+  const enableAnimations = useSettingsStore((state) => state.enableAnimations);
 
-  // Zoom and pan states
+  useEffect(() => {
+    if (!isMinimized) {
+      isMinimizeAnimatingRef.current = false;
+    }
+  }, [isMinimized]);
+
+  useLayoutEffect(() => {
+    const wasMinimized = wasMinimizedRef.current;
+    wasMinimizedRef.current = isMinimized;
+
+    if (isMinimized || !wasMinimized || shouldSkipWindowAnimation(enableAnimations)) {
+      return;
+    }
+
+    const modalElement = modalShellRef.current;
+    const targetElement = getFooterWindowElement(modalId);
+
+    if (!modalElement || !targetElement) {
+      return;
+    }
+
+    const modalRect = modalElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+
+    modalElement.style.pointerEvents = 'none';
+    modalElement.style.opacity = '0';
+
+    const restoreModalInteractivity = () => {
+      modalElement.style.pointerEvents = '';
+      modalElement.style.opacity = '';
+    };
+
+    void animateWindowProxy(targetRect, modalRect, zIndex).then(restoreModalInteractivity, restoreModalInteractivity);
+  }, [enableAnimations, isMinimized, modalId, zIndex]);
+
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // A1111 integration hooks
   const { copyToA1111, isCopying, copyStatus } = useCopyToA1111();
   const { generateWithA1111, isGenerating, generateStatus } = useGenerateWithA1111();
 
-  // ComfyUI integration hooks
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
-  // Image comparison hook
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
-  // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
-  // Annotations hooks
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
   const setImageRating = useImageStore((state) => state.setImageRating);
   const addTagToImage = useImageStore((state) => state.addTagToImage);
@@ -602,12 +750,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
 
-  // Shadow Metadata Hook
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
 
-  // Get live tags and favorite status from store instead of props
   const imageFromStore = useImageStore(
     useCallback(
       (state) => state.images.find((candidate) => candidate.id === image.id),
@@ -617,8 +763,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const liveImage = imageFromStore ?? image;
   const thumbnail = useResolvedThumbnail(liveImage);
   const isVideo = isVideoFileName(image.name, image.fileType);
-  const showA1111Actions = !isVideo && a1111Enabled;
-  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const isAudio = isAudioFileName(image.name, image.fileType);
+  const isPlayableMedia = isVideo || isAudio;
+  const showA1111Actions = !isPlayableMedia && a1111Enabled;
+  const showComfyUIActions = !isPlayableMedia && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const currentTags = liveImage.tags || [];
@@ -635,13 +783,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
 
-  // State for tag input
   const [tagInput, setTagInput] = useState('');
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const mediaOverlayHideTimeoutRef = useRef<number | null>(null);
   const previewKeymap = useSettingsStore((state) => state.keymap.preview as Record<string, string> | undefined);
+  const toggleFullscreenKeybinding = previewKeymap?.toggleFullscreenInViewer || 'alt+enter';
   const isWindowInteractionActive = modalInteraction.mode !== 'idle';
   const showSidebar = !isFullscreen && !isSidebarCollapsed;
   const showSidebarOnBottom = showSidebar && detailsPlacement === 'bottom';
@@ -684,7 +832,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     });
   }, [applyModalWindowStyles]);
 
-  // Full screen toggle - calls Electron API for actual fullscreen
   const toggleFullscreen = useCallback(async () => {
     if (window.electronAPI?.toggleFullscreen) {
       const result = await window.electronAPI.toggleFullscreen();
@@ -717,18 +864,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }, 1500);
   }, [clearMediaOverlayHideTimer]);
 
-  // Listen for fullscreen changes from Electron
   useEffect(() => {
     if (!isActive) {
       return;
     }
 
-    // Listen for fullscreen-changed events from Electron (when user presses F11 or uses menu)
     const unsubscribeFullscreenChanged = window.electronAPI?.onFullscreenChanged?.((data) => {
       setIsFullscreen(data.isFullscreen ?? false);
     });
 
-    // Listen for fullscreen-state-check events (periodic check for state changes)
     const unsubscribeFullscreenStateCheck = window.electronAPI?.onFullscreenStateCheck?.((data) => {
       setIsFullscreen(data.isFullscreen ?? false);
     });
@@ -739,7 +883,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [isActive]);
 
-  // Initialize fullscreen mode from sessionStorage (backward compatibility)
   useEffect(() => {
     if (!isActive) {
       return;
@@ -764,7 +907,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
     modalWindowRef.current = modalWindow;
     liveModalWindowRef.current = modalWindow;
     applyModalWindowStyles(modalWindow);
-  }, [applyModalWindowStyles, modalWindow]);
+    onWindowStateChange?.(modalWindow);
+  }, [applyModalWindowStyles, modalWindow, onWindowStateChange]);
 
   useEffect(() => {
     return () => {
@@ -803,17 +947,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const currentWindow = liveModalWindowRef.current;
 
       if (modalInteraction.mode === 'drag') {
+        const bounds = getRecoverableModalPositionBounds(currentWindow.width, currentWindow.height);
+
         scheduleModalWindowPaint({
           ...currentWindow,
           x: clamp(
             modalInteraction.initialX + (event.clientX - modalInteraction.startX),
-            metrics.margin,
-            metrics.viewportWidth - metrics.margin - currentWindow.width
+            bounds.minX,
+            bounds.maxX
           ),
           y: clamp(
             modalInteraction.initialY + (event.clientY - modalInteraction.startY),
-            metrics.margin,
-            metrics.viewportHeight - metrics.margin - currentWindow.height
+            bounds.minY,
+            bounds.maxY
           ),
         });
         return;
@@ -846,7 +992,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (resizeFromLeft) {
         nextX = clamp(
           modalInteraction.initialX + deltaX,
-          metrics.margin,
+          -modalInteraction.initialWidth + MODAL_MIN_VISIBLE_WIDTH,
           modalInteraction.initialX + modalInteraction.initialWidth - metrics.minWidth
         );
         nextWidth = modalInteraction.initialWidth - (nextX - modalInteraction.initialX);
@@ -863,7 +1009,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (resizeFromTop) {
         nextY = clamp(
           modalInteraction.initialY + deltaY,
-          metrics.margin,
+          0,
           modalInteraction.initialY + modalInteraction.initialHeight - metrics.minHeight
         );
         nextHeight = modalInteraction.initialHeight - (nextY - modalInteraction.initialY);
@@ -909,7 +1055,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
-   // Merge metadata for display
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
   const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
     ...nMeta,
@@ -931,11 +1076,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
      topics: [],
   } as BaseMetadata : nMeta;
 
-  // If we have shadow duration, we might need a way to override video info if it exists, or just use it in display
-  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds;
+  const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
 
 
   const videoInfo = (nMeta as any)?.video;
+  const audioInfo = (nMeta as any)?.audio;
   const motionModel = (nMeta as any)?.motion_model;
 
   useEffect(() => {
@@ -1021,11 +1166,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     });
   }, [isFullscreen, isWindowMaximized]);
 
-  const resetModalWindow = useCallback(() => {
-    setIsWindowMaximized(false);
-    setModalWindow(createDefaultModalWindow());
-  }, []);
-
   const toggleWindowMaximize = useCallback(() => {
     if (isWindowMaximized) {
       setIsWindowMaximized(false);
@@ -1062,7 +1202,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     try {
-      // Usar navigator.clipboard (funciona tanto no Electron quanto no browser)
       await navigator.clipboard.writeText(text);
 
       const notification = document.createElement('div');
@@ -1158,7 +1297,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const copyImage = async () => {
     hideContextMenu();
-    if (isVideo) {
+    if (isPlayableMedia) {
       return;
     }
     const result = await copyImageToClipboard(image, directoryPath);
@@ -1199,7 +1338,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       alert('Cannot determine file location: directory path is missing.');
       return;
     }
-    // The showInExplorer utility can handle the full path directly
     showInExplorer(`${directoryPath}/${image.name}`);
   };
 
@@ -1222,13 +1360,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     try {
-      // 1. Ask user for destination directory
       const destResult = await window.electronAPI.showDirectoryDialog();
       if (destResult.canceled || !destResult.path) {
-        return; // User cancelled
+        return;
       }
       const destDir = destResult.path;
-      // Get safe paths using joinPaths
       const sourcePathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
       if (!sourcePathResult.success || !sourcePathResult.path) {
         throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
@@ -1241,21 +1377,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
       const sourcePath = sourcePathResult.path;
       const destPath = destPathResult.path;
 
-      // 2. Read the source file
       const readResult = await window.electronAPI.readFile(sourcePath);
       if (!readResult.success || !readResult.data) {
         alert(`Failed to read original file: ${readResult.error}`);
         return;
       }
 
-      // 3. Write the new file
       const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
       if (!writeResult.success) {
         alert(`Failed to export image: ${writeResult.error}`);
         return;
       }
 
-      // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
     } catch (error) {
@@ -1265,14 +1398,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  // Reset zoom and pan when image changes
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     revealMediaOverlay();
   }, [image.id, revealMediaOverlay]);
 
-  // Reset zoom and pan when entering/exiting fullscreen
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -1280,24 +1411,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
     clearMediaOverlayHideTimer();
   }, [clearMediaOverlayHideTimer, isFullscreen]);
 
-  // Zoom handlers
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
 
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(1, zoom + delta), 5); // Min 1x, Max 5x
+    const newZoom = Math.min(Math.max(1, zoom + delta), 5);
 
     setZoom(newZoom);
 
-    // Reset pan if zooming out to 1x
     if (newZoom === 1) {
       setPan({ x: 0, y: 0 });
     }
   }, [zoom]);
 
-  // Pan handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!(e.target instanceof Element) || !e.target.closest('img, video, canvas, [data-media-element="true"]')) {
+    if (!(e.target instanceof Element) || !e.target.closest('img, video, audio, canvas, [data-media-element="true"]')) {
       return;
     }
 
@@ -1361,12 +1489,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     let isMounted = true;
     const hasPreview = Boolean(preferredThumbnailUrl);
 
-    setImageUrl(isVideo ? null : (preferredThumbnailUrl ?? null));
+    setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
 
     const loadImage = async () => {
       if (!isMounted) return;
 
-      // Validate directoryPath before attempting to load (prevents recursion)
       if (!directoryPath && window.electronAPI) {
         console.error('Cannot load image: directoryPath is undefined');
         if (isMounted && !hasPreview) {
@@ -1409,14 +1536,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
     };
 
-    if (!isVideo) {
+    if (!isPlayableMedia) {
       prefetchNeighbors();
     }
 
     return () => {
       isMounted = false;
     };
-  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isVideo]);
+  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isPlayableMedia]);
 
   const handleToggleFavorite = useCallback(() => {
     toggleFavorite(image.id);
@@ -1441,19 +1568,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     focusInput();
   }, [isFullscreen, toggleFullscreen]);
 
-  // Separate effect for wheel event listener to avoid image reloading on zoom changes
   useEffect(() => {
     const imageContainer = imageContainerRef.current;
-    if (imageContainer) {
+    if (imageContainer && !isPlayableMedia) {
       imageContainer.addEventListener('wheel', handleWheel, { passive: false });
     }
 
     return () => {
-      if (imageContainer) {
+      if (imageContainer && !isPlayableMedia) {
         imageContainer.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [handleWheel]);
+  }, [handleWheel, isPlayableMedia]);
 
   const handleDelete = useCallback(async () => {
     if (isIndexing) {
@@ -1462,14 +1588,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     if (window.confirm('Are you sure you want to delete this image? This action cannot be undone.')) {
       const idToDelete = image.id;
-      const imageToDelete = image; // Capture reference
+      const imageToDelete = image;
 
-      // Navigate to next/previous image BEFORE deletion to keep modal open
-      // Check if we have other images to navigate to
       const hasMoreImages = totalImages > 1;
       
       if (hasMoreImages) {
-        // Prefer next image, fallback to previous if at the end
         if (currentIndex < totalImages - 1) {
           onNavigateNext?.();
         } else {
@@ -1481,7 +1604,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (result.success) {
         onImageDeleted?.(idToDelete);
         
-        // Only close if we didn't have anywhere to navigate (last image deleted)
         if (!hasMoreImages) {
           onClose();
         }
@@ -1497,7 +1619,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't handle navigation keys if hotkeys are paused (e.g., GenerateModal is open)
       if (hotkeyManager.areHotkeysPaused()) {
         return;
       }
@@ -1505,15 +1626,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (isRenaming) return;
       const isTypingContext = isTypingElement(event.target);
 
-      // Let focused text fields handle their own Escape behavior.
       if (event.key === 'Escape') {
         if (isTypingContext) {
           return;
         }
 
-        event.stopPropagation(); // Prevent global hotkeys (closing sidebar)
+      event.stopPropagation();
         if (isFullscreen) {
-          // Call toggleFullscreen to actually exit Electron fullscreen
           toggleFullscreen();
         } else {
           onClose();
@@ -1525,11 +1644,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      // Alt+Enter = Toggle fullscreen (works in both grid and modal)
-      if (event.key === 'Enter' && event.altKey) {
+      if (eventMatchesKeybinding(event, toggleFullscreenKeybinding)) {
         event.preventDefault();
         event.stopPropagation();
-        toggleFullscreen(); // Toggle fullscreen ON/OFF
+        toggleFullscreen();
         return;
       }
 
@@ -1589,6 +1707,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     onNavigatePrevious,
     previewKeymap,
     toggleFullscreen,
+    toggleFullscreenKeybinding,
   ]);
 
   useEffect(() => {
@@ -1598,27 +1717,64 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [clearMediaOverlayHideTimer]);
 
   useEffect(() => {
-    if (!isResizingSidebar) return;
+    if (!sidebarResizeState || typeof window === 'undefined') {
+      return;
+    }
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (modalShellRef.current) {
-        const modalRect = modalShellRef.current.getBoundingClientRect();
-        const newWidth = modalRect.right - e.clientX;
-        setSidebarWidth(Math.max(300, Math.min(newWidth, Math.floor(modalRect.width * 0.7))));
+    const handlePointerMove = (event: PointerEvent) => {
+      const modalRect = modalShellRef.current?.getBoundingClientRect();
+      if (!modalRect) {
+        return;
       }
+
+      if (sidebarResizeState.axis === 'horizontal') {
+        const deltaX = event.clientX - sidebarResizeState.startX;
+        const nextWidth = sidebarResizeState.startSize - deltaX;
+        setSidebarWidth(clampDetailsSidebarWidth(nextWidth, modalRect.width));
+        return;
+      }
+
+      const deltaY = event.clientY - sidebarResizeState.startY;
+      const nextHeight = sidebarResizeState.startSize - deltaY;
+      setSidebarHeight(clampDetailsSidebarHeight(nextHeight, modalRect.height));
     };
 
-    const handleMouseUp = () => {
-      setIsResizingSidebar(false);
+    const handlePointerUp = () => {
+      setSidebarResizeState(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    window.addEventListener('blur', handlePointerUp);
+    document.body.style.cursor = sidebarResizeState.axis === 'horizontal' ? 'col-resize' : 'row-resize';
+    document.body.style.userSelect = 'none';
+
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      window.removeEventListener('blur', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
-  }, [isResizingSidebar]);
+  }, [sidebarResizeState]);
+
+  const handleDetailsSidebarResizeStart = useCallback((
+    event: React.PointerEvent<HTMLDivElement>,
+    axis: 'horizontal' | 'vertical'
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    setSidebarResizeState({
+      axis,
+      startX: event.clientX,
+      startY: event.clientY,
+      startSize: axis === 'horizontal' ? sidebarWidth : sidebarHeight,
+    });
+  }, [sidebarHeight, sidebarWidth]);
 
   useEffect(() => {
     if (!isRenaming) {
@@ -1650,7 +1806,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     }
   };
 
-  // Tag management handlers
   const handleAddTag = (value = tagInput) => {
     if (!value.trim()) return;
     addTagToImage(image.id, value);
@@ -1665,8 +1820,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
     removeAutoTagFromImage(image.id, tag);
   };
 
+  const handleMinimizeWithAnimation = useCallback(async () => {
+    if (!onMinimize || isMinimizeAnimatingRef.current) {
+      return;
+    }
+
+    const modalElement = modalShellRef.current;
+    const targetElement = getFooterWindowElement(modalId);
+    onWindowStateChange?.(clampModalWindowToViewport(liveModalWindowRef.current));
+
+    if (!modalElement || !targetElement || shouldSkipWindowAnimation(enableAnimations)) {
+      onMinimize();
+      return;
+    }
+
+    const modalRect = modalElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+
+    isMinimizeAnimatingRef.current = true;
+    modalElement.style.pointerEvents = 'none';
+    modalElement.style.opacity = '0';
+
+    try {
+      await animateWindowProxy(modalRect, targetRect, zIndex);
+    } finally {
+      onMinimize();
+    }
+  }, [enableAnimations, modalId, onMinimize, onWindowStateChange, zIndex]);
+
   const handlePromoteAutoTag = async (tag: string) => {
-    // Add as manual tag and remove from auto-tags
     await addTagToImage(image.id, tag);
     removeAutoTagFromImage(image.id, tag);
   };
@@ -1674,6 +1856,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
   if (isMinimized) {
     return null;
   }
+
+  const modalShellStateClass = isActive
+    ? 'border-gray-800 shadow-2xl ring-1 ring-white/10'
+    : 'border-gray-800/70 shadow-lg ring-1 ring-white/5';
+  const titleBarStateClass = isActive
+    ? 'border-gray-800 bg-gray-950/95'
+    : 'border-gray-700 bg-gray-800/95';
+  const titleTextClass = isActive ? 'text-gray-100' : 'text-gray-400';
+  const titleMetaClass = isActive ? 'text-gray-500' : 'text-gray-600';
+  const modalEntryAnimationClass = !enableAnimations || (wasMinimizedRef.current && !isMinimized)
+    ? ''
+    : 'animate-in fade-in zoom-in-95';
 
   return (
     <div
@@ -1688,8 +1882,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
         className={`${
           isFullscreen 
             ? 'fixed inset-0 h-full w-full rounded-none'
-            : 'fixed bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10'
-        } pointer-events-auto flex flex-col animate-in fade-in zoom-in-95 ${isWindowInteractionActive ? 'select-none' : ''}`}
+            : `fixed bg-gray-900 border rounded-2xl overflow-hidden ${modalShellStateClass}`
+        } pointer-events-auto flex flex-col ${modalEntryAnimationClass} ${isWindowInteractionActive ? 'select-none' : ''}`}
         onPointerDown={() => onActivate?.()}
         onClick={(e) => {
           e.stopPropagation();
@@ -1709,7 +1903,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
       >
         {!isFullscreen && (
           <div
-            className="flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 backdrop-blur-sm cursor-move"
+            className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 backdrop-blur-sm cursor-move transition-colors duration-150 ${titleBarStateClass}`}
             onPointerDown={handleWindowSurfacePointerDown}
             onDoubleClick={toggleWindowMaximize}
           >
@@ -1730,7 +1924,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                         void confirmRename();
                       } else if (event.key === 'Escape') {
                         setIsRenaming(false);
-                        setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                        setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
                       }
                     }}
                     className="min-w-0 flex-1 rounded-lg border border-gray-600 bg-gray-900 px-2 py-1 text-sm font-semibold text-white outline-none transition-colors focus:border-blue-500"
@@ -1746,7 +1940,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <button
                     onClick={() => {
                       setIsRenaming(false);
-                      setNewName(image.name.replace(/\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i, ''));
+                      setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
                     }}
                     className="rounded-lg bg-gray-700 px-2.5 py-1 text-xs font-medium text-gray-100 transition-colors hover:bg-gray-600"
                     title="Cancel rename"
@@ -1755,11 +1949,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="truncate text-sm font-semibold text-gray-100" title={image.name}>
+                <div className={`truncate text-sm font-semibold ${titleTextClass}`} title={image.name}>
                   {image.name}
                 </div>
               )}
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
+              <div className={`flex items-center gap-2 text-[11px] ${titleMetaClass}`}>
                 <span className="min-w-0 truncate" title={imageFullPath}>
                   {imageFullPath}
                 </span>
@@ -1797,7 +1991,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <Pencil className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={onMinimize}
+                onClick={() => void handleMinimizeWithAnimation()}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="rounded-lg border border-gray-700 bg-gray-800 p-1.5 text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 hover:text-white"
                 title="Minimize window"
@@ -1840,14 +2034,24 @@ const ImageModal: React.FC<ImageModalProps> = ({
           } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
-          onMouseDown={isVideo ? undefined : handleMouseDown}
-          onMouseMove={isVideo ? undefined : handleMouseMove}
-          onMouseUp={isVideo ? undefined : handleMouseUp}
-          onMouseLeave={isVideo ? undefined : handleMouseUp}
-          style={{ cursor: !isVideo && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+          onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
+          onMouseMove={isPlayableMedia ? undefined : handleMouseMove}
+          onMouseUp={isPlayableMedia ? undefined : handleMouseUp}
+          onMouseLeave={isPlayableMedia ? undefined : handleMouseUp}
+          style={{ cursor: !isPlayableMedia && zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
         >
           {imageUrl ? (
-            isVideo ? (
+            isAudio ? (
+              <div data-no-window-drag="true" className="h-full w-full" onContextMenu={handleContextMenu}>
+                <AudioPlayer
+                  key={image.id}
+                  src={imageUrl}
+                  title={image.name}
+                  autoPlay
+                  onContextMenu={handleContextMenu}
+                />
+              </div>
+            ) : isVideo ? (
               <div data-no-window-drag="true" className="max-h-full max-w-full">
                 <VideoPlayer
                   key={image.id}
@@ -1876,29 +2080,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
           {onNavigatePrevious && (
             <button
-              onClick={onNavigatePrevious}
-              className={`absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              data-no-window-drag="true"
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNavigatePrevious();
+              }}
+              className="absolute inset-y-0 left-0 z-20 w-16 cursor-pointer bg-gradient-to-r from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              aria-label="Previous image"
               title="Previous image"
-            >
-              ←
-            </button>
+            />
           )}
           {onNavigateNext && (
             <button
-              onClick={onNavigateNext}
-              className={`absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-2 text-white/90 transition-[opacity,background-color] duration-300 ease-out hover:bg-black/55 ${mediaOverlayVisibilityClass}`}
+              data-no-window-drag="true"
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onNavigateNext();
+              }}
+              className="absolute inset-y-0 right-0 z-20 w-16 cursor-pointer bg-gradient-to-l from-white/15 to-transparent opacity-0 transition-opacity duration-150 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none sm:w-20 lg:w-24"
+              aria-label="Next image"
               title="Next image"
-            >
-              →
-            </button>
+            />
           )}
 
-          <div data-no-window-drag="true" className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
+          <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
             {currentIndex + 1} / {totalImages}
           </div>
 
-          {!isVideo && (
-            <div data-no-window-drag="true" className={`absolute bottom-4 left-4 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
+          {!isPlayableMedia && (
+            <div data-no-window-drag="true" className={`absolute bottom-4 left-4 z-30 flex flex-col gap-2 rounded-lg border border-white/10 bg-black/35 p-2 backdrop-blur-sm transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
               <button
                 onClick={handleZoomIn}
                 disabled={zoom >= 5}
@@ -1931,13 +2145,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
             </div>
           )}
 
-          <div data-no-window-drag="true" className={`absolute top-4 right-4 flex flex-col items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
+          <div data-no-window-drag="true" className={`absolute top-4 right-4 z-30 flex items-end gap-2 transition-opacity duration-300 ease-out ${mediaOverlayVisibilityClass}`}>
             {isFullscreen ? (
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-row items-center gap-2">
                 <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 transition-colors hover:bg-black/55"
-                  title="Exit fullscreen"
+                  title={`Exit fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Minimize2 className="h-4 w-4" />
                 </button>
@@ -1951,7 +2165,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-row items-center gap-2">
                 <button
                   onClick={() => setDetailsPlacement((current) => current === 'right' ? 'bottom' : 'right')}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
@@ -1967,16 +2181,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   {showSidebar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
                 <button
-                  onClick={resetModalWindow}
-                  className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title="Reset window"
-                >
-                  <Repeat className="h-4 w-4" />
-                </button>
-                <button
                   onClick={toggleFullscreen}
                   className="rounded-full border border-white/10 bg-black/35 p-2 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/55"
-                  title="Fullscreen"
+                  title={`Fullscreen (${toggleFullscreenKeybinding})`}
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
@@ -1988,27 +2195,37 @@ const ImageModal: React.FC<ImageModalProps> = ({
         {/* Metadata Panel */}
         {showSidebar && (
         <>
-          {!showSidebarOnBottom && (
-             <div
-               onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true); }}
-               className={`w-1 cursor-col-resize hover:bg-gray-500/50 bg-gray-800/80 shrink-0 transition-colors ${isResizingSidebar ? 'bg-gray-500/80 z-50' : 'z-40'}`}
-               title="Resize sidebar"
-             />
-          )}
         <div
           data-window-drag-region="details"
           className={`w-full ${
             showSidebarOnBottom
-              ? 'h-[42%] min-h-[240px] border-t border-gray-800/80'
-              : 'h-full border-l border-transparent'
+              ? `border-t border-gray-800/80 ${isResizingSidebar ? 'transition-none' : 'transition-[height] duration-300 ease-in-out'}`
+              : `h-full border-l border-transparent ${isResizingSidebar ? 'transition-none' : 'transition-[width] duration-300 ease-in-out'}`
           } relative flex flex-col`}
           style={
             showSidebarOnBottom
-              ? {}
-              : { width: sidebarWidth, minWidth: 300, maxWidth: "70%" }
+              ? { height: sidebarHeight, minHeight: DETAILS_SIDEBAR_MIN_HEIGHT, maxHeight: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
+              : { width: sidebarWidth, minWidth: DETAILS_SIDEBAR_MIN_WIDTH, maxWidth: `${DETAILS_SIDEBAR_MAX_RATIO * 100}%` }
           }
           onContextMenu={handleSelectionContextMenu}
         >
+          {showSidebarOnBottom ? (
+            <div
+              onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'vertical')}
+              className="absolute inset-x-0 top-0 z-50 flex h-3 -translate-y-1/2 cursor-row-resize items-center justify-center touch-none"
+              title="Drag to resize details sidebar"
+            >
+              <div className={`h-1 w-16 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+            </div>
+          ) : (
+            <div
+              onPointerDown={(event) => handleDetailsSidebarResizeStart(event, 'horizontal')}
+              className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+              title="Drag to resize details sidebar"
+            >
+              <div className={`h-16 w-1 rounded-full transition-colors duration-150 ${isResizingSidebar ? 'bg-blue-400/90 shadow-[0_0_16px_rgba(96,165,250,0.55)]' : 'bg-gray-500/70 hover:bg-blue-400/80'}`} />
+            </div>
+          )}
           <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Annotations Section */}
           <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50 space-y-2">
@@ -2256,6 +2473,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
                             return formats[0];
                           })()} 
                         />
+                      </div>
+                    )}
+                    {audioInfo && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {effectiveDuration != null && (
+                          <MetadataItem label="Duration" value={formatDurationSeconds(Number(effectiveDuration))} />
+                        )}
+                        <MetadataItem label="Audio Codec" value={audioInfo.codec} />
+                        <MetadataItem label="Audio Format" value={audioInfo.format} />
+                        <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                        <MetadataItem label="Channels" value={audioInfo.channels} />
+                        <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                       </div>
                     )}
                     {motionModel?.name && (
@@ -2756,8 +2985,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
             <>
               <button
                 onClick={copyImage}
-                className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isVideo ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
-                disabled={isVideo}
+                className={`w-full text-left px-4 py-2 text-sm text-gray-200 transition-colors flex items-center gap-2 ${isPlayableMedia ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700 hover:text-white'}`}
+                disabled={isPlayableMedia}
               >
                 <Copy className="w-4 h-4" />
                 Copy to Clipboard
@@ -2903,13 +3132,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   );
 };
 
-// Wrap with React.memo to avoid churn during metadata updates while still
-// invalidating on the props that change visible window state.
 export default React.memo(ImageModal, (prevProps, nextProps) => {
-  // Return true if props are EQUAL (skip re-render)
-  // Return false if props are DIFFERENT (re-render)
-
-  // Helper to compare tag arrays
   const tagsEqual = (tags1?: string[], tags2?: string[]) => {
     if (!tags1 && !tags2) return true;
     if (!tags1 || !tags2) return false;
@@ -2929,8 +3152,13 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.isIndexing === nextProps.isIndexing &&
     prevProps.zIndex === nextProps.zIndex &&
     prevProps.isActive === nextProps.isActive &&
+    prevProps.modalId === nextProps.modalId &&
     prevProps.initialWindowOffset === nextProps.initialWindowOffset &&
+    prevProps.initialWindowState?.x === nextProps.initialWindowState?.x &&
+    prevProps.initialWindowState?.y === nextProps.initialWindowState?.y &&
+    prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
+    prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized;
 
-  return propsEqual; // true = skip re-render, false = re-render
+  return propsEqual;
 });

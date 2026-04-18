@@ -11,6 +11,7 @@ import type {
 } from '../types';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
+import { resolveMediaType } from '../utils/mediaTypes.js';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { resolveSmartCollectionImageIds } from './imageAnnotationsStorage';
 
@@ -183,13 +184,11 @@ const matchesAdvancedFilters = (image: IndexedImage, filters: AutomationRuleFilt
 
   if (Array.isArray(advanced.generationModes) && advanced.generationModes.length > 0) {
     const explicitGenerationType = image.metadata?.normalizedMetadata?.generationType;
-    const isVideo =
-      image.metadata?.normalizedMetadata?.media_type === 'video' ||
-      (image.fileType ?? '').startsWith('video/');
+    const mediaType = image.metadata?.normalizedMetadata?.media_type ?? resolveMediaType(image.name, image.fileType);
     const resolvedGenerationMode =
       explicitGenerationType === 'txt2img' || explicitGenerationType === 'img2img'
         ? explicitGenerationType
-        : isVideo
+        : mediaType === 'video' || mediaType === 'audio'
           ? null
           : 'txt2img';
 
@@ -199,10 +198,14 @@ const matchesAdvancedFilters = (image: IndexedImage, filters: AutomationRuleFilt
   }
 
   if (Array.isArray(advanced.mediaTypes) && advanced.mediaTypes.length > 0) {
+    const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+    const inferredMediaType = resolveMediaType(image.name, image.fileType);
     const resolvedMediaType =
-      image.metadata?.normalizedMetadata?.media_type === 'video' || (image.fileType ?? '').startsWith('video/')
-        ? 'video'
-        : 'image';
+      metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+        ? metadataMediaType
+        : inferredMediaType === 'video' || inferredMediaType === 'audio'
+          ? inferredMediaType
+          : 'image';
     if (!advanced.mediaTypes.includes(resolvedMediaType)) {
       return false;
     }

@@ -6,6 +6,22 @@
 
 import { ParserNode } from './types';
 
+function coerceTextValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value) && 'value' in value) {
+    return coerceTextValue((value as { value?: unknown }).value);
+  }
+
+  return null;
+}
+
 /**
  * Concatenates multiple text inputs into a single string.
  * Used by nodes like ttN concat, JWStringConcat.
@@ -149,8 +165,12 @@ export function extractLorasFromStack(
  * Prioritizes populated_text (result after wildcard) over wildcard_text (template).
  */
 export function getWildcardOrPopulatedText(node: ParserNode): string {
-  const populated = node.inputs?.populated_text || node.widgets_values?.[1];
-  const wildcard = node.inputs?.wildcard_text || node.widgets_values?.[0];
+  const populated =
+    coerceTextValue(node.inputs?.populated_text) ??
+    coerceTextValue(node.widgets_values?.[1]);
+  const wildcard =
+    coerceTextValue(node.inputs?.wildcard_text) ??
+    coerceTextValue(node.widgets_values?.[0]);
 
   return (populated || wildcard || '').trim();
 }

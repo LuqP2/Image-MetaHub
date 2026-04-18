@@ -26,7 +26,7 @@ export interface ConditionValueSource {
   availableAutoTags: TagInfo[];
 }
 
-export interface CurrentRuleFiltersSnapshot extends AutomationRuleFilterCriteria {}
+export type CurrentRuleFiltersSnapshot = AutomationRuleFilterCriteria;
 
 export const TEXT_CONDITION_FIELDS: AutomationConditionField[] = ['prompt', 'negativePrompt', 'filename', 'metadata', 'search'];
 export const FACET_CONDITION_FIELDS: AutomationConditionField[] = [

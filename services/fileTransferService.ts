@@ -7,6 +7,7 @@ import type {
   IndexedImageTransferMode,
   IndexedImageTransferResultItem,
 } from '../types';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 interface TransferIndexedImagesParams {
   images: IndexedImage[];
@@ -57,19 +58,6 @@ function createMockFileHandle(fileName: string, absolutePath: string): FileSyste
       });
     },
   } as ElectronFileHandle as FileSystemFileHandle;
-}
-
-function inferMimeTypeFromName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
-  return 'image/jpeg';
 }
 
 function buildTransferredEntry(item: IndexedImageTransferResultItem) {

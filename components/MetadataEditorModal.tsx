@@ -28,7 +28,6 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
   const [resources, setResources] = useState<ShadowResource[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Initialize form when opening
   useEffect(() => {
     if (isOpen) {
       setPrompt(initialMetadata?.prompt || '');
@@ -48,7 +47,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
     setIsSaving(true);
     try {
       const newMetadata: ShadowMetadata = {
-        imageId, // Ensure we keep the correct ID
+        imageId,
         prompt: prompt || undefined,
         negativePrompt: negativePrompt || undefined,
         seed: seed,

@@ -23,6 +23,28 @@ const normalizeSizes = (sizes: number[]): number[] => {
   return sizes.map((size) => (size / total) * 100);
 };
 
+const readStoredPaneSizes = (
+  storageKey: string,
+  paneCount: number,
+  defaultSizes: number[]
+): number[] => {
+  try {
+    const storedSizes = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null');
+    return sanitizeStoredPaneSizes(storedSizes, paneCount, defaultSizes);
+  } catch (error) {
+    console.warn('[VerticalSplitPanels] Failed to read stored pane sizes', error);
+    return normalizeSizes(defaultSizes);
+  }
+};
+
+const writeStoredPaneSizes = (storageKey: string, sizes: number[]) => {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(sizes));
+  } catch (error) {
+    console.warn('[VerticalSplitPanels] Failed to persist pane sizes', error);
+  }
+};
+
 export const sanitizeStoredPaneSizes = (
   rawSizes: unknown,
   expectedLength: number,
@@ -53,12 +75,7 @@ const VerticalSplitPanels: React.FC<VerticalSplitPanelsProps> = ({
       return normalizeSizes(defaultSizes);
     }
 
-    try {
-      const storedSizes = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null');
-      return sanitizeStoredPaneSizes(storedSizes, panes.length, defaultSizes);
-    } catch {
-      return normalizeSizes(defaultSizes);
-    }
+    return readStoredPaneSizes(storageKey, panes.length, defaultSizes);
   });
   const [dragState, setDragState] = useState<{
     handleIndex: number;
@@ -75,7 +92,7 @@ const VerticalSplitPanels: React.FC<VerticalSplitPanelsProps> = ({
       return;
     }
 
-    window.localStorage.setItem(storageKey, JSON.stringify(sizes));
+    writeStoredPaneSizes(storageKey, sizes);
   }, [sizes, storageKey]);
 
   useEffect(() => {

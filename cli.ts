@@ -6,13 +6,14 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import os from 'os';
 import { parseImageFile } from './services/metadataEngine';
+import { isSupportedMediaFileName } from './utils/mediaTypes.js';
 
 const program = new Command();
 
 program
   .name('imagemetahub-cli')
   .description('Image MetaHub CLI - Parse AI-generated image metadata')
-  .version('0.14.1');
+  .version('0.14.2');
 
 type ParseOptions = { json: boolean; pretty: boolean; raw?: boolean; quiet?: boolean };
 type IndexOptions = { out: string; recursive: boolean; raw?: boolean; quiet?: boolean; concurrency?: string };
@@ -42,8 +43,7 @@ function formatOutput(
 }
 
 function isImageFile(entry: string) {
-  const ext = path.extname(entry).toLowerCase();
-  return ['.png', '.jpg', '.jpeg', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext);
+  return isSupportedMediaFileName(entry);
 }
 
 async function collectFiles(dir: string, recursive: boolean): Promise<string[]> {
@@ -63,8 +63,8 @@ async function collectFiles(dir: string, recursive: boolean): Promise<string[]> 
 
 program
   .command('parse')
-  .description('Parse metadata from a single image (PNG/JPG/WebP)')
-  .argument('<file>', 'Image file to parse')
+  .description('Parse metadata from a single media file (image, video, or audio)')
+  .argument('<file>', 'Media file to parse')
   .option('--json', 'Output as JSON', true)
   .option('--pretty', 'Pretty-print JSON output', false)
   .option('--raw', 'Include raw metadata payload when available', false)

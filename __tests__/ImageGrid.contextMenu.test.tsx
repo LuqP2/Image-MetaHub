@@ -2,6 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ImageGrid from '../components/ImageGrid';
+import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { IndexedImage } from '../types';
@@ -146,6 +147,23 @@ const Harness = ({ images }: { images: IndexedImage[] }) => {
     <ImageGrid
       images={images}
       onImageClick={vi.fn()}
+      selectedImages={selectedImages}
+      currentPage={1}
+      totalPages={1}
+      onPageChange={vi.fn()}
+      onBatchExport={vi.fn()}
+    />
+  );
+};
+
+const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
+  const selectedImages = useImageStore((state) => state.selectedImages);
+  const { handleImageSelection } = useImageSelection();
+
+  return (
+    <ImageGrid
+      images={images}
+      onImageClick={handleImageSelection}
       selectedImages={selectedImages}
       currentPage={1}
       totalPages={1}
@@ -414,5 +432,180 @@ describe('ImageGrid context menu', () => {
     fireEvent.click(screen.getByText('Carros'));
 
     expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
+  });
+});
+
+describe('ImageGrid selection opening behavior', () => {
+  beforeEach(() => {
+    showContextMenuMock.mockReset();
+    hideContextMenuMock.mockReset();
+    contextMenuStateMock.visible = false;
+    contextMenuStateMock.image = undefined;
+    useImageStore.getState().resetState();
+    useSettingsStore.getState().resetState();
+    useSettingsStore.setState({
+      itemsPerPage: 20,
+      imageSize: 120,
+      disableThumbnails: false,
+      showFilenames: false,
+      showFullFilePath: false,
+      doubleClickToOpen: false,
+      sensitiveTags: [],
+      blurSensitiveImages: false,
+      enableSafeMode: false,
+    } as any);
+  });
+
+  it('preserves checked images when plain-clicking another image to open it', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByAltText('gamma.png'));
+
+    expect(useImageStore.getState().selectedImage?.id).toBe('img-3');
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('preserves checked images while previewing and double-click opening when double-click mode is enabled', () => {
+    const onImageClick = vi.fn();
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useSettingsStore.setState({ doubleClickToOpen: true } as any);
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(
+      <ImageGrid
+        images={images}
+        onImageClick={onImageClick}
+        selectedImages={useImageStore.getState().selectedImages}
+        currentPage={1}
+        totalPages={1}
+        onPageChange={vi.fn()}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    const imageThumb = screen.getByAltText('gamma.png');
+    fireEvent.click(imageThumb);
+
+    expect(useImageStore.getState().previewImage?.id).toBe('img-3');
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+    expect(onImageClick).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(imageThumb);
+
+    expect(onImageClick).toHaveBeenCalledTimes(1);
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('preserves checked images when middle-clicking an image', () => {
+    const onImageClick = vi.fn();
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={images} />);
+
+    const imageThumb = screen.getByAltText('gamma.png');
+    fireEvent.mouseDown(imageThumb, { button: 1 });
+    fireEvent(imageThumb, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('still toggles selection from the checkbox', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1']),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={images} />);
+
+    fireEvent.click(screen.getByTitle('Deselect image'));
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set());
+  });
+
+  it('clears checked images when clicking empty grid space without modifiers', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    const { container } = render(<Harness images={images} />);
+    const gridArea = container.querySelector('[data-area="grid"]') as HTMLElement;
+
+    fireEvent.mouseDown(gridArea, { button: 0, clientX: 4, clientY: 4 });
+
+    expect(useImageStore.getState().selectedImages).toEqual(new Set());
   });
 });

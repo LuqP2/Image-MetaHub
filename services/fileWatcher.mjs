@@ -1,6 +1,7 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
+import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
@@ -25,9 +26,7 @@ const isPermissionError = (error) => {
   return code === 'EPERM' || code === 'EACCES';
 };
 
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isMediaFile = (filePath) => IMAGE_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
+const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
 const toRelativePath = (rootPath, targetPath) => {
   const relativePath = path.relative(rootPath, targetPath);
@@ -109,15 +108,15 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
     });
 
-    const enqueueImage = (imagePath, forceReindex = false) => {
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${imagePath}`);
+    const enqueueMedia = (mediaPath, forceReindex = false) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${imagePath}`);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
-      const existing = pendingMap.get(imagePath);
-      pendingMap.set(imagePath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
+      const existing = pendingMap.get(mediaPath);
+      pendingMap.set(mediaPath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
 
       if (processingTimeouts.has(directoryId)) {
         clearTimeout(processingTimeouts.get(directoryId));
@@ -133,21 +132,21 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
       if (ext === '.json') {
         const basePath = filePath.slice(0, -ext.length);
-        const matches = IMAGE_EXTENSIONS
-          .map((imageExt) => `${basePath}${imageExt}`)
+        const matches = SUPPORTED_MEDIA_EXTENSIONS
+          .map((mediaExt) => `${basePath}${mediaExt}`)
           .filter((candidate) => fs.existsSync(candidate));
         if (matches.length === 0) {
           return;
         }
-        matches.forEach((match) => enqueueImage(match, true));
+        matches.forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      if (!IMAGE_EXTENSIONS.includes(ext)) {
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
         return;
       }
 
-      enqueueImage(filePath, false);
+      enqueueMedia(filePath, false);
     });
 
     watcher.on('change', (filePath) => {
@@ -157,14 +156,14 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
       if (path.extname(filePath).toLowerCase() === '.json') {
         const basePath = filePath.slice(0, -path.extname(filePath).length);
-        IMAGE_EXTENSIONS
-          .map((imageExt) => `${basePath}${imageExt}`)
+        SUPPORTED_MEDIA_EXTENSIONS
+          .map((mediaExt) => `${basePath}${mediaExt}`)
           .filter((candidate) => fs.existsSync(candidate))
-          .forEach((match) => enqueueImage(match, true));
+          .forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      enqueueImage(filePath, true);
+      enqueueMedia(filePath, true);
     });
 
     const enqueueRemoval = (removedPath, kind) => {

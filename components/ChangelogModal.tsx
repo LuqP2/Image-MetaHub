@@ -20,21 +20,27 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
   const loadChangelog = async () => {
     setLoading(true);
     try {
-      let response;
+      const sources = ['/CHANGELOG.md', 'CHANGELOG.md'];
       let text = '';
-      try {
-        response = await fetch('/CHANGELOG.md');
-        text = await response.text();
-      } catch {
-        // Electron fallback
+      let lastError: unknown = null;
+
+      for (const source of sources) {
         try {
-          response = await fetch('CHANGELOG.md');
+          const response = await fetch(source);
+          if (!response.ok) {
+            throw new Error(`Failed to load ${source}: ${response.status} ${response.statusText}`);
+          }
+
           text = await response.text();
-        } catch {
-          setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
-          setLoading(false);
-          return;
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
         }
+      }
+
+      if (!text) {
+        throw lastError ?? new Error('Unable to load changelog');
       }
 
       // Extract only the current version section
@@ -49,7 +55,8 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         const firstMatch = text.match(firstVersionRegex);
         setChangelog(firstMatch ? firstMatch[0] : text);
       }
-    } catch {
+    } catch (error) {
+      console.warn('[ChangelogModal] Failed to load changelog', error);
       setChangelog('# Changelog\n\nFailed to load changelog. Please visit our GitHub releases page.');
     } finally {
       setLoading(false);

@@ -180,6 +180,7 @@ const Footer: React.FC<FooterProps> = ({
             {windowItems.map((windowItem) => (
               <div
                 key={windowItem.id}
+                data-image-modal-window-id={windowItem.id}
                 onMouseEnter={(event) => handleWindowHover(event, windowItem.id)}
                 onAuxClick={(event) => {
                   if (event.button !== 1) {

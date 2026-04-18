@@ -6,7 +6,7 @@
 
 ### Current Stack
 
-* **Version:** 0.14.1
+* **Version:** 0.14.2
 * **Renderer:** React 18 + TypeScript
 * **Desktop shell:** Electron 38
 * **State management:** Zustand
@@ -151,7 +151,7 @@ It reads:
 * PNG `tEXt` / `iTXt`
 * JPEG/WEBP EXIF/XMP/comment payloads
 * sidecar-style embedded JSON where applicable
-* video container metadata and `ffprobe` output for supported video formats
+* video/audio container metadata and `ffprobe` output for supported media formats
 
 The output is then normalized by `services/parsers/metadataParserFactory.ts`, which dispatches to generator-specific parsers such as:
 
@@ -256,7 +256,6 @@ The Smart Library is a separate browsing mode for similarity-based organization.
 * `components/StackCard.tsx`
 * `components/StackExpandedView.tsx`
 * `components/DeduplicationHelper.tsx`
-* `components/SmartCollectionsSidebar.tsx`
 
 **Engines**
 

@@ -10,10 +10,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
   value,
   onChange
 }) => {
-  // Clear handler
   const handleClear = () => onChange('');
 
-  // Handle Escape key
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
