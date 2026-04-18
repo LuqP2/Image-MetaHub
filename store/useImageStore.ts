@@ -2593,6 +2593,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const nextImageId = `${sourceImage.directoryId}::${normalizedRelativePath}`;
+                if (nextImageId !== imageId && state.images.some(img => img.id === nextImageId)) {
+                    renamedImage = null;
+                    return state;
+                }
+
                 const nextFileName = normalizedRelativePath.split('/').pop() || normalizedRelativePath;
                 const nextImage: IndexedImage = {
                     ...sourceImage,

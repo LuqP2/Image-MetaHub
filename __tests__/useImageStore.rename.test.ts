@@ -113,4 +113,21 @@ describe('renameImageRecord', () => {
     expect(state.activeImageScope?.map((entry) => entry.id)).toEqual(['dir-1::new.png', 'dir-1::sibling.png']);
     expect(state.clusterNavigationContext?.map((entry) => entry.id)).toEqual(['dir-1::new.png', 'dir-1::sibling.png']);
   });
+
+  it('rejects renames that would collide with an existing image id', () => {
+    const image = createImage('dir-1::old.png', 'old.png');
+    const existingTarget = createImage('dir-1::target.png', 'target.png');
+    useImageStore.setState({
+      images: [image, existingTarget],
+      filteredImages: [image, existingTarget],
+      selectedImages: new Set(['dir-1::old.png']),
+    } as any);
+
+    const renamedImage = useImageStore.getState().renameImageRecord('dir-1::old.png', 'target.png');
+    const state = useImageStore.getState();
+
+    expect(renamedImage).toBeNull();
+    expect(state.images.map((entry) => entry.id)).toEqual(['dir-1::old.png', 'dir-1::target.png']);
+    expect(Array.from(state.selectedImages)).toEqual(['dir-1::old.png']);
+  });
 });

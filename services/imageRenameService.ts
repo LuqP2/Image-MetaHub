@@ -61,6 +61,18 @@ export async function renameIndexedImage(
     return { success: true, newImageId: oldImageId, newRelativePath, image };
   }
 
+  if (image.directoryId) {
+    const newImageId = `${image.directoryId}::${newRelativePath}`;
+    const targetAlreadyIndexed = useImageStore
+      .getState()
+      .images
+      .some((entry) => entry.id === newImageId && entry.id !== oldImageId);
+
+    if (targetAlreadyIndexed) {
+      return { success: false, error: 'An image with that filename already exists in this folder.' };
+    }
+  }
+
   const { fileName: newFileName } = splitRelativePath(newRelativePath);
   const renameResult = await FileOperations.renameFile(image, newFileName);
   if (!renameResult.success) {

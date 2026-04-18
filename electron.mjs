@@ -1926,6 +1926,19 @@ function setupFileOperationHandlers() {
       }
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
+      const oldStats = await fs.lstat(oldPath);
+      try {
+        const targetStats = await fs.lstat(newPath);
+        const isSameFile = oldStats.dev === targetStats.dev && oldStats.ino === targetStats.ino;
+        if (!isSameFile) {
+          return { success: false, error: 'A file with that name already exists.' };
+        }
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
       await fs.rename(oldPath, newPath);
       return { success: true };
     } catch (error) {
