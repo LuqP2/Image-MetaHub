@@ -76,17 +76,12 @@ export async function renameIndexedImage(
 
   const directory = useImageStore.getState().directories.find((entry) => entry.id === renamedImage.directoryId);
   if (directory) {
-    await cacheManager.removeCachedImages(
-      directory.path,
-      directory.name,
-      [oldImageId],
-      [oldRelativePath],
-      useImageStore.getState().scanSubfolders,
-    );
-    await cacheManager.appendToCache(
+    await cacheManager.replaceCachedImages(
       directory.path,
       directory.name,
       [renamedImage],
+      [oldImageId],
+      [oldRelativePath],
       useImageStore.getState().scanSubfolders,
     );
   }

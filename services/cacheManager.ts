@@ -621,6 +621,63 @@ class CacheManager {
     }
   }
 
+  async replaceCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    removedImageIds: string[],
+    removedImageNames: string[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron || images.length === 0 || (removedImageIds.length === 0 && removedImageNames.length === 0)) return;
+
+    const replacements = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+    const replacementIds = replacements.map((image) => image.id);
+    const replacementNames = replacements.map((image) => image.name);
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+
+    for (const mode of candidateModes) {
+      const existing = await this.getCachedData(directoryPath, mode);
+      if (!existing) {
+        continue;
+      }
+
+      const metadataWithoutOldEntries = pruneCacheMetadata(existing.metadata, {
+        ids: removedImageIds,
+        names: removedImageNames,
+      });
+
+      if (metadataWithoutOldEntries.length === existing.metadata.length) {
+        continue;
+      }
+
+      const metadata = [
+        ...pruneCacheMetadata(metadataWithoutOldEntries, {
+          ids: replacementIds,
+          names: replacementNames,
+        }),
+        ...replacements,
+      ];
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: existing.id,
+          directoryPath,
+          directoryName: existing.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+
+      if (!result.success) {
+        console.error('Failed to replace cached images:', result.error);
+      }
+    }
+  }
+
   async cacheThumbnail(imageId: string, blob: Blob): Promise<void> {
     if (!this.isElectron) return;
     const arrayBuffer = await blob.arrayBuffer();

@@ -179,4 +179,80 @@ describe('cacheManager workflowNodes hydration', () => {
     expect(cacheData.mock.calls[0][0].cacheId).toBe('D:/library-recursive');
     expect(cacheData.mock.calls[0][0].data.metadata[0].workflowNodes).toEqual(['KSampler', 'LoadImage']);
   });
+
+  it('replaces renamed cached entries in every existing cache variant that had the old entry', async () => {
+    const cacheData = vi.fn().mockResolvedValue({ success: true });
+    const makeEntry = (cacheId: string) => ({
+      id: cacheId,
+      directoryPath: 'D:/library',
+      directoryName: 'Library',
+      lastScan: 1,
+      imageCount: 2,
+      parserVersion: 7,
+      metadata: [
+        {
+          id: 'dir-1::old.png',
+          name: 'old.png',
+          metadataString: '',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+        {
+          id: 'dir-1::other.png',
+          name: 'other.png',
+          metadataString: '',
+          metadata: {},
+          lastModified: 1,
+          models: [],
+          loras: [],
+          scheduler: '',
+        },
+      ],
+    });
+
+    window.electronAPI = {
+      getCacheSummary: vi.fn().mockImplementation(async (cacheId: string) => {
+        if (cacheId === 'D:/library-flat' || cacheId === 'D:/library-recursive') {
+          return { success: true, data: makeEntry(cacheId) };
+        }
+        return { success: true, data: null };
+      }),
+      cacheData,
+    };
+    (cacheManager as any).isElectron = true;
+
+    await cacheManager.replaceCachedImages(
+      'D:/library',
+      'Library',
+      [
+        {
+          id: 'dir-1::new.png',
+          name: 'new.png',
+          handle: {} as any,
+          metadata: {},
+          metadataString: '',
+          lastModified: 2,
+          models: [],
+          loras: [],
+          scheduler: '',
+        } as any,
+      ],
+      ['dir-1::old.png'],
+      ['old.png'],
+      false
+    );
+
+    expect(cacheData).toHaveBeenCalledTimes(2);
+    const writtenCacheIds = cacheData.mock.calls.map((call) => call[0].cacheId).sort();
+    expect(writtenCacheIds).toEqual(['D:/library-flat', 'D:/library-recursive']);
+    for (const call of cacheData.mock.calls) {
+      expect(call[0].data.metadata.map((entry: any) => entry.id).sort()).toEqual([
+        'dir-1::new.png',
+        'dir-1::other.png',
+      ]);
+    }
+  });
 });
