@@ -380,6 +380,22 @@ const remapImageIdSet = (imageIds: Set<string>, sourceImageId: string, targetIma
     return nextImageIds;
 };
 
+const remapThumbnailEntries = (
+    thumbnailEntries: Record<string, ThumbnailEntryState>,
+    sourceImageId: string,
+    targetImageId: string,
+): Record<string, ThumbnailEntryState> => {
+    const sourceEntry = thumbnailEntries[sourceImageId];
+    if (!sourceEntry || sourceImageId === targetImageId) {
+        return thumbnailEntries;
+    }
+
+    const nextThumbnailEntries = { ...thumbnailEntries };
+    delete nextThumbnailEntries[sourceImageId];
+    nextThumbnailEntries[targetImageId] = sourceEntry;
+    return nextThumbnailEntries;
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -2582,6 +2598,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         renameImageRecord: (imageId, newRelativePath) => {
             let renamedImage: IndexedImage | null = null;
+            let thumbnailVersionKeyToClear: string | null = null;
             let collectionsToPersist: SmartCollection[] = [];
             const normalizedRelativePath = newRelativePath.replace(/\\/g, '/').replace(/^\/+/, '');
 
@@ -2609,6 +2626,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                     } as FileSystemFileHandle,
                 };
                 renamedImage = nextImage;
+                thumbnailVersionKeyToClear = imageId !== nextImageId
+                    ? `${imageId}:${sourceImage.lastModified}`
+                    : null;
 
                 const updatedImages = state.images.map(img => img.id === imageId ? nextImage : img);
                 const selectedImages = new Set(Array.from(state.selectedImages).map(id => id === imageId ? nextImageId : id));
@@ -2651,6 +2671,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     collections: syncedCollections,
                     clusters: remappedClusters,
                     clusteringMetadata,
+                    thumbnailEntries: remapThumbnailEntries(state.thumbnailEntries, imageId, nextImageId),
                     selectedImage: replaceImage(state.selectedImage),
                     previewImage: replaceImage(state.previewImage),
                     activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
@@ -2664,6 +2685,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                     ...filterAndSort(resultState),
                 };
             });
+
+            if (thumbnailVersionKeyToClear) {
+                thumbnailUpdateTimestamps.delete(thumbnailVersionKeyToClear);
+                thumbnailUpdateInProgress.delete(thumbnailVersionKeyToClear);
+                lastThumbnailState.delete(thumbnailVersionKeyToClear);
+            }
 
             if (collectionsToPersist.length > 0) {
                 void Promise.all(collectionsToPersist.map((collection) => saveSmartCollection(collection))).catch(error => {

@@ -130,4 +130,32 @@ describe('renameImageRecord', () => {
     expect(state.images.map((entry) => entry.id)).toEqual(['dir-1::old.png', 'dir-1::target.png']);
     expect(Array.from(state.selectedImages)).toEqual(['dir-1::old.png']);
   });
+
+  it('remaps thumbnail entries when the image id changes', () => {
+    const image = createImage('dir-1::old.png', 'old.png');
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      thumbnailEntries: {
+        'dir-1::old.png': {
+          lastModified: 1,
+          thumbnailUrl: 'blob:old-thumbnail',
+          thumbnailHandle: { name: 'old-thumb.png' } as FileSystemFileHandle,
+          thumbnailStatus: 'loaded',
+          thumbnailError: null,
+        },
+      },
+    } as any);
+
+    useImageStore.getState().renameImageRecord('dir-1::old.png', 'new.png');
+    const thumbnailEntries = useImageStore.getState().thumbnailEntries;
+
+    expect(thumbnailEntries['dir-1::old.png']).toBeUndefined();
+    expect(thumbnailEntries['dir-1::new.png']).toMatchObject({
+      lastModified: 1,
+      thumbnailUrl: 'blob:old-thumbnail',
+      thumbnailStatus: 'loaded',
+      thumbnailError: null,
+    });
+  });
 });
