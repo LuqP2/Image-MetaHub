@@ -42,6 +42,12 @@ import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
+interface ImageRenameResult {
+  oldImageId: string;
+  newImageId: string;
+  newRelativePath: string;
+}
+
 interface ImageCardProps {
   image: IndexedImage;
   onImageClick: (image: IndexedImage, event: React.MouseEvent) => void;
@@ -51,7 +57,7 @@ interface ImageCardProps {
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
   onRenameRequest?: (image: IndexedImage) => void;
-  onRenameComplete?: () => void;
+  onRenameComplete?: (result?: ImageRenameResult) => void;
   isRenaming?: boolean;
   baseWidth: number;
   isComparisonFirst?: boolean;
@@ -252,6 +258,15 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
         requestAnimationFrame(() => {
           renameInputRef.current?.focus();
           renameInputRef.current?.select();
+        });
+        return;
+      }
+
+      if (result.newImageId && result.newRelativePath) {
+        onRenameComplete?.({
+          oldImageId: image.id,
+          newImageId: result.newImageId,
+          newRelativePath: result.newRelativePath,
         });
         return;
       }
@@ -650,7 +665,7 @@ interface CellData {
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
   handleRenameRequest: (image: IndexedImage) => void;
-  handleRenameComplete: () => void;
+  handleRenameComplete: (result?: ImageRenameResult) => void;
   renamingImageId: string | null;
   comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
@@ -799,6 +814,7 @@ interface ImageGridProps {
   onBatchExport: () => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
+  onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
@@ -817,6 +833,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   onBatchExport,
   activeCollection = null,
   isCollectionsView = false,
+  onImageRenamed,
   markedBestIds,
   markedArchivedIds,
 }) => {
@@ -1141,9 +1158,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, hideContextMenu, showProModal]);
 
-  const closeInlineRename = useCallback(() => {
+  const closeInlineRename = useCallback((result?: ImageRenameResult) => {
+    if (result) {
+      onImageRenamed?.(result.oldImageId, result.newImageId);
+    }
     setRenamingImageId(null);
-  }, []);
+  }, [onImageRenamed]);
 
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {

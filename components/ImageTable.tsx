@@ -26,6 +26,7 @@ interface ImageTableProps {
   onBatchExport: () => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
+  onImageRenamed?: (oldImageId: string, newImageId: string) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -68,6 +69,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   onBatchExport,
   activeCollection = null,
   isCollectionsView = false,
+  onImageRenamed,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -779,6 +781,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
         isOpen={!!renameImage}
         image={renameImage}
         onClose={() => setRenameImage(null)}
+        onRenamed={({ oldImageId, newImageId }) => onImageRenamed?.(oldImageId, newImageId)}
       />
     </div>
   );

@@ -2028,6 +2028,7 @@ export default function App() {
                           totalPages={totalPages}
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
                         />
                       ) : (
                         <ImageTable
@@ -2035,6 +2036,7 @@ export default function App() {
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -2062,6 +2064,7 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
                       />
                     ) : (
                       <ImageTable
@@ -2071,6 +2074,7 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
                       />
                     )}
                   </CollectionsWorkspace>
