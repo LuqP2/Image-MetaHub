@@ -11,4 +11,8 @@ describe('imageRenameService', () => {
     expect(getRenameBasename(image)).toBe('old-name');
     expect(buildRenamedRelativePath(image, 'new-name')).toBe('nested/new-name.png');
   });
+
+  it('trims the requested name before building the renamed path', () => {
+    expect(buildRenamedRelativePath(image, '  new-name  ')).toBe('nested/new-name.png');
+  });
 });

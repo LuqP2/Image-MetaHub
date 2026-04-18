@@ -48,19 +48,21 @@ export async function renameIndexedImage(
   image: IndexedImage,
   nextName: string,
 ): Promise<RenameImageResult> {
-  const validation = FileOperations.validateFilename(nextName);
+  const normalizedName = nextName.trim();
+  const validation = FileOperations.validateFilename(normalizedName);
   if (!validation.valid) {
     return { success: false, error: validation.error };
   }
 
   const oldImageId = image.id;
   const oldRelativePath = image.name;
-  const newRelativePath = buildRenamedRelativePath(image, nextName);
+  const newRelativePath = buildRenamedRelativePath(image, normalizedName);
   if (newRelativePath === oldRelativePath) {
     return { success: true, newImageId: oldImageId, newRelativePath, image };
   }
 
-  const renameResult = await FileOperations.renameFile(image, nextName);
+  const { fileName: newFileName } = splitRelativePath(newRelativePath);
+  const renameResult = await FileOperations.renameFile(image, newFileName);
   if (!renameResult.success) {
     return { success: false, error: renameResult.error || 'Failed to rename image.' };
   }

@@ -63,15 +63,21 @@ export function pruneCacheMetadata(
   options: { ids?: Iterable<string>; names?: Iterable<string> }
 ): CacheImageMetadata[] {
   const ids = new Set(options.ids ?? []);
-  const names = new Set(Array.from(options.names ?? []).map((name) => name.replace(/\\/g, '/')));
+  const names = new Set(
+    Array.from(options.names ?? [])
+      .map((name) => name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+      .filter(Boolean)
+  );
+  const namePrefixes = Array.from(names).map((name) => `${name}/`);
 
   if (ids.size === 0 && names.size === 0) {
     return metadata;
   }
 
   return metadata.filter((entry) => {
-    const normalizedName = entry.name.replace(/\\/g, '/');
-    return !ids.has(entry.id) && !names.has(normalizedName);
+    const normalizedName = entry.name.replace(/\\/g, '/').replace(/^\/+/, '');
+    const matchedName = names.has(normalizedName) || namePrefixes.some((prefix) => normalizedName.startsWith(prefix));
+    return !ids.has(entry.id) && !matchedName;
   });
 }
 

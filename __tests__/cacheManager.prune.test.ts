@@ -27,4 +27,19 @@ describe('pruneCacheMetadata', () => {
       }).map((entry) => entry.id),
     ).toEqual(['root::nested/b.png']);
   });
+
+  it('removes watched folder contents by normalized relative prefix', () => {
+    const metadata = [
+      makeEntry('root::nested/a.png', 'nested/a.png'),
+      makeEntry('root::nested/deeper/b.png', 'nested\\deeper\\b.png'),
+      makeEntry('root::nested-like/c.png', 'nested-like/c.png'),
+      makeEntry('root::other.png', 'other.png'),
+    ];
+
+    expect(
+      pruneCacheMetadata(metadata, {
+        names: ['nested'],
+      }).map((entry) => entry.id),
+    ).toEqual(['root::nested-like/c.png', 'root::other.png']);
+  });
 });
