@@ -335,6 +335,51 @@ const remapCollectionImageReferences = (
     );
 };
 
+const remapImageId = (imageId: string, sourceImageId: string, targetImageId: string): string =>
+    imageId === sourceImageId ? targetImageId : imageId;
+
+const remapImageListReference = (
+    images: IndexedImage[] | null,
+    sourceImageId: string,
+    targetImage: IndexedImage,
+): IndexedImage[] | null => {
+    if (!images?.some((image) => image.id === sourceImageId)) {
+        return images;
+    }
+
+    return images.map((image) => image.id === sourceImageId ? targetImage : image);
+};
+
+const remapClusterImageReferences = (
+    cluster: ImageCluster,
+    sourceImageId: string,
+    targetImageId: string,
+): ImageCluster => {
+    if (!cluster.imageIds.includes(sourceImageId) && cluster.coverImageId !== sourceImageId) {
+        return cluster;
+    }
+
+    const imageIds = uniqueIds(cluster.imageIds.map((imageId) => remapImageId(imageId, sourceImageId, targetImageId)));
+    return {
+        ...cluster,
+        imageIds,
+        coverImageId: remapImageId(cluster.coverImageId, sourceImageId, targetImageId),
+        size: imageIds.length,
+        updatedAt: Date.now(),
+    };
+};
+
+const remapImageIdSet = (imageIds: Set<string>, sourceImageId: string, targetImageId: string): Set<string> => {
+    if (!imageIds.has(sourceImageId)) {
+        return imageIds;
+    }
+
+    const nextImageIds = new Set(imageIds);
+    nextImageIds.delete(sourceImageId);
+    nextImageIds.add(targetImageId);
+    return nextImageIds;
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -2574,6 +2619,15 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const replaceImage = (image: IndexedImage | null) => image?.id === imageId ? nextImage : image;
+                const remappedClusters = state.clusters.map((cluster) =>
+                    remapClusterImageReferences(cluster, imageId, nextImageId)
+                );
+                const clusteringMetadata = state.clusteringMetadata
+                    ? {
+                        ...state.clusteringMetadata,
+                        lockedImageIds: remapImageIdSet(state.clusteringMetadata.lockedImageIds, imageId, nextImageId),
+                    }
+                    : null;
                 const remappedCollectionIds = new Set<string>();
                 const remappedCollections = state.collections.map((collection) => {
                     const nextCollection = remapCollectionImageReferences(collection, imageId, nextImageId);
@@ -2590,8 +2644,12 @@ export const useImageStore = create<ImageState>((set, get) => {
                     selectedImages,
                     annotations,
                     collections: syncedCollections,
+                    clusters: remappedClusters,
+                    clusteringMetadata,
                     selectedImage: replaceImage(state.selectedImage),
                     previewImage: replaceImage(state.previewImage),
+                    activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
+                    clusterNavigationContext: remapImageListReference(state.clusterNavigationContext, imageId, nextImage),
                     comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
                     lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
                 };
