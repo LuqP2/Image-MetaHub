@@ -289,6 +289,52 @@ const addImagesToCollectionRecord = (collection: SmartCollection, imageIds: stri
     );
 };
 
+const remapCollectionImageReferences = (
+    collection: SmartCollection,
+    sourceImageId: string,
+    targetImageId: string,
+): SmartCollection => {
+    let changed = false;
+    const remapId = <T extends string | null | undefined>(imageId: T): T | string => {
+        if (imageId === sourceImageId) {
+            changed = true;
+            return targetImageId;
+        }
+        return imageId;
+    };
+    const remapIds = (imageIds?: string[]): string[] | undefined => {
+        if (!imageIds) {
+            return undefined;
+        }
+        if (!imageIds.includes(sourceImageId)) {
+            return imageIds;
+        }
+        changed = true;
+        return uniqueIds(imageIds.map((imageId) => imageId === sourceImageId ? targetImageId : imageId));
+    };
+
+    const nextCollection = {
+        ...collection,
+        coverImageId: remapId(collection.coverImageId),
+        thumbnailId: remapId(collection.thumbnailId),
+        imageIds: remapIds(collection.imageIds),
+        snapshotImageIds: remapIds(collection.snapshotImageIds),
+        excludedImageIds: remapIds(collection.excludedImageIds),
+    };
+
+    if (!changed) {
+        return collection;
+    }
+
+    return normalizeSmartCollection(
+        {
+            ...nextCollection,
+            updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+    );
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -2491,6 +2537,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
         renameImageRecord: (imageId, newRelativePath) => {
             let renamedImage: IndexedImage | null = null;
+            let collectionsToPersist: SmartCollection[] = [];
             const normalizedRelativePath = newRelativePath.replace(/\\/g, '/').replace(/^\/+/, '');
 
             set(state => {
@@ -2527,11 +2574,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                 }
 
                 const replaceImage = (image: IndexedImage | null) => image?.id === imageId ? nextImage : image;
+                const remappedCollectionIds = new Set<string>();
+                const remappedCollections = state.collections.map((collection) => {
+                    const nextCollection = remapCollectionImageReferences(collection, imageId, nextImageId);
+                    if (nextCollection !== collection) {
+                        remappedCollectionIds.add(collection.id);
+                    }
+                    return nextCollection;
+                });
+                const syncedCollections = syncCollectionCounts(remappedCollections, updatedImages);
+                collectionsToPersist = syncedCollections.filter((collection) => remappedCollectionIds.has(collection.id));
                 const resultState = {
                     ...state,
                     images: updatedImages,
                     selectedImages,
                     annotations,
+                    collections: syncedCollections,
                     selectedImage: replaceImage(state.selectedImage),
                     previewImage: replaceImage(state.previewImage),
                     comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
@@ -2544,6 +2602,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
 
+            if (collectionsToPersist.length > 0) {
+                void Promise.all(collectionsToPersist.map((collection) => saveSmartCollection(collection))).catch(error => {
+                    console.error('Failed to persist renamed image collection references:', error);
+                });
+            }
             maybeQueueLineageBuild(500);
             return renamedImage;
         },

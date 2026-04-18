@@ -713,11 +713,16 @@ export default function App() {
     }
 
     const removedFolders = (payload.folders ?? [])
-      .map((folder) => normalizeRelativeImageName(
-        folder.relativePath ||
-        (folder.path ? folder.path.replace(/\\/g, '/').slice(normalizeFolderPath(directory.path).length + 1) : '')
-      ))
-      .filter(Boolean);
+      .map((folder) => {
+        const relativePath = Object.prototype.hasOwnProperty.call(folder, 'relativePath')
+          ? folder.relativePath ?? ''
+          : (folder.path ? folder.path.replace(/\\/g, '/').slice(normalizeFolderPath(directory.path).length + 1) : null);
+        if (relativePath === null) {
+          return null;
+        }
+        return normalizeRelativeImageName(relativePath);
+      })
+      .filter((folder): folder is string => folder !== null);
 
     const images = useImageStore.getState().images;
     const removedIds = images
@@ -727,7 +732,8 @@ export default function App() {
         }
 
         const imageName = normalizeRelativeImageName(image.name);
-        return removedNames.has(imageName) ||
+        return removedFolders.includes('') ||
+          removedNames.has(imageName) ||
           removedFolders.some((folder) => imageName === folder || imageName.startsWith(`${folder}/`));
       })
       .map((image) => image.id);

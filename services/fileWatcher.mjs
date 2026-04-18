@@ -30,7 +30,10 @@ const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extna
 
 const toRelativePath = (rootPath, targetPath) => {
   const relativePath = path.relative(rootPath, targetPath);
-  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+  if (relativePath === '') {
+    return '';
+  }
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
     return path.basename(targetPath);
   }
   return relativePath.replace(/\\/g, '/');

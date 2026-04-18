@@ -42,4 +42,17 @@ describe('pruneCacheMetadata', () => {
       }).map((entry) => entry.id),
     ).toEqual(['root::nested-like/c.png', 'root::other.png']);
   });
+
+  it('removes all cached entries when the watched root is removed', () => {
+    const metadata = [
+      makeEntry('root::a.png', 'a.png'),
+      makeEntry('root::nested/b.png', 'nested/b.png'),
+    ];
+
+    expect(
+      pruneCacheMetadata(metadata, {
+        names: [''],
+      }),
+    ).toEqual([]);
+  });
 });
