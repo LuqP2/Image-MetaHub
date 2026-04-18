@@ -10,11 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Automation Rules**: Added a rule builder for automatically tagging images and adding them to collections based on searchable conditions, metadata facets, ratings, favorites, telemetry, dimensions, generators, prompts, filenames, and other library filters, with live previews, enable/disable controls, duplication, manual apply, and run-on-new-images support.
-- **Collection Rule Setup**: Added a collection-focused automation entry point so collections can be wired to rules directly from collection setup instead of requiring a separate manual workflow.
 - **Audio Library Support**: Added indexing, filtering, table/grid display, metadata extraction, and viewer playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
 - **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, with destination browsing that includes nested folders under indexed roots.
-- **Viewer Fullscreen Hotkey Setting**: Added a configurable fullscreen shortcut for the image viewer.
-- **Image Modal Motion Controls**: Added optional minimize/restore motion for windowed image modals, including a setting to reduce modal window animations.
 
 ### Improved
 
@@ -23,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Facet Search Usability**: Added clear buttons to facet searches for faster filtering resets in long model, LoRA, sampler, scheduler, generator, and device lists.
 - **Smart Library Clustering Performance**: Improved worst-case prompt clustering by reducing unnecessary pair comparisons and bounding expensive similarity checks, making large or tag-heavy libraries less likely to stall during clustering.
 - **Media Metadata Handling**: Shared media type detection across Electron, indexing, thumbnails, filters, and metadata parsing so image, video, and audio handling stays consistent.
+- **Image Modal Motion Controls**: Added optional minimize/restore motion for windowed image modals, including a setting to reduce modal window animations.
 - **Codebase Maintenance**: Removed unused UI and integration helpers, tightened shared metadata utilities, and expanded tests around automation rules, media types, image metadata, selection behavior, clustering, and ComfyUI parsing.
 
 ### Fixed
