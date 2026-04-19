@@ -50,15 +50,15 @@ describe('EmbeddedMetadataEditorModal', () => {
       />,
     );
 
-    expect(screen.getByText('Edit File Metadata')).toBeInTheDocument();
-    expect(screen.getByText('Writes to the image file. A backup is saved before the first write.')).toBeInTheDocument();
+    expect(screen.getByText('Edit File Metadata')).toBeTruthy();
+    expect(screen.getByText('Writes to the image file. A backup is saved before the first write.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Paste Metadata' }));
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('pasted prompt')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('pasted prompt')).toBeTruthy();
     });
-    expect(screen.getByDisplayValue('pasted negative')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('pasted negative')).toBeTruthy();
     expect(writeEmbeddedMetadata).not.toHaveBeenCalled();
   });
 });
