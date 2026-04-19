@@ -10,6 +10,7 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
+import { isEmbeddedMetaHubPayload } from '../utils/embeddedMetadataPayload';
 import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
@@ -334,6 +335,10 @@ function wrapMetaHubData(payload: any): ImageMetadata | null {
   const data = payload as Record<string, any>;
   if (data.imagemetahub_data) {
     return { imagemetahub_data: data.imagemetahub_data };
+  }
+
+  if (isEmbeddedMetaHubPayload(data)) {
+    return { imagemetahub_data: data };
   }
 
   if (isMetaHubSaveNodePayload(data)) {

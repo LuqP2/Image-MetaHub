@@ -13,6 +13,7 @@ import { parseDrawThingsMetadata } from './drawThingsParser';
 import { parseFooocusMetadata } from './fooocusParser';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './comfyUIParser';
 import { parseVideoMetaHubMetadata } from './videoMetaHubParser';
+import { isEmbeddedMetaHubPayload, parseEmbeddedMetaHubMetadata } from '../../utils/embeddedMetadataPayload';
 
 function sanitizeJson(jsonString: string): string {
     // Replace NaN with null, as NaN is not valid JSON
@@ -84,6 +85,16 @@ export function getMetadataParser(metadata: ImageMetadata): ParserModule | null 
     // InvokeAI (embedded JSON fields)
     if (isInvokeAIMetadata(metadata) || 'invokeai_metadata' in metadata) {
         return { parse: (data: InvokeAIMetadata) => parseInvokeAIMetadata(data), generator: 'InvokeAI' };
+    }
+
+    const embeddedMetaHubPayload = 'imagemetahub_data' in metadata
+        ? (metadata as UnknownRecord).imagemetahub_data
+        : metadata;
+    if (isEmbeddedMetaHubPayload(embeddedMetaHubPayload)) {
+        return {
+            parse: (data: ImageMetadata) => parseEmbeddedMetaHubMetadata(data) as BaseMetadata,
+            generator: 'Image MetaHub'
+        };
     }
 
     // MetaHub Save Node detection (PRIORITY: before generic ComfyUI)

@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import exifr from 'exifr';
 import { BaseMetadata, ImageMetadata, type AudioInfo, type VideoInfo, isEasyDiffusionJson } from '../types';
 import { parseImageMetadata as normalizeMetadata } from './parsers/metadataParserFactory';
+import { isEmbeddedMetaHubPayload } from '../utils/embeddedMetadataPayload';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 interface Dimensions {
@@ -302,6 +303,15 @@ async function parseJPEGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 
   if (!metadataText) return null;
+
+  try {
+    const parsed = JSON.parse(metadataText);
+    if (isEmbeddedMetaHubPayload(parsed)) {
+      return { imagemetahub_data: parsed } as ImageMetadata;
+    }
+  } catch {
+    // Not an Image MetaHub embedded JSON payload.
+  }
 
   if (metadataText.includes('Version: ComfyUI')) {
     return { parameters: metadataText } as ImageMetadata;
