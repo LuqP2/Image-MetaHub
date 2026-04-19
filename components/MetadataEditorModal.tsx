@@ -98,7 +98,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span className="text-blue-400">Edit Metadata</span>
+            <span className="text-blue-400">Edit Shadow Metadata</span>
             <span className="text-xs font-normal text-gray-500 bg-gray-800 px-2 py-1 rounded">
               Overrides only
             </span>

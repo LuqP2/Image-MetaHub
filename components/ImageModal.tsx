@@ -3,7 +3,7 @@ import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollecti
 import { FileOperations } from '../services/fileOperations';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
-import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw, FilePenLine } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useCopyToComfyUI } from '../hooks/useCopyToComfyUI';
@@ -26,6 +26,7 @@ import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
 import { MetadataEditorModal } from './MetadataEditorModal';
+import EmbeddedMetadataEditorModal from './EmbeddedMetadataEditorModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
@@ -752,6 +753,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
+  const [isFileMetadataEditorOpen, setIsFileMetadataEditorOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
 
   const imageFromStore = useImageStore(
@@ -2808,9 +2810,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 <button
                   onClick={() => setIsMetadataEditorOpen(true)}
                   className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
-                  title="Edit Metadata (Shadow)"
+                  title="Edit Shadow Metadata"
                 >
                   <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => setIsFileMetadataEditorOpen(true)}
+                  className="p-1.5 bg-gray-800 hover:bg-amber-900/50 rounded-md transition-colors text-gray-400 hover:text-amber-300"
+                  title="Edit File Metadata"
+                >
+                  <FilePenLine size={14} />
                 </button>
                 <button
                   onClick={() => setShowRawMetadata(!showRawMetadata)}
@@ -2936,6 +2945,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
           initialMetadata={shadowMetadata}
           onSave={async (m) => { await saveShadowMetadata(m); }}
           imageId={image.id}
+        />
+      </div>
+
+      <div className="pointer-events-auto">
+        <EmbeddedMetadataEditorModal
+          isOpen={isFileMetadataEditorOpen}
+          onClose={() => setIsFileMetadataEditorOpen(false)}
+          image={liveImage}
+          directoryPath={directoryPath}
+          onSaved={async () => {
+            await reparseImages([liveImage]);
+          }}
         />
       </div>
 
