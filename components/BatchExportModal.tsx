@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, X } from 'lucide-react';
-import { type ExportBatchProgress, type IndexedImage } from '../types';
+import { type ExportBatchProgress, type ExportMetadataMode, type IndexedImage } from '../types';
 
 interface BatchExportModalProps {
   isOpen: boolean;
@@ -28,6 +28,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
   const [source, setSource] = useState<BatchSource>(hasSelected ? 'selected' : 'filtered');
   const [output, setOutput] = useState<BatchOutput>('folder');
+  const [metadataMode, setMetadataMode] = useState<ExportMetadataMode>('preserve');
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
@@ -47,6 +48,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setIsExporting(false);
       setSource(hasSelected ? 'selected' : 'filtered');
       setOutput('folder');
+      setMetadataMode('preserve');
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
@@ -146,6 +148,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destDir: destResult.path,
           exportId,
+          metadataMode,
         });
 
         if (!exportResult.success) {
@@ -185,6 +188,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           files,
           destZipPath: saveResult.path,
           exportId,
+          metadataMode,
         });
 
         if (!exportResult.success) {
@@ -286,6 +290,39 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Metadata</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMetadataMode('preserve')}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                  metadataMode === 'preserve'
+                    ? 'border-violet-500 bg-violet-500/10 text-violet-100'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Preserve embedded metadata
+              </button>
+              <button
+                type="button"
+                onClick={() => setMetadataMode('strip')}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                  metadataMode === 'strip'
+                    ? 'border-violet-500 bg-violet-500/10 text-violet-100'
+                    : 'border-gray-700 text-gray-300 hover:border-gray-500'
+                }`}
+              >
+                Remove embedded metadata
+              </button>
+            </div>
+            {metadataMode === 'strip' && (
+              <p className="text-xs text-gray-400">
+                Only exported copies are changed. Supported files: PNG, JPEG, and WebP.
+              </p>
+            )}
+          </div>
+
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
             {isExporting && progress ? (
               <span>
@@ -303,6 +340,9 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             )}
             {output === 'zip' && (
               <span className="block text-xs text-gray-400 mt-1">ZIP will contain flattened files with auto-renamed collisions.</span>
+            )}
+            {metadataMode === 'strip' && (
+              <span className="block text-xs text-gray-400 mt-1">Embedded metadata will be removed from exported PNG, JPEG, and WebP copies.</span>
             )}
             {isExporting && progress && (
               <div className="mt-3">

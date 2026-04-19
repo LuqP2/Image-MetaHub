@@ -27,7 +27,9 @@ import {
 } from './utils/mediaTypes.js';
 import {
   getEmbeddedMetadataBackupStatus,
+  isSupportedEmbeddedMetadataFile,
   restoreEmbeddedMetadataBackup,
+  stripEmbeddedMetadata,
   writeEmbeddedMetadata,
 } from './utils/embeddedMetadata.mjs';
 
@@ -2707,7 +2709,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId } = {}) => {
+  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId, metadataMode = 'preserve' } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -2723,6 +2725,7 @@ function setupFileOperationHandlers() {
       let processedCount = 0;
       let stage = 'copying';
       const totalCount = files.length;
+      const shouldStripMetadata = metadataMode === 'strip';
       const progressId = exportId ? String(exportId) : null;
       const PROGRESS_THROTTLE_MS = 200;
       let lastProgressAt = 0;
@@ -2759,11 +2762,23 @@ function setupFileOperationHandlers() {
             failedCount += 1;
             continue;
           }
+          if (shouldStripMetadata && !isSupportedEmbeddedMetadataFile(sourcePath)) {
+            failedCount += 1;
+            continue;
+          }
 
           const baseName = path.basename(file.relativePath);
           const uniqueName = getUniqueName(baseName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
           await fs.copyFile(sourcePath, destPath);
+          if (shouldStripMetadata) {
+            try {
+              await stripEmbeddedMetadata(destPath);
+            } catch (stripError) {
+              await fs.rm(destPath, { force: true });
+              throw stripError;
+            }
+          }
           exportedCount += 1;
         } catch (error) {
           failedCount += 1;
@@ -2789,7 +2804,8 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId } = {}) => {
+  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId, metadataMode = 'preserve' } = {}) => {
+    let tempExportDir = null;
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -2805,6 +2821,7 @@ function setupFileOperationHandlers() {
       let processedCount = 0;
       let stage = 'copying';
       const totalCount = files.length;
+      const shouldStripMetadata = metadataMode === 'strip';
       const progressId = exportId ? String(exportId) : null;
       const PROGRESS_THROTTLE_MS = 200;
       let lastProgressAt = 0;
@@ -2842,6 +2859,9 @@ function setupFileOperationHandlers() {
       });
 
       archive.pipe(output);
+      if (shouldStripMetadata) {
+        tempExportDir = await fs.mkdtemp(path.join(app.getPath('temp'), 'imagemetahub-export-'));
+      }
 
       sendProgress(true);
 
@@ -2852,11 +2872,22 @@ function setupFileOperationHandlers() {
             failedCount += 1;
             continue;
           }
+          if (shouldStripMetadata && !isSupportedEmbeddedMetadataFile(sourcePath)) {
+            failedCount += 1;
+            continue;
+          }
 
           await fs.access(sourcePath);
           const baseName = path.basename(file.relativePath);
           const uniqueName = getUniqueName(baseName, usedNames);
-          archive.file(sourcePath, { name: uniqueName });
+          if (shouldStripMetadata) {
+            const tempPath = path.join(tempExportDir, uniqueName);
+            await fs.copyFile(sourcePath, tempPath);
+            await stripEmbeddedMetadata(tempPath);
+            archive.file(tempPath, { name: uniqueName });
+          } else {
+            archive.file(sourcePath, { name: uniqueName });
+          }
           exportedCount += 1;
         } catch (error) {
           failedCount += 1;
@@ -2885,6 +2916,14 @@ function setupFileOperationHandlers() {
     } catch (error) {
       console.error('Error exporting images to ZIP:', error);
       return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
+    } finally {
+      if (tempExportDir) {
+        try {
+          await fs.rm(tempExportDir, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.warn('[Electron] Failed to clean up stripped export temp files:', cleanupError);
+        }
+      }
     }
   });
 

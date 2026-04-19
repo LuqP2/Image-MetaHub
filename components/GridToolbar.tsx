@@ -129,7 +129,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   };
 
   const handleExport = async () => {
-    if (selectedCount > 1) {
+    if (selectedCount > 0) {
       onBatchExport();
       return;
     }
