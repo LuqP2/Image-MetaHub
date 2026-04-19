@@ -36,6 +36,22 @@ export interface ExportBatchProgress {
   stage: 'copying' | 'finalizing' | 'done';
 }
 
+export type ExportMetadataMode = 'preserve' | 'strip';
+
+export type EmbeddedMetadataWritePayload = Record<string, unknown>;
+
+export interface EmbeddedMetadataBackupStatus {
+  success: boolean;
+  hasBackup?: boolean;
+  backupId?: string;
+  createdAt?: number;
+  originalPath?: string;
+  size?: number;
+  mtimeMs?: number;
+  sha256?: string;
+  error?: string;
+}
+
 export type IndexedImageTransferMode = 'copy' | 'move';
 
 export interface IndexedImageTransferProgress {
@@ -88,8 +104,11 @@ export interface ElectronAPI {
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
-  exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
-  exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  getEmbeddedMetadataBackupStatus: (args: { filePath: string }) => Promise<EmbeddedMetadataBackupStatus>;
+  writeEmbeddedMetadata: (args: { filePath: string; payload: EmbeddedMetadataWritePayload; parameters?: string }) => Promise<{ success: boolean; format?: 'png' | 'jpeg' | 'webp'; backup?: EmbeddedMetadataBackupStatus; error?: string }>;
+  restoreEmbeddedMetadataBackup: (args: { filePath: string }) => Promise<{ success: boolean; error?: string }>;
+  exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string; metadataMode?: ExportMetadataMode }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  exportBatchToZip: (args: { files: { directoryPath: string; relativePath: string }[]; destZipPath: string; exportId?: string; metadataMode?: ExportMetadataMode }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   transferIndexedImages: (args: {
     files: { directoryPath: string; relativePath: string }[];
     destDir: string;

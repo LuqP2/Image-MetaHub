@@ -25,6 +25,11 @@ import {
   inferMimeTypeFromName,
   isSupportedMediaFileName,
 } from './utils/mediaTypes.js';
+import {
+  getEmbeddedMetadataBackupStatus,
+  restoreEmbeddedMetadataBackup,
+  writeEmbeddedMetadata,
+} from './utils/embeddedMetadata.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1299,6 +1304,7 @@ function setupFileOperationHandlers() {
     return Array.from(approvedWriteRoots).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
   };
   const userDataPath = path.normalize(app.getPath('userData'));
+  const metadataBackupRoot = path.join(userDataPath, 'metadata-backups');
   const isInternalPath = (filePath) => {
     if (!filePath) return false;
     const normalized = path.normalize(filePath);
@@ -2626,6 +2632,77 @@ function setupFileOperationHandlers() {
       return { success: true };
     } catch (error) {
       console.error('Error writing file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-embedded-metadata-backup-status', async (event, { filePath } = {}) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided.' };
+      }
+
+      const normalizedFilePath = path.normalize(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to inspect metadata backup outside allowed directories.');
+        return { success: false, error: 'Access denied: Cannot inspect backups for files outside selected directories.' };
+      }
+
+      const status = await getEmbeddedMetadataBackupStatus({
+        backupRoot: metadataBackupRoot,
+        filePath: normalizedFilePath,
+      });
+      return { success: true, ...status };
+    } catch (error) {
+      console.error('Error checking embedded metadata backup:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('write-embedded-metadata', async (event, { filePath, payload, parameters } = {}) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided.' };
+      }
+
+      const normalizedFilePath = path.normalize(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to write embedded metadata outside allowed directories.');
+        return { success: false, error: 'Access denied: Cannot edit files outside selected directories.' };
+      }
+
+      const result = await writeEmbeddedMetadata({
+        backupRoot: metadataBackupRoot,
+        filePath: normalizedFilePath,
+        payload,
+        parameters,
+      });
+      return result;
+    } catch (error) {
+      console.error('Error writing embedded metadata:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('restore-embedded-metadata-backup', async (event, { filePath } = {}) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided.' };
+      }
+
+      const normalizedFilePath = path.normalize(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to restore embedded metadata outside allowed directories.');
+        return { success: false, error: 'Access denied: Cannot restore files outside selected directories.' };
+      }
+
+      await restoreEmbeddedMetadataBackup({
+        backupRoot: metadataBackupRoot,
+        filePath: normalizedFilePath,
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Error restoring embedded metadata backup:', error);
       return { success: false, error: error.message };
     }
   });
