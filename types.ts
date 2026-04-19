@@ -38,7 +38,7 @@ export interface ExportBatchProgress {
 
 export type ExportMetadataMode = 'preserve' | 'strip';
 
-export type EmbeddedMetadataWritePayload = Record<string, unknown>;
+export type EmbeddedMetadataWritePayload = object;
 
 export interface EmbeddedMetadataBackupStatus {
   success: boolean;
