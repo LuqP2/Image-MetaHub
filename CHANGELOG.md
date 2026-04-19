@@ -11,13 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Automation Rules**: Added a rule builder for automatically tagging images and adding them to collections based on searchable conditions, metadata facets, ratings, favorites, telemetry, dimensions, generators, prompts, filenames, and other library filters, with live previews, enable/disable controls, duplication, manual apply, and run-on-new-images support.
 - **Audio Library Support**: Added indexing, filtering, table/grid display, metadata extraction, and viewer playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
-- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, with destination browsing that includes nested folders under indexed roots.
+- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, with destination browsing that includes nested folders, symlinked/aliased directories, and distinct case-sensitive paths under indexed roots.
+- **Image Rename Workflows**: Added image rename actions to grid and table context menus, plus inline filename editing directly under thumbnails while preserving subfolders and original extensions.
 
 ### Improved
 
 - **Image Modal Windowing**: Refined image modal activation, focus handling, dragging, offscreen recovery, footer layering, and sidebar resizing so multiple floating image windows behave more predictably.
 - **Selection-Preserving Opens**: Opening an image from the grid, table, stack view, or background-open context actions now preserves multi-selection and keeps navigation scoped to the relevant collection, stack, or active result set.
 - **Facet Search Usability**: Added clear buttons to facet searches for faster filtering resets in long model, LoRA, sampler, scheduler, generator, and device lists.
+- **Folder Tree Selection**: Folder clicks now select the clicked folder consistently instead of toggling back to all folders, while Ctrl/Cmd-click keeps multi-folder selection behavior.
+- **Thumbnail Grid Keyboard Navigation**: Restored arrow, PageUp/PageDown, Home, and End navigation in the thumbnail grid on macOS without requiring focus on the zoom slider.
+- **Smart Library Layout**: Stabilized the Smart Library footer controls and restored the previous stack scroll position when returning from an expanded cluster.
+- **Toolbar Tooltips**: Replaced flaky native Electron/macOS tooltips on thumbnail controls, pagination, queue, view, compare, and zoom actions with reliable custom hover/focus tooltips.
+- **Viewer Shortcut Customization**: Added a configurable fullscreen hotkey for the viewer.
+- **macOS Unsigned Build Guidance**: Documented the temporary `xattr -dr com.apple.quarantine "/Applications/Image MetaHub.app"` workaround for unsigned GitHub builds until macOS signing/notarization is available.
 - **Smart Library Clustering Performance**: Improved worst-case prompt clustering by reducing unnecessary pair comparisons and bounding expensive similarity checks, making large or tag-heavy libraries less likely to stall during clustering.
 - **Media Metadata Handling**: Shared media type detection across Electron, indexing, thumbnails, filters, and metadata parsing so image, video, and audio handling stays consistent.
 - **Image Modal Motion Controls**: Added optional minimize/restore motion for windowed image modals, including a setting to reduce modal window animations.
@@ -30,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image Modal Sidebar Resize**: Fixed details sidebar resizing behavior in the image modal.
 - **Background Opens from Stack and Collection Views**: Fixed background image opens so they keep the correct navigation scope instead of falling back to the wrong filtered list.
 - **Audio Watcher and Metadata Refresh**: Fixed file watcher and metadata fallback paths so newly changed audio and video media are refreshed consistently during library updates.
+- **Watched File Moves and Deletions**: Fixed Finder/Explorer changes so deleted files, moved files, removed folders, and watched-root removals are removed from the library and cache immediately instead of leaving stale or duplicated thumbnails.
+- **Metadata Refresh from Sidecars**: Fixed watcher refreshes for changed sidecar JSON files, including uppercase media extensions on case-sensitive filesystems.
+- **Rename State Consistency**: Fixed rename updates so selections, previews, detached image modals, annotations, collections, Smart Library clusters, thumbnail state, and cache entries follow the new image ID without stale references or duplicate IDs.
 
 ## [0.14.1] - 2026-04-10
 
