@@ -28,6 +28,28 @@ const isPermissionError = (error) => {
 
 const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
+const findMediaFilesForSidecar = (sidecarPath) => {
+  const sidecarExt = path.extname(sidecarPath);
+  const sidecarBaseName = path.basename(sidecarPath, sidecarExt);
+  const sidecarDir = path.dirname(sidecarPath);
+
+  try {
+    return fs.readdirSync(sidecarDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() || entry.isSymbolicLink())
+      .map((entry) => entry.name)
+      .filter((fileName) => {
+        const mediaExt = path.extname(fileName);
+        if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
+          return false;
+        }
+        return fileName.slice(0, -mediaExt.length) === sidecarBaseName;
+      })
+      .map((fileName) => path.join(sidecarDir, fileName));
+  } catch {
+    return [];
+  }
+};
+
 const toRelativePath = (rootPath, targetPath) => {
   const relativePath = path.relative(rootPath, targetPath);
   if (relativePath === '') {
@@ -134,10 +156,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       const ext = path.extname(filePath).toLowerCase();
 
       if (ext === '.json') {
-        const basePath = filePath.slice(0, -ext.length);
-        const matches = SUPPORTED_MEDIA_EXTENSIONS
-          .map((mediaExt) => `${basePath}${mediaExt}`)
-          .filter((candidate) => fs.existsSync(candidate));
+        const matches = findMediaFilesForSidecar(filePath);
         if (matches.length === 0) {
           return;
         }
@@ -158,11 +177,7 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       }
 
       if (path.extname(filePath).toLowerCase() === '.json') {
-        const basePath = filePath.slice(0, -path.extname(filePath).length);
-        SUPPORTED_MEDIA_EXTENSIONS
-          .map((mediaExt) => `${basePath}${mediaExt}`)
-          .filter((candidate) => fs.existsSync(candidate))
-          .forEach((match) => enqueueMedia(match, true));
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
         return;
       }
 

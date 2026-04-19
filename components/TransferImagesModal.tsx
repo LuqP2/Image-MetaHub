@@ -131,7 +131,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
         const subfolders = [...(result.subfolders ?? [])].sort((a, b) => a.name.localeCompare(b.name));
         for (const subfolder of subfolders) {
-          const visitKey = (subfolder.realPath || subfolder.path).replace(/\\/g, '/').toLowerCase();
+          const visitKey = (subfolder.realPath || subfolder.path).replace(/\\/g, '/');
           if (visitedRealPaths.has(visitKey)) {
             continue;
           }
@@ -158,7 +158,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
 
       try {
         for (const directory of sortedDirectories) {
-          const rootKey = directory.path.replace(/\\/g, '/').toLowerCase();
+          const rootKey = directory.path.replace(/\\/g, '/');
           visitedRealPaths.add(rootKey);
           await visit(directory, directory.path, 1);
         }
