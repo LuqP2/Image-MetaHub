@@ -139,21 +139,26 @@ async function getFileHandles(
     const handles: {handle: FileSystemFileHandle, path: string, lastModified: number, size?: number, type?: string, birthtimeMs?: number, contentModifiedMs?: number}[] = [];
 
     if (getIsElectron()) {
+        const electronAPI = window.electronAPI;
+        if (!electronAPI) {
+            return handles;
+        }
+
         // Use batch path joining for optimal performance - single IPC call instead of multiple
         const fileNames = files.map(f => f.name);
-        const batchResult = await window.electronAPI.joinPathsBatch({ basePath: directoryPath, fileNames });
+        const batchResult = await electronAPI.joinPathsBatch({ basePath: directoryPath, fileNames });
+        const filePaths = batchResult.success && batchResult.paths
+            ? batchResult.paths
+            : fileNames.map(name => `${directoryPath}/${name}`);
 
         if (!batchResult.success) {
             console.error("Failed to join paths in batch:", batchResult.error);
-            // Fallback: use manual path construction
-            const filePaths = fileNames.map(name => `${directoryPath}/${name}`);
-            batchResult.paths = filePaths;
         }
 
         // Process all files with the returned paths
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const filePath = batchResult.paths[i];
+            const filePath = filePaths[i];
 
             const mockHandle = {
                 name: file.name,
@@ -162,7 +167,7 @@ async function getFileHandles(
                 getFile: async () => {
                     // Read file directly when needed (during processFiles)
                     if (getIsElectron()) {
-                        const fileResult = await window.electronAPI.readFile(filePath);
+                        const fileResult = await electronAPI.readFile(filePath);
                         if (fileResult.success && fileResult.data) {
                             const freshData = new Uint8Array(fileResult.data);
                             const lowerName = file.name.toLowerCase();
@@ -732,13 +737,17 @@ export function useImageLoader() {
                     if (!metadataChunk || metadataChunk.length === 0) {
                         return;
                     }
+                    const electronAPI = window.electronAPI;
+                    if (!electronAPI) {
+                        return;
+                    }
 
                     // Use batch path joining for optimal performance
                     const fileNames = metadataChunk.map(meta => meta.name);
-                    const batchResult = await window.electronAPI.joinPathsBatch({ basePath: directory.path, fileNames });
+                    const batchResult = await electronAPI.joinPathsBatch({ basePath: directory.path, fileNames });
 
                     let filePaths: string[];
-                    if (batchResult.success) {
+                    if (batchResult.success && batchResult.paths) {
                         filePaths = batchResult.paths;
                     } else {
                         console.error("Failed to join paths in batch:", batchResult.error);
@@ -755,7 +764,7 @@ export function useImageLoader() {
                             _filePath: filePath,
                             getFile: async () => {
                                 if (isElectron && filePath) {
-                                    const fileResult = await window.electronAPI.readFile(filePath);
+                                    const fileResult = await electronAPI.readFile(filePath);
                                     if (fileResult.success && fileResult.data) {
                                         const freshData = new Uint8Array(fileResult.data);
                                         const lowerName = meta.name.toLowerCase();
@@ -872,8 +881,9 @@ export function useImageLoader() {
         try {
             // Always update the allowed paths in the main process
             if (getIsElectron()) {
+                const electronAPI = window.electronAPI;
                 const allPaths = useImageStore.getState().directories.map(d => d.path);
-                await window.electronAPI.updateAllowedPaths(allPaths);
+                await electronAPI?.updateAllowedPaths(allPaths);
             }
 
             await cacheManager.init();
@@ -1173,7 +1183,11 @@ export function useImageLoader() {
             let name: string;
 
             if (getIsElectron()) {
-                const result = await window.electronAPI.showDirectoryDialog();
+                const electronAPI = window.electronAPI;
+                if (!electronAPI) {
+                    throw new Error('Electron API is unavailable.');
+                }
+                const result = await electronAPI.showDirectoryDialog();
                 if (result.canceled || !result.path) return;
                 path = result.path;
                 name = result.name || 'Selected Folder';
@@ -1218,11 +1232,11 @@ export function useImageLoader() {
             // Start watcher if autoWatch is enabled
             if (getIsElectron() && newDirectory.autoWatch) {
                 try {
-                    const result = await window.electronAPI.startWatchingDirectory({
+                    const result = await window.electronAPI?.startWatchingDirectory({
                         directoryId: newDirectory.id,
                         dirPath: newDirectory.path
                     });
-                    if (!result.success) {
+                    if (result && !result.success) {
                         console.error(`Failed to start auto-watch: ${result.error}`);
                     }
                 } catch (err) {
@@ -1282,7 +1296,7 @@ export function useImageLoader() {
                     const hydrateInBackground = async () => {
                         // Update allowed paths BEFORE loading from cache to avoid security violations
                         const allPaths = useImageStore.getState().directories.map(d => d.path);
-                        await window.electronAPI.updateAllowedPaths(allPaths);
+                        await window.electronAPI?.updateAllowedPaths(allPaths);
 
                         for (const dir of directoriesToLoad) {
                             await loadDirectoryFromCache(dir);
@@ -1343,13 +1357,13 @@ export function useImageLoader() {
         if (getIsElectron()) {
             const updatedDirectories = useImageStore.getState().directories;
             const allPaths = updatedDirectories.map(d => d.path);
-            await window.electronAPI.updateAllowedPaths(allPaths);
+            await window.electronAPI?.updateAllowedPaths(allPaths);
         }
     }, []);
 
     const processNewWatchedFiles = useCallback(async (
         directory: Directory,
-        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string }>
+        files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }>
     ) => {
         try {
             const shouldScanSubfolders = useImageStore.getState().scanSubfolders;
@@ -1362,10 +1376,17 @@ export function useImageLoader() {
             // Filtrar arquivos que j├í existem
             const images = useImageStore.getState().images;
             const existingIds = new Set(images.map(img => img.id));
+            const getWatchedImageId = (file: { relativePath?: string; normalizedName: string }) =>
+                `${directory.id}::${file.relativePath || file.normalizedName}`;
             const newFiles = normalizedFiles.filter(file => {
-                const imageId = `${directory.id}::${file.relativePath || file.normalizedName}`;
-                return !existingIds.has(imageId);
+                const imageId = getWatchedImageId(file);
+                return file.forceReindex === true || !existingIds.has(imageId);
             });
+            const forceReindexExistingIds = new Set(
+                newFiles
+                    .filter(file => file.forceReindex === true && existingIds.has(getWatchedImageId(file)))
+                    .map(getWatchedImageId)
+            );
 
             if (newFiles.length === 0) {
                 return; // Todos os arquivos j├í foram indexados
@@ -1383,8 +1404,9 @@ export function useImageLoader() {
                     _filePath: file.path, // IMPORTANTE: Path para leitura via IPC no Electron
                     getFile: async () => {
                         // Read file directly when needed (during processFiles)
-                        if (getIsElectron()) {
-                            const fileResult = await window.electronAPI.readFile(file.path);
+                        const electronAPI = window.electronAPI;
+                        if (getIsElectron() && electronAPI) {
+                            const fileResult = await electronAPI.readFile(file.path);
                             if (fileResult.success && fileResult.data) {
                                 const freshData = new Uint8Array(fileResult.data);
                                 const lowerName = file.normalizedName.toLowerCase();
@@ -1419,6 +1441,7 @@ export function useImageLoader() {
             );
 
             const enrichedForCache: IndexedImage[] = [];
+            const refreshedForCache: IndexedImage[] = [];
 
             // Callback para processar batches de imagens
             const handleBatchProcessed = (batch: IndexedImage[]) => {
@@ -1442,10 +1465,18 @@ export function useImageLoader() {
                     onEnrichmentBatch: (enrichedBatch) => {
                         // Phase B: Enriquecimento completo - adicionar as imagens agora
                         console.log('[auto-watch] Phase B enriched', enrichedBatch.length, 'images - adding to store');
+                        const refreshedBatch = enrichedBatch.filter(image => forceReindexExistingIds.has(image.id));
+                        const newBatch = enrichedBatch.filter(image => !forceReindexExistingIds.has(image.id));
                         const addStart = performance.now();
-                        addImages(enrichedBatch);
+                        if (newBatch.length > 0) {
+                            addImages(newBatch);
+                            enrichedForCache.push(...newBatch);
+                        }
+                        if (refreshedBatch.length > 0) {
+                            mergeImages(refreshedBatch);
+                            refreshedForCache.push(...refreshedBatch);
+                        }
                         const addDurationMs = performance.now() - addStart;
-                        enrichedForCache.push(...enrichedBatch);
                         // Force flush imediatamente
                         const flushPendingImages = useImageStore.getState().flushPendingImages;
                         setTimeout(() => {
@@ -1479,11 +1510,18 @@ export function useImageLoader() {
                     console.error('Failed to append auto-watch images to cache:', err);
                 }
             }
+            if (getIsElectron() && refreshedForCache.length > 0) {
+                try {
+                    await cacheManager.updateCachedImages(directory.path, directory.name, refreshedForCache, shouldScanSubfolders);
+                } catch (err) {
+                    console.error('Failed to update auto-watch cache entries:', err);
+                }
+            }
 
         } catch (error) {
             console.error('Error processing watched files:', error);
         }
-    }, [addImages]);
+    }, [addImages, mergeImages]);
 
     return {
         handleSelectFolder,

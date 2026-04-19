@@ -60,6 +60,16 @@ The repository is MPL 2.0 and the core app remains open-source. Some workflow-he
 4. Wait for the first indexing pass to finish.
 5. Use search, sidebar facets, tags, and advanced filters to explore the library.
 
+### macOS unsigned builds
+
+Current GitHub release builds are not signed with an Apple Developer ID yet. If macOS blocks the app after you download and move it to Applications, remove the quarantine flag from Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Image MetaHub.app"
+```
+
+This is a temporary workaround for unsigned builds until macOS signing and notarization are available.
+
 ![Browsing and filters](assets/screenshot-gallery.webp)
 
 ## Browsing and Curation

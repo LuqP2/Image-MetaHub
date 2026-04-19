@@ -58,6 +58,33 @@ export interface CacheDiff {
 
 const DEFAULT_INCREMENTAL_CHUNK_SIZE = 1024;
 
+export function pruneCacheMetadata(
+  metadata: CacheImageMetadata[],
+  options: { ids?: Iterable<string>; names?: Iterable<string> }
+): CacheImageMetadata[] {
+  const ids = new Set(options.ids ?? []);
+  const names = new Set(
+    Array.from(options.names ?? [])
+      .map((name) => name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+  );
+  const removesRoot = names.has('');
+  const namePrefixes = Array.from(names).map((name) => `${name}/`);
+
+  if (ids.size === 0 && names.size === 0) {
+    return metadata;
+  }
+
+  return metadata.filter((entry) => {
+    if (removesRoot) {
+      return false;
+    }
+
+    const normalizedName = entry.name.replace(/\\/g, '/').replace(/^\/+/, '');
+    const matchedName = names.has(normalizedName) || namePrefixes.some((prefix) => normalizedName.startsWith(prefix));
+    return !ids.has(entry.id) && !matchedName;
+  });
+}
+
 function toCacheMetadata(images: IndexedImage[]): CacheImageMetadata[] {
   return images.map(img => ({
     id: img.id,
@@ -545,6 +572,108 @@ class CacheManager {
 
       if (!result.success) {
         console.error('Failed to update cached images:', result.error);
+      }
+    }
+  }
+
+  async removeCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    imageIds: string[],
+    imageNames: string[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron || (imageIds.length === 0 && imageNames.length === 0)) return;
+
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+    for (const mode of candidateModes) {
+      const existing = await this.getCachedData(directoryPath, mode);
+      if (!existing) {
+        continue;
+      }
+
+      const metadata = pruneCacheMetadata(existing.metadata, {
+        ids: imageIds,
+        names: imageNames,
+      });
+
+      if (metadata.length === existing.metadata.length) {
+        continue;
+      }
+
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: existing.id,
+          directoryPath,
+          directoryName: existing.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+
+      if (!result.success) {
+        console.error('Failed to remove cached images:', result.error);
+      }
+    }
+  }
+
+  async replaceCachedImages(
+    directoryPath: string,
+    directoryName: string,
+    images: IndexedImage[],
+    removedImageIds: string[],
+    removedImageNames: string[],
+    scanSubfolders: boolean
+  ): Promise<void> {
+    if (!this.isElectron || images.length === 0 || (removedImageIds.length === 0 && removedImageNames.length === 0)) return;
+
+    const replacements = sanitizeCacheMetadata(toCacheMetadata(images), { forceClone: true });
+    const replacementIds = replacements.map((image) => image.id);
+    const replacementNames = replacements.map((image) => image.name);
+    const candidateModes = Array.from(new Set([scanSubfolders, !scanSubfolders]));
+
+    for (const mode of candidateModes) {
+      const existing = await this.getCachedData(directoryPath, mode);
+      if (!existing) {
+        continue;
+      }
+
+      const metadataWithoutOldEntries = pruneCacheMetadata(existing.metadata, {
+        ids: removedImageIds,
+        names: removedImageNames,
+      });
+
+      if (metadataWithoutOldEntries.length === existing.metadata.length) {
+        continue;
+      }
+
+      const metadata = [
+        ...pruneCacheMetadata(metadataWithoutOldEntries, {
+          ids: replacementIds,
+          names: replacementNames,
+        }),
+        ...replacements,
+      ];
+      const cacheId = `${directoryPath}-${mode ? 'recursive' : 'flat'}`;
+      const result = await window.electronAPI.cacheData({
+        cacheId,
+        data: {
+          id: existing.id,
+          directoryPath,
+          directoryName: existing.directoryName ?? directoryName,
+          lastScan: Date.now(),
+          imageCount: metadata.length,
+          metadata,
+          parserVersion: PARSER_VERSION,
+        },
+      });
+
+      if (!result.success) {
+        console.error('Failed to replace cached images:', result.error);
       }
     }
   }

@@ -1926,6 +1926,19 @@ function setupFileOperationHandlers() {
       }
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
+      const oldStats = await fs.lstat(oldPath);
+      try {
+        const targetStats = await fs.lstat(newPath);
+        const isSameFile = oldStats.dev === targetStats.dev && oldStats.ino === targetStats.ino;
+        if (!isSameFile) {
+          return { success: false, error: 'A file with that name already exists.' };
+        }
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
       await fs.rename(oldPath, newPath);
       return { success: true };
     } catch (error) {
@@ -2013,14 +2026,39 @@ function setupFileOperationHandlers() {
         return { success: false, error: `Folder does not exist: ${normalizedPath}` };
       }
 
-      // Read directory and filter to only directories
+      // Read directory and include real directories plus symlinks/aliases that resolve to directories.
       const entries = await fs.readdir(normalizedPath, { withFileTypes: true });
-      const subfolders = entries
-        .filter(entry => entry.isDirectory())
-        .map(entry => ({
-          name: entry.name,
-          path: path.join(normalizedPath, entry.name)
-        }));
+      const subfolders = [];
+
+      for (const entry of entries) {
+        const entryPath = path.join(normalizedPath, entry.name);
+        let isDirectory = entry.isDirectory();
+        let realPath = entryPath;
+
+        if (!isDirectory && entry.isSymbolicLink()) {
+          try {
+            const stats = await fs.stat(entryPath);
+            isDirectory = stats.isDirectory();
+            realPath = await fs.realpath(entryPath);
+          } catch (error) {
+            console.warn('Skipping inaccessible symlink while listing subfolders:', entryPath, error.message);
+          }
+        } else if (isDirectory) {
+          try {
+            realPath = await fs.realpath(entryPath);
+          } catch {
+            realPath = entryPath;
+          }
+        }
+
+        if (isDirectory) {
+          subfolders.push({
+            name: entry.name,
+            path: entryPath,
+            realPath
+          });
+        }
+      }
 
       console.log(`✅ Found ${subfolders.length} subfolders in ${normalizedPath}`);
       return { success: true, subfolders };

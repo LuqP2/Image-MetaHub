@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, FC, useCallback, useMemo, useRef } from 'react';
 import { type IndexedImage, type BaseMetadata, type LoRAInfo, type SmartCollection } from '../types';
 import { FileOperations } from '../services/fileOperations';
+import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { Copy, Pencil, Trash2, ChevronDown, ChevronRight, Folder, Download, Clipboard, Sparkles, GitCompare, Heart, X, Zap, CheckCircle, ArrowUp, Play, Pause, Volume2, VolumeX, Repeat, Eye, EyeOff, Search, Minus, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { useCopyToA1111 } from '../hooks/useCopyToA1111';
@@ -70,7 +71,7 @@ interface ImageModalProps {
   image: IndexedImage;
   onClose: () => void;
   onImageDeleted?: (imageId: string) => void;
-  onImageRenamed?: (imageId: string, newName: string) => void;
+  onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
   totalImages?: number;
   onNavigateNext?: () => void;
@@ -1777,7 +1778,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
   useEffect(() => {
     if (!isRenaming) {
-      setNewName(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
+      setNewName(getRenameBasename(image));
     }
   }, [image.name, isRenaming]);
 
@@ -1795,13 +1796,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [isRenaming]);
 
   const confirmRename = async () => {
-    if (!newName.trim() || !FileOperations.validateFilename(newName).valid) {
-      alert('Invalid filename.');
-      return;
-    }
-    const result = await FileOperations.renameFile(image, newName);
+    const oldImageId = image.id;
+    const result = await renameIndexedImage(image, newName);
     if (result.success) {
-      onImageRenamed?.(image.id, `${newName}.${image.name.split('.').pop()}`);
+      onImageRenamed?.(oldImageId, result.newImageId || oldImageId, result.newRelativePath || image.name);
       setIsRenaming(false);
     } else {
       alert(`Failed to rename file: ${result.error}`);

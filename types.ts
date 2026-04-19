@@ -61,6 +61,12 @@ export interface IndexedImageTransferResultItem {
   type?: string;
 }
 
+export interface WatchedFileRemovalPayload {
+  directoryId: string;
+  files: Array<{ path: string; name: string; relativePath?: string }>;
+  folders: Array<{ path: string; name: string; relativePath?: string }>;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -70,7 +76,7 @@ export interface ElectronAPI {
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
-  listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
+  listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
@@ -146,7 +152,8 @@ export interface ElectronAPI {
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;
   stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
-  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
+  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }> }) => void) => () => void;
+  onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
 

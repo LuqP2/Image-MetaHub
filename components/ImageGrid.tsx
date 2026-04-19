@@ -16,7 +16,8 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   Play,
   Music,
   Tag,
-  RefreshCw
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
@@ -38,7 +39,14 @@ import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal
 import { transferIndexedImages } from '../services/fileTransferService';
 import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
+import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+
+interface ImageRenameResult {
+  oldImageId: string;
+  newImageId: string;
+  newRelativePath: string;
+}
 
 interface ImageCardProps {
   image: IndexedImage;
@@ -48,6 +56,9 @@ interface ImageCardProps {
   isFocused?: boolean;
   onImageLoad: (id: string, aspectRatio: number) => void;
   onContextMenu?: (image: IndexedImage, event: React.MouseEvent) => void;
+  onRenameRequest?: (image: IndexedImage) => void;
+  onRenameComplete?: (result?: ImageRenameResult) => void;
+  isRenaming?: boolean;
   baseWidth: number;
   isComparisonFirst?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
@@ -130,12 +141,17 @@ const collectWarmupImages = (
   return images;
 };
 
-const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
+const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
   const suppressNextClickRef = useRef(false);
   const dragResetTimeoutRef = useRef<number | null>(null);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const submittingRenameRef = useRef(false);
+  const cancelingRenameRef = useRef(false);
 
   const setPreviewImage = useImageStore((state) => state.setPreviewImage);
   const directories = useImageStore((state) => state.directories);
@@ -206,6 +222,70 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isRenaming) {
+      submittingRenameRef.current = false;
+      cancelingRenameRef.current = false;
+      setIsSubmittingRename(false);
+      return;
+    }
+
+    setRenameValue(getRenameBasename(image));
+    requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+  }, [image, isRenaming]);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!isRenaming || submittingRenameRef.current) {
+      return;
+    }
+
+    const nextValue = renameValue.trim();
+    if (nextValue === getRenameBasename(image)) {
+      onRenameComplete?.();
+      return;
+    }
+
+    submittingRenameRef.current = true;
+    setIsSubmittingRename(true);
+    try {
+      const result = await renameIndexedImage(image, nextValue);
+      if (!result.success) {
+        alert(result.error || 'Failed to rename image.');
+        requestAnimationFrame(() => {
+          renameInputRef.current?.focus();
+          renameInputRef.current?.select();
+        });
+        return;
+      }
+
+      if (result.newImageId && result.newRelativePath) {
+        onRenameComplete?.({
+          oldImageId: image.id,
+          newImageId: result.newImageId,
+          newRelativePath: result.newRelativePath,
+        });
+        return;
+      }
+
+      onRenameComplete?.();
+    } finally {
+      submittingRenameRef.current = false;
+      setIsSubmittingRename(false);
+    }
+  }, [image, isRenaming, onRenameComplete, renameValue]);
+
+  const handleRenameCancel = useCallback(() => {
+    if (isSubmittingRename) {
+      return;
+    }
+
+    cancelingRenameRef.current = true;
+    onRenameComplete?.();
+  }, [isSubmittingRename, onRenameComplete]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -500,20 +580,61 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           </div>
         )}
       </div>
-      {showFilenames && (
+      {(showFilenames || isRenaming) && (
         <div className="mt-2 w-full min-h-[2.25rem] px-1">
-          <p
-            className="text-[11px] leading-tight text-center text-gray-400"
-            style={{
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-              overflow: 'hidden',
-            }}
-            title={fullDisplayName}
-          >
-            {displayName}
-          </p>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              aria-label={`Rename ${image.name}`}
+              className="h-8 w-full rounded-md border border-blue-500/70 bg-gray-950 px-2 text-center text-[11px] leading-tight text-white outline-none ring-2 ring-blue-500/30 disabled:cursor-wait disabled:opacity-70"
+              disabled={isSubmittingRename}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onBlur={() => {
+                if (cancelingRenameRef.current) {
+                  cancelingRenameRef.current = false;
+                  return;
+                }
+                void handleRenameSubmit();
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleRenameSubmit();
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  handleRenameCancel();
+                }
+              }}
+            />
+          ) : (
+            <p
+              role={onRenameRequest ? 'button' : undefined}
+              className="text-[11px] leading-tight text-center text-gray-400"
+              style={{
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 2,
+                overflow: 'hidden',
+              }}
+              title={fullDisplayName}
+              onDoubleClick={(event) => {
+                if (!onRenameRequest) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                onRenameRequest(image);
+              }}
+            >
+              {displayName}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -543,6 +664,9 @@ interface CellData {
   imageSize: number;
   handleImageLoad: (id: string, aspectRatio: number) => void;
   handleContextMenu: (image: IndexedImage, event: React.MouseEvent) => void;
+  handleRenameRequest: (image: IndexedImage) => void;
+  handleRenameComplete: (result?: ImageRenameResult) => void;
+  renamingImageId: string | null;
   comparisonFirstImageId?: string;
   createCardRef: (id: string) => (node: HTMLDivElement | null) => void;
   markedBestIds?: Set<string>;
@@ -564,6 +688,9 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
     imageSize,
     handleImageLoad,
     handleContextMenu,
+    handleRenameRequest,
+    handleRenameComplete,
+    renamingImageId,
     comparisonFirstImageId,
     createCardRef,
     markedBestIds,
@@ -615,6 +742,9 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
               isFocused={false}
               onImageLoad={handleImageLoad}
               onContextMenu={(img, e) => handleContextMenu(img, e)}
+              onRenameRequest={handleRenameRequest}
+              onRenameComplete={handleRenameComplete}
+              isRenaming={renamingImageId === item.coverImage.id}
               baseWidth={imageSize}
               isComparisonFirst={false}
               cardRef={createCardRef(item.id)}
@@ -659,6 +789,9 @@ const Cell = React.memo(({ columnIndex, rowIndex, style, data }: GridChildCompon
         isFocused={isFocused}
         onImageLoad={handleImageLoad}
         onContextMenu={(img, e) => handleContextMenu(img, e)}
+        onRenameRequest={handleRenameRequest}
+        onRenameComplete={handleRenameComplete}
+        isRenaming={renamingImageId === image.id}
         baseWidth={imageSize}
         isComparisonFirst={comparisonFirstImageId === image.id}
         cardRef={createCardRef(image.id)}
@@ -681,6 +814,7 @@ interface ImageGridProps {
   onBatchExport: () => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
+  onImageRenamed?: (oldImageId: string, newImageId: string) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
@@ -699,6 +833,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   onBatchExport,
   activeCollection = null,
   isCollectionsView = false,
+  onImageRenamed,
   markedBestIds,
   markedArchivedIds,
 }) => {
@@ -713,7 +848,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const { stackedItems } = useImageStacking(images, isStackingEnabled);
   const itemsToRender = isStackingEnabled ? stackedItems : images;
   const isInfinite = itemsPerPage === -1;
-  const gridRef = useRef<HTMLDivElement>(null);
+  const gridScopeRef = useRef<HTMLDivElement>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  const virtualGridRef = useRef<React.ElementRef<typeof Grid>>(null);
   const gridKeyboardActiveRef = useRef(false);
   const imageCardsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cardRefCallbacksRef = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
@@ -751,6 +888,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [renamingImageId, setRenamingImageId] = useState<string | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
@@ -766,6 +904,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         .filter(Boolean)
     );
   }, [sensitiveTags]);
+  const showFilenameArea = showFilenames || renamingImageId !== null;
 
 
 
@@ -794,6 +933,13 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     copyRawMetadata,
     addTag
   } = useContextMenu();
+
+  const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
+
+  const setNonVirtualGridRef = useCallback((node: HTMLDivElement | null) => {
+    gridScopeRef.current = node;
+    gridScrollRef.current = node;
+  }, []);
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -997,6 +1143,28 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
 
+  const openInlineRename = useCallback((image: IndexedImage | null | undefined) => {
+    if (!image) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setRenamingImageId(image.id);
+    hideContextMenu();
+  }, [canUseFileManagement, hideContextMenu, showProModal]);
+
+  const closeInlineRename = useCallback((result?: ImageRenameResult) => {
+    if (result) {
+      onImageRenamed?.(result.oldImageId, result.newImageId);
+    }
+    setRenamingImageId(null);
+  }, [onImageRenamed]);
+
   const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
       return;
@@ -1049,28 +1217,29 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
 
     e.preventDefault();
-    const rect = gridRef.current?.getBoundingClientRect();
+    const scrollElement = getGridScrollElement();
+    const rect = scrollElement?.getBoundingClientRect();
     if (!rect) return;
 
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+    const x = e.clientX - rect.left + (scrollElement?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (scrollElement?.scrollTop || 0);
 
     setIsSelecting(true);
     setSelectionStart({ x, y });
     setSelectionEnd({ x, y });
     const currentSelection = preserveExistingSelection ? new Set(selectedImages) : new Set<string>();
     setInitialSelectedImages(currentSelection);
-  }, [selectedImages]);
+  }, [getGridScrollElement, selectedImages]);
 
   useEffect(() => {
     const handleGlobalPointerDown = (event: MouseEvent) => {
-      if (!gridRef.current?.contains(event.target as Node)) {
+      if (!gridScopeRef.current?.contains(event.target as Node)) {
         gridKeyboardActiveRef.current = false;
       }
     };
 
     const handleGlobalFocusIn = (event: FocusEvent) => {
-      if (!gridRef.current?.contains(event.target as Node)) {
+      if (!gridScopeRef.current?.contains(event.target as Node)) {
         gridKeyboardActiveRef.current = false;
       }
     };
@@ -1094,11 +1263,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     }
 
     rafIdRef.current = requestAnimationFrame(() => {
-      const rect = gridRef.current?.getBoundingClientRect();
+      const scrollElement = getGridScrollElement();
+      const rect = scrollElement?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left + (gridRef.current?.scrollLeft || 0);
-      const y = e.clientY - rect.top + (gridRef.current?.scrollTop || 0);
+      const x = e.clientX - rect.left + (scrollElement?.scrollLeft || 0);
+      const y = e.clientY - rect.top + (scrollElement?.scrollTop || 0);
 
       setSelectionEnd({ x, y });
 
@@ -1115,7 +1285,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       if (isInfinite) {
         const columnCount = columnCountRef.current;
         const colWidth = imageSize + GAP_SIZE;
-        const itemHeight = getItemHeight(imageSize, showFilenames);
+        const itemHeight = getItemHeight(imageSize, showFilenameArea);
         const rowHeight = itemHeight + GAP_SIZE;
 
         const minRow = Math.max(0, Math.floor((box.top - GAP_SIZE) / rowHeight));
@@ -1150,8 +1320,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       } else {
         imageCardsRef.current.forEach((element, imageId) => {
           const imageRect = element.getBoundingClientRect();
-          const scrollTop = gridRef.current?.scrollTop || 0;
-          const scrollLeft = gridRef.current?.scrollLeft || 0;
+          const scrollTop = scrollElement?.scrollTop || 0;
+          const scrollLeft = scrollElement?.scrollLeft || 0;
   
           const imageBox = {
             left: imageRect.left - rect.left + scrollLeft,
@@ -1176,7 +1346,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
       useImageStore.setState({ selectedImages: newSelection });
       rafIdRef.current = null;
     });
-  }, [isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenames]);
+  }, [getGridScrollElement, isSelecting, selectionStart, initialSelectedImages, isInfinite, itemsToRender, imageSize, showFilenameArea]);
 
   const handleMouseUp = useCallback(() => {
     setIsSelecting(false);
@@ -1294,6 +1464,36 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [focusedImageIndex, images, setFocusedImageIndex, setPreviewImage, onImageClick, currentPage, totalPages, onPageChange]);
 
+  useEffect(() => {
+    if (!gridKeyboardActiveRef.current || focusedImageIndex == null || focusedImageIndex < 0) {
+      return;
+    }
+
+    if (isInfinite) {
+      const columnCount = Math.max(1, columnCountRef.current);
+      virtualGridRef.current?.scrollToItem({
+        rowIndex: Math.floor(focusedImageIndex / columnCount),
+        columnIndex: focusedImageIndex % columnCount,
+        align: 'auto',
+      });
+      return;
+    }
+
+    const focusedImage = images[focusedImageIndex];
+    if (!focusedImage) {
+      return;
+    }
+
+    const focusedElement = imageCardsRef.current.get(focusedImage.id);
+    if (typeof focusedElement?.scrollIntoView === 'function') {
+      focusedElement.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+  }, [focusedImageIndex, images, isInfinite]);
+
+  // Add global mouseup listener to handle selection end even outside the grid
   useEffect(() => {
     if (!isSelecting) return;
 
@@ -1569,6 +1769,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
           </button>
 
           <button
+            onClick={() => openInlineRename(contextMenu.image)}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="flex-1">Rename...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
             onClick={() => openTransferModal('copy')}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
@@ -1815,6 +2025,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     return (
       <div className="flex flex-col h-full w-full">
          <div
+            ref={gridScopeRef}
             className="flex-1 outline-none"
             style={{ position: 'relative' }}
             data-area="grid"
@@ -1849,6 +2060,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     imageSize,
                     handleImageLoad,
                     handleContextMenu,
+                    handleRenameRequest: openInlineRename,
+                    handleRenameComplete: closeInlineRename,
+                    renamingImageId,
                     comparisonFirstImageId: queuedComparisonFirstImageId,
                     createCardRef,
                     markedBestIds,
@@ -1861,20 +2075,21 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
                 return (
                   <Grid
+                    ref={virtualGridRef}
                     columnCount={safeColumnCount}
                     columnWidth={imageSize + GAP_SIZE}
                     height={height}
                     overscanColumnCount={1}
                     overscanRowCount={4}
                     rowCount={rowCount}
-                    rowHeight={getItemHeight(imageSize, showFilenames) + GAP_SIZE}
+                    rowHeight={getItemHeight(imageSize, showFilenameArea) + GAP_SIZE}
                     width={width}
-                    outerRef={gridRef}
+                    outerRef={gridScrollRef}
                     className="no-scrollbar-if-needed"
                     itemData={cellData}
                     itemKey={({ columnIndex, rowIndex, data }) => {
                       const itemIndex = rowIndex * safeColumnCount + columnIndex;
-                      const item = data.items[itemIndex];
+                      const item = (data as CellData).items[itemIndex];
                       return item ? item.id : `empty-${rowIndex}-${columnIndex}`;
                     }}
                     style={{ overflowX: 'hidden' }}
@@ -1918,7 +2133,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             className="absolute pointer-events-none z-30"
             style={{
               left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
-              top: `${Math.min(selectionStart.y, selectionEnd.y) - (gridRef.current?.scrollTop || 0)}px`,
+              top: `${Math.min(selectionStart.y, selectionEnd.y) - (getGridScrollElement()?.scrollTop || 0)}px`,
               width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
               height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
               border: '2px solid rgba(59, 130, 246, 0.8)',
@@ -1937,7 +2152,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   return (
     <div className="flex flex-col h-full w-full">
       <div
-        ref={gridRef}
+        ref={setNonVirtualGridRef}
         className="flex-1 p-4 outline-none overflow-auto"
         style={{ minWidth: 0, minHeight: 0, position: 'relative', userSelect: isSelecting ? 'none' : 'auto' }}
         data-area="grid"
@@ -1952,7 +2167,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         }}
         onClick={() => {
           gridKeyboardActiveRef.current = true;
-          gridRef.current?.focus();
+          gridScopeRef.current?.focus();
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -1975,7 +2190,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     <div 
                         key={item.id}
                         className="relative group cursor-pointer"
-                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenames) }}
+                        style={{ width: imageSize, height: getItemHeight(imageSize, showFilenameArea) }}
                         onClick={() => handleStackClick(item)}
                     >
                         {/* Back cards effect */}
@@ -1990,8 +2205,11 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                                 isSelected={selectedImages.has(item.coverImage.id)}
                                 isFocused={false}
                                 onImageLoad={handleImageLoad}
-                                onContextMenu={(img, e) => handleContextMenu(img, e)}
-                                baseWidth={imageSize}
+                onContextMenu={(img, e) => handleContextMenu(img, e)}
+                onRenameRequest={openInlineRename}
+                onRenameComplete={closeInlineRename}
+                isRenaming={renamingImageId === item.coverImage.id}
+                baseWidth={imageSize}
                                 isComparisonFirst={false}
                                 cardRef={createCardRef(item.id)}
                                 isMarkedBest={markedBestIds?.has(item.coverImage.id)}
@@ -2025,6 +2243,9 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                 isFocused={isFocused}
                 onImageLoad={handleImageLoad}
                 onContextMenu={handleContextMenu}
+                onRenameRequest={openInlineRename}
+                onRenameComplete={closeInlineRename}
+                isRenaming={renamingImageId === image.id}
                 baseWidth={imageSize}
                 isComparisonFirst={queuedComparisonFirstImageId === image.id}
                 cardRef={createCardRef(image.id)}

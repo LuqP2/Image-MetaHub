@@ -289,6 +289,113 @@ const addImagesToCollectionRecord = (collection: SmartCollection, imageIds: stri
     );
 };
 
+const remapCollectionImageReferences = (
+    collection: SmartCollection,
+    sourceImageId: string,
+    targetImageId: string,
+): SmartCollection => {
+    let changed = false;
+    const remapId = <T extends string | null | undefined>(imageId: T): T | string => {
+        if (imageId === sourceImageId) {
+            changed = true;
+            return targetImageId;
+        }
+        return imageId;
+    };
+    const remapIds = (imageIds?: string[]): string[] | undefined => {
+        if (!imageIds) {
+            return undefined;
+        }
+        if (!imageIds.includes(sourceImageId)) {
+            return imageIds;
+        }
+        changed = true;
+        return uniqueIds(imageIds.map((imageId) => imageId === sourceImageId ? targetImageId : imageId));
+    };
+
+    const nextCollection = {
+        ...collection,
+        coverImageId: remapId(collection.coverImageId),
+        thumbnailId: remapId(collection.thumbnailId),
+        imageIds: remapIds(collection.imageIds),
+        snapshotImageIds: remapIds(collection.snapshotImageIds),
+        excludedImageIds: remapIds(collection.excludedImageIds),
+    };
+
+    if (!changed) {
+        return collection;
+    }
+
+    return normalizeSmartCollection(
+        {
+            ...nextCollection,
+            updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+    );
+};
+
+const remapImageId = (imageId: string, sourceImageId: string, targetImageId: string): string =>
+    imageId === sourceImageId ? targetImageId : imageId;
+
+const remapImageListReference = (
+    images: IndexedImage[] | null,
+    sourceImageId: string,
+    targetImage: IndexedImage,
+): IndexedImage[] | null => {
+    if (!images?.some((image) => image.id === sourceImageId)) {
+        return images;
+    }
+
+    return images.map((image) => image.id === sourceImageId ? targetImage : image);
+};
+
+const remapClusterImageReferences = (
+    cluster: ImageCluster,
+    sourceImageId: string,
+    targetImageId: string,
+): ImageCluster => {
+    if (!cluster.imageIds.includes(sourceImageId) && cluster.coverImageId !== sourceImageId) {
+        return cluster;
+    }
+
+    const imageIds = uniqueIds(cluster.imageIds.map((imageId) => remapImageId(imageId, sourceImageId, targetImageId)));
+    return {
+        ...cluster,
+        imageIds,
+        coverImageId: remapImageId(cluster.coverImageId, sourceImageId, targetImageId),
+        size: imageIds.length,
+        updatedAt: Date.now(),
+    };
+};
+
+const remapImageIdSet = (imageIds: Set<string>, sourceImageId: string, targetImageId: string): Set<string> => {
+    if (!imageIds.has(sourceImageId)) {
+        return imageIds;
+    }
+
+    const nextImageIds = new Set(imageIds);
+    nextImageIds.delete(sourceImageId);
+    nextImageIds.add(targetImageId);
+    return nextImageIds;
+};
+
+const remapThumbnailEntries = (
+    thumbnailEntries: Record<string, ThumbnailEntryState>,
+    sourceImageId: string,
+    targetImageId: string,
+): Record<string, ThumbnailEntryState> => {
+    const sourceEntry = thumbnailEntries[sourceImageId];
+    if (!sourceEntry || sourceImageId === targetImageId) {
+        return thumbnailEntries;
+    }
+
+    const nextThumbnailEntries = { ...thumbnailEntries };
+    delete nextThumbnailEntries[sourceImageId];
+    nextThumbnailEntries[targetImageId] = sourceEntry;
+    return nextThumbnailEntries;
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -524,6 +631,7 @@ interface ImageState {
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
+  renameImageRecord: (imageId: string, newRelativePath: string) => IndexedImage | null;
   clearImages: (directoryId?: string) => void;
   setImageThumbnail: (
     imageId: string,
@@ -2080,14 +2188,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                         selection.add(normalizedPath);
                     }
                 } else {
-                    // Single select: replace all with this folder
-                    // If clicking the same folder that's already the only selection, clear it
-                    if (selection.size === 1 && selection.has(normalizedPath)) {
-                        selection.clear();
-                    } else {
-                        selection.clear();
-                        selection.add(normalizedPath);
-                    }
+                    // Single select: always focus this folder. The clear button owns clearing.
+                    selection.clear();
+                    selection.add(normalizedPath);
                 }
 
                 const newState = { ...state, selectedFolders: selection };
@@ -2491,6 +2594,111 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
             maybeQueueLineageBuild(500);
+        },
+
+        renameImageRecord: (imageId, newRelativePath) => {
+            let renamedImage: IndexedImage | null = null;
+            let thumbnailVersionKeyToClear: string | null = null;
+            let collectionsToPersist: SmartCollection[] = [];
+            const normalizedRelativePath = newRelativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+
+            set(state => {
+                const sourceImage = state.images.find(img => img.id === imageId);
+                if (!sourceImage || !sourceImage.directoryId) {
+                    renamedImage = null;
+                    return state;
+                }
+
+                const nextImageId = `${sourceImage.directoryId}::${normalizedRelativePath}`;
+                if (nextImageId !== imageId && state.images.some(img => img.id === nextImageId)) {
+                    renamedImage = null;
+                    return state;
+                }
+
+                const nextFileName = normalizedRelativePath.split('/').pop() || normalizedRelativePath;
+                const nextImage: IndexedImage = {
+                    ...sourceImage,
+                    id: nextImageId,
+                    name: normalizedRelativePath,
+                    handle: {
+                        ...(sourceImage.handle as any),
+                        name: nextFileName,
+                    } as FileSystemFileHandle,
+                };
+                renamedImage = nextImage;
+                thumbnailVersionKeyToClear = imageId !== nextImageId
+                    ? `${imageId}:${sourceImage.lastModified}`
+                    : null;
+
+                const updatedImages = state.images.map(img => img.id === imageId ? nextImage : img);
+                const selectedImages = new Set(Array.from(state.selectedImages).map(id => id === imageId ? nextImageId : id));
+                const annotations = new Map(state.annotations);
+                const annotation = annotations.get(imageId);
+                if (annotation) {
+                    annotations.delete(imageId);
+                    annotations.set(nextImageId, {
+                        ...annotation,
+                        imageId: nextImageId,
+                        updatedAt: Date.now(),
+                    });
+                }
+
+                const replaceImage = (image: IndexedImage | null) => image?.id === imageId ? nextImage : image;
+                const remappedClusters = state.clusters.map((cluster) =>
+                    remapClusterImageReferences(cluster, imageId, nextImageId)
+                );
+                const clusteringMetadata = state.clusteringMetadata
+                    ? {
+                        ...state.clusteringMetadata,
+                        lockedImageIds: remapImageIdSet(state.clusteringMetadata.lockedImageIds, imageId, nextImageId),
+                    }
+                    : null;
+                const remappedCollectionIds = new Set<string>();
+                const remappedCollections = state.collections.map((collection) => {
+                    const nextCollection = remapCollectionImageReferences(collection, imageId, nextImageId);
+                    if (nextCollection !== collection) {
+                        remappedCollectionIds.add(collection.id);
+                    }
+                    return nextCollection;
+                });
+                const syncedCollections = syncCollectionCounts(remappedCollections, updatedImages);
+                collectionsToPersist = syncedCollections.filter((collection) => remappedCollectionIds.has(collection.id));
+                const resultState = {
+                    ...state,
+                    images: updatedImages,
+                    selectedImages,
+                    annotations,
+                    collections: syncedCollections,
+                    clusters: remappedClusters,
+                    clusteringMetadata,
+                    thumbnailEntries: remapThumbnailEntries(state.thumbnailEntries, imageId, nextImageId),
+                    selectedImage: replaceImage(state.selectedImage),
+                    previewImage: replaceImage(state.previewImage),
+                    activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
+                    clusterNavigationContext: remapImageListReference(state.clusterNavigationContext, imageId, nextImage),
+                    comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
+                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
+                };
+
+                return {
+                    ...resultState,
+                    ...filterAndSort(resultState),
+                };
+            });
+
+            if (thumbnailVersionKeyToClear) {
+                thumbnailUpdateTimestamps.delete(thumbnailVersionKeyToClear);
+                thumbnailUpdateInProgress.delete(thumbnailVersionKeyToClear);
+                lastThumbnailState.delete(thumbnailVersionKeyToClear);
+            }
+
+            if (collectionsToPersist.length > 0) {
+                void Promise.all(collectionsToPersist.map((collection) => saveSmartCollection(collection))).catch(error => {
+                    console.error('Failed to persist renamed image collection references:', error);
+                });
+            }
+            maybeQueueLineageBuild(500);
+            return renamedImage;
         },
 
         setImageThumbnail: (imageId, data) => {

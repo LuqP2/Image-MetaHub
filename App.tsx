@@ -223,7 +223,7 @@ export default function App() {
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const removeImage = useImageStore((state) => state.removeImage);
-  const updateImage = useImageStore((state) => state.updateImage);
+  const removeImages = useImageStore((state) => state.removeImages);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
   const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
@@ -351,7 +351,7 @@ export default function App() {
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
-  const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
+  const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
@@ -698,6 +698,55 @@ export default function App() {
     return normalizedPath.slice(0, lastSlash);
   };
 
+  const normalizeRelativeImageName = (value: string) => normalizeFolderPath(value).replace(/^\/+/, '');
+
+  const resolveWatchedRemovalIds = useCallback((
+    directory: Directory,
+    payload: {
+      files?: Array<{ name: string; path?: string; relativePath?: string }>;
+      folders?: Array<{ path?: string; relativePath?: string }>;
+    }
+  ) => {
+    const removedNames = new Set<string>();
+    for (const file of payload.files ?? []) {
+      removedNames.add(normalizeRelativeImageName(file.relativePath || file.name));
+    }
+
+    const removedFolders = (payload.folders ?? [])
+      .map((folder) => {
+        const relativePath = Object.prototype.hasOwnProperty.call(folder, 'relativePath')
+          ? folder.relativePath ?? ''
+          : (folder.path ? folder.path.replace(/\\/g, '/').slice(normalizeFolderPath(directory.path).length + 1) : null);
+        if (relativePath === null) {
+          return null;
+        }
+        return normalizeRelativeImageName(relativePath);
+      })
+      .filter((folder): folder is string => folder !== null);
+
+    const images = useImageStore.getState().images;
+    const removedIds = images
+      .filter((image) => {
+        if (image.directoryId !== directory.id) {
+          return false;
+        }
+
+        const imageName = normalizeRelativeImageName(image.name);
+        return removedFolders.includes('') ||
+          removedNames.has(imageName) ||
+          removedFolders.some((folder) => imageName === folder || imageName.startsWith(`${folder}/`));
+      })
+      .map((image) => image.id);
+
+    return {
+      removedIds,
+      removedNames: [
+        ...removedNames,
+        ...removedFolders,
+      ],
+    };
+  }, []);
+
   // Listen for new images from file watcher
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -709,7 +758,9 @@ export default function App() {
       if (!directory || !files || files.length === 0) return;
 
       // Show toast notification
-      setNewImagesToast({ count: files.length, directoryName: directory.name });
+      setNewImagesToast({
+        message: `${files.length} new image${files.length !== 1 ? 's' : ''} detected in ${directory.name}`,
+      });
 
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
@@ -755,6 +806,56 @@ export default function App() {
 
     return () => unsubscribe();
   }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onWatchedFilesRemoved) return;
+
+    const unsubscribe = window.electronAPI.onWatchedFilesRemoved(async (data) => {
+      const directory = directories.find(d => d.id === data.directoryId);
+      if (!directory) return;
+
+      const { removedIds, removedNames } = resolveWatchedRemovalIds(directory, data);
+      if (removedIds.length === 0 && removedNames.length === 0) {
+        return;
+      }
+
+      if (removedIds.length > 0) {
+        removeImages(removedIds);
+        const removedIdSet = new Set(removedIds);
+        setOpenImageModals((current) =>
+          current.flatMap((modal) => {
+            const navigationImageIds = modal.navigationImageIds.filter((id) => !removedIdSet.has(id));
+            if (removedIdSet.has(modal.imageId)) {
+              return [];
+            }
+            return [{ ...modal, navigationImageIds }];
+          })
+        );
+
+        useImageStore.setState((state) => ({
+          selectedImages: new Set(Array.from(state.selectedImages).filter((id) => !removedIdSet.has(id))),
+          previewImage: state.previewImage && removedIdSet.has(state.previewImage.id) ? null : state.previewImage,
+          selectedImage: state.selectedImage && removedIdSet.has(state.selectedImage.id) ? null : state.selectedImage,
+          comparisonImages: state.comparisonImages.filter((image) => !removedIdSet.has(image.id)),
+        }));
+      }
+
+      await cacheManager.removeCachedImages(
+        directory.path,
+        directory.name,
+        removedIds,
+        removedNames,
+        useImageStore.getState().scanSubfolders,
+      );
+
+      const removedCount = Math.max(removedIds.length, removedNames.length);
+      setNewImagesToast({
+        message: `${removedCount} file${removedCount !== 1 ? 's' : ''} removed from ${directory.name}`,
+      });
+    });
+
+    return unsubscribe;
+  }, [directories, removeImages, resolveWatchedRemovalIds]);
 
   useEffect(() => {
     if (!window.electronAPI?.onTransferIndexedImagesProgress) return;
@@ -1233,9 +1334,19 @@ export default function App() {
     }
   }, [removeImage, setSelectedImage]);
 
-  const handleImageRenamed = useCallback((imageId: string, newName: string) => {
-    updateImage(imageId, newName);
-  }, [updateImage]);
+  const handleImageRenamed = useCallback((oldImageId: string, newImageId: string) => {
+    if (oldImageId === newImageId) {
+      return;
+    }
+
+    setOpenImageModals((current) =>
+      current.map((modal) => ({
+        ...modal,
+        imageId: modal.imageId === oldImageId ? newImageId : modal.imageId,
+        navigationImageIds: modal.navigationImageIds.map((id) => id === oldImageId ? newImageId : id),
+      }))
+    );
+  }, []);
 
   const handleActivateImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) => {
@@ -1843,7 +1954,7 @@ export default function App() {
                 <div className="flex items-center gap-2 flex-1">
                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                   <span className="text-sm">
-                    <span className="font-semibold">{newImagesToast.count}</span> new image{newImagesToast.count !== 1 ? 's' : ''} detected in <span className="font-semibold">{newImagesToast.directoryName}</span>
+                    {newImagesToast.message}
                   </span>
                 </div>
                 <button
@@ -1923,6 +2034,7 @@ export default function App() {
                           totalPages={totalPages}
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
                         />
                       ) : (
                         <ImageTable
@@ -1930,6 +2042,7 @@ export default function App() {
                           onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -1957,6 +2070,7 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
                       />
                     ) : (
                       <ImageTable
@@ -1966,6 +2080,7 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
                       />
                     )}
                   </CollectionsWorkspace>
