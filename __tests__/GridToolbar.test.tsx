@@ -65,6 +65,8 @@ describe('GridToolbar', () => {
         onGenerateComfyUI={vi.fn()}
         onCompare={vi.fn()}
         onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
       />,
     );
 
@@ -90,6 +92,8 @@ describe('GridToolbar', () => {
         onGenerateComfyUI={vi.fn()}
         onCompare={vi.fn()}
         onBatchExport={vi.fn()}
+        onStartSlideshow={vi.fn()}
+        slideshowImageCount={0}
       />,
     );
 
@@ -100,5 +104,30 @@ describe('GridToolbar', () => {
     await waitFor(() => {
       expect(onAddCurrentFilteredToCollection).toHaveBeenCalledWith('collection-1');
     });
+  });
+
+  it('starts a slideshow from the current view without requiring a selection', () => {
+    const onStartSlideshow = vi.fn();
+
+    render(
+      <GridToolbar
+        selectedImages={new Set()}
+        images={[]}
+        directories={[]}
+        filteredImageActionCount={0}
+        onDeleteSelected={vi.fn()}
+        onGenerateA1111={vi.fn()}
+        onGenerateComfyUI={vi.fn()}
+        onCompare={vi.fn()}
+        onBatchExport={vi.fn()}
+        onStartSlideshow={onStartSlideshow}
+        slideshowImageCount={3}
+        slideshowSourceLabel="current folder"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start slideshow' }));
+
+    expect(onStartSlideshow).toHaveBeenCalledTimes(1);
   });
 });

@@ -47,16 +47,18 @@ import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
+import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 
 interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
   windowState?: ImageModalWindowState;
+  startSlideshow?: boolean;
 }
 
 interface ImageModalWindowState {
@@ -1242,8 +1244,12 @@ export default function App() {
       return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
     }
 
+    if (modal.navigationSource === 'slideshow') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, imageLookup]);
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
   useEffect(() => {
     if (openImageModals.length === 0) {
@@ -1428,6 +1434,14 @@ export default function App() {
     handleCloseImageModal(targetModal.modalId, targetModal.imageId);
   }, [handleCloseImageModal, openImageModals]);
 
+  const handleSlideshowStartAcknowledged = useCallback((modalId: string) => {
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, startSlideshow: false } : modal
+      )
+    );
+  }, []);
+
   const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
     if (!targetModal) {
@@ -1573,6 +1587,68 @@ export default function App() {
       ? nodeViewResultImages
       : safeFilteredImages;
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const slideshowPlaylistPreview = useMemo(
+    () =>
+      buildSlideshowPlaylist({
+        scopeImages: displayImages,
+        selectedImageIds: safeSelectedImages,
+        allImages: safeImages,
+      }),
+    [displayImages, safeImages, safeSelectedImages]
+  );
+  const slideshowImageCount = slideshowPlaylistPreview.images.length;
+  const slideshowSourceLabel = slideshowPlaylistPreview.source === 'selection' ? 'selected files' : 'current view';
+
+  const handleStartSlideshow = useCallback(() => {
+    const playlist = slideshowPlaylistPreview.images;
+    if (playlist.length === 0) {
+      setError('No image or video files are available for a slideshow.');
+      return;
+    }
+
+    const firstImage = playlist[0];
+    const navigationImageIds = playlist.map((image) => image.id);
+    const existingModalForFirstImage = openImageModals.find((modal) => modal.imageId === firstImage.id);
+    const slideshowModalId = existingModalForFirstImage?.modalId ?? `image-modal-${Date.now()}-${firstImage.id}`;
+
+    setActiveImageModalId(slideshowModalId);
+    setSelectedImage(firstImage);
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const existingModal = current.find((modal) => modal.imageId === firstImage.id);
+
+      if (existingModal) {
+        const nextZIndex = current.length > 1 ? highestZIndex + 1 : existingModal.zIndex;
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                imageId: firstImage.id,
+                navigationImageIds,
+                navigationSource: 'slideshow',
+                zIndex: nextZIndex,
+                isMinimized: false,
+                startSlideshow: true,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId: slideshowModalId,
+          imageId: firstImage.id,
+          navigationImageIds,
+          navigationSource: 'slideshow',
+          zIndex: highestZIndex + 1,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          startSlideshow: true,
+        },
+      ];
+    });
+  }, [openImageModals, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -2016,6 +2092,9 @@ export default function App() {
                       openComparisonModal();
                     }}
                     onBatchExport={handleOpenBatchExport}
+                    onStartSlideshow={handleStartSlideshow}
+                    slideshowImageCount={slideshowImageCount}
+                    slideshowSourceLabel={slideshowSourceLabel}
                   />
                 )}
 
@@ -2160,6 +2239,8 @@ export default function App() {
             onWindowStateChange={(windowState) => handleImageModalWindowStateChange(modal.modalId, windowState)}
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
+            startSlideshow={modal.startSlideshow}
+            onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
           />
         ))}
 
