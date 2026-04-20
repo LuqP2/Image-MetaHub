@@ -691,8 +691,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
-  const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
-  const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
 
   useEffect(() => {
     if (!isMinimized) {
@@ -2264,7 +2262,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           {isSlideshowMode && (
             <div
               data-no-window-drag="true"
-              className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-white shadow-xl backdrop-blur-sm"
+              className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-white shadow-xl backdrop-blur-sm"
               onClick={(event) => event.stopPropagation()}
               onPointerDown={(event) => event.stopPropagation()}
             >
@@ -2276,28 +2274,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 {isSlideshowPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 {isSlideshowPlaying ? 'Pause' : 'Play'}
-              </button>
-              <label className="flex items-center gap-1.5 text-xs text-white/80">
-                <span>Every</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={slideshowIntervalSeconds}
-                  onChange={(event) => setSlideshowIntervalSeconds(Number(event.target.value))}
-                  className="w-16 rounded-md border border-white/15 bg-black/40 px-2 py-1 text-right text-sm text-white outline-none focus:border-blue-400"
-                  aria-label="Slideshow interval in seconds"
-                />
-                <span>s</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setSlideshowShowFilename(!slideshowShowFilename)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white/90 transition-colors hover:bg-white/20"
-                title={slideshowShowFilename ? 'Hide filenames' : 'Show filenames'}
-              >
-                {slideshowShowFilename ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                Filename
               </button>
               <button
                 type="button"

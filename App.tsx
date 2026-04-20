@@ -359,6 +359,7 @@ export default function App() {
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
+  const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
@@ -1135,6 +1136,13 @@ export default function App() {
   useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
+      suppressSelectedImageModalOpenRef.current = null;
+      return;
+    }
+
+    if (suppressSelectedImageModalOpenRef.current === selectedImage.id) {
+      suppressSelectedImageModalOpenRef.current = null;
+      lastOpenedModalImageIdRef.current = selectedImage.id;
       return;
     }
 
@@ -1311,6 +1319,7 @@ export default function App() {
     if (currentActiveModal) {
       const nextActiveImage = getImageByIdFromStore(currentActiveModal.imageId);
       if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
+        suppressSelectedImageModalOpenRef.current = nextActiveImage.id;
         setSelectedImage(nextActiveImage);
       }
     } else {
@@ -1370,6 +1379,7 @@ export default function App() {
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
     const targetImage = targetModal ? getImageByIdFromStore(targetModal.imageId) ?? null : null;
     if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
+      suppressSelectedImageModalOpenRef.current = targetImage.id;
       setSelectedImage(targetImage);
     }
   }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
@@ -1472,6 +1482,7 @@ export default function App() {
 
     const nextImage = getImageByIdFromStore(nextImageId);
     if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
+      suppressSelectedImageModalOpenRef.current = nextImage.id;
       setSelectedImage(nextImage);
     }
   }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
@@ -1612,6 +1623,7 @@ export default function App() {
     const slideshowModalId = existingModalForFirstImage?.modalId ?? `image-modal-${Date.now()}-${firstImage.id}`;
 
     setActiveImageModalId(slideshowModalId);
+    suppressSelectedImageModalOpenRef.current = firstImage.id;
     setSelectedImage(firstImage);
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
