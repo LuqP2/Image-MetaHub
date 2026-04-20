@@ -3136,8 +3136,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return [];
             }
 
-            const visibleIds = new Set(state.filteredImages.map((image) => image.id));
-            return resolveSmartCollectionImages(collection, state.images).filter((image) => visibleIds.has(image.id));
+            const collectionImageIds = new Set(resolveSmartCollectionImageIds(collection, state.images));
+            return state.filteredImages.filter((image) => collectionImageIds.has(image.id));
         },
         getCollectionImageCount: (collectionId) => {
             const state = get();

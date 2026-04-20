@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import TagInputCombobox from './TagInputCombobox';
 import {
   CONDITION_FIELD_LABELS,
@@ -150,6 +151,7 @@ export default function AutomationRulesModal({
   const deleteAutomationRuleById = useImageStore((state) => state.deleteAutomationRuleById);
   const previewAutomationRule = useImageStore((state) => state.previewAutomationRule);
   const applyAutomationRuleNow = useImageStore((state) => state.applyAutomationRuleNow);
+  const createCollection = useImageStore((state) => state.createCollection);
   const tagSuggestionLimit = useSettingsStore((state) => state.tagSuggestionLimit);
 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export default function AutomationRulesModal({
   const [tagInput, setTagInput] = useState('');
   const [preview, setPreview] = useState<PreviewState>(emptyPreview);
   const [isApplying, setIsApplying] = useState(false);
+  const [isCreateCollectionModalOpen, setIsCreateCollectionModalOpen] = useState(false);
   const didInitializeForOpenRef = useRef(false);
 
   const collectionNames = useMemo(
@@ -214,7 +217,7 @@ export default function AutomationRulesModal({
       setTagInput('');
       return;
     }
-    loadRuleForEditing(automationRules[0] ?? null);
+    loadRuleForEditing(null);
   }, [automationRules, initialCollectionId, initialRuleName, isOpen]);
 
   const ruleForPreview = useMemo(() => buildRuleFromRows(draft, rows), [draft, rows]);
@@ -357,14 +360,40 @@ export default function AutomationRulesModal({
     setTagInput('');
   };
 
+  const handleCreateCollection = async (values: CollectionFormValues) => {
+    const collection = await createCollection({
+      kind: 'manual',
+      name: values.name,
+      description: values.description || undefined,
+      sortIndex: collections.length,
+      imageIds: [],
+      snapshotImageIds: [],
+      coverImageId: null,
+      autoUpdate: false,
+      sourceTag: null,
+      thumbnailId: undefined,
+      type: 'custom',
+      query: undefined,
+    });
+
+    updateDraft({
+      actions: {
+        ...draft.actions,
+        addToCollectionIds: Array.from(new Set([...draft.actions.addToCollectionIds, collection.id])),
+      },
+    });
+    setIsCreateCollectionModalOpen(false);
+  };
+
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
-      onClick={onClose}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose();
-      }}
-    >
+    <>
+      <div
+        className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
+        onClick={onClose}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose();
+        }}
+      >
       <div
         role="dialog"
         aria-modal="true"
@@ -479,6 +508,7 @@ export default function AutomationRulesModal({
                   addTagsFromInput={addTagsFromInput}
                   updateDraft={updateDraft}
                   collections={collections}
+                  onCreateCollection={() => setIsCreateCollectionModalOpen(true)}
                   recentTags={recentTags}
                   availableTags={availableTags}
                   tagSuggestionLimit={tagSuggestionLimit}
@@ -503,7 +533,23 @@ export default function AutomationRulesModal({
           </div>
         </section>
       </div>
-    </div>
+      </div>
+      <CollectionFormModal
+        isOpen={isCreateCollectionModalOpen}
+        title="Create Collection"
+        submitLabel="Create Collection"
+        initialValues={{
+          name: '',
+          description: '',
+          sourceTag: '',
+          autoUpdate: false,
+          includeTargetImages: false,
+        }}
+        onClose={() => setIsCreateCollectionModalOpen(false)}
+        onSubmit={handleCreateCollection}
+        overlayClassName="z-[100]"
+      />
+    </>
   );
 }
 
@@ -654,6 +700,7 @@ interface ThenActionsProps {
   addTagsFromInput: (value: string) => void;
   updateDraft: (updates: Partial<AutomationRule>) => void;
   collections: SmartCollection[];
+  onCreateCollection: () => void;
   recentTags: string[];
   availableTags: TagInfo[];
   tagSuggestionLimit: number;
@@ -666,6 +713,7 @@ const ThenActions: React.FC<ThenActionsProps> = ({
   addTagsFromInput,
   updateDraft,
   collections,
+  onCreateCollection,
   recentTags,
   availableTags,
   tagSuggestionLimit,
@@ -722,9 +770,10 @@ const ThenActions: React.FC<ThenActionsProps> = ({
       <div>
         <span className={labelClassName}>Add to collection</span>
         <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-gray-800 bg-gray-950/40 p-2">
-          {collections.length === 0 ? (
+          {collections.length === 0 && (
             <div className="px-2 py-3 text-center text-xs text-gray-500">No collections yet.</div>
-          ) : (
+          )}
+          {collections.length > 0 && (
             collections.map((collection) => {
               const checked = draft.actions.addToCollectionIds.includes(collection.id);
               return (
@@ -747,6 +796,14 @@ const ThenActions: React.FC<ThenActionsProps> = ({
               );
             })
           )}
+          <button
+            type="button"
+            onClick={onCreateCollection}
+            className="flex w-full items-center gap-2 rounded-md border border-dashed border-gray-700 px-2 py-2 text-left text-sm font-medium text-blue-300 transition-colors hover:border-blue-500/60 hover:bg-blue-950/30"
+          >
+            <Plus className="h-4 w-4" />
+            Create new collection
+          </button>
         </div>
       </div>
 

@@ -17,6 +17,7 @@ interface CollectionFormModalProps {
   initialValues: CollectionFormValues;
   onClose: () => void;
   onSubmit: (values: CollectionFormValues) => Promise<void> | void;
+  overlayClassName?: string;
   subtitle?: string;
   showSourceTag?: boolean;
   disableSourceTag?: boolean;
@@ -33,6 +34,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
   initialValues,
   onClose,
   onSubmit,
+  overlayClassName = 'z-[80]',
   subtitle,
   showSourceTag = false,
   disableSourceTag = false,
@@ -146,7 +148,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      className={`fixed inset-0 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm ${overlayClassName}`}
       onClick={onClose}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
