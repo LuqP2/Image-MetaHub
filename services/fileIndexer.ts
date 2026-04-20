@@ -10,7 +10,7 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
-import { isEmbeddedMetaHubPayload } from '../utils/embeddedMetadataPayload';
+import { isEmbeddedMetaHubPayload, parseEmbeddedMetaHubPayload } from '../utils/embeddedMetadataPayload';
 import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
@@ -1222,6 +1222,10 @@ const buildNormalizedMetadataFromMetaHubChunk = async (
   metaHubData: unknown,
   fallbackDims?: { width?: number; height?: number }
 ): Promise<BaseMetadata> => {
+  if (isEmbeddedMetaHubPayload(metaHubData)) {
+    return parseEmbeddedMetaHubPayload(metaHubData);
+  }
+
   if (metaHubData && typeof metaHubData === 'object') {
     const payload = metaHubData as Record<string, any>;
     if (payload.generator === 'ComfyUI') {

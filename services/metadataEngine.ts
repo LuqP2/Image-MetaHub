@@ -188,7 +188,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   const chunks: Record<string, string> = {};
 
   let foundChunks = 0;
-  const maxChunks = 5; // invokeai_metadata, parameters, workflow, prompt, Description
+  const maxChunks = 6; // invokeai_metadata, parameters, workflow, prompt, Description, imagemetahub_data
 
   while (offset < view.byteLength && foundChunks < maxChunks) {
     const length = view.getUint32(offset);
@@ -199,7 +199,14 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       const chunkString = decoder.decode(chunkData);
       const [keyword, text] = chunkString.split('\0');
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword) && text) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword) && text) {
+        if (keyword.toLowerCase() === 'imagemetahub_data') {
+          try {
+            return { imagemetahub_data: JSON.parse(text) } as ImageMetadata;
+          } catch {
+            return null;
+          }
+        }
         chunks[keyword.toLowerCase()] = text;
         foundChunks++;
       }
@@ -212,7 +219,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
       }
       const keyword = decoder.decode(chunkData.slice(0, keywordEndIndex));
 
-      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description'].includes(keyword)) {
+      if (['invokeai_metadata', 'parameters', 'Parameters', 'workflow', 'prompt', 'Description', 'imagemetahub_data'].includes(keyword)) {
         const compressionFlag = chunkData[keywordEndIndex + 1];
         let currentIndex = keywordEndIndex + 3; // Skip null separator, compression flag, and method
 
@@ -232,6 +239,13 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
         const text = await decodeITXtText(chunkData.slice(currentIndex), compressionFlag, decoder);
         if (text) {
+          if (keyword.toLowerCase() === 'imagemetahub_data') {
+            try {
+              return { imagemetahub_data: JSON.parse(text) } as ImageMetadata;
+            } catch {
+              return null;
+            }
+          }
           chunks[keyword.toLowerCase()] = text;
           foundChunks++;
         }
@@ -240,6 +254,14 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
 
     if (type === 'IEND') break;
     offset += 12 + length;
+  }
+
+  if (chunks.imagemetahub_data) {
+    try {
+      return { imagemetahub_data: JSON.parse(chunks.imagemetahub_data) } as ImageMetadata;
+    } catch {
+      return null;
+    }
   }
 
   if (chunks.workflow) {
