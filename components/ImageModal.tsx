@@ -841,15 +841,33 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [applyModalWindowStyles]);
 
   const setFullscreenMode = useCallback(async (nextIsFullscreen: boolean) => {
+    if (window.electronAPI?.setFullscreen) {
+      const result = await window.electronAPI.setFullscreen(nextIsFullscreen);
+      if (result.success) {
+        setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
+      }
+      return;
+    }
+
     if (nextIsFullscreen === isFullscreen) {
       return;
     }
 
     if (window.electronAPI?.toggleFullscreen) {
-      const result = await window.electronAPI.toggleFullscreen();
-      if (result.success) {
-        setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
+      const stateResult = await window.electronAPI.getFullscreenState?.();
+      const currentFullscreenState = stateResult?.success
+        ? Boolean(stateResult.isFullscreen)
+        : isFullscreen;
+
+      if (currentFullscreenState !== nextIsFullscreen) {
+        const result = await window.electronAPI.toggleFullscreen();
+        if (result.success) {
+          setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
+        }
+        return;
       }
+
+      setIsFullscreen(currentFullscreenState);
       return;
     }
 

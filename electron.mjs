@@ -2316,6 +2316,24 @@ function setupFileOperationHandlers() {
     return { success: false, error: 'Main window not available' };
   });
 
+  ipcMain.handle('get-fullscreen-state', () => {
+    if (mainWindow) {
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
+  });
+
+  ipcMain.handle('set-fullscreen', (event, isFullscreen) => {
+    if (mainWindow) {
+      const nextFullscreenState = Boolean(isFullscreen);
+      if (mainWindow.isFullScreen() !== nextFullscreenState) {
+        mainWindow.setFullScreen(nextFullscreenState);
+      }
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
+  });
+
   // Handle reading multiple files in a batch
   ipcMain.handle('read-files-batch', async (event, filePaths) => {
     try {
