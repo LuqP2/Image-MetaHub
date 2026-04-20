@@ -86,6 +86,8 @@ interface ImageModalProps {
   onWindowStateChange?: (windowState: ModalWindowState) => void;
   isMinimized?: boolean;
   onMinimize?: () => void;
+  startSlideshow?: boolean;
+  onSlideshowStartAcknowledged?: () => void;
 }
 
 interface ModalWindowState {
@@ -633,12 +635,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onWindowStateChange,
   isMinimized = false,
   onMinimize,
+  startSlideshow = false,
+  onSlideshowStartAcknowledged,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(image.name.replace(SUPPORTED_MEDIA_EXTENSION_REGEX, ''));
   const [showRawMetadata, setShowRawMetadata] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isSlideshowMode, setIsSlideshowMode] = useState(false);
+  const [isSlideshowPlaying, setIsSlideshowPlaying] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -683,6 +689,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const canDragExternally = typeof window !== 'undefined' && !!window.electronAPI?.startFileDrag;
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
+  const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
+  const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
 
   useEffect(() => {
     if (!isMinimized) {
@@ -832,14 +840,53 @@ const ImageModal: React.FC<ImageModalProps> = ({
     });
   }, [applyModalWindowStyles]);
 
-  const toggleFullscreen = useCallback(async () => {
-    if (window.electronAPI?.toggleFullscreen) {
-      const result = await window.electronAPI.toggleFullscreen();
+  const setFullscreenMode = useCallback(async (nextIsFullscreen: boolean) => {
+    if (window.electronAPI?.setFullscreen) {
+      const result = await window.electronAPI.setFullscreen(nextIsFullscreen);
       if (result.success) {
-        setIsFullscreen(result.isFullscreen ?? false);
+        setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
       }
+      return;
     }
-  }, []);
+
+    if (nextIsFullscreen === isFullscreen) {
+      return;
+    }
+
+    if (window.electronAPI?.toggleFullscreen) {
+      const stateResult = await window.electronAPI.getFullscreenState?.();
+      const currentFullscreenState = stateResult?.success
+        ? Boolean(stateResult.isFullscreen)
+        : isFullscreen;
+
+      if (currentFullscreenState !== nextIsFullscreen) {
+        const result = await window.electronAPI.toggleFullscreen();
+        if (result.success) {
+          setIsFullscreen(result.isFullscreen ?? nextIsFullscreen);
+        }
+        return;
+      }
+
+      setIsFullscreen(currentFullscreenState);
+      return;
+    }
+
+    try {
+      if (nextIsFullscreen) {
+        await modalShellRef.current?.requestFullscreen?.();
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+      setIsFullscreen(nextIsFullscreen);
+    } catch (error) {
+      console.warn('Unable to toggle native fullscreen, using viewer fullscreen fallback:', error);
+      setIsFullscreen(nextIsFullscreen);
+    }
+  }, [isFullscreen]);
+
+  const toggleFullscreen = useCallback(async () => {
+    await setFullscreenMode(!isFullscreen);
+  }, [isFullscreen, setFullscreenMode]);
 
   const clearMediaOverlayHideTimer = useCallback(() => {
     if (typeof window === 'undefined' || mediaOverlayHideTimeoutRef.current === null) {
@@ -877,9 +924,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
       setIsFullscreen(data.isFullscreen ?? false);
     });
 
+    const handleBrowserFullscreenChange = () => {
+      if (!window.electronAPI) {
+        setIsFullscreen(Boolean(document.fullscreenElement));
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleBrowserFullscreenChange);
+
     return () => {
       unsubscribeFullscreenChanged?.();
       unsubscribeFullscreenStateCheck?.();
+      document.removeEventListener('fullscreenchange', handleBrowserFullscreenChange);
     };
   }, [isActive]);
 
@@ -902,6 +958,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }, 100);
     }
   }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive || !startSlideshow) {
+      return;
+    }
+
+    onSlideshowStartAcknowledged?.();
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setIsSlideshowMode(true);
+    setIsSlideshowPlaying(totalImages > 1);
+    setFullscreenMode(true).catch((error) => {
+      console.error('Failed to enter slideshow fullscreen:', error);
+    });
+  }, [isActive, onSlideshowStartAcknowledged, setFullscreenMode, startSlideshow, totalImages]);
 
   useEffect(() => {
     modalWindowRef.current = modalWindow;
@@ -1553,6 +1624,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
     setImageRating(image.id, rating);
   }, [image.id, setImageRating]);
 
+  const exitSlideshow = useCallback(() => {
+    setIsSlideshowMode(false);
+    setIsSlideshowPlaying(false);
+    if (isFullscreen) {
+      setFullscreenMode(false).catch((error) => {
+        console.error('Failed to exit slideshow fullscreen:', error);
+      });
+    }
+  }, [isFullscreen, setFullscreenMode]);
+
   const focusTagInput = useCallback(async () => {
     const focusInput = () => {
       tagInputRef.current?.focus();
@@ -1580,6 +1661,39 @@ const ImageModal: React.FC<ImageModalProps> = ({
       }
     };
   }, [handleWheel, isPlayableMedia]);
+
+  useEffect(() => {
+    if (!isSlideshowMode || currentIndex < totalImages - 1) {
+      return;
+    }
+
+    setIsSlideshowPlaying(false);
+  }, [currentIndex, isSlideshowMode, totalImages]);
+
+  useEffect(() => {
+    if (!isActive || !isSlideshowMode || !isSlideshowPlaying || totalImages <= 1) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      if (currentIndex >= totalImages - 1) {
+        setIsSlideshowPlaying(false);
+        return;
+      }
+
+      onNavigateNext?.();
+    }, slideshowIntervalSeconds * 1000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    currentIndex,
+    isActive,
+    isSlideshowMode,
+    isSlideshowPlaying,
+    onNavigateNext,
+    slideshowIntervalSeconds,
+    totalImages,
+  ]);
 
   const handleDelete = useCallback(async () => {
     if (isIndexing) {
@@ -1631,9 +1745,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
           return;
         }
 
-      event.stopPropagation();
-        if (isFullscreen) {
-          toggleFullscreen();
+        event.stopPropagation();
+        if (isSlideshowMode) {
+          exitSlideshow();
+        } else if (isFullscreen) {
+          void toggleFullscreen();
         } else {
           onClose();
         }
@@ -1647,7 +1763,14 @@ const ImageModal: React.FC<ImageModalProps> = ({
       if (eventMatchesKeybinding(event, toggleFullscreenKeybinding)) {
         event.preventDefault();
         event.stopPropagation();
-        toggleFullscreen();
+        void toggleFullscreen();
+        return;
+      }
+
+      if (isSlideshowMode && event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsSlideshowPlaying((current) => !current);
         return;
       }
 
@@ -1699,9 +1822,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
     handleDelete,
     handleToggleFavorite,
     hideContextMenu,
+    exitSlideshow,
     isActive,
     isFullscreen,
     isRenaming,
+    isSlideshowMode,
     onClose,
     onNavigateNext,
     onNavigatePrevious,
@@ -2107,8 +2232,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
             />
           )}
 
-          <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm border border-white/20">
-            {currentIndex + 1} / {totalImages}
+          <div data-no-window-drag="true" className="absolute top-4 left-4 z-30 max-w-[min(80vw,520px)] rounded-lg border border-white/20 bg-black/60 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
+            <div className="whitespace-nowrap text-xs text-white/80">
+              {currentIndex + 1} / {totalImages}
+            </div>
+            {isSlideshowMode && slideshowShowFilename && (
+              <div className="mt-0.5 truncate" title={image.name}>
+                {image.name}
+              </div>
+            )}
           </div>
 
           {!isPlayableMedia && (
@@ -2141,6 +2273,34 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 title="Reset Zoom"
               >
                 Reset
+              </button>
+            </div>
+          )}
+
+          {isSlideshowMode && (
+            <div
+              data-no-window-drag="true"
+              className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 text-white shadow-xl backdrop-blur-sm"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setIsSlideshowPlaying((current) => !current)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+                title={isSlideshowPlaying ? 'Pause slideshow (Space)' : 'Play slideshow (Space)'}
+              >
+                {isSlideshowPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                {isSlideshowPlaying ? 'Pause' : 'Play'}
+              </button>
+              <button
+                type="button"
+                onClick={exitSlideshow}
+                className="rounded-md bg-white/10 p-1.5 text-white/90 transition-colors hover:bg-white/20"
+                aria-label="Exit slideshow"
+                title="Exit slideshow"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -3158,7 +3318,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowState?.y === nextProps.initialWindowState?.y &&
     prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
     prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
-    prevProps.isMinimized === nextProps.isMinimized;
+    prevProps.isMinimized === nextProps.isMinimized &&
+    prevProps.startSlideshow === nextProps.startSlideshow;
 
   return propsEqual;
 });

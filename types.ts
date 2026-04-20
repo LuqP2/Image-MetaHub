@@ -143,6 +143,8 @@ export interface ElectronAPI {
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;

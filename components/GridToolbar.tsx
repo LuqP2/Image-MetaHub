@@ -10,7 +10,8 @@ import {
   ChevronDown,
   Tag,
   RefreshCw,
-  Plus
+  Plus,
+  Play
 } from 'lucide-react';
 import { useImageStore } from '../store/useImageStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -35,6 +36,9 @@ interface GridToolbarProps {
   onGenerateComfyUI: (image: IndexedImage) => void;
   onCompare: (images: IndexedImage[]) => void;
   onBatchExport: () => void;
+  onStartSlideshow: () => void;
+  slideshowImageCount: number;
+  slideshowSourceLabel?: string;
 }
 
 const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
@@ -61,6 +65,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onGenerateComfyUI,
   onCompare,
   onBatchExport,
+  onStartSlideshow,
+  slideshowImageCount,
+  slideshowSourceLabel = 'current view',
 }) => {
   const [generateDropdownOpen, setGenerateDropdownOpen] = useState(false);
   const [isCollectionActionsOpen, setIsCollectionActionsOpen] = useState(false);
@@ -265,7 +272,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       selectedRatings.length > 0 ||
       (advancedFilters && Object.keys(advancedFilters).length > 0);
 
-  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions) {
+  if (selectedCount === 0 && !hasActiveFilters && !canUseFilteredCollectionActions && slideshowImageCount === 0) {
     return null;
   }
 
@@ -290,6 +297,24 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
       <div className="flex items-center justify-between gap-2 mb-1 px-5 min-h-[36px]">
         {/* Selection Context Toolbar - Centered or justified as needed */}
         <div className="flex items-center gap-1 flex-1 min-w-0">
+            {slideshowImageCount > 0 && (
+              <>
+                <Tooltip label={`Start slideshow from ${slideshowSourceLabel}`}>
+                  <button
+                    onClick={onStartSlideshow}
+                    className="p-1.5 text-gray-400 hover:text-blue-300 hover:bg-gray-700 rounded transition-colors"
+                    title={`Start slideshow from ${slideshowSourceLabel} (${slideshowImageCount} item${slideshowImageCount === 1 ? '' : 's'})`}
+                    aria-label="Start slideshow"
+                  >
+                    <Play className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+                {(selectedCount > 0 || hasActiveFilters || canUseFilteredCollectionActions) && (
+                  <div className="w-px h-4 bg-gray-700 mx-1" />
+                )}
+              </>
+            )}
+
             {selectedCount > 0 && (
               <>
                 <span className="text-[11px] text-gray-400 mr-2 whitespace-nowrap">{selectedCount} selected</span>

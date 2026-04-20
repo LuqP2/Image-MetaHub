@@ -154,6 +154,8 @@ const electronAPI = {
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  getFullscreenState: () => ipcRenderer.invoke('get-fullscreen-state'),
+  setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
 
   // --- Caching ---
