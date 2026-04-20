@@ -78,6 +78,21 @@ const defaultIndexingConcurrency = detectDefaultIndexingConcurrency();
 
 export type StartupVerificationMode = 'off' | 'idle' | 'strict';
 
+export const DEFAULT_SLIDESHOW_INTERVAL_SECONDS = 5;
+export const MIN_SLIDESHOW_INTERVAL_SECONDS = 1;
+export const MAX_SLIDESHOW_INTERVAL_SECONDS = 120;
+
+export const sanitizeSlideshowIntervalSeconds = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SLIDESHOW_INTERVAL_SECONDS;
+  }
+
+  return Math.min(
+    MAX_SLIDESHOW_INTERVAL_SECONDS,
+    Math.max(MIN_SLIDESHOW_INTERVAL_SECONDS, Math.floor(value))
+  );
+};
+
 // Define the state shape
 interface SettingsState {
   // App settings
@@ -104,6 +119,8 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   enableAnimations: boolean;
+  slideshowIntervalSeconds: number;
+  slideshowShowFilename: boolean;
 
   // A1111 Integration settings
   a1111Enabled: boolean;
@@ -143,6 +160,8 @@ interface SettingsState {
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
+  setSlideshowIntervalSeconds: (value: number) => void;
+  setSlideshowShowFilename: (value: boolean) => void;
   setA1111Enabled: (value: boolean) => void;
   setA1111ServerUrl: (url: string) => void;
   toggleA1111AutoStart: () => void;
@@ -187,6 +206,8 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       enableAnimations: true,
+      slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
+      slideshowShowFilename: true,
 
       // A1111 Integration initial state
       a1111Enabled: true,
@@ -238,6 +259,9 @@ export const useSettingsStore = create<SettingsState>()(
       setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
+      setSlideshowIntervalSeconds: (value) =>
+        set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
+      setSlideshowShowFilename: (value) => set({ slideshowShowFilename: !!value }),
       updateKeybinding: (scope, action, keybinding) =>
         set((state) => ({
           keymap: {
@@ -287,6 +311,8 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         enableAnimations: true,
+        slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
+        slideshowShowFilename: true,
         a1111Enabled: true,
         a1111ServerUrl: 'http://127.0.0.1:7860',
         a1111AutoStart: false,
@@ -359,6 +385,14 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.enableAnimations !== 'boolean') {
           state.enableAnimations = true;
+        }
+
+        if (state) {
+          state.slideshowIntervalSeconds = sanitizeSlideshowIntervalSeconds(state.slideshowIntervalSeconds);
+        }
+
+        if (state && typeof state.slideshowShowFilename !== 'boolean') {
+          state.slideshowShowFilename = true;
         }
 
         if (state && typeof state.a1111Enabled !== 'boolean') {
