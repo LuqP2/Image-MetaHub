@@ -24,9 +24,11 @@ export const buildSlideshowPlaylist = ({
   selectedImageIds,
   allImages,
 }: BuildSlideshowPlaylistArgs): SlideshowPlaylist => {
+  const scopePlaylist = scopeImages.filter(isSlideshowMedia);
+
   if (selectedImageIds.size === 0) {
     return {
-      images: scopeImages.filter(isSlideshowMedia),
+      images: scopePlaylist,
       source: 'scope',
     };
   }
@@ -50,8 +52,17 @@ export const buildSlideshowPlaylist = ({
     }
   }
 
+  const selectedPlaylist = [...selectedInScope, ...selectedOutOfScope];
+
+  if (selectedPlaylist.length === 0) {
+    return {
+      images: scopePlaylist,
+      source: 'scope',
+    };
+  }
+
   return {
-    images: [...selectedInScope, ...selectedOutOfScope],
+    images: selectedPlaylist,
     source: 'selection',
   };
 };

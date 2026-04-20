@@ -63,6 +63,17 @@ describe('buildSlideshowPlaylist', () => {
 
     expect(playlist.images.map((image) => image.id)).toEqual(['2', '3']);
   });
+
+  it('falls back to the current scope when selected items contain no visual media', () => {
+    const playlist = buildSlideshowPlaylist({
+      scopeImages: [first, audio, second],
+      selectedImageIds: new Set(['4']),
+      allImages: [first, audio, second],
+    });
+
+    expect(playlist.source).toBe('scope');
+    expect(playlist.images.map((image) => image.id)).toEqual(['1', '2']);
+  });
 });
 
 describe('isSlideshowMedia', () => {
