@@ -67,6 +67,22 @@ export interface WatchedFileRemovalPayload {
   folders: Array<{ path: string; name: string; relativePath?: string }>;
 }
 
+export interface ElectronReadFilesBatchArgs {
+  filePaths: string[];
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+  reason?: string;
+}
+
+export interface ElectronReadFilesBatchItem {
+  success: boolean;
+  data?: Buffer;
+  path: string;
+  error?: string;
+  errorType?: string;
+  errorCode?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -83,7 +99,7 @@ export interface ElectronAPI {
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
-  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
+  readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;

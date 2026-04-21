@@ -2334,10 +2334,26 @@ function setupFileOperationHandlers() {
     return { success: false, error: 'Main window not available' };
   });
 
+  const DEFAULT_FULL_READ_MAX_FILE_BYTES = 32 * 1024 * 1024;
+  const DEFAULT_FULL_READ_MAX_TOTAL_BYTES = 96 * 1024 * 1024;
+
   // Handle reading multiple files in a batch
-  ipcMain.handle('read-files-batch', async (event, filePaths) => {
+  ipcMain.handle('read-files-batch', async (event, batchArgs) => {
     try {
-      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      const filePaths = Array.isArray(batchArgs)
+        ? batchArgs
+        : Array.isArray(batchArgs?.filePaths)
+          ? batchArgs.filePaths
+          : [];
+      const maxFileBytes = Array.isArray(batchArgs)
+        ? DEFAULT_FULL_READ_MAX_FILE_BYTES
+        : Math.max(1, Math.floor(batchArgs?.maxFileBytes ?? DEFAULT_FULL_READ_MAX_FILE_BYTES));
+      const maxTotalBytes = Array.isArray(batchArgs)
+        ? Number.POSITIVE_INFINITY
+        : Math.max(1, Math.floor(batchArgs?.maxTotalBytes ?? DEFAULT_FULL_READ_MAX_TOTAL_BYTES));
+      const reason = Array.isArray(batchArgs) ? undefined : batchArgs?.reason;
+
+      if (filePaths.length === 0) {
         return { success: false, error: 'No file paths provided' };
       }
 
@@ -2353,11 +2369,78 @@ function setupFileOperationHandlers() {
       }
       // --- END SECURITY CHECK ---
 
-      const promises = filePaths.map(filePath => fs.readFile(filePath));
+      let scheduledBytes = 0;
+      let skippedByLimit = 0;
+      const limitedReadPlan = await Promise.all(filePaths.map(async (filePath) => {
+        try {
+          const stats = await fs.stat(filePath);
+          const fileSize = stats.size ?? 0;
+
+          if (fileSize > maxFileBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: file too large for IPC batch',
+                errorType: 'FILE_TOO_LARGE',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          if (scheduledBytes + fileSize > maxTotalBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: batch byte budget exceeded',
+                errorType: 'BATCH_BYTE_LIMIT',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          scheduledBytes += fileSize;
+          return { filePath };
+        } catch (error) {
+          return {
+            filePath,
+            skip: {
+              success: false,
+              path: filePath,
+              error: error.message,
+              errorType: error.code === 'ENOENT' ? 'FILE_NOT_FOUND' : 'UNKNOWN_ERROR',
+              errorCode: error.code,
+            },
+          };
+        }
+      }));
+
+      if (skippedByLimit > 0) {
+        console.warn('[read-files-batch] skipped oversized full reads', {
+          reason: reason ?? 'unspecified',
+          requested: filePaths.length,
+          skipped: skippedByLimit,
+          maxFileBytes,
+          maxTotalBytes: Number.isFinite(maxTotalBytes) ? maxTotalBytes : null,
+        });
+      }
+
+      const promises = limitedReadPlan.map((entry) => (
+        entry.skip ? Promise.resolve(entry.skip) : fs.readFile(entry.filePath)
+      ));
       const results = await Promise.allSettled(promises);
 
       const data = results.map((result, index) => {
+        const planEntry = limitedReadPlan[index];
         if (result.status === 'fulfilled') {
+          if (planEntry.skip) {
+            return result.value;
+          }
           return { success: true, data: result.value, path: filePaths[index] };
         } else {
           if (!result.reason.message?.includes('ENOENT')) {

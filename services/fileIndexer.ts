@@ -2222,6 +2222,8 @@ export async function processFiles(
   const FILE_READ_BATCH_SIZE = 64; // Reduced from 128 to avoid IPC clogging
   const HEAD_READ_MAX_BYTES = 64 * 1024; // Reduced from 256KB to 64KB
   const TAIL_READ_MAX_BYTES = 512 * 1024;
+  const FULL_READ_FALLBACK_MAX_FILE_BYTES = 32 * 1024 * 1024;
+  const FULL_READ_FALLBACK_MAX_BATCH_BYTES = 96 * 1024 * 1024;
   const TAIL_SCAN_SAMPLE_LIMIT = 256;
   let tailScanAttempts = 0;
   let tailScanHits = 0;
@@ -2770,6 +2772,7 @@ export async function processFiles(
         const fallbackEntries: CatalogEntryState[] = [];
         const tailCheckEntries: CatalogEntryState[] = [];
         const missingEntries = new Set<string>();
+        const blockedFromGenericFallback = new Set<string>();
 
         const headIterator = async (entry: CatalogEntryState) => {
           if (!entry.source) {
@@ -2868,12 +2871,35 @@ export async function processFiles(
         }
 
         if (fallbackEntries.length > 0) {
-          const fallbackPaths = fallbackEntries
-            .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+          const eligibleFallbackEntries: CatalogEntryState[] = [];
+          for (const entry of fallbackEntries) {
+            const fileSize = entry.source?.size;
+            if (typeof fileSize === 'number' && fileSize > FULL_READ_FALLBACK_MAX_FILE_BYTES) {
+              blockedFromGenericFallback.add(entry.image.id);
+              continue;
+            }
+            eligibleFallbackEntries.push(entry);
+          }
+
+          const fallbackPathToImageId = new Map<string, string>();
+          const fallbackPaths = eligibleFallbackEntries
+            .map(entry => {
+              const filePath = (entry.source?.handle as ElectronFileHandle)?._filePath;
+              if (typeof filePath === 'string' && filePath.length > 0) {
+                fallbackPathToImageId.set(filePath, entry.image.id);
+                return filePath;
+              }
+              return null;
+            })
             .filter((path): path is string => typeof path === 'string' && path.length > 0);
           if (fallbackPaths.length > 0) {
             const fullReadStart = performance.now();
-            const fullReadResult = await (window as any).electronAPI.readFilesBatch(fallbackPaths);
+            const fullReadResult = await (window as any).electronAPI.readFilesBatch({
+              filePaths: fallbackPaths,
+              maxFileBytes: FULL_READ_FALLBACK_MAX_FILE_BYTES,
+              maxTotalBytes: FULL_READ_FALLBACK_MAX_BATCH_BYTES,
+              reason: 'phaseB-metadata-fallback',
+            });
             const fullReadDuration = performance.now() - fullReadStart;
             phaseBStats.fullReadFiles += fallbackPaths.length;
             phaseBStats.fullReadMs += fullReadDuration;
@@ -2883,6 +2909,12 @@ export async function processFiles(
             if (fullReadResult.success && Array.isArray(fullReadResult.files)) {
               for (const file of fullReadResult.files) {
                 if (!file.success || !file.data) {
+                  if (file.errorType === 'FILE_TOO_LARGE' || file.errorType === 'BATCH_BYTE_LIMIT') {
+                    const imageId = fallbackPathToImageId.get(file.path);
+                    if (imageId) {
+                      blockedFromGenericFallback.add(imageId);
+                    }
+                  }
                   continue;
                 }
                 const raw = file.data as ArrayBuffer | ArrayBufferView;
@@ -2920,13 +2952,15 @@ export async function processFiles(
               return null;
             };
 
-            await asyncPool(concurrencyLimit, fallbackEntries, fallbackIterator);
+            await asyncPool(concurrencyLimit, eligibleFallbackEntries, fallbackIterator);
           }
         }
 
         for (const entry of batch) {
           if (missingEntries.has(entry.image.id)) {
-            await iterator(entry);
+            if (!blockedFromGenericFallback.has(entry.image.id)) {
+              await iterator(entry);
+            }
             continue;
           }
           const result = resultsById.get(entry.image.id);
