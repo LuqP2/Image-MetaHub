@@ -26,6 +26,22 @@ const isPermissionError = (error) => {
   return code === 'EPERM' || code === 'EACCES';
 };
 
+const isTransientVanishError = (error) => {
+  const code = error?.code;
+  const syscall = typeof error?.syscall === 'string' ? error.syscall.toLowerCase() : '';
+  const message = (error?.message || String(error || '')).toLowerCase();
+
+  if (code === 'ENOENT') {
+    return true;
+  }
+
+  if (syscall === 'lstat' || message.includes('lstat')) {
+    return code === 'UNKNOWN' || code === 'ENOENT' || message.includes('no such file') || message.includes('unknown error');
+  }
+
+  return false;
+};
+
 const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
 const findMediaFilesForSidecar = (sidecarPath) => {
@@ -227,6 +243,11 @@ export function startWatching(directoryId, dirPath, mainWindow) {
         return;
       }
 
+      if (isTransientVanishError(error)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Ignoring transient watcher vanish error for ${directoryId}: ${error.message || error}`);
+        return;
+      }
+
       console.error(`Watcher error for ${directoryId}:`, error);
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher error for ${directoryId}: ${error.message || error}`);
 
@@ -316,6 +337,10 @@ function processBatch(directoryId, dirPath, mainWindow) {
         forceReindex: pendingInfo.forceReindex === true
       };
     } catch (err) {
+      if (isTransientVanishError(err)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Skipping vanished file during batch processing: ${filePath}`);
+        return null;
+      }
       console.error(`Error getting stats for ${filePath}:`, err);
       return null;
     }

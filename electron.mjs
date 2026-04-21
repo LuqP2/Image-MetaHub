@@ -31,6 +31,12 @@ const __dirname = path.dirname(__filename);
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
+
+if (gpuMitigationEnabled) {
+  app.disableHardwareAcceleration();
+  console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
+}
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
