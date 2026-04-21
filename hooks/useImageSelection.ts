@@ -8,7 +8,7 @@ export function useImageSelection() {
         setSelectedImage,
         toggleImageSelection,
         clearImageSelection,
-        removeImage,
+        removeImages,
         setError,
         setFocusedImageIndex,
     } = useImageStore();
@@ -45,20 +45,30 @@ export function useImageSelection() {
     }, [toggleImageSelection, setSelectedImage, setFocusedImageIndex]);
 
     const handleDeleteSelectedImages = useCallback(async () => {
-        const { selectedImages, images } = useImageStore.getState();
+        const { selectedImages, images, directories } = useImageStore.getState();
         if (selectedImages.size === 0) return;
 
         const confirmMessage = `Are you sure you want to delete ${selectedImages.size} image(s)?`;
         if (!window.confirm(confirmMessage)) return;
 
         const imagesToDelete = Array.from(selectedImages);
+        const deletedIdsHandledLocally: string[] = [];
+        const deletedIdsAwaitingWatcher: string[] = [];
+
         for (const imageId of imagesToDelete) {
             const image = images.find(img => img.id === imageId);
             if (image) {
                 try {
                     const result = await FileOperations.deleteFile(image);
                     if (result.success) {
-                        removeImage(imageId);
+                        const watchedDirectory = directories.find((directory) => directory.id === image.directoryId);
+                        const shouldAwaitWatcherRemoval = Boolean(window.electronAPI && watchedDirectory?.autoWatch);
+
+                        if (shouldAwaitWatcherRemoval) {
+                            deletedIdsAwaitingWatcher.push(imageId);
+                        } else {
+                            deletedIdsHandledLocally.push(imageId);
+                        }
                     } else {
                         setError(`Failed to delete ${image.name}: ${result.error}`);
                     }
@@ -67,8 +77,24 @@ export function useImageSelection() {
                 }
             }
         }
-        clearImageSelection();
-    }, [removeImage, setError, clearImageSelection]);
+
+        if (deletedIdsHandledLocally.length > 0) {
+            removeImages(deletedIdsHandledLocally);
+        }
+
+        const deletedIds = [...deletedIdsHandledLocally, ...deletedIdsAwaitingWatcher];
+        if (deletedIds.length > 0) {
+            const deletedIdSet = new Set(deletedIds);
+            useImageStore.setState((state) => ({
+                selectedImages: new Set(Array.from(state.selectedImages).filter((id) => !deletedIdSet.has(id))),
+                previewImage: state.previewImage && deletedIdSet.has(state.previewImage.id) ? null : state.previewImage,
+                selectedImage: state.selectedImage && deletedIdSet.has(state.selectedImage.id) ? null : state.selectedImage,
+                comparisonImages: state.comparisonImages.filter((image) => !deletedIdSet.has(image.id)),
+            }));
+        } else {
+            clearImageSelection();
+        }
+    }, [removeImages, setError, clearImageSelection]);
 
     return { handleImageSelection, handleDeleteSelectedImages, clearSelection: clearImageSelection };
 }

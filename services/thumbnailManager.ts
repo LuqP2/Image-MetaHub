@@ -7,6 +7,7 @@ const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 12;
 const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
+const MAX_ACTIVE_THUMBNAIL_URLS = 800;
 
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
 
@@ -326,6 +327,7 @@ class ThumbnailManager {
     const activeEntry = currentEntry && currentEntry.lastModified === image.lastModified ? currentEntry : undefined;
 
     if (activeEntry?.thumbnailStatus === 'ready' && activeEntry.thumbnailUrl) {
+      this.touchObjectUrl(image.id);
       return;
     }
 
@@ -536,11 +538,60 @@ class ThumbnailManager {
     const existing = this.activeUrls.get(imageId);
     if (existing) {
       URL.revokeObjectURL(existing);
+      this.clearStoredThumbnailUrl(imageId, existing);
     }
 
     const url = URL.createObjectURL(blob);
+    this.activeUrls.delete(imageId);
     this.activeUrls.set(imageId, url);
+    this.evictOverflowUrls();
     return url;
+  }
+
+  private touchObjectUrl(imageId: string): void {
+    const existing = this.activeUrls.get(imageId);
+    if (!existing) {
+      return;
+    }
+
+    this.activeUrls.delete(imageId);
+    this.activeUrls.set(imageId, existing);
+  }
+
+  private evictOverflowUrls(): void {
+    while (this.activeUrls.size > MAX_ACTIVE_THUMBNAIL_URLS) {
+      const oldest = this.activeUrls.entries().next().value as [string, string] | undefined;
+      if (!oldest) {
+        return;
+      }
+
+      const [imageId, url] = oldest;
+      this.activeUrls.delete(imageId);
+      URL.revokeObjectURL(url);
+      this.clearStoredThumbnailUrl(imageId, url);
+    }
+  }
+
+  private clearStoredThumbnailUrl(imageId: string, revokedUrl: string): void {
+    useImageStore.setState((state) => {
+      const currentEntry = state.thumbnailEntries[imageId];
+      if (!currentEntry || currentEntry.thumbnailUrl !== revokedUrl) {
+        return state;
+      }
+
+      return {
+        ...state,
+        thumbnailEntries: {
+          ...state.thumbnailEntries,
+          [imageId]: {
+            ...currentEntry,
+            thumbnailUrl: null,
+            thumbnailStatus: 'pending',
+            thumbnailError: null,
+          },
+        },
+      };
+    });
   }
 }
 
