@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, net } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -60,6 +60,19 @@ const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
 const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MEDIA_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
 
 const buildMediaProtocolUrl = (filePath) => {
@@ -68,29 +81,30 @@ const buildMediaProtocolUrl = (filePath) => {
 };
 
 const registerMediaProtocol = () => {
-  protocol.handle(MEDIA_PROTOCOL_SCHEME, async (request) => {
+  protocol.registerFileProtocol(MEDIA_PROTOCOL_SCHEME, async (request, callback) => {
     try {
       const requestUrl = new URL(request.url);
-      const encodedPath = requestUrl.searchParams.get('path');
-      if (!encodedPath) {
-        return new Response('Missing media path', { status: 400 });
+      const requestedPath = requestUrl.searchParams.get('path');
+      if (!requestedPath) {
+        callback({ error: -6 });
+        return;
       }
 
-      const normalizedFilePath = path.resolve(encodedPath);
+      const normalizedFilePath = path.resolve(requestedPath);
       if (!isPathAllowed(normalizedFilePath)) {
         console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
-        console.error('  [imh-media] Requested path:', encodedPath);
+        console.error('  [imh-media] Requested path:', requestedPath);
         console.error('  [imh-media] Normalized path:', normalizedFilePath);
         console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
-        return new Response('Access denied', { status: 403 });
+        callback({ error: -10 });
+        return;
       }
 
       await fs.access(normalizedFilePath);
-      return net.fetch(pathToFileURL(normalizedFilePath).toString());
+      callback({ path: normalizedFilePath });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       console.error('Error serving media protocol request:', request.url, error);
-      return new Response(message || 'Failed to load media', { status: 500 });
+      callback({ error: -2 });
     }
   });
 };
@@ -1195,6 +1209,37 @@ app.whenReady().then(async () => {
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
 
+const normalizeAllowedPath = (inputPath) => {
+  if (!inputPath) return '';
+
+  const resolvedPath = path.resolve(inputPath);
+  const parsedPath = path.parse(resolvedPath);
+  const normalizedPath = resolvedPath === parsedPath.root
+    ? resolvedPath
+    : resolvedPath.replace(/[\\/]+$/, '');
+
+  return process.platform === 'win32'
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+};
+
+const isSameOrChildPath = (candidatePath, allowedPath) => {
+  if (!candidatePath || !allowedPath) return false;
+  if (candidatePath === allowedPath) return true;
+
+  const allowedPrefix = allowedPath.endsWith(path.sep)
+    ? allowedPath
+    : `${allowedPath}${path.sep}`;
+
+  return candidatePath.startsWith(allowedPrefix);
+};
+
+const isPathAllowed = (filePath) => {
+  if (allowedDirectoryPaths.size === 0 || !filePath) return false;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
+};
+
 // Helper function for recursive file search
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = [];
@@ -1292,37 +1337,6 @@ async function getFilesRecursively(directory, baseDirectory) {
 }
 
 function setupFileOperationHandlers() {
-  const normalizeAllowedPath = (inputPath) => {
-    if (!inputPath) return '';
-
-    const resolvedPath = path.resolve(inputPath);
-    const parsedPath = path.parse(resolvedPath);
-    const normalizedPath = resolvedPath === parsedPath.root
-      ? resolvedPath
-      : resolvedPath.replace(/[\\/]+$/, '');
-
-    return process.platform === 'win32'
-      ? normalizedPath.toLowerCase()
-      : normalizedPath;
-  };
-
-  const isSameOrChildPath = (candidatePath, allowedPath) => {
-    if (!candidatePath || !allowedPath) return false;
-    if (candidatePath === allowedPath) return true;
-
-    const allowedPrefix = allowedPath.endsWith(path.sep)
-      ? allowedPath
-      : `${allowedPath}${path.sep}`;
-
-    return candidatePath.startsWith(allowedPrefix);
-  };
-
-  // Security helper to check if a file path is within one of the allowed directories
-  const isPathAllowed = (filePath) => {
-    if (allowedDirectoryPaths.size === 0 || !filePath) return false;
-    const normalizedFilePath = normalizeAllowedPath(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
-  };
   const approvedWriteRoots = new Set();
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
