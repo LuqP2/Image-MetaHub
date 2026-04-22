@@ -188,11 +188,18 @@ export function startWatching(directoryId, dirPath, mainWindow) {
     });
 
     watcher.on('change', (filePath) => {
-      if (path.extname(filePath).toLowerCase() !== '.json') {
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (ext === '.json') {
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
+        return;
+      }
+
+      enqueueMedia(filePath, true);
     });
 
     const enqueueRemoval = (removedPath, kind) => {

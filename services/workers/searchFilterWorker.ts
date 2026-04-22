@@ -201,10 +201,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
 
   try {
     if (message.type === 'syncDataset') {
-      if (message.payload.datasetVersion !== datasetVersion) {
-        preparedImages = message.payload.images.map(buildPreparedImage);
-        datasetVersion = message.payload.datasetVersion;
-      }
+      preparedImages = message.payload.images.map(buildPreparedImage);
+      datasetVersion = message.payload.datasetVersion;
       return;
     }
 
