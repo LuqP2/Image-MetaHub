@@ -5,41 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.15.0] - 2026-04-18
+## [0.15.0] - 2026-04-22
 
 ### Added
 
-- **Automation Rules**: Added a rule builder for automatically tagging images and adding them to collections based on searchable conditions, metadata facets, ratings, favorites, telemetry, dimensions, generators, prompts, filenames, and other library filters, with live previews, enable/disable controls, duplication, manual apply, and run-on-new-images support.
-- **Audio Library Support**: Added indexing, filtering, table/grid display, metadata extraction, and viewer playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
-- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, with destination browsing that includes nested folders, symlinked/aliased directories, and distinct case-sensitive paths under indexed roots.
-- **Image Rename Workflows**: Added image rename actions to grid and table context menus, plus inline filename editing directly under thumbnails while preserving subfolders and original extensions.
+- **Automation Rules**: Added persistent rules that can automatically tag images and add them to collections based on searchable conditions, metadata facets, ratings, favorites, telemetry, prompts, filenames, dimensions, generators, and other library filters. Includes live previews, manual apply, duplication, enable/disable controls, and optional execution for newly indexed images.
+- **Find Similar + Compare Flow**: Added a new `Find similar...` workflow in the grid, table, Image Modal, and Model View for finding prompt matches and related images across checkpoints, then sending the results directly into Compare Mode.
+- **Slideshow Mode**: Added fullscreen slideshow playback for the current selection or active browse scope, with keyboard controls plus configurable interval and filename overlay settings.
+- **Audio Library Support**: Added indexing, metadata extraction, filtering, library views, and in-app playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
+- **Image Rename Workflows**: Added inline rename in the grid plus rename actions in grid/table context menus and the Image Modal, while preserving subfolders and original extensions.
+- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, including nested folders and symlinked or aliased destinations.
 
 ### Improved
 
-- **Image Modal Windowing**: Refined image modal activation, focus handling, dragging, offscreen recovery, footer layering, and sidebar resizing so multiple floating image windows behave more predictably.
-- **Selection-Preserving Opens**: Opening an image from the grid, table, stack view, or background-open context actions now preserves multi-selection and keeps navigation scoped to the relevant collection, stack, or active result set.
-- **Facet Search Usability**: Added clear buttons to facet searches for faster filtering resets in long model, LoRA, sampler, scheduler, generator, and device lists.
-- **Folder Tree Selection**: Folder clicks now select the clicked folder consistently instead of toggling back to all folders, while Ctrl/Cmd-click keeps multi-folder selection behavior.
-- **Thumbnail Grid Keyboard Navigation**: Restored arrow, PageUp/PageDown, Home, and End navigation in the thumbnail grid on macOS without requiring focus on the zoom slider.
-- **Smart Library Layout**: Stabilized the Smart Library footer controls and restored the previous stack scroll position when returning from an expanded cluster.
-- **Toolbar Tooltips**: Replaced flaky native Electron/macOS tooltips on thumbnail controls, pagination, queue, view, compare, and zoom actions with reliable custom hover/focus tooltips.
-- **Viewer Shortcut Customization**: Added a configurable fullscreen hotkey for the viewer.
-- **macOS Unsigned Build Guidance**: Documented the temporary `xattr -dr com.apple.quarantine "/Applications/Image MetaHub.app"` workaround for unsigned GitHub builds until macOS signing/notarization is available.
-- **Smart Library Clustering Performance**: Improved worst-case prompt clustering by reducing unnecessary pair comparisons and bounding expensive similarity checks, making large or tag-heavy libraries less likely to stall during clustering.
-- **Media Metadata Handling**: Shared media type detection across Electron, indexing, thumbnails, filters, and metadata parsing so image, video, and audio handling stays consistent.
-- **Image Modal Motion Controls**: Added optional minimize/restore motion for windowed image modals, including a setting to reduce modal window animations.
-- **Codebase Maintenance**: Removed unused UI and integration helpers, tightened shared metadata utilities, and expanded tests around automation rules, media types, image metadata, selection behavior, clustering, and ComfyUI parsing.
+- **Compare Mode Clarity**: Compare Mode now highlights the matching metadata panel based on hover position and opens with metadata collapsed by default for faster visual review.
+- **Transparency-Aware Previews**: Grid thumbnails, table previews, sidebar previews, footer previews, and the Image Modal now preserve alpha channels consistently and display transparent images over a checkerboard background.
+- **Windowed Viewer UX**: Floating image windows are more reliable around focus, activation, dragging, offscreen recovery, footer layering, sidebar resizing, and optional minimize/restore motion.
+- **Selection and Navigation Scope**: Opening images from the grid, table, stacks, collections, or background-open actions now preserves multi-selection and keeps navigation tied to the active scope.
+- **Tagging and Filtering Workflow**: Added clear buttons to facet searches, kept mixed-selection tags available in batch tagging, and allowed clicking existing batch-tag chips to apply that tag to the full selection.
+- **Large Library Responsiveness**: Improved worst-case Smart Library clustering behavior and added optional performance diagnostics for troubleshooting search, grid, thumbnail, and viewer responsiveness.
 
 ### Fixed
 
-- **Open in Explorer for Folders**: Fixed directory context menu actions so indexed folders open correctly in the desktop app and report useful errors when the path cannot be opened.
-- **ComfyUI Wildcard Prompt Parsing**: Fixed `ImpactWildcardProcessor` handling so linked `populated_text` / `wildcard_text` inputs are traced correctly and link arrays are not mistaken for literal prompt text.
-- **Image Modal Sidebar Resize**: Fixed details sidebar resizing behavior in the image modal.
-- **Background Opens from Stack and Collection Views**: Fixed background image opens so they keep the correct navigation scope instead of falling back to the wrong filtered list.
-- **Audio Watcher and Metadata Refresh**: Fixed file watcher and metadata fallback paths so newly changed audio and video media are refreshed consistently during library updates.
-- **Watched File Moves and Deletions**: Fixed Finder/Explorer changes so deleted files, moved files, removed folders, and watched-root removals are removed from the library and cache immediately instead of leaving stale or duplicated thumbnails.
-- **Metadata Refresh from Sidecars**: Fixed watcher refreshes for changed sidecar JSON files, including uppercase media extensions on case-sensitive filesystems.
-- **Rename State Consistency**: Fixed rename updates so selections, previews, detached image modals, annotations, collections, Smart Library clusters, thumbnail state, and cache entries follow the new image ID without stale references or duplicate IDs.
+- **Library Watcher Refresh**: Moved or deleted files, removed watched folders, sidecar metadata updates, and refreshed audio/video files now sync more reliably without stale or duplicated entries.
+- **Rename State Consistency**: Renamed images now keep selections, previews, detached modal references, annotations, collections, Smart Library clusters, and cached thumbnail state aligned to the new ID and path.
+- **ComfyUI Wildcard Prompt Parsing**: Fixed `ImpactWildcardProcessor` handling so linked `populated_text` / `wildcard_text` inputs resolve correctly instead of being treated as literal prompt text.
 
 ## [0.14.1] - 2026-04-10
 
