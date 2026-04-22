@@ -174,6 +174,39 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 
+  it('matches LoRA filters when metadata only provides model_name', () => {
+    const objectLoraImage = createImage({
+      name: 'object-lora.png',
+      id: 'dir-1::object-lora.png',
+      loras: [{ model_name: 'detailer' } as any],
+    });
+    const plainImage = createImage({
+      name: 'plain.png',
+      id: 'dir-1::plain.png',
+      loras: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [objectLoraImage, plainImage],
+      filteredImages: [objectLoraImage, plainImage],
+      sortOrder: 'asc',
+    });
+    useImageStore.getState().filterAndSortImages();
+
+    useImageStore.getState().setSelectedFilters({
+      loras: ['detailer'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['object-lora.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      loras: [],
+      excludedLoras: ['detailer'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['plain.png']);
+  });
+
   it('treats sampler as an independent filter from scheduler', () => {
     useImageStore.getState().setSelectedFilters({
       samplers: ['dpmpp_2m'],

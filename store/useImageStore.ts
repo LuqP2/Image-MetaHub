@@ -595,7 +595,7 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
     }
     if (image.loras?.length) {
         const loraNames = image.loras.map(lora => {
-            const normalized = normalizeFacetValue(lora);
+            const normalized = normalizeLoraName(typeof lora === 'string' ? lora : lora);
             return normalized ? normalized.toLowerCase() : '';
         }).filter(Boolean);
         if (loraNames.length > 0) {
@@ -626,10 +626,9 @@ const getImageGenerationType = (image: IndexedImage): 'txt2img' | 'img2img' | nu
     return generationType === 'txt2img' || generationType === 'img2img' ? generationType : null;
 };
 
-const normalizeLoraName = (value: string | { name?: string } | null | undefined): string | null => {
-    const candidate = typeof value === 'string' ? value : value?.name;
-    return normalizeFacetValue(candidate);
-};
+const normalizeLoraName = (
+    value: string | { name?: string; model_name?: string } | null | undefined,
+): string | null => normalizeFacetValue(value);
 
 const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
     const analytics = getImageAnalyticsSnapshot(image);
@@ -2092,9 +2091,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 if (!image.loras || image.loras.length === 0) return false;
 
                 // Extract LoRA names from both strings and LoRAInfo objects
-                const loraNames = image.loras.map(lora =>
-                    typeof lora === 'string' ? lora : (lora?.name || '')
-                ).filter(Boolean);
+                const loraNames = image.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((lora): lora is string => Boolean(lora));
 
                 return selectedLoras.some(sl => loraNames.includes(sl));
             });
@@ -2104,9 +2103,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(image => {
                 if (!image.loras || image.loras.length === 0) return true;
 
-                const loraNames = image.loras.map(lora =>
-                    typeof lora === 'string' ? lora : (lora?.name || '')
-                ).filter(Boolean);
+                const loraNames = image.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((lora): lora is string => Boolean(lora));
 
                 return !state.excludedLoras.some(sl => loraNames.includes(sl));
             });
