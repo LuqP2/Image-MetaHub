@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
@@ -16,10 +16,16 @@ import {
 interface ContextMenuState {
   x: number;
   y: number;
+  anchorX: number;
+  anchorY: number;
   visible: boolean;
+  horizontalDirection: 'left' | 'right';
+  verticalDirection: 'up' | 'down';
   image?: IndexedImage;
   directoryPath?: string;
 }
+
+const CONTEXT_MENU_MARGIN = 8;
 
 const showNotification = (message: string) => {
   const notification = document.createElement('div');
@@ -34,10 +40,15 @@ const showNotification = (message: string) => {
 };
 
 export const useContextMenu = () => {
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
-    visible: false
+    anchorX: 0,
+    anchorY: 0,
+    visible: false,
+    horizontalDirection: 'right',
+    verticalDirection: 'down',
   });
 
   const { startPolling, stopPolling } = useA1111ProgressContext();
@@ -46,6 +57,67 @@ export const useContextMenu = () => {
   const hideContextMenu = useCallback(() => {
     setContextMenu((prev) => ({ ...prev, visible: false }));
   }, []);
+
+  useLayoutEffect(() => {
+    if (!contextMenu.visible || !contextMenuRef.current) {
+      return;
+    }
+
+    const repositionMenu = () => {
+      const menuElement = contextMenuRef.current;
+      if (!menuElement) {
+        return;
+      }
+
+      const rect = menuElement.getBoundingClientRect();
+      const maxX = Math.max(CONTEXT_MENU_MARGIN, window.innerWidth - rect.width - CONTEXT_MENU_MARGIN);
+      const maxY = Math.max(CONTEXT_MENU_MARGIN, window.innerHeight - rect.height - CONTEXT_MENU_MARGIN);
+
+      let nextX = contextMenu.anchorX;
+      let nextY = contextMenu.anchorY;
+      let horizontalDirection: 'left' | 'right' = 'right';
+      let verticalDirection: 'up' | 'down' = 'down';
+
+      if (nextX + rect.width > window.innerWidth - CONTEXT_MENU_MARGIN) {
+        nextX = contextMenu.anchorX - rect.width;
+        horizontalDirection = 'left';
+      }
+
+      if (nextY + rect.height > window.innerHeight - CONTEXT_MENU_MARGIN) {
+        nextY = contextMenu.anchorY - rect.height;
+        verticalDirection = 'up';
+      }
+
+      nextX = Math.min(Math.max(CONTEXT_MENU_MARGIN, nextX), maxX);
+      nextY = Math.min(Math.max(CONTEXT_MENU_MARGIN, nextY), maxY);
+
+      setContextMenu((prev) => {
+        if (
+          prev.x === nextX &&
+          prev.y === nextY &&
+          prev.horizontalDirection === horizontalDirection &&
+          prev.verticalDirection === verticalDirection
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          x: nextX,
+          y: nextY,
+          horizontalDirection,
+          verticalDirection,
+        };
+      });
+    };
+
+    repositionMenu();
+    window.addEventListener('resize', repositionMenu);
+
+    return () => {
+      window.removeEventListener('resize', repositionMenu);
+    };
+  }, [contextMenu.anchorX, contextMenu.anchorY, contextMenu.visible]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -69,7 +141,11 @@ export const useContextMenu = () => {
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
+      anchorX: e.clientX,
+      anchorY: e.clientY,
       visible: true,
+      horizontalDirection: 'right',
+      verticalDirection: 'down',
       image,
       directoryPath
     });
@@ -307,6 +383,7 @@ export const useContextMenu = () => {
 
   return {
     contextMenu,
+    contextMenuRef,
     showContextMenu,
     hideContextMenu,
     copyPrompt,

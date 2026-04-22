@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
@@ -96,6 +97,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   const {
     contextMenu,
+    contextMenuRef,
     showContextMenu,
     hideContextMenu,
     copyPrompt,
@@ -107,6 +109,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
     exportImage,
     copyRawMetadata
   } = useContextMenu();
+
+  const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -491,8 +495,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
         </div>
       </div>
 
-      {contextMenu.visible && (
+      {contextMenu.visible && typeof document !== 'undefined' &&
+        createPortal(
         <div
+          ref={contextMenuRef}
           className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -524,7 +530,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             </button>
 
             {isCollectionSubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <div
                   className="relative"
                   onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
@@ -539,7 +545,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
-                    <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                    <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                       {collections.length === 0 ? (
                         <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
                       ) : (
@@ -610,7 +616,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             </button>
 
             {isCopySubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <button
                   onClick={copyPrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
@@ -744,7 +750,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 Batch Export Selected ({selectedCount})
               </button>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
 
       <CollectionFormModal
