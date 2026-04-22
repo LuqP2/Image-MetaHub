@@ -93,8 +93,23 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
     }
   };
 
+  const handleApplySingleTag = async (tag: string) => {
+    if (!tag.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await bulkAddTag(selectedImageIds, tag);
+      setInputValue('');
+    } catch (error) {
+      console.error('Failed to add tag:', error);
+    } finally {
+      setIsSubmitting(false);
+      focusInput();
+    }
+  };
+
   const handleApplyExistingTag = async (tag: string) => {
-    await handleAddTag(tag);
+    await handleApplySingleTag(tag);
   };
 
   const handleRemoveTagRequest = (tag: string, e?: React.MouseEvent) => {

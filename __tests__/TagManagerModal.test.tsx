@@ -83,6 +83,32 @@ describe('TagManagerModal', () => {
     });
   });
 
+  it('applies an existing chip tag with commas as a single tag value', async () => {
+    useImageStore.setState({
+      availableTags: [{ name: 'portrait, dramatic', count: 2 }],
+      recentTags: ['portrait, dramatic'],
+      images: [
+        { id: 'img-1', name: 'a.png', tags: ['portrait, dramatic'] } as any,
+        { id: 'img-2', name: 'b.png', tags: [] } as any,
+      ],
+    });
+
+    render(
+      <TagManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        selectedImageIds={['img-1', 'img-2']}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply tag portrait, dramatic to all selected images' }));
+
+    await waitFor(() => {
+      expect(useImageStore.getState().bulkAddTag).toHaveBeenCalledTimes(1);
+      expect(useImageStore.getState().bulkAddTag).toHaveBeenCalledWith(['img-1', 'img-2'], 'portrait, dramatic');
+    });
+  });
+
   it('suggests tags that are already present on part of the current selection', async () => {
     useImageStore.setState({
       availableTags: [{ name: 'portrait', count: 2 }],
