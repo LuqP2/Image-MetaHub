@@ -449,6 +449,26 @@ export interface AdvancedFilters {
   vramPeakMb?: NumericRangeFilter;
 }
 
+export type SimilarSearchScope = 'current-view' | 'all-images' | 'same-folder';
+export type CheckpointMatchMode = 'ignore' | 'same' | 'different';
+
+export interface SimilarSearchCriteria {
+  prompt: boolean;
+  lora: boolean;
+  matchLoraWeight: boolean;
+  seed: boolean;
+  checkpointMode: CheckpointMatchMode;
+  scope: SimilarSearchScope;
+}
+
+export interface SimilarSearchResult {
+  image: IndexedImage;
+  matchedFields: Array<'prompt' | 'lora' | 'loraWeight' | 'seed' | 'checkpoint'>;
+  preselected: boolean;
+  primaryCheckpoint: string | null;
+  sharesCheckpoint: boolean;
+}
+
 export interface SelectedFiltersUpdate {
   models?: string[];
   excludedModels?: string[];

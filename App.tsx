@@ -31,6 +31,8 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import NodeView from './components/NodeView';
+import FindSimilarModal from './components/FindSimilarModal';
+import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
@@ -54,6 +56,7 @@ import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
 import { type IndexedImage, type BaseMetadata } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
+import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
 
 interface OpenImageModalState {
   modalId: string;
@@ -73,6 +76,11 @@ interface ImageModalWindowState {
   y: number;
   width: number;
   height: number;
+}
+
+interface FindSimilarState {
+  sourceImage: IndexedImage;
+  currentViewImages: IndexedImage[];
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
@@ -367,6 +375,11 @@ export default function App() {
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
+  const [modelPromptPickerState, setModelPromptPickerState] = useState<{
+    modelName: string;
+    groups: ModelPromptOverlapGroup[];
+  } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
   const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
@@ -1669,6 +1682,41 @@ export default function App() {
       : libraryView === 'node'
       ? nodeViewResultImages
       : safeFilteredImages;
+
+  const openFindSimilar = useCallback((sourceImage: IndexedImage, currentViewImages?: IndexedImage[]) => {
+    setFindSimilarState({
+      sourceImage,
+      currentViewImages: (currentViewImages && currentViewImages.length > 0 ? currentViewImages : safeFilteredImages)
+        .filter((image) => Boolean(image)),
+    });
+  }, [safeFilteredImages]);
+
+  const closeFindSimilar = useCallback(() => {
+    setFindSimilarState(null);
+  }, []);
+
+  const handleOpenFindSimilarCompare = useCallback((images: IndexedImage[]) => {
+    setComparisonImages(images);
+    openComparisonModal();
+    setFindSimilarState(null);
+  }, [openComparisonModal, setComparisonImages]);
+
+  const openModelPromptPicker = useCallback((modelName: string) => {
+    setModelPromptPickerState({
+      modelName,
+      groups: getModelPromptOverlapGroups(modelName, safeImages),
+    });
+  }, [safeImages]);
+
+  const closeModelPromptPicker = useCallback(() => {
+    setModelPromptPickerState(null);
+  }, []);
+
+  const handleSelectModelPromptGroup = useCallback((group: ModelPromptOverlapGroup) => {
+    setModelPromptPickerState(null);
+    openFindSimilar(group.sourceImage, safeImages);
+  }, [openFindSimilar, safeImages]);
+
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
   const slideshowPlaylistPreview = useMemo(
     () =>
@@ -1772,6 +1820,9 @@ export default function App() {
         }
 
         const navigationImageIds = resolveModalNavigationImageIds(modal);
+        const navigationImages = navigationImageIds
+          .map((imageId) => getImageByIdFromStore(imageId))
+          .filter((candidate): candidate is IndexedImage => Boolean(candidate));
         const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
         const directoryPath = directoryPathById.get(image.directoryId);
         if (!directoryPath) {
@@ -1781,6 +1832,7 @@ export default function App() {
         return {
           ...modal,
           image,
+          navigationImages,
           directoryPath,
           currentIndex: currentIndex === -1 ? 0 : currentIndex,
           totalImages: navigationImageIds.length,
@@ -1788,6 +1840,7 @@ export default function App() {
       })
       .filter(Boolean) as Array<OpenImageModalState & {
         image: IndexedImage;
+        navigationImages: IndexedImage[];
         directoryPath: string;
         currentIndex: number;
         totalImages: number;
@@ -2201,6 +2254,7 @@ export default function App() {
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages)}
                         />
                       ) : (
                         <ImageTable
@@ -2209,6 +2263,7 @@ export default function App() {
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages)}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -2219,6 +2274,7 @@ export default function App() {
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
+                    onFindMatchingPrompts={openModelPromptPicker}
                   />
                 ) : libraryView === 'collections' ? (
                   <CollectionsWorkspace
@@ -2237,6 +2293,7 @@ export default function App() {
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages)}
                       />
                     ) : (
                       <ImageTable
@@ -2247,6 +2304,7 @@ export default function App() {
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages)}
                       />
                     )}
                   </CollectionsWorkspace>
@@ -2329,6 +2387,7 @@ export default function App() {
             startSlideshow={modal.startSlideshow}
             diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
+            onFindSimilar={(image) => openFindSimilar(image, modal.navigationImages)}
           />
         ))}
 
@@ -2361,6 +2420,23 @@ export default function App() {
           onStartTrial={startTrial}
           isExpired={isExpired}
           isPro={isPro}
+        />
+
+        <ModelPromptPickerModal
+          isOpen={modelPromptPickerState !== null}
+          modelName={modelPromptPickerState?.modelName ?? null}
+          groups={modelPromptPickerState?.groups ?? []}
+          onClose={closeModelPromptPicker}
+          onSelect={handleSelectModelPromptGroup}
+        />
+
+        <FindSimilarModal
+          isOpen={findSimilarState !== null}
+          sourceImage={findSimilarState?.sourceImage ?? null}
+          allImages={safeImages}
+          currentViewImages={findSimilarState?.currentViewImages}
+          onClose={closeFindSimilar}
+          onOpenCompare={handleOpenFindSimilarCompare}
         />
 
         {/* Generate Modals */}

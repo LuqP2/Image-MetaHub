@@ -18,10 +18,11 @@ interface ModelViewProps {
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
   onModelSelect: (modelName: string) => void;
+  onFindMatchingPrompts?: (modelName: string) => void;
 }
 
 
-export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect }) => {
+export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect, onFindMatchingPrompts }) => {
   const images = useImageStore((state) => state.images);
   const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
@@ -101,6 +102,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
                 images={entry.images}
                 imageCount={entry.count}
                 onClick={() => onModelSelect(entry.name)}
+                onFindMatchingPrompts={onFindMatchingPrompts ? () => onFindMatchingPrompts(entry.name) : undefined}
               />
             ))}
           </div>

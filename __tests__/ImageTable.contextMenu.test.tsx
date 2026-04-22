@@ -202,6 +202,39 @@ describe('ImageTable context menu', () => {
 
     expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
   });
+
+  it('shows a find similar action in the image-table context menu', () => {
+    const onFindSimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png', prompt: 'Test prompt' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      collections: [],
+      createCollection: vi.fn().mockResolvedValue(undefined),
+      addImagesToCollection: vi.fn().mockResolvedValue(undefined),
+      removeImagesFromCollection: vi.fn().mockResolvedValue(undefined),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      bulkSetImageRating: vi.fn(),
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set()}
+        onBatchExport={vi.fn()}
+        onFindSimilar={onFindSimilar}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find similar...'));
+    expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
 });
 
 describe('ImageTable selection opening behavior', () => {

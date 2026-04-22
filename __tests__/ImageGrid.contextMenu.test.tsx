@@ -140,7 +140,7 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   ...overrides,
 });
 
-const Harness = ({ images }: { images: IndexedImage[] }) => {
+const Harness = ({ images, onFindSimilar }: { images: IndexedImage[]; onFindSimilar?: (image: IndexedImage) => void }) => {
   const selectedImages = useImageStore((state) => state.selectedImages);
 
   return (
@@ -152,6 +152,7 @@ const Harness = ({ images }: { images: IndexedImage[] }) => {
       totalPages={1}
       onPageChange={vi.fn()}
       onBatchExport={vi.fn()}
+      onFindSimilar={onFindSimilar}
     />
   );
 };
@@ -387,6 +388,30 @@ describe('ImageGrid context menu', () => {
     fireEvent.click(screen.getByText('Motos'));
 
     expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
+  });
+
+  it('shows a find similar action in the image context menu', () => {
+    const onFindSimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png', prompt: 'Test prompt' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(),
+      isStackingEnabled: false,
+      focusedImageIndex: null,
+      previewImage: null,
+      transferProgress: null,
+      filterAndSortImages: vi.fn(),
+    } as any);
+
+    render(<Harness images={[image]} onFindSimilar={onFindSimilar} />);
+
+    fireEvent.click(screen.getByText('Find similar...'));
+    expect(onFindSimilar).toHaveBeenCalledWith(image);
   });
 
   it('adds selected images explicitly even for collections with auto-add tags', () => {
