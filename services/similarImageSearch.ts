@@ -84,6 +84,9 @@ const toLowerCaseKey = (value: string | null | undefined): string | null => {
 
 const normalizePromptLineEndings = (value: string) => value.replace(/\r\n?/g, '\n');
 
+const getImagePromptForSimilarSearch = (image: IndexedImage): string =>
+  image.prompt || image.metadata?.normalizedMetadata?.prompt || '';
+
 export const normalizePromptForSimilarSearch = (prompt?: string | null): string => {
   if (!prompt) {
     return '';
@@ -180,7 +183,7 @@ const haveSameLoraWeights = (left: NormalizedLoraEntry[], right: NormalizedLoraE
 };
 
 export const getSimilarSearchAvailability = (image: IndexedImage): SimilarSearchAvailability => {
-  const normalizedPrompt = normalizePromptForSimilarSearch(image.prompt);
+  const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
   const loras = normalizeLoraEntries(image);
   const checkpoints = normalizeCheckpointList(image);
 
@@ -193,7 +196,7 @@ export const getSimilarSearchAvailability = (image: IndexedImage): SimilarSearch
 };
 
 export const getSimilarSearchSourceDetails = (image: IndexedImage): SimilarSearchSourceDetails => {
-  const normalizedPrompt = normalizePromptForSimilarSearch(image.prompt);
+  const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
   const checkpoints = normalizeCheckpointList(image);
 
   return {
@@ -448,7 +451,7 @@ export const getModelPromptOverlapGroups = (
 
   const imagesByPrompt = new Map<string, IndexedImage[]>();
   for (const image of allImages) {
-    const normalizedPrompt = normalizePromptForSimilarSearch(image.prompt);
+    const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
     if (!normalizedPrompt) {
       continue;
     }
@@ -465,7 +468,7 @@ export const getModelPromptOverlapGroups = (
 
   const globalImagesByPrompt = new Map<string, IndexedImage[]>();
   for (const image of allImages) {
-    const normalizedPrompt = normalizePromptForSimilarSearch(image.prompt);
+    const normalizedPrompt = normalizePromptForSimilarSearch(getImagePromptForSimilarSearch(image));
     if (!normalizedPrompt) {
       continue;
     }
@@ -478,9 +481,14 @@ export const getModelPromptOverlapGroups = (
   return Array.from(imagesByPrompt.entries())
     .map(([normalizedPrompt, sourceImages]) => {
       const promptImages = globalImagesByPrompt.get(normalizedPrompt) || [];
+      const sourceImageIds = new Set(sourceImages.map((image) => image.id));
       const alternateCheckpoints = new Set<string>();
 
       for (const image of promptImages) {
+        if (sourceImageIds.has(image.id)) {
+          continue;
+        }
+
         const primaryCheckpoint = getPrimaryCheckpointKey(image);
         if (primaryCheckpoint && primaryCheckpoint !== normalizedModel) {
           alternateCheckpoints.add(primaryCheckpoint);
@@ -494,7 +502,7 @@ export const getModelPromptOverlapGroups = (
       const sourceImage = [...sourceImages].sort(compareNewestFirst)[0];
       return {
         normalizedPrompt,
-        promptPreview: buildPromptPreview(sourceImage.prompt || ''),
+        promptPreview: buildPromptPreview(getImagePromptForSimilarSearch(sourceImage)),
         sourceCount: sourceImages.length,
         alternateCheckpointCount: alternateCheckpoints.size,
         sourceImage,

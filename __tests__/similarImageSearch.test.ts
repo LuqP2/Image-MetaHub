@@ -3,6 +3,7 @@ import type { IndexedImage } from '../types';
 import {
   DEFAULT_SIMILAR_SEARCH_CRITERIA,
   findSimilarImages,
+  getModelPromptOverlapGroups,
   normalizePromptForSimilarSearch,
   promptsExactlyMatchNormalized,
 } from '../services/similarImageSearch';
@@ -183,5 +184,80 @@ describe('similarImageSearch helpers', () => {
     expect(result.effectiveCriteria.lora).toBe(false);
     expect(result.effectiveCriteria.checkpointMode).toBe('ignore');
     expect(result.results.map((entry) => entry.image.id)).toEqual(['prompt-match']);
+  });
+
+  it('falls back to normalized metadata prompt when the flattened prompt is empty', () => {
+    const source = createImage({
+      id: 'source',
+      prompt: '',
+      metadata: {
+        normalizedMetadata: {
+          prompt: 'Legacy prompt still present in normalized metadata',
+        },
+      } as any,
+      models: ['model-a'],
+    });
+    const images = [
+      source,
+      createImage({
+        id: 'prompt-match',
+        prompt: 'legacy prompt still present in normalized metadata',
+        models: ['model-b'],
+      }),
+      createImage({
+        id: 'prompt-miss',
+        prompt: 'Completely different prompt',
+        models: ['model-c'],
+      }),
+    ];
+
+    const result = findSimilarImages({
+      sourceImage: source,
+      allImages: images,
+      currentViewImages: images,
+      criteria: DEFAULT_SIMILAR_SEARCH_CRITERIA,
+    });
+
+    expect(result.availability.prompt).toBe(true);
+    expect(result.effectiveCriteria.prompt).toBe(true);
+    expect(result.results.map((entry) => entry.image.id)).toEqual(['prompt-match']);
+  });
+
+  it('only reports model prompt overlaps when another checkpoint has matching prompt images', () => {
+    const selectedModel = 'model-a';
+    const overlappingPrompt = 'Shared prompt';
+    const groups = getModelPromptOverlapGroups(selectedModel, [
+      createImage({
+        id: 'source-with-secondary-model',
+        prompt: overlappingPrompt,
+        models: ['model-b', 'model-a'],
+        lastModified: 10,
+      }),
+      createImage({
+        id: 'same-group',
+        prompt: overlappingPrompt,
+        models: ['model-a'],
+        lastModified: 20,
+      }),
+      createImage({
+        id: 'real-alternate',
+        prompt: overlappingPrompt,
+        models: ['model-c'],
+        lastModified: 30,
+      }),
+      createImage({
+        id: 'another-source-only-prompt',
+        prompt: 'Only inside selected model',
+        models: ['model-d', 'model-a'],
+        lastModified: 40,
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      normalizedPrompt: 'shared prompt',
+      sourceCount: 2,
+      alternateCheckpointCount: 1,
+    });
   });
 });
