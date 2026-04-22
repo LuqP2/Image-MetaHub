@@ -93,6 +93,10 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
     }
   };
 
+  const handleApplyExistingTag = async (tag: string) => {
+    await handleAddTag(tag);
+  };
+
   const handleRemoveTagRequest = (tag: string, e?: React.MouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
@@ -246,23 +250,35 @@ const TagManagerModal: React.FC<TagManagerModalProps> = ({
                 {sortedExistingTags.map(({ name, count, isAll }) => (
                   <div
                     key={name}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-sm transition-colors group ${
+                    className={`flex items-center rounded-full border text-sm transition-colors group ${
                       isAll 
                         ? 'bg-blue-900/30 border-blue-700/50 text-blue-200' 
                         : 'bg-gray-800 border-gray-700 text-gray-300 border-dashed'
                     }`}
-                    title={isAll ? 'Present on all selected images' : `Present on ${count} of ${selectedImages.length} images`}
+                    title={isAll ? 'Click to apply to all selected images' : `Click to apply to all selected images. Present on ${count} of ${selectedImages.length} images`}
                   >
-                    <span className="max-w-[150px] truncate">{name}</span>
-                    {!isAll && (
-                       <span className="text-[10px] bg-gray-700 px-1 rounded-full text-gray-400">
-                         {count}
-                       </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleApplyExistingTag(name)}
+                      disabled={isSubmitting}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-left transition-colors ${
+                        isAll
+                          ? 'hover:bg-blue-800/30 disabled:hover:bg-transparent'
+                          : 'hover:bg-gray-700 disabled:hover:bg-transparent'
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                      aria-label={`Apply tag ${name} to all selected images`}
+                    >
+                      <span className="max-w-[150px] truncate">{name}</span>
+                      {!isAll && (
+                         <span className="text-[10px] bg-gray-700 px-1 rounded-full text-gray-400">
+                           {count}
+                         </span>
+                      )}
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => handleRemoveTagRequest(name, e)}
-                      className="ml-1 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="mr-1 text-gray-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                       aria-label={`Remove tag ${name}`}
                       title={`Remove tag ${name}`}
                     >

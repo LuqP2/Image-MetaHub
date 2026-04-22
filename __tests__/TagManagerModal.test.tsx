@@ -57,4 +57,29 @@ describe('TagManagerModal', () => {
       expect(document.activeElement).toBe(input);
     });
   });
+
+  it('applies a displayed tag to the whole selection when its chip is clicked', async () => {
+    useImageStore.setState({
+      availableTags: [{ name: 'portrait', count: 2 }],
+      recentTags: ['portrait'],
+      images: [
+        { id: 'img-1', name: 'a.png', tags: ['portrait'] } as any,
+        { id: 'img-2', name: 'b.png', tags: [] } as any,
+      ],
+    });
+
+    render(
+      <TagManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        selectedImageIds={['img-1', 'img-2']}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply tag portrait to all selected images' }));
+
+    await waitFor(() => {
+      expect(useImageStore.getState().bulkAddTag).toHaveBeenCalledWith(['img-1', 'img-2'], 'portrait');
+    });
+  });
 });
