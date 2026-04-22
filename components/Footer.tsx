@@ -147,16 +147,12 @@ const Footer: React.FC<FooterProps> = ({
               style={{ left: `${previewLeft}px`, width: `${previewWidth}px` }}
             >
               <div className="overflow-hidden rounded-xl border border-gray-700/80 bg-gray-950/95 shadow-2xl shadow-black/50 backdrop-blur-sm">
-                <div className={`aspect-square ${
-                  hoveredThumbnail?.thumbnailUrl && hoveredWindowItem?.image.hasAlpha
-                    ? 'image-alpha-grid'
-                    : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950'
-                }`}>
+                <div className="aspect-square bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950">
                   {hoveredThumbnail?.thumbnailUrl ? (
                     <img
                       src={hoveredThumbnail.thumbnailUrl}
                       alt={hoveredWindowItem.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover image-alpha-grid"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500">

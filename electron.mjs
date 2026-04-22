@@ -1782,9 +1782,17 @@ function setupFileOperationHandlers() {
           })
         : image;
 
+      const lowerExt = path.extname(filePath).toLowerCase();
+      const preserveAlpha = lowerExt === '.png' || lowerExt === '.webp' || lowerExt === '.gif';
+
+      if (preserveAlpha) {
+        const data = resizedImage.toPNG();
+        return { success: true, data, mimeType: 'image/png' };
+      }
+
       const jpegQuality = Math.max(1, Math.min(100, Math.round(quality)));
       const data = resizedImage.toJPEG(jpegQuality);
-      return { success: true, data };
+      return { success: true, data, mimeType: 'image/jpeg' };
     } catch (error) {
       return { success: false, error: error.message };
     }

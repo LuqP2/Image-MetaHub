@@ -173,7 +173,7 @@ export interface ElectronAPI {
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
-  generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
+  generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; mimeType?: string; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
@@ -577,7 +577,6 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
-  hasAlpha?: boolean;
 
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status

@@ -391,9 +391,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
       <div
         ref={mergedRef}
         data-image-id={image.id}
-        className={`relative group flex items-center justify-center rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
-          image.hasAlpha && !isAudio && !isVideo && !hasThumbnailError ? 'image-alpha-grid' : 'bg-gray-800'
-        } ${
+        className={`relative group flex items-center justify-center bg-gray-800 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 ease-out border border-gray-700/50 ${
           isSelected 
             ? 'ring-4 ring-blue-500 ring-opacity-75 shadow-lg shadow-blue-500/20 translate-y-[-2px]' 
             : 'hover:shadow-2xl hover:shadow-black/50 hover:border-gray-600 hover:translate-y-[-4px]'
@@ -542,7 +540,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             alt={image.name}
             className={`max-w-full max-h-full object-contain transition-all duration-200 ${
               isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
-            }`}
+            } image-alpha-grid`}
             loading="lazy"
             draggable={false}
           />

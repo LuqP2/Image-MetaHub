@@ -2228,7 +2228,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               : showSidebarOnBottom
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
-          } ${isPlayableMedia ? 'bg-black' : liveImage.hasAlpha ? 'image-alpha-grid' : 'bg-black'} flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isPlayableMedia ? undefined : handleMouseDown}
@@ -2287,7 +2287,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <img
                 src={imageUrl}
                 alt={image.name}
-                className="max-w-full max-h-full object-contain select-none"
+                className="max-w-full max-h-full object-contain select-none image-alpha-grid"
                 onLoad={() => {
                   if (!hasMarkedFullMediaReadyRef.current) {
                     hasMarkedFullMediaReadyRef.current = true;

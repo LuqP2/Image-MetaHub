@@ -3,6 +3,7 @@ import cacheManager from './cacheManager';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
+const THUMBNAIL_CACHE_VERSION = 2;
 const MAX_CONCURRENT_THUMBNAILS = 12;
 const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
@@ -160,7 +161,7 @@ async function generateElectronThumbnailBlob(image: IndexedImage): Promise<Blob 
     return null;
   }
 
-  return new Blob([new Uint8Array(result.data)], { type: 'image/jpeg' });
+  return new Blob([new Uint8Array(result.data)], { type: result.mimeType || 'image/jpeg' });
 }
 
 class ThumbnailManager {
@@ -672,7 +673,7 @@ class ThumbnailManager {
         return;
       }
 
-      const thumbnailKey = `${image.id}-${image.lastModified}`;
+      const thumbnailKey = `v${THUMBNAIL_CACHE_VERSION}:${image.id}-${image.lastModified}`;
       const cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
       if (cachedBlob) {
         const url = this.updateObjectUrl(image.id, cachedBlob);
