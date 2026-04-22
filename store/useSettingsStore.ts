@@ -119,6 +119,7 @@ interface SettingsState {
   blurSensitiveImages: boolean;
   enableSafeMode: boolean;
   enableAnimations: boolean;
+  performanceDiagnosticsEnabled: boolean;
   slideshowIntervalSeconds: number;
   slideshowShowFilename: boolean;
 
@@ -160,6 +161,7 @@ interface SettingsState {
   setBlurSensitiveImages: (value: boolean) => void;
   setEnableSafeMode: (value: boolean) => void;
   setEnableAnimations: (value: boolean) => void;
+  setPerformanceDiagnosticsEnabled: (value: boolean) => void;
   setSlideshowIntervalSeconds: (value: number) => void;
   setSlideshowShowFilename: (value: boolean) => void;
   setA1111Enabled: (value: boolean) => void;
@@ -206,6 +208,7 @@ export const useSettingsStore = create<SettingsState>()(
       blurSensitiveImages: true,
       enableSafeMode: true,
       enableAnimations: true,
+      performanceDiagnosticsEnabled: false,
       slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
       slideshowShowFilename: true,
 
@@ -259,6 +262,7 @@ export const useSettingsStore = create<SettingsState>()(
       setBlurSensitiveImages: (value) => set({ blurSensitiveImages: !!value }),
       setEnableSafeMode: (value) => set({ enableSafeMode: !!value }),
       setEnableAnimations: (value) => set({ enableAnimations: !!value }),
+      setPerformanceDiagnosticsEnabled: (value) => set({ performanceDiagnosticsEnabled: !!value }),
       setSlideshowIntervalSeconds: (value) =>
         set({ slideshowIntervalSeconds: sanitizeSlideshowIntervalSeconds(value) }),
       setSlideshowShowFilename: (value) => set({ slideshowShowFilename: !!value }),
@@ -311,6 +315,7 @@ export const useSettingsStore = create<SettingsState>()(
         blurSensitiveImages: true,
         enableSafeMode: true,
         enableAnimations: true,
+        performanceDiagnosticsEnabled: false,
         slideshowIntervalSeconds: DEFAULT_SLIDESHOW_INTERVAL_SECONDS,
         slideshowShowFilename: true,
         a1111Enabled: true,
@@ -385,6 +390,10 @@ export const useSettingsStore = create<SettingsState>()(
 
         if (state && typeof state.enableAnimations !== 'boolean') {
           state.enableAnimations = true;
+        }
+
+        if (state && typeof state.performanceDiagnosticsEnabled !== 'boolean') {
+          state.performanceDiagnosticsEnabled = false;
         }
 
         if (state) {

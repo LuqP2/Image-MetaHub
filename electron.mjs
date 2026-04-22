@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol, net } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -7,7 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
@@ -58,8 +58,42 @@ const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
+const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
+
+const buildMediaProtocolUrl = (filePath) => {
+  const normalizedFilePath = path.resolve(filePath);
+  return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
+};
+
+const registerMediaProtocol = () => {
+  protocol.handle(MEDIA_PROTOCOL_SCHEME, async (request) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const encodedPath = requestUrl.searchParams.get('path');
+      if (!encodedPath) {
+        return new Response('Missing media path', { status: 400 });
+      }
+
+      const normalizedFilePath = path.resolve(encodedPath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
+        console.error('  [imh-media] Requested path:', encodedPath);
+        console.error('  [imh-media] Normalized path:', normalizedFilePath);
+        console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return new Response('Access denied', { status: 403 });
+      }
+
+      await fs.access(normalizedFilePath);
+      return net.fetch(pathToFileURL(normalizedFilePath).toString());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error serving media protocol request:', request.url, error);
+      return new Response(message || 'Failed to load media', { status: 500 });
+    }
+  });
+};
 
 const parseFrameRate = (value) => {
   if (typeof value !== 'string' || !value.includes('/')) {
@@ -1107,6 +1141,8 @@ async function createWindow(startupDirectory = null) {
 
 // App event handlers
 app.whenReady().then(async () => {
+  registerMediaProtocol();
+
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2224,6 +2260,40 @@ function setupFileOperationHandlers() {
   });
 
   // Handle reading file content
+  ipcMain.handle('resolve-media-url', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      const normalizedFilePath = path.resolve(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to resolve media URL outside of allowed directories.');
+        console.error('  [resolve-media-url] Requested path:', filePath);
+        console.error('  [resolve-media-url] Normalized path:', normalizedFilePath);
+        console.error('  [resolve-media-url] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      await fs.access(normalizedFilePath);
+      return { success: true, url: buildMediaProtocolUrl(normalizedFilePath) };
+    } catch (error) {
+      const isFileNotFound = error.code === 'ENOENT' || error.message?.includes('no such file');
+      const isPermissionError = error.code === 'EACCES' || error.code === 'EPERM';
+
+      if (!isFileNotFound) {
+        console.error('Error resolving media URL:', filePath, error);
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
+        errorCode: error.code,
+      };
+    }
+  });
+
   ipcMain.handle('read-file', async (event, filePath) => {
     try {
       if (!filePath) {

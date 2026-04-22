@@ -7,6 +7,9 @@ interface AudioPlayerProps {
   autoPlay?: boolean;
   compact?: boolean;
   onContextMenu?: React.MouseEventHandler;
+  onLoadedMetadata?: React.ReactEventHandler<HTMLAudioElement>;
+  onCanPlay?: React.ReactEventHandler<HTMLAudioElement>;
+  onPlaying?: React.ReactEventHandler<HTMLAudioElement>;
 }
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -15,6 +18,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   autoPlay = false,
   compact = false,
   onContextMenu,
+  onLoadedMetadata,
+  onCanPlay,
+  onPlaying,
 }) => {
   return (
     <div
@@ -37,6 +43,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         autoPlay={autoPlay}
         preload="metadata"
         className="w-full max-w-2xl"
+        onLoadedMetadata={onLoadedMetadata}
+        onCanPlay={onCanPlay}
+        onPlaying={onPlaying}
       />
     </div>
   );

@@ -48,6 +48,8 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
   const toggleGlobalAutoWatch = useSettingsStore((state) => state.toggleGlobalAutoWatch);
   const startupVerificationMode = useSettingsStore((state) => state.startupVerificationMode);
   const setStartupVerificationMode = useSettingsStore((state) => state.setStartupVerificationMode);
+  const performanceDiagnosticsEnabled = useSettingsStore((state) => state.performanceDiagnosticsEnabled);
+  const setPerformanceDiagnosticsEnabled = useSettingsStore((state) => state.setPerformanceDiagnosticsEnabled);
 
   const [currentCachePath, setCurrentCachePath] = useState('');
   const [defaultCachePath, setDefaultCachePath] = useState('');
@@ -214,6 +216,16 @@ export const LibrarySettingsPanel: React.FC<{ onClose: () => void }> = ({ onClos
           label="Check for updates on startup"
           description="Disable this to keep the app fully offline during launch."
           control={<SettingSwitch checked={autoUpdate} onChange={() => toggleAutoUpdate()} />}
+        />
+        <SettingRow
+          label="Performance diagnostics"
+          description="Collect renderer timing traces, React commit samples and long-task summaries in `window.__IMH_PERF__` and the console."
+          control={
+            <SettingSwitch
+              checked={performanceDiagnosticsEnabled}
+              onChange={setPerformanceDiagnosticsEnabled}
+            />
+          }
         />
 
         <SettingsSectionCard

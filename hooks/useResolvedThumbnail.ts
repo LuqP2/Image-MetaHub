@@ -1,7 +1,8 @@
+import { useSyncExternalStore } from 'react';
 import { IndexedImage, ThumbnailStatus } from '../types';
-import { useImageStore } from '../store/useImageStore';
+import { thumbnailManager } from '../services/thumbnailManager';
 
-type ResolvedThumbnailState = {
+export type ResolvedThumbnailState = {
   thumbnailUrl: string | null;
   thumbnailHandle: FileSystemFileHandle | null;
   thumbnailStatus: ThumbnailStatus;
@@ -9,20 +10,15 @@ type ResolvedThumbnailState = {
 };
 
 export function useResolvedThumbnail(image: IndexedImage | null): ResolvedThumbnailState | null {
-  const thumbnailEntry = useImageStore((state) => (image ? state.thumbnailEntries[image.id] : undefined));
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (!image?.id) {
+        return () => undefined;
+      }
 
-  if (!image) {
-    return null;
-  }
-
-  const activeEntry = thumbnailEntry && thumbnailEntry.lastModified === image.lastModified
-    ? thumbnailEntry
-    : undefined;
-
-  return {
-    thumbnailUrl: activeEntry?.thumbnailUrl ?? image.thumbnailUrl ?? null,
-    thumbnailHandle: activeEntry?.thumbnailHandle ?? image.thumbnailHandle ?? null,
-    thumbnailStatus: activeEntry?.thumbnailStatus ?? image.thumbnailStatus ?? 'pending',
-    thumbnailError: activeEntry?.thumbnailError ?? image.thumbnailError ?? null,
-  };
+      return thumbnailManager.subscribe(image.id, onStoreChange);
+    },
+    () => thumbnailManager.getResolvedState(image),
+    () => thumbnailManager.getResolvedState(image)
+  );
 }

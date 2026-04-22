@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useLicenseStore } from './store/useLicenseStore';
@@ -38,6 +38,12 @@ import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
+import {
+  beginPerformanceFlow,
+  createProfilerOnRender,
+  finishPerformanceFlowAfterNextPaint,
+  markPerformanceFlow,
+} from './utils/performanceDiagnostics';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
@@ -57,6 +63,7 @@ interface OpenImageModalState {
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
+  diagnosticsFlowId?: string | null;
   windowState?: ImageModalWindowState;
   startSlideshow?: boolean;
 }
@@ -295,7 +302,9 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
+  const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
   const [settingsSection, setSettingsSection] = useState<SettingsFocusSection>(null);
@@ -360,10 +369,40 @@ export default function App() {
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
   const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
+  const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  const handleSearchChange = useCallback((query: string) => {
+    if (pendingSearchFlowIdRef.current) {
+      markPerformanceFlow(pendingSearchFlowIdRef.current, 'superseded', {
+        nextQuery: query,
+      });
+      finishPerformanceFlowAfterNextPaint(
+        pendingSearchFlowIdRef.current,
+        {
+          status: 'superseded',
+          nextQuery: query,
+        },
+        1
+      );
+    }
+    pendingSearchFlowIdRef.current = beginPerformanceFlow('search.interaction', {
+      query,
+      previousQuery: previousSearchQueryRef.current,
+      queryLength: query.length,
+    });
+    setSearchInputValue(query);
+  }, []);
+
+  const beginModalOpenFlow = useCallback((imageId: string, source: string) => (
+    beginPerformanceFlow('modal.open', {
+      imageId,
+      source,
+    })
+  ), []);
 
   useEffect(() => {
     if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
@@ -1030,11 +1069,42 @@ export default function App() {
   }, [handleSelectFolder, toggleViewMode]);
 
   useEffect(() => {
+    setSearchInputValue(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (searchInputValue !== searchQuery) {
+        startTransition(() => {
+          setSearchQuery(searchInputValue);
+        });
+      }
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInputValue, searchQuery, setSearchQuery]);
+
+  useEffect(() => {
     if (previousSearchQueryRef.current !== searchQuery) {
       setCurrentPage(1);
+      if (pendingSearchFlowIdRef.current) {
+        markPerformanceFlow(pendingSearchFlowIdRef.current, 'store-commit', {
+          query: searchQuery,
+          resultCount: safeFilteredImages.length,
+        });
+        finishPerformanceFlowAfterNextPaint(
+          pendingSearchFlowIdRef.current,
+          {
+            query: searchQuery,
+            resultCount: safeFilteredImages.length,
+          },
+          2
+        );
+        pendingSearchFlowIdRef.current = null;
+      }
       previousSearchQueryRef.current = searchQuery;
     }
-  }, [searchQuery]);
+  }, [safeFilteredImages.length, searchQuery]);
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
@@ -1215,10 +1285,11 @@ export default function App() {
           zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(selectedImage.id, 'selected-image'),
         },
       ];
     });
-  }, [clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -1539,10 +1610,11 @@ export default function App() {
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: true,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'background'),
         },
       ];
     });
-  }, [safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
+  }, [beginModalOpenFlow, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
@@ -1656,11 +1728,12 @@ export default function App() {
           zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(firstImage.id, 'slideshow'),
           startSlideshow: true,
         },
       ];
     });
-  }, [openImageModals, setError, setSelectedImage, slideshowPlaylistPreview.images]);
+  }, [beginModalOpenFlow, openImageModals, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -1825,6 +1898,7 @@ export default function App() {
     activeFolderHasProgress;
 
   return (
+    <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
 
@@ -1870,8 +1944,8 @@ export default function App() {
           width={sidebarWidth}
           isResizing={isLeftSidebarResizing}
           onResizeStart={handleSidebarResizeStart}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          searchQuery={searchInputValue}
+          onSearchChange={handleSearchChange}
           availableModels={availableModels}
           availableLoras={availableLoras}
           availableSamplers={availableSamplers}
@@ -1885,6 +1959,7 @@ export default function App() {
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
+            setSearchInputValue('');
             setSearchQuery('');
             setSelectedFilters({
               models: [],
@@ -2252,6 +2327,7 @@ export default function App() {
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
             startSlideshow={modal.startSlideshow}
+            diagnosticsFlowId={modal.diagnosticsFlowId}
             onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
           />
         ))}
@@ -2360,5 +2436,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </React.Profiler>
   );
 }
