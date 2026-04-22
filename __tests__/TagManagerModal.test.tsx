@@ -82,4 +82,30 @@ describe('TagManagerModal', () => {
       expect(useImageStore.getState().bulkAddTag).toHaveBeenCalledWith(['img-1', 'img-2'], 'portrait');
     });
   });
+
+  it('suggests tags that are already present on part of the current selection', async () => {
+    useImageStore.setState({
+      availableTags: [{ name: 'portrait', count: 2 }],
+      recentTags: ['portrait'],
+      images: [
+        { id: 'img-1', name: 'a.png', tags: ['portrait'] } as any,
+        { id: 'img-2', name: 'b.png', tags: [] } as any,
+      ],
+    });
+
+    render(
+      <TagManagerModal
+        isOpen={true}
+        onClose={() => {}}
+        selectedImageIds={['img-1', 'img-2']}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText('Type tags separated by commas...');
+    fireEvent.change(input, { target: { value: 'por' } });
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /portrait/i })).toBeTruthy();
+    });
+  });
 });
