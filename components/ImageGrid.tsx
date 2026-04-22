@@ -19,8 +19,6 @@ import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, S
   RefreshCw,
   Pencil
 } from 'lucide-react';
-import { useThumbnail } from '../hooks/useThumbnail';
-import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useGenerateWithA1111 } from '../hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from '../hooks/useGenerateWithComfyUI';
@@ -41,6 +39,14 @@ import { thumbnailManager } from '../services/thumbnailManager';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { getRenameBasename, renameIndexedImage } from '../services/imageRenameService';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import {
+  beginPerformanceFlow,
+  createProfilerOnRender,
+  finishPerformanceFlow,
+  markPerformanceFlow,
+  recordPerformanceCounter,
+  recordPerformanceDuration,
+} from '../utils/performanceDiagnostics';
 
 interface ImageRenameResult {
   oldImageId: string;
@@ -141,8 +147,9 @@ const collectWarmupImages = (
   return images;
 };
 
+const visibleGridThumbnailFlows = new Map<string, string>();
+
 const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, enableAuxClickOpen = true, isSelected, isFocused, onImageLoad, onContextMenu, onRenameRequest, onRenameComplete, isRenaming = false, baseWidth, isComparisonFirst, cardRef, isMarkedBest, isMarkedArchived, isBlurred }) => {
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isSubmittingRename, setIsSubmittingRename] = useState(false);
   const thumbnail = useResolvedThumbnail(image);
@@ -165,6 +172,10 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
   const isVideo = isVideoFileName(image.name, image.fileType);
   const isAudio = isAudioFileName(image.name, image.fileType);
   const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
+  const resolvedThumbnailUrl = !thumbnailsDisabled && !isVideo && !isAudio && thumbnail?.thumbnailStatus === 'ready'
+    ? thumbnail.thumbnailUrl
+    : null;
+  const hasThumbnailError = !thumbnailsDisabled && thumbnail?.thumbnailStatus === 'error';
 
   const relativeImagePath = getRelativeImagePath(image);
   const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
@@ -174,46 +185,50 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
     ? abbreviatePathForDisplay(fullImagePath)
     : relativeImagePath.split(/[/\\]/).pop() || image.name;
 
-  const [intersectionRef, isVisible] = useIntersectionObserver<HTMLDivElement>({
-    rootMargin: '1200px',
-    freezeOnceVisible: true,
-  });
-
-  useThumbnail(isVisible ? image : null);
-
   const mergedRef = useCallback(
     (node: HTMLDivElement | null) => {
-      intersectionRef(node);
       if (cardRef) {
         cardRef(node);
       }
     },
-    [intersectionRef, cardRef]
+    [cardRef]
   );
 
   useEffect(() => {
-    if (thumbnailsDisabled) {
-      setImageUrl(null);
+    if (resolvedThumbnailUrl) {
+      const flowId = visibleGridThumbnailFlows.get(image.id);
+      if (flowId) {
+        markPerformanceFlow(flowId, 'thumbnail-ready', {
+          imageId: image.id,
+          imageName: image.name,
+        });
+        finishPerformanceFlow(flowId, {
+          imageId: image.id,
+          imageName: image.name,
+          status: 'ready',
+        });
+        visibleGridThumbnailFlows.delete(image.id);
+      }
       return;
     }
 
-    if (thumbnail?.thumbnailStatus === 'ready' && thumbnail.thumbnailUrl) {
-      setImageUrl(thumbnail.thumbnailUrl);
+    if (hasThumbnailError) {
+      const flowId = visibleGridThumbnailFlows.get(image.id);
+      if (flowId) {
+        markPerformanceFlow(flowId, 'thumbnail-error', {
+          imageId: image.id,
+          imageName: image.name,
+        });
+        finishPerformanceFlow(flowId, {
+          imageId: image.id,
+          imageName: image.name,
+          status: 'error',
+        });
+        visibleGridThumbnailFlows.delete(image.id);
+      }
       return;
     }
-
-    if (isVideo || isAudio) {
-      setImageUrl(null);
-      return;
-    }
-
-    if (thumbnail?.thumbnailStatus === 'error') {
-      setImageUrl('ERROR');
-      return;
-    }
-
-    setImageUrl(null);
-  }, [thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
+  }, [hasThumbnailError, image.id, image.name, resolvedThumbnailUrl]);
 
   useEffect(() => {
     return () => {
@@ -497,7 +512,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
           <Copy className="h-4 w-4" />
         </button>
 
-        {imageUrl === 'ERROR' ? (
+        {hasThumbnailError ? (
           <div className="w-full h-full flex items-center justify-center bg-gray-900">
             <div className="text-center text-gray-400 px-4">
               <svg className="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,9 +533,9 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
               )}
             </div>
           </div>
-        ) : imageUrl ? (
+        ) : resolvedThumbnailUrl ? (
           <img
-            src={imageUrl}
+            src={resolvedThumbnailUrl}
             alt={image.name}
             className={`max-w-full max-h-full object-contain transition-all duration-200 ${
               isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
@@ -857,6 +872,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   const columnCountRef = useRef<number>(1);
   const lastWarmupWindowRef = useRef<string>('');
   const releasePaginatedBackgroundPauseRef = useRef<(() => void) | null>(null);
+  const lastScrollSampleRef = useRef<{ top: number; at: number }>({ top: 0, at: 0 });
 
   const sensitiveTags = useSettingsStore((state) => state.sensitiveTags);
   const blurSensitiveImages = useSettingsStore((state) => state.blurSensitiveImages);
@@ -954,6 +970,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, [contextMenu.visible, isAddToCollectionSubmenuOpen, isCollectionSubmenuOpen, isCopySubmenuOpen]);
 
   const queuedComparisonFirstImageId = queuedComparisonImages[0]?.id;
+  const imageGridProfilerOnRender = useMemo(() => createProfilerOnRender('ImageGrid'), []);
 
   const handleAddTag = useCallback(() => {
     const isContextImageSelected = contextMenu.image && selectedImages.has(contextMenu.image.id);
@@ -1980,6 +1997,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   }, [itemsToRender]);
 
   useEffect(() => {
+    return () => {
+      for (const [imageId, flowId] of visibleGridThumbnailFlows.entries()) {
+        markPerformanceFlow(flowId, 'grid-unmounted', { imageId });
+        finishPerformanceFlow(flowId, { imageId, status: 'grid-unmounted' });
+      }
+      visibleGridThumbnailFlows.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     if (isInfinite) {
       if (releasePaginatedBackgroundPauseRef.current) {
         releasePaginatedBackgroundPauseRef.current();
@@ -1995,7 +2022,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     releasePaginatedBackgroundPauseRef.current?.();
     releasePaginatedBackgroundPauseRef.current = thumbnailManager.pauseBackgroundWork();
 
-    thumbnailManager.prefetchImages(visiblePageImages, 'high', { markLoading: false });
+    thumbnailManager.scheduleViewport({
+      visibleImages: visiblePageImages,
+      aheadImages: [],
+      keepImageIds,
+      cancelQueue: 'all',
+    });
 
     return () => {
       if (releasePaginatedBackgroundPauseRef.current) {
@@ -2012,17 +2044,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   if (isEmpty) {
      return (
+        <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
         <div className="flex flex-col h-full w-full">
             <div className="flex-1 flex items-center justify-center h-64 text-gray-500">
                 No images found
             </div>
             {modalsContent}
         </div>
+        </React.Profiler>
      );
   }
 
   if (isInfinite) {
     return (
+      <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
       <div className="flex flex-col h-full w-full">
          <div
             ref={gridScopeRef}
@@ -2094,7 +2129,20 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                     }}
                     style={{ overflowX: 'hidden' }}
                     innerElementType={InnerGridElement}
+                    onScroll={({ scrollTop, scrollUpdateWasRequested }) => {
+                      const currentAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                      const previousSample = lastScrollSampleRef.current;
+                      const deltaMs = Math.max(1, currentAt - previousSample.at);
+                      const velocityPxPerMs = Math.round(((scrollTop - previousSample.top) / deltaMs) * 1000) / 1000;
+                      lastScrollSampleRef.current = { top: scrollTop, at: currentAt };
+                      recordPerformanceCounter('grid.scroll-sample', {
+                        scrollTop,
+                        scrollUpdateWasRequested,
+                        velocityPxPerMs,
+                      });
+                    }}
                     onItemsRendered={({ visibleColumnStartIndex, visibleColumnStopIndex, visibleRowStartIndex, visibleRowStopIndex, overscanRowStopIndex }) => {
+                      const itemsRenderedStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
                       const visibleStartIndex = (visibleRowStartIndex * safeColumnCount) + visibleColumnStartIndex;
                       const visibleStopIndex = Math.min(
                         itemsToRender.length - 1,
@@ -2113,9 +2161,55 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
                       const primaryImages = collectWarmupImages(itemsToRender, visibleStartIndex, visibleStopIndex);
                       const secondaryImages = collectWarmupImages(itemsToRender, visibleStopIndex + 1, aheadStopIndex);
+                      const visibleImageIds = new Set(primaryImages.map((image) => image.id));
 
-                      thumbnailManager.prefetchImages(primaryImages, 'high', { markLoading: false });
-                      thumbnailManager.prefetchImages(secondaryImages, 'low', { markLoading: false });
+                      for (const [imageId, flowId] of visibleGridThumbnailFlows.entries()) {
+                        if (!visibleImageIds.has(imageId)) {
+                          markPerformanceFlow(flowId, 'left-viewport', { imageId });
+                          finishPerformanceFlow(flowId, { imageId, status: 'left-viewport' });
+                          visibleGridThumbnailFlows.delete(imageId);
+                        }
+                      }
+
+                      for (const image of primaryImages) {
+                        const resolvedThumbnail = thumbnailManager.getResolvedState(image);
+                        const readyThumbnailUrl = resolvedThumbnail?.thumbnailUrl ?? image.thumbnailUrl;
+                        const readyThumbnailStatus = resolvedThumbnail?.thumbnailStatus ?? image.thumbnailStatus;
+
+                        if (readyThumbnailStatus === 'ready' && readyThumbnailUrl) {
+                          recordPerformanceCounter('grid.thumbnail-visible-ready-hit', {
+                            imageId: image.id,
+                            imageName: image.name,
+                          });
+                          continue;
+                        }
+
+                        if (!visibleGridThumbnailFlows.has(image.id)) {
+                          const flowId = beginPerformanceFlow('grid.thumbnail-visible', {
+                            imageId: image.id,
+                            imageName: image.name,
+                            visibleStartIndex,
+                            visibleStopIndex,
+                          });
+                          if (flowId) {
+                            visibleGridThumbnailFlows.set(image.id, flowId);
+                          }
+                        }
+                      }
+
+                      thumbnailManager.scheduleViewport({
+                        visibleImages: primaryImages,
+                        aheadImages: secondaryImages,
+                      });
+                      recordPerformanceDuration('grid.items-rendered', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - itemsRenderedStartedAt, {
+                        visibleStartIndex,
+                        visibleStopIndex,
+                        aheadStopIndex,
+                        columnCount: safeColumnCount,
+                        primaryCount: primaryImages.length,
+                        secondaryCount: secondaryImages.length,
+                        itemCount: itemsToRender.length,
+                      });
                     }}
                   >
                     {Cell}
@@ -2146,10 +2240,12 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             {modalsContent}
           </div>
       </div>
+      </React.Profiler>
     );
   }
 
   return (
+    <React.Profiler id="ImageGrid" onRender={imageGridProfilerOnRender}>
     <div className="flex flex-col h-full w-full">
       <div
         ref={setNonVirtualGridRef}
@@ -2276,6 +2372,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
         {modalsContent}
       </div>
     </div>
+    </React.Profiler>
   );
 };
 

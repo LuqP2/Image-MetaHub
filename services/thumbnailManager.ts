@@ -1,14 +1,37 @@
-import { IndexedImage } from '../types';
+import { IndexedImage, ThumbnailStatus } from '../types';
 import cacheManager from './cacheManager';
-import { useImageStore } from '../store/useImageStore';
 import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 const MAX_THUMBNAIL_EDGE = 320;
 const MAX_CONCURRENT_THUMBNAILS = 12;
 const MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS = 10;
 const MAX_CONCURRENT_BACKGROUND_THUMBNAILS = 2;
+const MAX_ACTIVE_THUMBNAIL_URLS = 800;
 
 type ElectronFileHandle = FileSystemFileHandle & { _filePath?: string };
+
+type RuntimeThumbnailState = {
+  lastModified: number;
+  thumbnailUrl: string | null;
+  thumbnailStatus: ThumbnailStatus;
+  thumbnailError: string | null;
+};
+
+type ThumbnailJob = {
+  image: IndexedImage;
+  token: number;
+  priority: 'high' | 'low';
+  markLoading: boolean;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
+
+type ViewportSchedule = {
+  visibleImages: IndexedImage[];
+  aheadImages?: IndexedImage[];
+  keepImageIds?: Set<string>;
+  cancelQueue?: 'low' | 'all';
+};
 
 const isVideoAsset = (image: IndexedImage, file?: File): boolean => {
   return isVideoFileName(image.name, image.fileType) || (file ? isVideoFileName(file.name, file.type) : false);
@@ -73,10 +96,7 @@ async function generateVideoThumbnailBlob(file: File): Promise<Blob | null> {
     }
 
     ctx.drawImage(video, 0, 0, thumbWidth, thumbHeight);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', 0.82)
-    );
-    return blob;
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.82));
   } catch (error) {
     console.error('Failed to generate video thumbnail blob:', error);
     return null;
@@ -108,11 +128,7 @@ async function generateThumbnailBlob(file: File): Promise<Blob | null> {
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/webp', 0.82)
-    );
-
-    return blob;
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.82));
   } catch (error) {
     console.error('Failed to generate thumbnail blob:', error);
     return null;
@@ -147,18 +163,24 @@ async function generateElectronThumbnailBlob(image: IndexedImage): Promise<Blob 
   return new Blob([new Uint8Array(result.data)], { type: 'image/jpeg' });
 }
 
-type ThumbnailJob = {
-  image: IndexedImage;
-  token: number;
-  priority: 'high' | 'low';
-  markLoading: boolean;
-  resolve: () => void;
-  reject: (error: unknown) => void;
-};
-
 class ThumbnailManager {
   private inflight = new Map<string, Promise<void>>();
   private activeUrls = new Map<string, string>();
+  private runtimeState = new Map<string, RuntimeThumbnailState>();
+  private resolvedStateCache = new Map<string, {
+    lastModified: number;
+    thumbnailUrl: string | null;
+    thumbnailHandle: FileSystemFileHandle | null;
+    thumbnailStatus: ThumbnailStatus;
+    thumbnailError: string | null;
+    snapshot: {
+      thumbnailUrl: string | null;
+      thumbnailHandle: FileSystemFileHandle | null;
+      thumbnailStatus: ThumbnailStatus;
+      thumbnailError: string | null;
+    };
+  }>();
+  private listeners = new Map<string, Set<() => void>>();
   private highPriorityQueue: ThumbnailJob[] = [];
   private backgroundQueue: ThumbnailJob[] = [];
   private activeHighPriorityWorkers = 0;
@@ -168,6 +190,91 @@ class ThumbnailManager {
   private warmupTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private warmupTokens = new Map<string, number>();
   private backgroundPauseCount = 0;
+
+  subscribe(imageId: string, listener: () => void): () => void {
+    const listeners = this.listeners.get(imageId);
+    if (listeners) {
+      listeners.add(listener);
+    } else {
+      this.listeners.set(imageId, new Set([listener]));
+    }
+
+    return () => {
+      const currentListeners = this.listeners.get(imageId);
+      if (!currentListeners) {
+        return;
+      }
+
+      currentListeners.delete(listener);
+      if (currentListeners.size === 0) {
+        this.listeners.delete(imageId);
+      }
+    };
+  }
+
+  getResolvedState(
+    image: IndexedImage | null
+  ): {
+    thumbnailUrl: string | null;
+    thumbnailHandle: FileSystemFileHandle | null;
+    thumbnailStatus: ThumbnailStatus;
+    thumbnailError: string | null;
+  } | null {
+    if (!image) {
+      return null;
+    }
+
+    const runtimeState = this.getActiveRuntimeState(image);
+    const nextThumbnailUrl = runtimeState?.thumbnailUrl ?? image.thumbnailUrl ?? null;
+    const nextThumbnailHandle = image.thumbnailHandle ?? null;
+    const nextThumbnailStatus = runtimeState?.thumbnailStatus ?? image.thumbnailStatus ?? 'pending';
+    const nextThumbnailError = runtimeState?.thumbnailError ?? image.thumbnailError ?? null;
+    const cachedState = this.resolvedStateCache.get(image.id);
+
+    if (
+      cachedState &&
+      cachedState.lastModified === image.lastModified &&
+      cachedState.thumbnailUrl === nextThumbnailUrl &&
+      cachedState.thumbnailHandle === nextThumbnailHandle &&
+      cachedState.thumbnailStatus === nextThumbnailStatus &&
+      cachedState.thumbnailError === nextThumbnailError
+    ) {
+      return cachedState.snapshot;
+    }
+
+    const snapshot = {
+      thumbnailUrl: nextThumbnailUrl,
+      thumbnailHandle: nextThumbnailHandle,
+      thumbnailStatus: nextThumbnailStatus,
+      thumbnailError: nextThumbnailError,
+    };
+
+    this.resolvedStateCache.set(image.id, {
+      lastModified: image.lastModified,
+      thumbnailUrl: nextThumbnailUrl,
+      thumbnailHandle: nextThumbnailHandle,
+      thumbnailStatus: nextThumbnailStatus,
+      thumbnailError: nextThumbnailError,
+      snapshot,
+    });
+
+    return snapshot;
+  }
+
+  scheduleViewport({
+    visibleImages,
+    aheadImages = [],
+    keepImageIds,
+    cancelQueue = 'low',
+  }: ViewportSchedule): void {
+    const nextVisible = this.dedupeImages(visibleImages);
+    const nextAhead = this.dedupeImages(aheadImages, new Set(nextVisible.map((image) => image.id)));
+    const retainedIds = keepImageIds ?? new Set([...nextVisible, ...nextAhead].map((image) => image.id));
+
+    this.cancelQueuedJobs({ queue: cancelQueue, keepImageIds: retainedIds });
+    this.prefetchImages(nextVisible, 'high', { markLoading: false });
+    this.prefetchImages(nextAhead, 'low', { markLoading: false });
+  }
 
   pauseBackgroundWork(): () => void {
     this.backgroundPauseCount++;
@@ -231,13 +338,7 @@ class ThumbnailManager {
 
     const batchSize = Math.max(8, options.batchSize ?? 80);
     const delayMs = Math.max(0, options.delayMs ?? 16);
-    const deduped = Array.from(
-      new Map(
-        images
-          .filter((image) => Boolean(image?.id))
-          .map((image) => [image.id, image])
-      ).values()
-    );
+    const deduped = this.dedupeImages(images);
 
     if (deduped.length === 0) {
       return;
@@ -294,19 +395,11 @@ class ThumbnailManager {
       return;
     }
 
-    const deduped = new Map<string, IndexedImage>();
-    for (const image of images) {
-      if (!image?.id || deduped.has(image.id)) {
-        continue;
-      }
-      deduped.set(image.id, image);
-    }
-
-    for (const image of deduped.values()) {
+    for (const image of this.dedupeImages(images)) {
       void this.ensureThumbnail(image, priority, {
         markLoading: options.markLoading ?? false,
       }).catch(() => {
-        // Background warmup should stay silent; visible requests will retry with UI feedback.
+        // Visible viewport work is retried when the item is scheduled again.
       });
     }
   }
@@ -316,16 +409,17 @@ class ThumbnailManager {
     priority: 'high' | 'low' = 'high',
     options: { markLoading?: boolean } = {}
   ): Promise<void> {
-    if (!image || !image.id) {
+    if (!image?.id) {
       return;
     }
 
-    // Check current status from store (not from prop, which may be stale)
-    const storeState = useImageStore.getState();
-    const currentEntry = storeState.thumbnailEntries[image.id];
-    const activeEntry = currentEntry && currentEntry.lastModified === image.lastModified ? currentEntry : undefined;
+    const activeState = this.getActiveRuntimeState(image);
+    if (activeState?.thumbnailStatus === 'ready' && activeState.thumbnailUrl) {
+      this.touchObjectUrl(image.id);
+      return;
+    }
 
-    if (activeEntry?.thumbnailStatus === 'ready' && activeEntry.thumbnailUrl) {
+    if (!activeState && image.thumbnailStatus === 'ready' && image.thumbnailUrl) {
       return;
     }
 
@@ -349,7 +443,6 @@ class ThumbnailManager {
       return existing;
     }
 
-    // Bump token to invalidate older queued/processing jobs for the same image
     const token = this.nextToken(image.id);
     this.dropQueuedJobs(image.id);
 
@@ -362,6 +455,7 @@ class ThumbnailManager {
         resolve,
         reject,
       };
+
       if (priority === 'high') {
         this.highPriorityQueue.unshift(job);
       } else {
@@ -374,18 +468,90 @@ class ThumbnailManager {
     return promise;
   }
 
+  private dedupeImages(images: IndexedImage[], seedIds?: Set<string>): IndexedImage[] {
+    const seenIds = seedIds ?? new Set<string>();
+    const deduped: IndexedImage[] = [];
+
+    for (const image of images) {
+      if (!image?.id || seenIds.has(image.id)) {
+        continue;
+      }
+      seenIds.add(image.id);
+      deduped.push(image);
+    }
+
+    return deduped;
+  }
+
+  private emit(imageId: string): void {
+    const listeners = this.listeners.get(imageId);
+    if (!listeners) {
+      return;
+    }
+
+    for (const listener of listeners) {
+      listener();
+    }
+  }
+
+  private getActiveRuntimeState(image: IndexedImage): RuntimeThumbnailState | undefined {
+    const runtimeState = this.runtimeState.get(image.id);
+    if (!runtimeState) {
+      return undefined;
+    }
+
+    if (runtimeState.lastModified !== image.lastModified) {
+      this.runtimeState.delete(image.id);
+      this.resolvedStateCache.delete(image.id);
+      return undefined;
+    }
+
+    return runtimeState;
+  }
+
+  private setRuntimeState(
+    image: IndexedImage,
+    payload: {
+      thumbnailUrl?: string | null;
+      thumbnailStatus: ThumbnailStatus;
+      thumbnailError?: string | null;
+    }
+  ): void {
+    const currentState = this.getActiveRuntimeState(image);
+    const nextState: RuntimeThumbnailState = {
+      lastModified: image.lastModified,
+      thumbnailUrl: payload.thumbnailUrl ?? currentState?.thumbnailUrl ?? image.thumbnailUrl ?? null,
+      thumbnailStatus: payload.thumbnailStatus,
+      thumbnailError: payload.thumbnailError ?? (payload.thumbnailStatus === 'error'
+        ? 'Failed to load thumbnail'
+        : currentState?.thumbnailError ?? image.thumbnailError ?? null),
+    };
+
+    if (
+      currentState &&
+      currentState.thumbnailUrl === nextState.thumbnailUrl &&
+      currentState.thumbnailStatus === nextState.thumbnailStatus &&
+      currentState.thumbnailError === nextState.thumbnailError
+    ) {
+      return;
+    }
+
+    this.runtimeState.set(image.id, nextState);
+    this.emit(image.id);
+  }
+
   private nextToken(imageId: string): number {
     const next = ++this.requestCounter;
     this.requestTokens.set(imageId, next);
     return next;
   }
 
-  private dropQueuedJobs(imageId: string) {
+  private dropQueuedJobs(imageId: string): void {
     if (this.highPriorityQueue.length > 0) {
-      this.highPriorityQueue = this.highPriorityQueue.filter(job => job.image.id !== imageId);
+      this.highPriorityQueue = this.highPriorityQueue.filter((job) => job.image.id !== imageId);
     }
     if (this.backgroundQueue.length > 0) {
-      this.backgroundQueue = this.backgroundQueue.filter(job => job.image.id !== imageId);
+      this.backgroundQueue = this.backgroundQueue.filter((job) => job.image.id !== imageId);
     }
   }
 
@@ -394,12 +560,12 @@ class ThumbnailManager {
   }
 
   private findQueuedJob(imageId: string): { queueName: 'high' | 'low'; index: number } | null {
-    const highIndex = this.highPriorityQueue.findIndex(job => job.image.id === imageId);
+    const highIndex = this.highPriorityQueue.findIndex((job) => job.image.id === imageId);
     if (highIndex !== -1) {
       return { queueName: 'high', index: highIndex };
     }
 
-    const lowIndex = this.backgroundQueue.findIndex(job => job.image.id === imageId);
+    const lowIndex = this.backgroundQueue.findIndex((job) => job.image.id === imageId);
     if (lowIndex !== -1) {
       return { queueName: 'low', index: lowIndex };
     }
@@ -411,14 +577,16 @@ class ThumbnailManager {
     return this.activeHighPriorityWorkers + this.activeBackgroundWorkers;
   }
 
-  private processQueues() {
+  private processQueues(): void {
     while (
       this.activeWorkers < MAX_CONCURRENT_THUMBNAILS &&
       this.activeHighPriorityWorkers < MAX_CONCURRENT_HIGH_PRIORITY_THUMBNAILS &&
       this.highPriorityQueue.length > 0
     ) {
       const job = this.highPriorityQueue.shift();
-      if (!job) break;
+      if (!job) {
+        break;
+      }
       this.startJob(job, 'high');
     }
 
@@ -429,7 +597,9 @@ class ThumbnailManager {
       this.backgroundQueue.length > 0
     ) {
       const job = this.backgroundQueue.shift();
-      if (!job) break;
+      if (!job) {
+        break;
+      }
       this.startJob(job, 'low');
     }
 
@@ -438,12 +608,14 @@ class ThumbnailManager {
       this.highPriorityQueue.length > 0
     ) {
       const job = this.highPriorityQueue.shift();
-      if (!job) break;
+      if (!job) {
+        break;
+      }
       this.startJob(job, 'high');
     }
   }
 
-  private startJob(job: ThumbnailJob, queueName: 'high' | 'low') {
+  private startJob(job: ThumbnailJob, queueName: 'high' | 'low'): void {
     if (this.isStale(job.image.id, job.token)) {
       job.resolve();
       return;
@@ -474,35 +646,37 @@ class ThumbnailManager {
   }
 
   private async loadThumbnail(image: IndexedImage, token: number, markLoading: boolean): Promise<void> {
-    const setImageThumbnail = useImageStore.getState().setImageThumbnail;
-    const setSafe = (payload: { status: 'loading' | 'ready' | 'error'; thumbnailUrl?: string | null; error?: string | null }) => {
-      if (this.isStale(image.id, token)) return;
-      setImageThumbnail(image.id, payload);
+    const setSafe = (payload: {
+      thumbnailUrl?: string | null;
+      thumbnailStatus: ThumbnailStatus;
+      thumbnailError?: string | null;
+    }) => {
+      if (this.isStale(image.id, token)) {
+        return;
+      }
+      this.setRuntimeState(image, payload);
     };
 
     if (markLoading) {
-      setSafe({ status: 'loading' });
+      setSafe({ thumbnailStatus: 'loading' });
     }
 
     try {
       if (image.thumbnailUrl) {
-        setSafe({ status: 'ready', thumbnailUrl: image.thumbnailUrl });
+        setSafe({ thumbnailStatus: 'ready', thumbnailUrl: image.thumbnailUrl, thumbnailError: null });
         return;
       }
 
       if (isAudioAsset(image)) {
-        setSafe({ status: 'ready', thumbnailUrl: null });
+        setSafe({ thumbnailStatus: 'ready', thumbnailUrl: null, thumbnailError: null });
         return;
       }
 
-      // Create a cache key that includes validation data (timestamp)
-      // This ensures we don't serve stale thumbnails if the file changes but path remains same
       const thumbnailKey = `${image.id}-${image.lastModified}`;
-
       const cachedBlob = await cacheManager.getCachedThumbnail(thumbnailKey);
       if (cachedBlob) {
         const url = this.updateObjectUrl(image.id, cachedBlob);
-        setSafe({ status: 'ready', thumbnailUrl: url });
+        setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
         return;
       }
 
@@ -525,10 +699,10 @@ class ThumbnailManager {
 
       await cacheManager.cacheThumbnail(thumbnailKey, blob);
       const url = this.updateObjectUrl(image.id, blob);
-      setSafe({ status: 'ready', thumbnailUrl: url });
+      setSafe({ thumbnailStatus: 'ready', thumbnailUrl: url, thumbnailError: null });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown thumbnail error';
-      setSafe({ status: 'error', error: message });
+      setSafe({ thumbnailStatus: 'error', thumbnailError: message });
     }
   }
 
@@ -536,11 +710,53 @@ class ThumbnailManager {
     const existing = this.activeUrls.get(imageId);
     if (existing) {
       URL.revokeObjectURL(existing);
+      this.clearRuntimeObjectUrl(imageId, existing);
     }
 
     const url = URL.createObjectURL(blob);
+    this.activeUrls.delete(imageId);
     this.activeUrls.set(imageId, url);
+    this.evictOverflowUrls();
     return url;
+  }
+
+  private touchObjectUrl(imageId: string): void {
+    const existing = this.activeUrls.get(imageId);
+    if (!existing) {
+      return;
+    }
+
+    this.activeUrls.delete(imageId);
+    this.activeUrls.set(imageId, existing);
+  }
+
+  private evictOverflowUrls(): void {
+    while (this.activeUrls.size > MAX_ACTIVE_THUMBNAIL_URLS) {
+      const oldest = this.activeUrls.entries().next().value as [string, string] | undefined;
+      if (!oldest) {
+        return;
+      }
+
+      const [imageId, url] = oldest;
+      this.activeUrls.delete(imageId);
+      URL.revokeObjectURL(url);
+      this.clearRuntimeObjectUrl(imageId, url);
+    }
+  }
+
+  private clearRuntimeObjectUrl(imageId: string, revokedUrl: string): void {
+    const currentState = this.runtimeState.get(imageId);
+    if (!currentState || currentState.thumbnailUrl !== revokedUrl) {
+      return;
+    }
+
+    this.runtimeState.set(imageId, {
+      ...currentState,
+      thumbnailUrl: null,
+      thumbnailStatus: 'pending',
+      thumbnailError: null,
+    });
+    this.emit(imageId);
   }
 }
 

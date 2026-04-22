@@ -26,6 +26,22 @@ const isPermissionError = (error) => {
   return code === 'EPERM' || code === 'EACCES';
 };
 
+const isTransientVanishError = (error) => {
+  const code = error?.code;
+  const syscall = typeof error?.syscall === 'string' ? error.syscall.toLowerCase() : '';
+  const message = (error?.message || String(error || '')).toLowerCase();
+
+  if (code === 'ENOENT') {
+    return true;
+  }
+
+  if (syscall === 'lstat' || message.includes('lstat')) {
+    return code === 'UNKNOWN' || code === 'ENOENT' || message.includes('no such file') || message.includes('unknown error');
+  }
+
+  return false;
+};
+
 const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
 
 const findMediaFilesForSidecar = (sidecarPath) => {
@@ -172,12 +188,14 @@ export function startWatching(directoryId, dirPath, mainWindow) {
     });
 
     watcher.on('change', (filePath) => {
-      if (!isMediaFile(filePath) && path.extname(filePath).toLowerCase() !== '.json') {
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (ext === '.json') {
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      if (path.extname(filePath).toLowerCase() === '.json') {
-        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
         return;
       }
 
@@ -224,6 +242,11 @@ export function startWatching(directoryId, dirPath, mainWindow) {
     watcher.on('error', (error) => {
       if (isPermissionError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
+        return;
+      }
+
+      if (isTransientVanishError(error)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Ignoring transient watcher vanish error for ${directoryId}: ${error.message || error}`);
         return;
       }
 
@@ -316,6 +339,10 @@ function processBatch(directoryId, dirPath, mainWindow) {
         forceReindex: pendingInfo.forceReindex === true
       };
     } catch (err) {
+      if (isTransientVanishError(err)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Skipping vanished file during batch processing: ${filePath}`);
+        return null;
+      }
       console.error(`Error getting stats for ${filePath}:`, err);
       return null;
     }

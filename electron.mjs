@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -7,7 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
@@ -31,6 +31,12 @@ const __dirname = path.dirname(__filename);
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
+
+if (gpuMitigationEnabled) {
+  app.disableHardwareAcceleration();
+  console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
+}
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
@@ -52,8 +58,56 @@ const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
+const MEDIA_PROTOCOL_SCHEME = 'imh-media';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MEDIA_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
+
+const buildMediaProtocolUrl = (filePath) => {
+  const normalizedFilePath = path.resolve(filePath);
+  return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
+};
+
+const registerMediaProtocol = () => {
+  protocol.registerFileProtocol(MEDIA_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const requestedPath = requestUrl.searchParams.get('path');
+      if (!requestedPath) {
+        callback({ error: -6 });
+        return;
+      }
+
+      const normalizedFilePath = path.resolve(requestedPath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
+        console.error('  [imh-media] Requested path:', requestedPath);
+        console.error('  [imh-media] Normalized path:', normalizedFilePath);
+        console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(normalizedFilePath);
+      callback({ path: normalizedFilePath });
+    } catch (error) {
+      console.error('Error serving media protocol request:', request.url, error);
+      callback({ error: -2 });
+    }
+  });
+};
 
 const parseFrameRate = (value) => {
   if (typeof value !== 'string' || !value.includes('/')) {
@@ -1101,6 +1155,8 @@ async function createWindow(startupDirectory = null) {
 
 // App event handlers
 app.whenReady().then(async () => {
+  registerMediaProtocol();
+
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1152,6 +1208,37 @@ app.whenReady().then(async () => {
 // Setup IPC handlers for file operations
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
+
+const normalizeAllowedPath = (inputPath) => {
+  if (!inputPath) return '';
+
+  const resolvedPath = path.resolve(inputPath);
+  const parsedPath = path.parse(resolvedPath);
+  const normalizedPath = resolvedPath === parsedPath.root
+    ? resolvedPath
+    : resolvedPath.replace(/[\\/]+$/, '');
+
+  return process.platform === 'win32'
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+};
+
+const isSameOrChildPath = (candidatePath, allowedPath) => {
+  if (!candidatePath || !allowedPath) return false;
+  if (candidatePath === allowedPath) return true;
+
+  const allowedPrefix = allowedPath.endsWith(path.sep)
+    ? allowedPath
+    : `${allowedPath}${path.sep}`;
+
+  return candidatePath.startsWith(allowedPrefix);
+};
+
+const isPathAllowed = (filePath) => {
+  if (allowedDirectoryPaths.size === 0 || !filePath) return false;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
+};
 
 // Helper function for recursive file search
 async function mapWithConcurrency(items, concurrency, mapper) {
@@ -1250,37 +1337,6 @@ async function getFilesRecursively(directory, baseDirectory) {
 }
 
 function setupFileOperationHandlers() {
-  const normalizeAllowedPath = (inputPath) => {
-    if (!inputPath) return '';
-
-    const resolvedPath = path.resolve(inputPath);
-    const parsedPath = path.parse(resolvedPath);
-    const normalizedPath = resolvedPath === parsedPath.root
-      ? resolvedPath
-      : resolvedPath.replace(/[\\/]+$/, '');
-
-    return process.platform === 'win32'
-      ? normalizedPath.toLowerCase()
-      : normalizedPath;
-  };
-
-  const isSameOrChildPath = (candidatePath, allowedPath) => {
-    if (!candidatePath || !allowedPath) return false;
-    if (candidatePath === allowedPath) return true;
-
-    const allowedPrefix = allowedPath.endsWith(path.sep)
-      ? allowedPath
-      : `${allowedPath}${path.sep}`;
-
-    return candidatePath.startsWith(allowedPrefix);
-  };
-
-  // Security helper to check if a file path is within one of the allowed directories
-  const isPathAllowed = (filePath) => {
-    if (allowedDirectoryPaths.size === 0 || !filePath) return false;
-    const normalizedFilePath = normalizeAllowedPath(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
-  };
   const approvedWriteRoots = new Set();
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
@@ -2218,6 +2274,40 @@ function setupFileOperationHandlers() {
   });
 
   // Handle reading file content
+  ipcMain.handle('resolve-media-url', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      const normalizedFilePath = path.resolve(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to resolve media URL outside of allowed directories.');
+        console.error('  [resolve-media-url] Requested path:', filePath);
+        console.error('  [resolve-media-url] Normalized path:', normalizedFilePath);
+        console.error('  [resolve-media-url] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      await fs.access(normalizedFilePath);
+      return { success: true, url: buildMediaProtocolUrl(normalizedFilePath) };
+    } catch (error) {
+      const isFileNotFound = error.code === 'ENOENT' || error.message?.includes('no such file');
+      const isPermissionError = error.code === 'EACCES' || error.code === 'EPERM';
+
+      if (!isFileNotFound) {
+        console.error('Error resolving media URL:', filePath, error);
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
+        errorCode: error.code,
+      };
+    }
+  });
+
   ipcMain.handle('read-file', async (event, filePath) => {
     try {
       if (!filePath) {
@@ -2334,10 +2424,26 @@ function setupFileOperationHandlers() {
     return { success: false, error: 'Main window not available' };
   });
 
+  const DEFAULT_FULL_READ_MAX_FILE_BYTES = 32 * 1024 * 1024;
+  const DEFAULT_FULL_READ_MAX_TOTAL_BYTES = 96 * 1024 * 1024;
+
   // Handle reading multiple files in a batch
-  ipcMain.handle('read-files-batch', async (event, filePaths) => {
+  ipcMain.handle('read-files-batch', async (event, batchArgs) => {
     try {
-      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      const filePaths = Array.isArray(batchArgs)
+        ? batchArgs
+        : Array.isArray(batchArgs?.filePaths)
+          ? batchArgs.filePaths
+          : [];
+      const maxFileBytes = Array.isArray(batchArgs)
+        ? DEFAULT_FULL_READ_MAX_FILE_BYTES
+        : Math.max(1, Math.floor(batchArgs?.maxFileBytes ?? DEFAULT_FULL_READ_MAX_FILE_BYTES));
+      const maxTotalBytes = Array.isArray(batchArgs)
+        ? Number.POSITIVE_INFINITY
+        : Math.max(1, Math.floor(batchArgs?.maxTotalBytes ?? DEFAULT_FULL_READ_MAX_TOTAL_BYTES));
+      const reason = Array.isArray(batchArgs) ? undefined : batchArgs?.reason;
+
+      if (filePaths.length === 0) {
         return { success: false, error: 'No file paths provided' };
       }
 
@@ -2353,11 +2459,78 @@ function setupFileOperationHandlers() {
       }
       // --- END SECURITY CHECK ---
 
-      const promises = filePaths.map(filePath => fs.readFile(filePath));
+      let scheduledBytes = 0;
+      let skippedByLimit = 0;
+      const limitedReadPlan = await Promise.all(filePaths.map(async (filePath) => {
+        try {
+          const stats = await fs.stat(filePath);
+          const fileSize = stats.size ?? 0;
+
+          if (fileSize > maxFileBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: file too large for IPC batch',
+                errorType: 'FILE_TOO_LARGE',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          if (scheduledBytes + fileSize > maxTotalBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: batch byte budget exceeded',
+                errorType: 'BATCH_BYTE_LIMIT',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          scheduledBytes += fileSize;
+          return { filePath };
+        } catch (error) {
+          return {
+            filePath,
+            skip: {
+              success: false,
+              path: filePath,
+              error: error.message,
+              errorType: error.code === 'ENOENT' ? 'FILE_NOT_FOUND' : 'UNKNOWN_ERROR',
+              errorCode: error.code,
+            },
+          };
+        }
+      }));
+
+      if (skippedByLimit > 0) {
+        console.warn('[read-files-batch] skipped oversized full reads', {
+          reason: reason ?? 'unspecified',
+          requested: filePaths.length,
+          skipped: skippedByLimit,
+          maxFileBytes,
+          maxTotalBytes: Number.isFinite(maxTotalBytes) ? maxTotalBytes : null,
+        });
+      }
+
+      const promises = limitedReadPlan.map((entry) => (
+        entry.skip ? Promise.resolve(entry.skip) : fs.readFile(entry.filePath)
+      ));
       const results = await Promise.allSettled(promises);
 
       const data = results.map((result, index) => {
+        const planEntry = limitedReadPlan[index];
         if (result.status === 'fulfilled') {
+          if (planEntry.skip) {
+            return result.value;
+          }
           return { success: true, data: result.value, path: filePaths[index] };
         } else {
           if (!result.reason.message?.includes('ENOENT')) {

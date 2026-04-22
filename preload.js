@@ -131,6 +131,7 @@ const electronAPI = {
   openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
+  resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),

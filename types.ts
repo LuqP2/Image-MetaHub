@@ -61,10 +61,54 @@ export interface IndexedImageTransferResultItem {
   type?: string;
 }
 
+export interface PerformanceTraceEvent {
+  id: string;
+  name: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  detail?: Record<string, unknown>;
+}
+
+export interface PerformanceSummaryEntry {
+  name: string;
+  count: number;
+  lastMs: number;
+  minMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+}
+
+export interface PerformanceDiagnosticsApi {
+  isEnabled: () => boolean;
+  getEvents: (limit?: number) => PerformanceTraceEvent[];
+  getSummary: () => PerformanceSummaryEntry[];
+  printSummary: () => void;
+  clear: () => void;
+  setConsoleLogging: (enabled: boolean) => void;
+}
+
 export interface WatchedFileRemovalPayload {
   directoryId: string;
   files: Array<{ path: string; name: string; relativePath?: string }>;
   folders: Array<{ path: string; name: string; relativePath?: string }>;
+}
+
+export interface ElectronReadFilesBatchArgs {
+  filePaths: string[];
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+  reason?: string;
+}
+
+export interface ElectronReadFilesBatchItem {
+  success: boolean;
+  data?: Buffer;
+  path: string;
+  error?: string;
+  errorType?: string;
+  errorCode?: string;
 }
 
 export interface ElectronAPI {
@@ -83,7 +127,7 @@ export interface ElectronAPI {
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
-  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
+  readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
   readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
@@ -112,6 +156,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
+  resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -162,6 +207,7 @@ export interface ElectronAPI {
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
+    __IMH_PERF__?: PerformanceDiagnosticsApi;
   }
 }
 

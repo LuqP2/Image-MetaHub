@@ -19,7 +19,7 @@ import ProBadge from './ProBadge';
 import hotkeyManager from '../services/hotkeyManager';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { mediaSourceCache } from '../services/mediaSourceCache';
+import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
@@ -34,6 +34,12 @@ import { getRecentTagChips } from '../utils/tagSuggestions';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
 import AudioPlayer from './AudioPlayer';
 import { isAudioFileName, isVideoFileName, SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
+import {
+  createProfilerOnRender,
+  finishPerformanceFlow,
+  markPerformanceFlow,
+  recordPerformanceDuration,
+} from '../utils/performanceDiagnostics';
 
 
 const TAG_SUGGESTION_LIMIT = 5;
@@ -87,6 +93,7 @@ interface ImageModalProps {
   isMinimized?: boolean;
   onMinimize?: () => void;
   startSlideshow?: boolean;
+  diagnosticsFlowId?: string | null;
   onSlideshowStartAcknowledged?: () => void;
 }
 
@@ -441,7 +448,10 @@ const VideoPlayer: React.FC<{
   src: string;
   poster?: string;
   onContextMenu?: React.MouseEventHandler;
-}> = ({ src, poster, onContextMenu }) => {
+  onLoadedMetadata?: React.ReactEventHandler<HTMLVideoElement>;
+  onCanPlay?: React.ReactEventHandler<HTMLVideoElement>;
+  onPlaying?: React.ReactEventHandler<HTMLVideoElement>;
+}> = ({ src, poster, onContextMenu, onLoadedMetadata, onCanPlay, onPlaying }) => {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const containerRef = React.useRef<HTMLDivElement>(null);
   
@@ -525,7 +535,7 @@ const VideoPlayer: React.FC<{
   };
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="relative w-full h-full flex items-center justify-center bg-black group/video"
       onMouseEnter={() => setIsHovering(true)}
@@ -541,7 +551,12 @@ const VideoPlayer: React.FC<{
         autoPlay
         playsInline
         onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
+        onLoadedMetadata={(event) => {
+          handleLoadedMetadata();
+          onLoadedMetadata?.(event);
+        }}
+        onCanPlay={onCanPlay}
+        onPlaying={onPlaying}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
@@ -636,6 +651,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   isMinimized = false,
   onMinimize,
   startSlideshow = false,
+  diagnosticsFlowId,
   onSlideshowStartAcknowledged,
 }) => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -691,12 +707,22 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const enableAnimations = useSettingsStore((state) => state.enableAnimations);
   const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
   const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
+  const modalProfilerOnRender = useMemo(() => createProfilerOnRender('ImageModal'), []);
+  const hasMarkedModalShellRef = useRef(false);
+  const hasMarkedPreviewVisibleRef = useRef(false);
+  const hasMarkedFullMediaReadyRef = useRef(false);
 
   useEffect(() => {
     if (!isMinimized) {
       isMinimizeAnimatingRef.current = false;
     }
   }, [isMinimized]);
+
+  useEffect(() => {
+    hasMarkedModalShellRef.current = false;
+    hasMarkedPreviewVisibleRef.current = false;
+    hasMarkedFullMediaReadyRef.current = false;
+  }, [diagnosticsFlowId, image.id]);
 
   useLayoutEffect(() => {
     const wasMinimized = wasMinimizedRef.current;
@@ -806,6 +832,32 @@ const ImageModal: React.FC<ImageModalProps> = ({
     ? `${directoryPath}${/[\\/]$/.test(directoryPath) ? '' : '\\'}${image.name}`
     : image.name;
   const mediaOverlayVisibilityClass = isMediaOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none';
+
+  useEffect(() => {
+    const mountStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    markPerformanceFlow(diagnosticsFlowId, 'mounted', {
+      imageId: image.id,
+      isMinimized,
+      isPlayableMedia,
+    });
+
+    window.requestAnimationFrame(() => {
+      if (!hasMarkedModalShellRef.current) {
+        hasMarkedModalShellRef.current = true;
+        markPerformanceFlow(diagnosticsFlowId, 'shell-visible', {
+          imageId: image.id,
+          isMinimized,
+          isPlayableMedia,
+        });
+      }
+
+      recordPerformanceDuration('modal.shell-visible', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - mountStartedAt, {
+        imageId: image.id,
+        isMinimized,
+        isPlayableMedia,
+      });
+    });
+  }, [diagnosticsFlowId, image.id, isMinimized, isPlayableMedia]);
 
   useEffect(() => {
     if (contextMenu.visible) {
@@ -1559,13 +1611,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   useEffect(() => {
     let isMounted = true;
     const hasPreview = Boolean(preferredThumbnailUrl);
+    const sourceLoadStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     setImageUrl(isPlayableMedia ? null : (preferredThumbnailUrl ?? null));
 
     const loadImage = async () => {
       if (!isMounted) return;
 
-      if (!directoryPath && window.electronAPI) {
+      const electronAbsoluteMediaPath = window.electronAPI ? getElectronAbsoluteMediaPath(image) : null;
+
+      if (!directoryPath && window.electronAPI && !electronAbsoluteMediaPath) {
         console.error('Cannot load image: directoryPath is undefined');
         if (isMounted && !hasPreview) {
           setImageUrl(null);
@@ -1578,43 +1633,59 @@ const ImageModal: React.FC<ImageModalProps> = ({
         const url = await mediaSourceCache.getOrLoad(image, directoryPath, { prioritize: true });
         if (isMounted) {
           setImageUrl(url);
+          markPerformanceFlow(diagnosticsFlowId, 'full-source-ready', {
+            imageId: image.id,
+            isPlayableMedia,
+          });
+
+          const state = useImageStore.getState();
+          const navigationImages = state.clusterNavigationContext || state.filteredImages;
+          const currentNavigationIndex = navigationImages.findIndex((candidate) => candidate.id === image.id);
+          if (currentNavigationIndex !== -1) {
+            const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
+            const neighborCandidates = [
+              navigationImages[currentNavigationIndex - 1],
+              navigationImages[currentNavigationIndex + 1],
+            ].filter(Boolean) as IndexedImage[];
+
+            for (const neighbor of neighborCandidates) {
+              const neighborDirectoryPath = directoryMap.get(neighbor.directoryId || '');
+              mediaSourceCache.prefetch(neighbor, neighborDirectoryPath);
+            }
+          }
         }
       } catch (loadError) {
         console.error('Failed to load full image source:', loadError);
         if (isMounted && !hasPreview) {
           setImageUrl(null);
         }
+      } finally {
+        recordPerformanceDuration('modal.full-source-load', (typeof performance !== 'undefined' ? performance.now() : Date.now()) - sourceLoadStartedAt, {
+          imageId: image.id,
+          hasPreview,
+          isPlayableMedia,
+        });
       }
     };
 
     loadImage();
 
-    const prefetchNeighbors = () => {
-      const state = useImageStore.getState();
-      const navigationImages = state.clusterNavigationContext || state.filteredImages;
-      const currentIndex = navigationImages.findIndex((candidate) => candidate.id === image.id);
-      if (currentIndex === -1) {
-        return;
-      }
-
-      const directoryMap = new Map(state.directories.map((dir) => [dir.id, dir.path]));
-      const neighborCandidates = [navigationImages[currentIndex - 1], navigationImages[currentIndex + 1]].filter(Boolean) as IndexedImage[];
-      for (const neighbor of neighborCandidates) {
-        const neighborDirectoryPath = directoryMap.get(neighbor.directoryId || '');
-        if (neighborDirectoryPath) {
-          mediaSourceCache.prefetch(neighbor, neighborDirectoryPath);
-        }
-      }
-    };
-
-    if (!isPlayableMedia) {
-      prefetchNeighbors();
-    }
-
     return () => {
       isMounted = false;
     };
-  }, [image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isPlayableMedia]);
+  }, [diagnosticsFlowId, image.id, image.handle, image.thumbnailHandle, image.name, directoryPath, preferredThumbnailUrl, isPlayableMedia, isVideo]);
+
+  useEffect(() => {
+    if (!preferredThumbnailUrl || hasMarkedPreviewVisibleRef.current) {
+      return;
+    }
+
+    hasMarkedPreviewVisibleRef.current = true;
+    markPerformanceFlow(diagnosticsFlowId, 'preview-visible', {
+      imageId: image.id,
+      source: 'thumbnail',
+    });
+  }, [diagnosticsFlowId, image.id, preferredThumbnailUrl]);
 
   const handleToggleFavorite = useCallback(() => {
     toggleFavorite(image.id);
@@ -1995,6 +2066,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
     : 'animate-in fade-in zoom-in-95';
 
   return (
+    <React.Profiler id="ImageModal" onRender={modalProfilerOnRender}>
     <div
       className={`fixed inset-0 transition-all duration-300 ${
         isFullscreen ? 'pointer-events-auto bg-black' : 'pointer-events-none'
@@ -2174,6 +2246,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   title={image.name}
                   autoPlay
                   onContextMenu={handleContextMenu}
+                  onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'audio-loadedmetadata', { imageId: image.id })}
+                  onCanPlay={() => markPerformanceFlow(diagnosticsFlowId, 'audio-canplay', { imageId: image.id })}
+                  onPlaying={() => {
+                    if (!hasMarkedFullMediaReadyRef.current) {
+                      hasMarkedFullMediaReadyRef.current = true;
+                      markPerformanceFlow(diagnosticsFlowId, 'audio-playing', { imageId: image.id });
+                      finishPerformanceFlow(diagnosticsFlowId, {
+                        imageId: image.id,
+                        mediaType: 'audio',
+                        status: 'playing',
+                      });
+                    }
+                  }}
                 />
               </div>
             ) : isVideo ? (
@@ -2183,6 +2268,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   src={imageUrl}
                   poster={preferredThumbnailUrl ?? undefined}
                   onContextMenu={handleContextMenu}
+                  onLoadedMetadata={() => markPerformanceFlow(diagnosticsFlowId, 'video-loadedmetadata', { imageId: image.id })}
+                  onCanPlay={() => markPerformanceFlow(diagnosticsFlowId, 'video-canplay', { imageId: image.id })}
+                  onPlaying={() => {
+                    if (!hasMarkedFullMediaReadyRef.current) {
+                      hasMarkedFullMediaReadyRef.current = true;
+                      markPerformanceFlow(diagnosticsFlowId, 'video-playing', { imageId: image.id });
+                      finishPerformanceFlow(diagnosticsFlowId, {
+                        imageId: image.id,
+                        mediaType: 'video',
+                        status: 'playing',
+                      });
+                    }
+                  }}
                 />
               </div>
             ) : (
@@ -2190,6 +2288,17 @@ const ImageModal: React.FC<ImageModalProps> = ({
                 src={imageUrl}
                 alt={image.name}
                 className="max-w-full max-h-full object-contain select-none"
+                onLoad={() => {
+                  if (!hasMarkedFullMediaReadyRef.current) {
+                    hasMarkedFullMediaReadyRef.current = true;
+                    markPerformanceFlow(diagnosticsFlowId, 'image-onload', { imageId: image.id });
+                    finishPerformanceFlow(diagnosticsFlowId, {
+                      imageId: image.id,
+                      mediaType: 'image',
+                      status: 'onload',
+                    });
+                  }
+                }}
                 onContextMenu={handleContextMenu}
                 onDragStart={handleDragStart}
                 style={{
@@ -3289,6 +3398,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
         </div>
       )}
     </div>
+    </React.Profiler>
   );
 };
 
@@ -3319,7 +3429,8 @@ export default React.memo(ImageModal, (prevProps, nextProps) => {
     prevProps.initialWindowState?.width === nextProps.initialWindowState?.width &&
     prevProps.initialWindowState?.height === nextProps.initialWindowState?.height &&
     prevProps.isMinimized === nextProps.isMinimized &&
-    prevProps.startSlideshow === nextProps.startSlideshow;
+    prevProps.startSlideshow === nextProps.startSlideshow &&
+    prevProps.diagnosticsFlowId === nextProps.diagnosticsFlowId;
 
   return propsEqual;
 });
