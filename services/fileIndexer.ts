@@ -203,6 +203,50 @@ function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
   return null;
 }
 
+function detectPngHasAlpha(view: DataView): boolean {
+  if (view.byteLength < 29) {
+    return false;
+  }
+
+  const colorType = view.getUint8(25);
+  if (colorType === 4 || colorType === 6) {
+    return true;
+  }
+
+  if (colorType !== 0 && colorType !== 2 && colorType !== 3) {
+    return false;
+  }
+
+  let offset = 8;
+  while (offset + 8 <= view.byteLength) {
+    const chunkLength = view.getUint32(offset, false);
+    const chunkDataOffset = offset + 8;
+    const chunkEnd = chunkDataOffset + chunkLength;
+    if (chunkEnd + 4 > view.byteLength) {
+      break;
+    }
+
+    const chunkType = String.fromCharCode(
+      view.getUint8(offset + 4),
+      view.getUint8(offset + 5),
+      view.getUint8(offset + 6),
+      view.getUint8(offset + 7)
+    );
+
+    if (chunkType === 'tRNS') {
+      return true;
+    }
+
+    if (chunkType === 'IDAT' || chunkType === 'IEND') {
+      break;
+    }
+
+    offset = chunkEnd + 4;
+  }
+
+  return false;
+}
+
 async function readMediaMetadataFromElectron(
   fileEntry: CatalogFileEntry
 ): Promise<{ rawMetadata: VideoMetadata | null; videoInfo?: VideoInfo | null; audioInfo?: AudioInfo | null }> {
@@ -1073,8 +1117,8 @@ async function parseWebPMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | n
   }
 }
 
-// Extract dimensions without decoding the full image
-function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; height: number } | null {
+// Extract lightweight image traits without decoding the full image.
+function extractImageTraitsFromBuffer(buffer: ArrayBuffer): { width: number; height: number; hasAlpha: boolean } | null {
   const view = new DataView(buffer);
   const type = detectImageType(view);
 
@@ -1084,7 +1128,7 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
     const width = view.getUint32(16, false);
     const height = view.getUint32(20, false);
     if (width > 0 && height > 0) {
-      return { width, height };
+      return { width, height, hasAlpha: detectPngHasAlpha(view) };
     }
     return null;
   }
@@ -1105,7 +1149,7 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
         const height = view.getUint16(offset + 5, false);
         const width = view.getUint16(offset + 7, false);
         if (width > 0 && height > 0) {
-          return { width, height };
+          return { width, height, hasAlpha: false };
         }
         break;
       }
@@ -1138,20 +1182,25 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
       }
 
       if (chunkType === 'VP8X' && chunkDataOffset + 10 <= view.byteLength) {
+        const flags = view.getUint8(chunkDataOffset);
         const widthMinusOne = view.getUint8(chunkDataOffset + 4) |
           (view.getUint8(chunkDataOffset + 5) << 8) |
           (view.getUint8(chunkDataOffset + 6) << 16);
         const heightMinusOne = view.getUint8(chunkDataOffset + 7) |
           (view.getUint8(chunkDataOffset + 8) << 8) |
           (view.getUint8(chunkDataOffset + 9) << 16);
-        return { width: widthMinusOne + 1, height: heightMinusOne + 1 };
+        return {
+          width: widthMinusOne + 1,
+          height: heightMinusOne + 1,
+          hasAlpha: (flags & 0x10) !== 0,
+        };
       }
 
       if (chunkType === 'VP8 ' && chunkDataOffset + 10 <= view.byteLength) {
         const width = (view.getUint8(chunkDataOffset + 6) | (view.getUint8(chunkDataOffset + 7) << 8)) & 0x3FFF;
         const height = (view.getUint8(chunkDataOffset + 8) | (view.getUint8(chunkDataOffset + 9) << 8)) & 0x3FFF;
         if (width > 0 && height > 0) {
-          return { width, height };
+          return { width, height, hasAlpha: false };
         }
       }
 
@@ -1165,7 +1214,7 @@ function extractDimensionsFromBuffer(buffer: ArrayBuffer): { width: number; heig
           const width = 1 + (b1 | ((b2 & 0x3F) << 8));
           const height = 1 + (((b2 & 0xC0) >> 6) | (b3 << 2) | ((b4 & 0x0F) << 10));
           if (width > 0 && height > 0) {
-            return { width, height };
+            return { width, height, hasAlpha: true };
           }
         }
       }
@@ -1631,11 +1680,11 @@ if (normalizedMetadata && isAudio) {
 
     // Read actual image dimensions - OPTIMIZED: Only if not already in metadata
     const dimensionsStart = profile ? performance.now() : 0;
-    if (normalizedMetadata && (!normalizedMetadata.width || !normalizedMetadata.height) && bufferForDimensions) {
-      const dims = extractDimensionsFromBuffer(bufferForDimensions);
-      if (dims) {
-        normalizedMetadata.width = normalizedMetadata.width || dims.width;
-        normalizedMetadata.height = normalizedMetadata.height || dims.height;
+    const imageTraits = bufferForDimensions ? extractImageTraitsFromBuffer(bufferForDimensions) : null;
+    if (normalizedMetadata && imageTraits && (!normalizedMetadata.width || !normalizedMetadata.height)) {
+      if (imageTraits) {
+        normalizedMetadata.width = normalizedMetadata.width || imageTraits.width;
+        normalizedMetadata.height = normalizedMetadata.height || imageTraits.height;
       }
     }
     if (profile) {
@@ -1676,6 +1725,7 @@ if (normalizedMetadata && isAudio) {
       workflowNodes,
       fileSize: normalizedFileSize,
       fileType: normalizedFileType,
+      hasAlpha: imageTraits?.hasAlpha === true,
     } as IndexedImage;
   } catch (error) {
     console.error(`Skipping file ${fileEntry.handle.name} due to an error:`, error);
@@ -1819,6 +1869,7 @@ function mapIndexedImageToCache(image: IndexedImage): CacheImageMetadata {
     enrichmentState: image.enrichmentState,
     fileSize: image.fileSize,
     fileType: image.fileType,
+    hasAlpha: image.hasAlpha,
     clusterId: image.clusterId,
     clusterPosition: image.clusterPosition,
     autoTags: image.autoTags,

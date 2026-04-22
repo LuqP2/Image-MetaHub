@@ -116,3 +116,12 @@
 .animate-fade-in {
   animation: fade-in 0.2s ease-in-out;
 }
+
+.image-alpha-grid {
+  background-color: #94a3b8;
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.24) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.24) 75%, rgba(255, 255, 255, 0.24)),
+    linear-gradient(45deg, rgba(15, 23, 42, 0.12) 25%, transparent 25%, transparent 75%, rgba(15, 23, 42, 0.12) 75%, rgba(15, 23, 42, 0.12));
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}

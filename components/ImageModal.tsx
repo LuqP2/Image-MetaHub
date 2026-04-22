@@ -2228,7 +2228,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               : showSidebarOnBottom
                 ? 'min-h-[280px] flex-1'
                 : 'h-full flex-1 min-w-0'
-          } bg-black flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
+          } ${isPlayableMedia ? 'bg-black' : liveImage.hasAlpha ? 'image-alpha-grid' : 'bg-black'} flex items-center justify-center ${isFullscreen ? 'p-0' : 'p-2'} relative group overflow-hidden`}
           onPointerDown={handleImageContainerPointerDown}
           onPointerMove={revealMediaOverlay}
           onMouseDown={isPlayableMedia ? undefined : handleMouseDown}

@@ -577,6 +577,7 @@ export interface IndexedImage {
   enrichmentState?: 'catalog' | 'enriched';
   fileSize?: number;
   fileType?: string;
+  hasAlpha?: boolean;
 
   // User Annotations (loaded from ImageAnnotations table)
   isFavorite?: boolean;          // Quick access to favorite status

@@ -878,7 +878,9 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       style={{ height: '64px', gridTemplateColumns }}
     >
       <div className="px-3 py-2">
-        <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
+        <div className={`relative flex h-12 w-12 items-center justify-center overflow-hidden rounded ${
+          image.hasAlpha && !isAudio && !isVideo ? 'image-alpha-grid' : 'bg-gray-700'
+        }`}>
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
           ) : isAudio ? (

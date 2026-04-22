@@ -372,7 +372,9 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         onContextMenu={handleSelectionContextMenu}
       >
         {/* Image */}
-        <div className="bg-black flex items-center justify-center rounded-lg">
+        <div className={`flex items-center justify-center rounded-lg overflow-hidden ${
+          isAudio || isVideo ? 'bg-black' : activeImage.hasAlpha ? 'image-alpha-grid' : 'bg-black'
+        }`}>
           {imageUrl ? (
             isAudio ? (
               <AudioPlayer
