@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, FolderTree, GitCompare, Layers, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { IndexedImage, SimilarSearchCriteria, SimilarSearchResult } from '../types';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
+import { useThumbnail } from '../hooks/useThumbnail';
 import {
   DEFAULT_SIMILAR_SEARCH_CRITERIA,
   findSimilarImages,
@@ -15,6 +16,7 @@ interface FindSimilarModalProps {
   sourceImage: IndexedImage | null;
   allImages: IndexedImage[];
   currentViewImages?: IndexedImage[];
+  initialCriteria?: Partial<SimilarSearchCriteria>;
   onClose: () => void;
   onOpenCompare: (images: IndexedImage[]) => void;
 }
@@ -24,6 +26,7 @@ const panelClassName = 'flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hid
 const pillButtonClassName = 'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors';
 
 const useThumbnailUrl = (image: IndexedImage | null) => {
+  useThumbnail(image);
   const resolved = useResolvedThumbnail(image || undefined);
   return resolved?.thumbnailUrl || image?.thumbnailUrl || '';
 };
@@ -67,7 +70,7 @@ const SimilarImageCard = ({
         {thumbnailUrl ? (
           <img src={thumbnailUrl} alt={image.name} className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">No preview</div>
+          <div className="h-full w-full bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950" />
         )}
         <div className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-gray-100">
           {badge}
@@ -123,6 +126,7 @@ export default function FindSimilarModal({
   sourceImage,
   allImages,
   currentViewImages,
+  initialCriteria,
   onClose,
   onOpenCompare,
 }: FindSimilarModalProps) {
@@ -134,8 +138,11 @@ export default function FindSimilarModal({
       return;
     }
 
-    setCriteria(DEFAULT_SIMILAR_SEARCH_CRITERIA);
-  }, [isOpen, sourceImage]);
+    setCriteria({
+      ...DEFAULT_SIMILAR_SEARCH_CRITERIA,
+      ...initialCriteria,
+    });
+  }, [initialCriteria, isOpen, sourceImage]);
 
   const availability = useMemo(
     () => (sourceImage ? getSimilarSearchAvailability(sourceImage) : null),
@@ -174,7 +181,6 @@ export default function FindSimilarModal({
     return null;
   }
 
-  const hasPrompt = availability.prompt;
   const compareDisabled = selectedIds.size === 0 || !execution.hasActiveCriterion;
 
   const toggleSelection = (result: SimilarSearchResult) => {
@@ -200,12 +206,7 @@ export default function FindSimilarModal({
     <div className={overlayClassName} role="dialog" aria-modal="true" aria-label="Find similar images">
       <div className={panelClassName}>
         <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
-          <div>
-            <div className="text-lg font-semibold text-gray-100">Find similar...</div>
-            <div className="text-sm text-gray-400">
-              Same prompt, different checkpoint by default, without changing your global filters.
-            </div>
-          </div>
+          <div className="text-lg font-semibold text-gray-100">Find similar...</div>
           <button
             type="button"
             onClick={onClose}
@@ -224,7 +225,7 @@ export default function FindSimilarModal({
                 {sourceThumbnailUrl ? (
                   <img src={sourceThumbnailUrl} alt={sourceImage.name} className="h-full w-full object-cover" loading="lazy" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-gray-500">No preview</div>
+                  <div className="h-full w-full bg-gradient-to-br from-gray-800 via-gray-900 to-black" />
                 )}
               </div>
               <div className="space-y-2 p-4">
@@ -237,7 +238,7 @@ export default function FindSimilarModal({
                   <div title={formatLoraSummary(sourceImage)}>{formatLoraSummary(sourceImage)}</div>
                 </div>
                 <div className="max-h-24 overflow-auto rounded-lg border border-gray-800 bg-gray-900/80 p-3 text-xs leading-relaxed text-gray-300">
-                  {sourceImage.prompt || 'No prompt metadata'}
+                  {sourceImage.prompt || ''}
                 </div>
               </div>
             </div>
@@ -256,10 +257,7 @@ export default function FindSimilarModal({
                       disabled={!availability.prompt}
                       onChange={(event) => setCriteria((current) => ({ ...current, prompt: event.target.checked }))}
                     />
-                    <span>
-                      <span className="block font-medium">Prompt</span>
-                      <span className="text-xs text-gray-400">Exact normalized prompt match.</span>
-                    </span>
+                    <span className="block font-medium">Prompt</span>
                   </label>
 
                   <label className="flex items-start gap-3 text-sm text-gray-200">
@@ -275,10 +273,7 @@ export default function FindSimilarModal({
                         }))
                       }
                     />
-                    <span>
-                      <span className="block font-medium">LoRA names</span>
-                      <span className="text-xs text-gray-400">Require the same normalized LoRA set.</span>
-                    </span>
+                    <span className="block font-medium">LoRA names</span>
                   </label>
 
                   <label className="ml-6 flex items-start gap-3 text-sm text-gray-300">
@@ -290,10 +285,7 @@ export default function FindSimilarModal({
                         setCriteria((current) => ({ ...current, matchLoraWeight: event.target.checked }))
                       }
                     />
-                    <span>
-                      <span className="block font-medium">Also match LoRA weight</span>
-                      <span className="text-xs text-gray-500">Only active when LoRA matching is enabled.</span>
-                    </span>
+                    <span className="block font-medium">Match LoRA weight</span>
                   </label>
 
                   <label className="flex items-start gap-3 text-sm text-gray-200">
@@ -303,10 +295,7 @@ export default function FindSimilarModal({
                       disabled={!availability.seed}
                       onChange={(event) => setCriteria((current) => ({ ...current, seed: event.target.checked }))}
                     />
-                    <span>
-                      <span className="block font-medium">Seed</span>
-                      <span className="text-xs text-gray-400">Require the exact same seed.</span>
-                    </span>
+                    <span className="block font-medium">Seed</span>
                   </label>
                 </div>
               </div>
@@ -338,9 +327,6 @@ export default function FindSimilarModal({
                     Same
                   </ScopeButton>
                 </div>
-                {!availability.checkpoint && (
-                  <div className="mt-2 text-xs text-amber-300">Checkpoint matching is disabled because the source image has no checkpoint metadata.</div>
-                )}
               </div>
 
               <div>
@@ -372,13 +358,7 @@ export default function FindSimilarModal({
 
               {!execution.hasActiveCriterion && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  Enable at least one available criterion to search for matches.
-                </div>
-              )}
-
-              {!hasPrompt && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  This source image has no prompt metadata, so prompt matching is unavailable.
+                  No active criteria
                 </div>
               )}
             </div>
@@ -391,10 +371,7 @@ export default function FindSimilarModal({
                   <div className="text-sm font-semibold text-gray-100">
                     {execution.results.length} match{execution.results.length === 1 ? '' : 'es'}
                   </div>
-                  <div className="text-xs text-gray-400">
-                    Searching {execution.candidates.length} candidate image{execution.candidates.length === 1 ? '' : 's'} in{' '}
-                    {criteria.scope === 'current-view' ? 'the current view' : criteria.scope === 'all-images' ? 'the full library' : 'the same folder'}.
-                  </div>
+                  <div className="text-xs text-gray-400">{execution.candidates.length} candidates</div>
                 </div>
                 <div className="text-xs text-gray-400">
                   Selected {selectedResults.length} of 3 compare slots.
@@ -407,9 +384,6 @@ export default function FindSimilarModal({
                 <div className="flex h-full min-h-[240px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-800 bg-gray-950/50 px-6 text-center">
                   <Search className="mb-3 h-6 w-6 text-gray-500" />
                   <div className="text-sm font-semibold text-gray-200">No matches found</div>
-                  <div className="mt-2 max-w-md text-xs leading-relaxed text-gray-400">
-                    Try relaxing checkpoint matching, turning off seed matching, or switching the scope to the full library.
-                  </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
@@ -432,9 +406,7 @@ export default function FindSimilarModal({
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-800 px-5 py-4">
-              <div className="text-xs text-gray-400">
-                Compare will open with the source image plus the selected matches, capped at 4 images total.
-              </div>
+              <div />
               <div className="flex items-center gap-3">
                 <button
                   type="button"

@@ -53,7 +53,7 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
@@ -81,6 +81,7 @@ interface ImageModalWindowState {
 interface FindSimilarState {
   sourceImage: IndexedImage;
   currentViewImages: IndexedImage[];
+  initialCriteria?: Partial<SimilarSearchCriteria>;
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
@@ -1683,11 +1684,16 @@ export default function App() {
       ? nodeViewResultImages
       : safeFilteredImages;
 
-  const openFindSimilar = useCallback((sourceImage: IndexedImage, currentViewImages?: IndexedImage[]) => {
+  const openFindSimilar = useCallback((
+    sourceImage: IndexedImage,
+    currentViewImages?: IndexedImage[],
+    initialCriteria?: Partial<SimilarSearchCriteria>,
+  ) => {
     setFindSimilarState({
       sourceImage,
       currentViewImages: (currentViewImages && currentViewImages.length > 0 ? currentViewImages : safeFilteredImages)
         .filter((image) => Boolean(image)),
+      initialCriteria,
     });
   }, [safeFilteredImages]);
 
@@ -2254,7 +2260,7 @@ export default function App() {
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
-                          onFindSimilar={(image) => openFindSimilar(image, displayImages)}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         />
                       ) : (
                         <ImageTable
@@ -2263,7 +2269,7 @@ export default function App() {
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
                           onImageRenamed={handleImageRenamed}
-                          onFindSimilar={(image) => openFindSimilar(image, displayImages)}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -2293,7 +2299,7 @@ export default function App() {
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
-                        onFindSimilar={(image) => openFindSimilar(image, displayImages)}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                       />
                     ) : (
                       <ImageTable
@@ -2304,7 +2310,7 @@ export default function App() {
                         activeCollection={activeCollection}
                         isCollectionsView
                         onImageRenamed={handleImageRenamed}
-                        onFindSimilar={(image) => openFindSimilar(image, displayImages)}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                       />
                     )}
                   </CollectionsWorkspace>
@@ -2435,6 +2441,7 @@ export default function App() {
           sourceImage={findSimilarState?.sourceImage ?? null}
           allImages={safeImages}
           currentViewImages={findSimilarState?.currentViewImages}
+          initialCriteria={findSimilarState?.initialCriteria}
           onClose={closeFindSimilar}
           onOpenCompare={handleOpenFindSimilarCompare}
         />
