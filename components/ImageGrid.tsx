@@ -2,6 +2,7 @@ import { FixedSizeGrid as Grid, GridChildComponentProps, areEqual } from 'react-
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, SmartCollection } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
@@ -539,7 +540,7 @@ const ImageCard: React.FC<ImageCardProps> = React.memo(({ image, onImageClick, e
             alt={image.name}
             className={`max-w-full max-h-full object-contain transition-all duration-200 ${
               isBlurred ? 'filter blur-xl scale-110 opacity-80' : ''
-            }`}
+            } image-alpha-grid`}
             loading="lazy"
             draggable={false}
           />
@@ -936,6 +937,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
   const {
     contextMenu,
+    contextMenuRef,
     showContextMenu,
     hideContextMenu,
     copyPrompt,
@@ -949,6 +951,8 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     copyRawMetadata,
     addTag
   } = useContextMenu();
+
+  const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   const getGridScrollElement = useCallback(() => gridScrollRef.current ?? gridScopeRef.current, []);
 
@@ -1555,8 +1559,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
 
  
 
-  const contextMenuContent = contextMenu.visible && (
+  const contextMenuContent = contextMenu.visible && typeof document !== 'undefined'
+    ? createPortal(
         <div
+          ref={contextMenuRef}
           className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -1597,7 +1603,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             </button>
 
             {isCollectionSubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <div
                   className="relative"
                   onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
@@ -1612,7 +1618,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
-                    <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                    <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                       {collections.length === 0 ? (
                         <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
                       ) : (
@@ -1708,7 +1714,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             </button>
 
             {isCopySubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <button
                   onClick={copyPrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
@@ -1869,8 +1875,10 @@ const ImageGrid: React.FC<ImageGridProps> = ({
             <span className="flex-1">Generate with ComfyUI</span>
             {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
-        </div>
-  );
+        </div>,
+        document.body,
+      )
+    : null;
 
   const modalsContent = (
     <>

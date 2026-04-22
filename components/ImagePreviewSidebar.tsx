@@ -389,7 +389,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 poster={preferredThumbnailUrl ?? undefined}
               />
             ) : (
-              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" />
+              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain image-alpha-grid" />
             )
           ) : (
             <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>

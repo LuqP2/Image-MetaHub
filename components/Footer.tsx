@@ -152,7 +152,7 @@ const Footer: React.FC<FooterProps> = ({
                     <img
                       src={hoveredThumbnail.thumbnailUrl}
                       alt={hoveredWindowItem.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover image-alpha-grid"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500">

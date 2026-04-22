@@ -2287,7 +2287,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <img
                 src={imageUrl}
                 alt={image.name}
-                className="max-w-full max-h-full object-contain select-none"
+                className="max-w-full max-h-full object-contain select-none image-alpha-grid"
                 onLoad={() => {
                   if (!hasMarkedFullMediaReadyRef.current) {
                     hasMarkedFullMediaReadyRef.current = true;
