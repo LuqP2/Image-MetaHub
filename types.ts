@@ -692,6 +692,7 @@ export interface ComparisonPaneProps {
   syncEnabled: boolean;
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
+  onHoverChange?: (isHovered: boolean) => void;
   className?: string;
   imageLabel?: string;
 }
@@ -709,6 +710,7 @@ export interface ComparisonMetadataPanelProps {
   otherImageMetadata?: BaseMetadata | null;
   className?: string;
   compareLabel?: string;
+  isHighlighted?: boolean;
 }
 
 // ===== Smart Clustering & Auto-Tagging Types =====
