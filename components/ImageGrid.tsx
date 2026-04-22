@@ -7,7 +7,7 @@ import { type IndexedImage, type BaseMetadata, type Directory, ImageStack, Smart
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useImageStore } from '../store/useImageStore';
 import { useContextMenu } from '../hooks/useContextMenu';
-import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square,
+import { Heart, Info, Copy, Folder, Download, Clipboard, Sparkles, GitCompare, Square, Search,
   Archive,
   ChevronRight,
   CheckSquare,
@@ -831,6 +831,7 @@ interface ImageGridProps {
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
+  onFindSimilar?: (image: IndexedImage) => void;
   markedBestIds?: Set<string>;      // IDs of images marked as best
   markedArchivedIds?: Set<string>;  // IDs of images marked for archive
 }
@@ -850,6 +851,7 @@ const ImageGrid: React.FC<ImageGridProps> = ({
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
+  onFindSimilar,
   markedBestIds,
   markedArchivedIds,
 }) => {
@@ -1041,10 +1043,22 @@ const ImageGrid: React.FC<ImageGridProps> = ({
     hideContextMenu();
   }, [contextMenu.image, hideContextMenu, canUseComparison, showProModal, addImageToComparison, comparisonCount]);
 
+  const openFindSimilar = useCallback(() => {
+    if (!contextMenu.image || !onFindSimilar) {
+      return;
+    }
+
+    onFindSimilar(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
   const handleBatchExport = useCallback(() => {
     hideContextMenu();
     onBatchExport();
   }, [hideContextMenu, onBatchExport]);
+
+  const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
+  const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
 
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
@@ -1759,6 +1773,16 @@ const ImageGrid: React.FC<ImageGridProps> = ({
               Add to Compare {canUseComparison && comparisonCount > 0 ? `(${comparisonCount}/4)` : ''}
             </span>
             {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
+          </button>
+
+          <button
+            onClick={openFindSimilar}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canFindSimilar}
+            title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+          >
+            <Search className="w-4 h-4" />
+            <span className="flex-1">Find similar...</span>
           </button>
 
           <div className="border-t border-gray-600 my-1"></div>

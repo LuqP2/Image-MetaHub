@@ -5,7 +5,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Star, Pencil } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -28,6 +28,7 @@ interface ImageTableProps {
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
   onImageRenamed?: (oldImageId: string, newImageId: string) => void;
+  onFindSimilar?: (image: IndexedImage) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
@@ -71,6 +72,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   activeCollection = null,
   isCollectionsView = false,
   onImageRenamed,
+  onFindSimilar,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -136,6 +138,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onBatchExport();
   };
 
+  const openFindSimilar = useCallback(() => {
+    if (!contextMenu.image || !onFindSimilar) {
+      return;
+    }
+
+    onFindSimilar(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
       return [];
@@ -147,6 +158,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
+  const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
@@ -684,6 +698,16 @@ const ImageTable: React.FC<ImageTableProps> = ({
               <Copy className="w-4 h-4" />
               Copy Raw Metadata
             </button>
+
+          <button
+            onClick={openFindSimilar}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canFindSimilar}
+            title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+          >
+            <Search className="w-4 h-4" />
+            Find similar...
+          </button>
 
           <button
             onClick={handleReparseMetadata}

@@ -76,6 +76,7 @@ interface ImageModalProps {
   modalId?: string;
   image: IndexedImage;
   onClose: () => void;
+  onFindSimilar?: (image: IndexedImage) => void;
   onImageDeleted?: (imageId: string) => void;
   onImageRenamed?: (oldImageId: string, newImageId: string, newRelativePath: string) => void;
   currentIndex?: number;
@@ -634,6 +635,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   modalId,
   image,
   onClose,
+  onFindSimilar,
   onImageDeleted,
   onImageRenamed,
   currentIndex = 0,
@@ -1179,6 +1181,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
   const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
+  const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
   const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
     ...nMeta,
     prompt: shadowMetadata?.prompt ?? nMeta.prompt,
@@ -2873,6 +2876,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               Add to Compare {canUseComparison && comparisonCount > 0 && `(${comparisonCount}/4)`}
               {!canUseComparison && initialized && <ProBadge size="sm" />}
             </button>
+            <button
+              onClick={() => onFindSimilar?.(image)}
+              disabled={!canFindSimilar}
+              className="w-full justify-center bg-teal-50 hover:bg-teal-100 dark:bg-teal-500/10 dark:hover:bg-teal-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-500/30 px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+            >
+              <Search className="w-3 h-3" />
+              Find similar...
+            </button>
           </div>
 
           {/* A1111 Integration - Separate Buttons with Visual Hierarchy */}
@@ -3363,6 +3375,15 @@ const ImageModal: React.FC<ImageModalProps> = ({
               >
                 <Copy className="w-4 h-4" />
                 Copy Model
+              </button>
+
+              <button
+                onClick={() => onFindSimilar?.(image)}
+                className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!canFindSimilar}
+              >
+                <Search className="w-4 h-4" />
+                Find similar...
               </button>
 
               <div className="border-t border-gray-600 my-1"></div>

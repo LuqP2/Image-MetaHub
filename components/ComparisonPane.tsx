@@ -12,6 +12,7 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   syncEnabled,
   externalZoom,
   onZoomChange,
+  onHoverChange,
   className,
   imageLabel,
 }) => {
@@ -42,7 +43,11 @@ const ComparisonPane: FC<ComparisonPaneProps> = ({
   }
 
   return (
-    <div className={`relative group bg-black min-h-0 ${className ?? ''}`}>
+    <div
+      className={`relative group bg-black min-h-0 ${className ?? ''}`}
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
+    >
       <TransformWrapper
         ref={transformRef}
         initialScale={1}

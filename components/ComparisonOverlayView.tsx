@@ -12,6 +12,7 @@ interface ComparisonOverlayViewProps {
   mode: Exclude<ComparisonViewMode, 'side-by-side'>;
   sharedZoom: ZoomState;
   onZoomChange: (zoom: number, x: number, y: number) => void;
+  onActiveImageChange?: (index: number | null) => void;
 }
 
 const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
@@ -22,6 +23,7 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
   mode,
   sharedZoom,
   onZoomChange,
+  onActiveImageChange,
 }) => {
   const { imageUrl: leftUrl, loadError: leftError, isLoading: isLeftLoading } = useComparisonImageSource(leftImage, leftDirectory);
   const { imageUrl: rightUrl, loadError: rightError, isLoading: isRightLoading } = useComparisonImageSource(rightImage, rightDirectory);
@@ -54,6 +56,13 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
     setSliderValue(clamp(percent, 0, 100));
   };
 
+  const updateActiveImageFromClientX = (clientX: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const percent = ((clientX - rect.left) / rect.width) * 100;
+    onActiveImageChange?.(percent <= sliderValue ? 0 : 1);
+  };
+
   useEffect(() => {
     if (!isDraggingHandle) return;
 
@@ -61,12 +70,14 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
       e.preventDefault();
       e.stopPropagation();
       updateSliderFromClientX(e.clientX);
+      updateActiveImageFromClientX(e.clientX);
     };
 
     const handleUp = (e: PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
       setIsDraggingHandle(false);
+      onActiveImageChange?.(null);
     };
 
     window.addEventListener('pointermove', handleMove, { passive: false });
@@ -124,8 +135,25 @@ const ComparisonOverlayView: FC<ComparisonOverlayViewProps> = ({
             >
               <div
                 className="relative w-full h-full overflow-hidden bg-black"
-                onMouseEnter={mode === 'hover' ? () => setIsHovering(true) : undefined}
-                onMouseLeave={mode === 'hover' ? () => setIsHovering(false) : undefined}
+                onMouseEnter={
+                  mode === 'hover'
+                    ? () => {
+                        setIsHovering(true);
+                        onActiveImageChange?.(1);
+                      }
+                    : undefined
+                }
+                onMouseLeave={
+                  mode === 'hover'
+                    ? () => {
+                        setIsHovering(false);
+                        onActiveImageChange?.(null);
+                      }
+                    : mode === 'slider'
+                      ? () => onActiveImageChange?.(null)
+                      : undefined
+                }
+                onMouseMove={mode === 'slider' ? (event) => updateActiveImageFromClientX(event.clientX) : undefined}
               >
                 {isLoading && !ready && (
                   <div className="absolute inset-0 flex items-center justify-center">
