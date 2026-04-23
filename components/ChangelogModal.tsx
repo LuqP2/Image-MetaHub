@@ -132,23 +132,15 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
 <div className="mb-6 p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
   <h3 className="text-lg font-semibold text-blue-300 mb-3">Message from the Dev</h3>
   <div className="text-gray-300 space-y-3 text-sm leading-relaxed">
-    <p>Hey there, I'm Lucas - solo dev behind Image MetaHub.</p>
+    <p>Hi there, this is Lucas -- the solo dev behind Image MetaHub.</p>
 
-    <p>v0.14 is a big one. It adds some very substantial features, especially around ComfyUI workflow inspection/regeneration, improved analytics, improved comparison, and a lot more. Most of it is the result of trying to make the app more useful in the same way I use it myself.</p>
+    <p>v0.15 is here with some new and useful features for organizing your library, which include audio support, tag/collection automation rules, metadata editing, and more. Although they are functional, some of these features may feel a bit rough in this first implementation. I felt it was better to ship them as they are now tho, and proceed to polish them over time.</p>
 
-    <p>I started IMH last September, as a tool for my own use, to basically do what the core of the app still is today: search/filter by generation parameters, with support exclusive to InvokeAI. After it got some visibility, I started to expand on it by including support to other generators.</p>
+    <p>I also put a lot of focus on making the app more responsive, faster, and more intuitive, I hope you'll notice the difference! One note: during development I did run into a few memory crashes that were mostly fixed. If you do happen to come across one, it would be really helpful if you open an Issue with the console logs!</p>
 
-    <p>One thing hasn't changed, tho; I still develop this app for myself, as I'm just a normal mid-tier user who generates as a hobby and share a lot of the pains with people who deal with large libraries. This means that most features I add are things that are useful for myself which end up overlapping with many other users. This is also the reason a lot of things that may seem obvious are overlooked - which is why I thank everyone who help out on GitHub with Bug Reports/Feature Requests.</p>
+    <p>A genuine thank you to everyone who helped support development by purchasing a Pro license -- it truly makes a difference, your support is what will turn IMH into a reference point for everyone working with GenMedia. I also want to thank everyone who submitted bug reports and feature requests on GitHub, for actively helping shape the app into something genuinely useful.</p>
 
-    <p>Still tho, I'm glad this thing is useful to people. Building it alone means I end up doing development, support, bug fixing, communication, and whatever else needs doing. So if IMH has been useful to you and it ever makes sense to mention it to someone who might benefit from it, that helps a lot!</p>
-
-    <p>As a side note: I hate the term "vibe coding". Sounds like something you would do lounging in a beanbag chair, burning incense, and saying "Take that, bug" while debugging.</p>
-
-    <p>Anyway, make sure to join our Discord server: <a href="https://discord.gg/7XgrWCSxfJ" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/7XgrWCSxfJ</a></p>
-
-    <p>And as usual, thanks to everyone who's helped development by downloading IMH, getting a pro license, or contributing on GitHub. Special thanks to nonplayer for their many relevant insights, Taruvi who helped building the base of what the app is today, mankochan11 for helping to test this build, and Silva and Camilo for funding the project.</p>
-
-    <p className="mt-4">Enjoy the update!</p>
+    <p>Make sure to join our Discord server! <a href="https://discord.gg/7XgrWCSxfJ" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 underline">https://discord.gg/7XgrWCSxfJ</a></p>
 
     <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-700/50">
       <a
