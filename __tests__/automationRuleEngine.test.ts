@@ -214,6 +214,65 @@ describe('automation rule engine', () => {
     });
   });
 
+  it('supports date, media, generation mode, and telemetry metric condition rows', () => {
+    const image = createImage({
+      id: 'telemetry-match',
+      name: 'render.png',
+      lastModified: new Date('2026-04-23T12:00:00').getTime(),
+      metadata: {
+        normalizedMetadata: {
+          generationType: 'img2img',
+          media_type: 'image',
+          _analytics: {
+            generation_time_ms: 1500,
+            steps_per_second: 8.5,
+            vram_peak_mb: 4096,
+          },
+        },
+      } as any,
+    });
+
+    const rule = createRule({
+      criteria: {
+        matchMode: 'all',
+        textConditions: [],
+        conditionRows: [
+          { id: 'date', field: 'date', operator: 'equals', value: '2026-04-23' },
+          { id: 'mode', field: 'generationMode', operator: 'includes', value: 'img2img' },
+          { id: 'media', field: 'mediaType', operator: 'includes', value: 'image' },
+          { id: 'time', field: 'generationTimeMs', operator: 'at_least', value: '1000' },
+          { id: 'speed', field: 'stepsPerSecond', operator: 'at_least', value: '8' },
+          { id: 'vram', field: 'vramPeakMb', operator: 'between', value: '4000', valueEnd: '5000' },
+        ],
+        filters: {},
+      },
+      actions: { addTags: ['matched'], addToCollectionIds: [] },
+    });
+
+    expect(imageMatchesAutomationRule(image, rule)).toBe(true);
+  });
+
+  it('can evaluate disabled rules in explicit manual mode', () => {
+    const rule = createRule({
+      enabled: false,
+      criteria: {
+        matchMode: 'all',
+        textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+        filters: {},
+      },
+      actions: { addTags: ['animal'], addToCollectionIds: [] },
+    });
+    const images = [createImage({ id: 'img-1', prompt: 'cat portrait' })];
+
+    expect(imageMatchesAutomationRule(images[0], rule)).toBe(false);
+    expect(imageMatchesAutomationRule(images[0], rule, { ignoreEnabled: true })).toBe(true);
+
+    expect(previewAutomationRule(rule, images, new Map(), [], { ignoreEnabled: true })).toMatchObject({
+      matchCount: 1,
+      changeCount: 1,
+    });
+  });
+
   it('is idempotent for tags and collection image IDs', () => {
     const annotations = new Map<string, ImageAnnotations>([
       ['img-1', { imageId: 'img-1', isFavorite: false, tags: ['animal'], addedAt: 1, updatedAt: 1 }],

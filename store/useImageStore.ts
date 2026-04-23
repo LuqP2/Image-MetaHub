@@ -1459,6 +1459,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     const applyAutomationRuleToCurrentState = async (
         rule: AutomationRule,
         sourceImages?: IndexedImage[],
+        options?: { ignoreEnabled?: boolean },
     ): Promise<AutomationRulePreview> => {
         const sourceIds = sourceImages && sourceImages.length > 0
             ? new Set(sourceImages.map((image) => image.id))
@@ -1479,7 +1480,7 @@ export const useImageStore = create<ImageState>((set, get) => {
             const targetImages = sourceIds
                 ? state.images.filter((image) => sourceIds.has(image.id))
                 : state.images;
-            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections);
+            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections, options);
             preview = {
                 matchedImageIds: result.matchedImageIds,
                 matchCount: result.matchCount,
@@ -3479,6 +3480,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 imagesToPreview && imagesToPreview.length > 0 ? imagesToPreview : state.images,
                 state.annotations,
                 state.collections,
+                { ignoreEnabled: true },
             );
         },
         applyAutomationRuleNow: async (ruleId, imagesToApply) => {
@@ -3487,7 +3489,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return null;
             }
 
-            return applyAutomationRuleToCurrentState(rule, imagesToApply);
+            return applyAutomationRuleToCurrentState(rule, imagesToApply, { ignoreEnabled: true });
         },
         applyEnabledAutomationRulesToImages: async (imagesToApply) => {
             const initialState = get();

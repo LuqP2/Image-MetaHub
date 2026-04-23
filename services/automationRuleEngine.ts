@@ -372,6 +372,34 @@ const matchesFacetRow = (values: Set<string>, row: AutomationConditionRow): bool
   return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasValue : hasValue;
 };
 
+const getImageMediaType = (image: IndexedImage): 'image' | 'video' | 'audio' => {
+  const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+  const inferredMediaType = resolveMediaType(image.name, image.fileType);
+  if (metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image') {
+    return metadataMediaType;
+  }
+  if (inferredMediaType === 'video' || inferredMediaType === 'audio') {
+    return inferredMediaType;
+  }
+  return 'image';
+};
+
+const getImageGenerationMode = (image: IndexedImage): 'txt2img' | 'img2img' | null => {
+  const explicitGenerationType = image.metadata?.normalizedMetadata?.generationType;
+  if (explicitGenerationType === 'txt2img' || explicitGenerationType === 'img2img') {
+    return explicitGenerationType;
+  }
+  const mediaType = getImageMediaType(image);
+  if (mediaType === 'video' || mediaType === 'audio') {
+    return null;
+  }
+  return 'txt2img';
+};
+
+const getImageAnalytics = (image: IndexedImage): Record<string, number> | undefined =>
+  image.metadata?.normalizedMetadata?.analytics ||
+  (image.metadata?.normalizedMetadata as { _analytics?: Record<string, number> } | undefined)?._analytics;
+
 const GROUPABLE_ROW_FIELDS = new Set<AutomationConditionRow['field']>([
   'model',
   'lora',
@@ -435,6 +463,39 @@ const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): 
       const hasDimension = Boolean(target) && imageDimension === target;
       return row.operator === 'not_includes' || row.operator === 'not_equals' ? !hasDimension : hasDimension;
     }
+    case 'date': {
+      const dateValue = row.value.trim();
+      const dateEndValue = row.valueEnd?.trim();
+      if (!dateValue) {
+        return false;
+      }
+      const start = parseLocalDateFilterStart(dateValue);
+      if (!Number.isFinite(start)) {
+        return false;
+      }
+      if (row.operator === 'between') {
+        if (!dateEndValue) {
+          return false;
+        }
+        const endExclusive = parseLocalDateFilterEndExclusive(dateEndValue);
+        return Number.isFinite(endExclusive) && image.lastModified >= start && image.lastModified < endExclusive;
+      }
+      if (row.operator === 'at_least') {
+        return image.lastModified >= start;
+      }
+      if (row.operator === 'at_most') {
+        const endExclusive = parseLocalDateFilterEndExclusive(dateValue);
+        return Number.isFinite(endExclusive) && image.lastModified < endExclusive;
+      }
+      const equalsEndExclusive = parseLocalDateFilterEndExclusive(dateValue);
+      return Number.isFinite(equalsEndExclusive) && image.lastModified >= start && image.lastModified < equalsEndExclusive;
+    }
+    case 'generationMode': {
+      const generationMode = getImageGenerationMode(image);
+      return matchesFacetRow(makeValueSet([generationMode ?? undefined]), row);
+    }
+    case 'mediaType':
+      return matchesFacetRow(makeValueSet([getImageMediaType(image)]), row);
     case 'favorite': {
       const isFavorite = image.isFavorite === true;
       return row.operator === 'is_not' ? !isFavorite : isFavorite;
@@ -445,6 +506,18 @@ const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): 
       return matchesNumberRow(image.steps, row);
     case 'cfg':
       return matchesNumberRow(image.cfgScale, row);
+    case 'generationTimeMs': {
+      const analytics = getImageAnalytics(image);
+      return matchesNumberRow(analytics?.generation_time_ms, row);
+    }
+    case 'stepsPerSecond': {
+      const analytics = getImageAnalytics(image);
+      return matchesNumberRow(analytics?.steps_per_second, row);
+    }
+    case 'vramPeakMb': {
+      const analytics = getImageAnalytics(image);
+      return matchesNumberRow(analytics?.vram_peak_mb, row);
+    }
     case 'telemetry': {
       const hasTelemetry = hasTelemetryData(image);
       return row.operator === 'is_not' ? !hasTelemetry : hasTelemetry;
@@ -458,8 +531,12 @@ const matchesConditionRow = (image: IndexedImage, row: AutomationConditionRow): 
   }
 };
 
-export function imageMatchesAutomationRule(image: IndexedImage, rule: AutomationRule): boolean {
-  if (!rule.enabled) {
+export function imageMatchesAutomationRule(
+  image: IndexedImage,
+  rule: AutomationRule,
+  options?: { ignoreEnabled?: boolean },
+): boolean {
+  if (!options?.ignoreEnabled && !rule.enabled) {
     return false;
   }
 
@@ -531,6 +608,7 @@ export function applyAutomationRuleToImages(
   images: IndexedImage[],
   annotations: Map<string, ImageAnnotations>,
   collections: SmartCollection[],
+  options?: { ignoreEnabled?: boolean },
 ): AutomationRuleApplyResult {
   const matchedImageIds: string[] = [];
   const updatedAnnotations: ImageAnnotations[] = [];
@@ -549,7 +627,7 @@ export function applyAutomationRuleToImages(
   let collectionChangeCount = 0;
 
   for (const image of images) {
-    if (!imageMatchesAutomationRule(image, rule)) {
+    if (!imageMatchesAutomationRule(image, rule, options)) {
       continue;
     }
 
@@ -601,8 +679,9 @@ export function previewAutomationRule(
   images: IndexedImage[],
   annotations: Map<string, ImageAnnotations>,
   collections: SmartCollection[],
+  options?: { ignoreEnabled?: boolean },
 ): AutomationRulePreview {
-  const result = applyAutomationRuleToImages(rule, images, annotations, collections);
+  const result = applyAutomationRuleToImages(rule, images, annotations, collections, options);
   return {
     matchedImageIds: result.matchedImageIds,
     matchCount: result.matchCount,
