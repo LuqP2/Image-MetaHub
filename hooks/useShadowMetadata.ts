@@ -6,6 +6,7 @@ import {
   saveShadowMetadata as saveToStorage,
   deleteShadowMetadata as deleteFromStorage,
 } from '../services/imageAnnotationsStorage';
+import { applyShadowMetadataUpdates } from '../utils/editableMetadata';
 
 export function useShadowMetadata(imageId?: string) {
   const [metadata, setMetadata] = useState<ShadowMetadata | null>(null);
@@ -54,13 +55,11 @@ export function useShadowMetadata(imageId?: string) {
       if (!imageId) return;
 
       try {
-        // Merge existing with updates
-        const newMetadata: ShadowMetadata = {
+        const newMetadata = applyShadowMetadataUpdates(metadata, {
+          ...updates,
           imageId,
           updatedAt: Date.now(),
-          ...(metadata || {}),
-          ...updates,
-        };
+        });
 
         await saveToStorage(newMetadata);
         setMetadata(newMetadata);

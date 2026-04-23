@@ -93,6 +93,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const activeExportIdRef = useRef<string | null>(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
     if (!hasSelected && source === 'selected') {
@@ -101,7 +102,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   }, [hasSelected, source]);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setStatus(null);
       setIsExporting(false);
       setSource(resolveDefaultSource(hasSelected, preferredSource));
@@ -113,7 +114,8 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setExportPath(null);
       setIsCancelling(false);
     }
-  }, [isOpen, hasSelected, preferredSource, requestedImageIds]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, hasSelected, preferredSource]);
 
   useEffect(() => {
     activeExportIdRef.current = activeExportId;

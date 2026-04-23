@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+
+
+### Improved
+
+- **Viewer Metadata Actions**: Image Modal and Image Preview Sidebar now share clearer entry points for editing metadata, exporting edited copies, exporting without metadata, and switching between original and edited metadata views.
+- **Export Pipeline Consistency**: Unified desktop export handling behind a single request model so regular export, batch export, metadata stripping, and metadata rewrite all follow the same scope-aware workflow.
+- **MetaHub Standard Metadata Compatibility**: Standardized exported metadata payloads so files saved from edited metadata remain parseable by the app and keep compatibility with A1111-style generation parameter import.
+
 ## [0.15.0] - 2026-04-22
 
 ### Added
@@ -13,8 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Find Similar + Compare Flow**: Added a new `Find similar...` workflow in the grid, table, Image Modal, and Model View for finding prompt matches and related images across checkpoints, then sending the results directly into Compare Mode.
 - **Slideshow Mode**: Added fullscreen slideshow playback for the current selection or active browse scope, with keyboard controls plus configurable interval and filename overlay settings.
 - **Audio Library Support**: Added indexing, metadata extraction, filtering, library views, and in-app playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
-- **Image Rename Workflows**: Added inline rename in the grid plus rename actions in grid/table context menus and the Image Modal, while preserving subfolders and original extensions.
-- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, including nested folders and symlinked or aliased destinations.
+- **Editable Metadata Workflow**: Added a metadata editor for normalized generation fields in the viewer, including prompt, negative prompt, model, resources/LoRAs, seed, steps, CFG, sampler, scheduler, dimensions, and notes, while keeping edits local and reversible through shadow metadata.
 
 ### Improved
 
@@ -23,7 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windowed Viewer UX**: Floating image windows are more reliable around focus, activation, dragging, offscreen recovery, footer layering, sidebar resizing, and optional minimize/restore motion.
 - **Selection and Navigation Scope**: Opening images from the grid, table, stacks, collections, or background-open actions now preserves multi-selection and keeps navigation tied to the active scope.
 - **Tagging and Filtering Workflow**: Added clear buttons to facet searches, kept mixed-selection tags available in batch tagging, and allowed clicking existing batch-tag chips to apply that tag to the full selection.
-- **Large Library Responsiveness**: Improved worst-case Smart Library clustering behavior and added optional performance diagnostics for troubleshooting search, grid, thumbnail, and viewer responsiveness.
+- **Image Rename Workflows**: Added inline rename in the grid plus rename actions in grid/table context menus and the Image Modal, while preserving subfolders and original extensions.
+- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, including nested folders and symlinked or aliased destinations.
+- **Unified Export Metadata Policies**: Added a shared export flow for single-image and batch export with metadata policies to preserve original metadata, strip metadata entirely, or save a standardized `Image MetaHub + A1111` compatible PNG copy.
+- **Large Library Responsiveness**: Improved Smart Library clustering behavior and added optional performance diagnostics for troubleshooting search, grid, thumbnail, and viewer responsiveness.
 
 ### Fixed
 

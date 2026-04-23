@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Plus, Trash2, Save, Copy, Clipboard, RefreshCw } from 'lucide-react';
 import { ShadowMetadata, ShadowResource } from '../types';
+import { applyShadowMetadataUpdates } from '../utils/editableMetadata';
 
 const EDITABLE_METADATA_SCHEMA = 'imagemetahub/editable-metadata';
 const EDITABLE_METADATA_VERSION = 1;
@@ -130,6 +131,27 @@ const normalizeTags = (value: unknown): string[] | undefined => {
 
 const formatTags = (tags?: string[]): string => (tags && tags.length > 0 ? tags.join(', ') : '');
 
+const EDITABLE_METADATA_KEYS: Array<keyof MetadataEditorDraft> = [
+  'prompt',
+  'negativePrompt',
+  'seed',
+  'width',
+  'height',
+  'duration',
+  'model',
+  'steps',
+  'cfg_scale',
+  'clip_skip',
+  'sampler',
+  'scheduler',
+  'generator',
+  'version',
+  'module',
+  'tags',
+  'notes',
+  'resources',
+];
+
 const syncPrimaryModelResource = (
   resources: ShadowResource[],
   modelName?: string
@@ -198,8 +220,10 @@ const coerceMetadataDraft = (
 
 const createPortableMetadata = (
   draft: MetadataEditorDraft,
-  tagsText: string
+  tagsText: string,
+  options?: { preserveCleared?: boolean }
 ): MetadataEditorDraft => {
+  const preserveCleared = options?.preserveCleared === true;
   const portableResources = syncPrimaryModelResource(
     sanitizeResources(draft.resources),
     normalizeOptionalText(draft.model)
@@ -229,25 +253,60 @@ const createPortableMetadata = (
     updatedAt: Date.now(),
   };
 
-  if (!normalizedDraft.prompt) delete normalizedDraft.prompt;
-  if (!normalizedDraft.negativePrompt) delete normalizedDraft.negativePrompt;
-  if (normalizedDraft.seed === undefined) delete normalizedDraft.seed;
-  if (normalizedDraft.width === undefined) delete normalizedDraft.width;
-  if (normalizedDraft.height === undefined) delete normalizedDraft.height;
-  if (normalizedDraft.duration === undefined) delete normalizedDraft.duration;
-  if (!normalizedDraft.model) delete normalizedDraft.model;
-  if (normalizedDraft.steps === undefined) delete normalizedDraft.steps;
-  if (normalizedDraft.cfg_scale === undefined) delete normalizedDraft.cfg_scale;
-  if (normalizedDraft.clip_skip === undefined) delete normalizedDraft.clip_skip;
-  if (!normalizedDraft.sampler) delete normalizedDraft.sampler;
-  if (!normalizedDraft.scheduler) delete normalizedDraft.scheduler;
-  if (!normalizedDraft.generator) delete normalizedDraft.generator;
-  if (!normalizedDraft.version) delete normalizedDraft.version;
-  if (!normalizedDraft.module) delete normalizedDraft.module;
-  if (!normalizedDraft.tags || normalizedDraft.tags.length === 0) delete normalizedDraft.tags;
-  if (!normalizedDraft.notes) delete normalizedDraft.notes;
+  if (!preserveCleared) {
+    if (!normalizedDraft.prompt) delete normalizedDraft.prompt;
+    if (!normalizedDraft.negativePrompt) delete normalizedDraft.negativePrompt;
+    if (normalizedDraft.seed === undefined) delete normalizedDraft.seed;
+    if (normalizedDraft.width === undefined) delete normalizedDraft.width;
+    if (normalizedDraft.height === undefined) delete normalizedDraft.height;
+    if (normalizedDraft.duration === undefined) delete normalizedDraft.duration;
+    if (!normalizedDraft.model) delete normalizedDraft.model;
+    if (normalizedDraft.steps === undefined) delete normalizedDraft.steps;
+    if (normalizedDraft.cfg_scale === undefined) delete normalizedDraft.cfg_scale;
+    if (normalizedDraft.clip_skip === undefined) delete normalizedDraft.clip_skip;
+    if (!normalizedDraft.sampler) delete normalizedDraft.sampler;
+    if (!normalizedDraft.scheduler) delete normalizedDraft.scheduler;
+    if (!normalizedDraft.generator) delete normalizedDraft.generator;
+    if (!normalizedDraft.version) delete normalizedDraft.version;
+    if (!normalizedDraft.module) delete normalizedDraft.module;
+    if (!normalizedDraft.tags || normalizedDraft.tags.length === 0) delete normalizedDraft.tags;
+    if (!normalizedDraft.notes) delete normalizedDraft.notes;
+  }
 
   return normalizedDraft;
+};
+
+const buildShadowMetadataReplacement = (
+  initialMetadata: MetadataEditorDraft | null,
+  draft: MetadataEditorDraft,
+  tagsText: string,
+): MetadataEditorDraft => {
+  const normalizedDraft = createPortableMetadata(draft, tagsText, { preserveCleared: true });
+  const initialDraft = coerceMetadataDraft(initialMetadata, draft.imageId);
+  const replacement: Record<string, unknown> = {
+    ...normalizedDraft,
+    imageId: draft.imageId,
+    updatedAt: Date.now(),
+  };
+
+  for (const key of EDITABLE_METADATA_KEYS) {
+    const currentValue = normalizedDraft[key];
+    const initialValue = initialDraft[key];
+    const hadInitialValue =
+      Array.isArray(initialValue)
+        ? initialValue.length > 0
+        : typeof initialValue === 'string'
+          ? initialValue.trim().length > 0
+          : typeof initialValue === 'number'
+            ? Number.isFinite(initialValue)
+            : Boolean(initialValue);
+
+    if (currentValue === undefined && hadInitialValue) {
+      replacement[key] = null;
+    }
+  }
+
+  return replacement as unknown as MetadataEditorDraft;
 };
 
 const serializeEditableMetadata = (draft: MetadataEditorDraft, tagsText: string): string => {
@@ -340,12 +399,7 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
     setStatus(null);
 
     try {
-      const normalizedDraft = createPortableMetadata(draft, tagsText);
-      const nextMetadata: MetadataEditorDraft = {
-        ...normalizedDraft,
-        imageId,
-        updatedAt: Date.now(),
-      };
+      const nextMetadata = buildShadowMetadataReplacement(initialMetadata, draft, tagsText);
 
       await onSave(nextMetadata);
       onClose();
@@ -500,12 +554,8 @@ export const MetadataEditorModal: React.FC<MetadataEditorModalProps> = ({
     setStatus(null);
 
     try {
-      const normalizedDraft = createPortableMetadata(draft, tagsText);
-      await onApplyToSelected({
-        ...normalizedDraft,
-        imageId,
-        updatedAt: Date.now(),
-      });
+      const nextMetadata = buildShadowMetadataReplacement(initialMetadata, draft, tagsText);
+      await onApplyToSelected(nextMetadata);
       setStatus({
         tone: 'success',
         text: `Applied editable metadata to ${selectedImageCount} selected image${selectedImageCount === 1 ? '' : 's'}.`,

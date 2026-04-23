@@ -146,6 +146,33 @@ export const sanitizeEditableMetadataFields = (
   };
 };
 
+export const applyShadowMetadataUpdates = (
+  existing: ShadowMetadata | null | undefined,
+  updates: Partial<EditableMetadataFields> & { imageId?: string; updatedAt?: number },
+): ShadowMetadata => {
+  const nextMetadata: Record<string, unknown> = {
+    ...(existing ?? {}),
+  };
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (key === 'imageId' || key === 'updatedAt') {
+      continue;
+    }
+
+    if (value === null || value === undefined) {
+      delete nextMetadata[key];
+      continue;
+    }
+
+    nextMetadata[key] = value;
+  }
+
+  nextMetadata.imageId = typeof updates.imageId === 'string' && updates.imageId ? updates.imageId : (existing?.imageId ?? '');
+  nextMetadata.updatedAt = Number.isFinite(updates.updatedAt) ? updates.updatedAt : Date.now();
+
+  return nextMetadata as unknown as ShadowMetadata;
+};
+
 const getMetadataNotes = (metadata?: BaseMetadata | null): string | undefined => {
   if (!metadata) {
     return undefined;

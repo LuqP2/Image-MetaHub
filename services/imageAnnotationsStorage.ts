@@ -1327,8 +1327,12 @@ export async function bulkSaveShadowMetadata(metadataRecords: ShadowMetadata[]):
     const store = transaction.objectStore(SHADOW_METADATA_STORE_NAME);
 
     for (const record of metadataRecords) {
+      const cleanedRecord = Object.fromEntries(
+        Object.entries(record).filter(([, value]) => value !== null && value !== undefined),
+      ) as ShadowMetadata;
+
       store.put({
-        ...record,
+        ...cleanedRecord,
         updatedAt: Date.now(),
       });
     }
