@@ -57,6 +57,7 @@ import {
     recordPerformanceCounter,
     recordPerformanceDuration,
 } from '../utils/performanceDiagnostics';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
@@ -624,6 +625,54 @@ const getImageAnalyticsSnapshot = (image: IndexedImage) => {
 const getImageGenerationType = (image: IndexedImage): 'txt2img' | 'img2img' | null => {
     const generationType = image.metadata?.normalizedMetadata?.generationType;
     return generationType === 'txt2img' || generationType === 'img2img' ? generationType : null;
+};
+
+type ElectronFileHandleLike = FileSystemFileHandle & {
+    _filePath?: string;
+};
+
+const replaceAbsoluteFileName = (filePath: string, nextFileName: string): string => {
+    if (!filePath) {
+        return filePath;
+    }
+
+    return filePath.replace(/[^\\/]+$/, nextFileName);
+};
+
+const createRenamedFileHandle = (
+    handle: FileSystemFileHandle,
+    nextFileName: string,
+): FileSystemFileHandle => {
+    const nextHandle = {
+        ...(handle as Record<string, unknown>),
+        name: nextFileName,
+    } as ElectronFileHandleLike;
+
+    const electronAPI = typeof window !== 'undefined' ? (window as Window & { electronAPI?: { readFile?: (filePath: string) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }> } }).electronAPI : undefined;
+    const currentFilePath = typeof nextHandle._filePath === 'string' ? nextHandle._filePath : null;
+
+    if (!currentFilePath || typeof electronAPI?.readFile !== 'function') {
+        return nextHandle as FileSystemFileHandle;
+    }
+
+    const nextFilePath = replaceAbsoluteFileName(currentFilePath, nextFileName);
+
+    return {
+        ...nextHandle,
+        _filePath: nextFilePath,
+        getFile: async () => {
+            const fileResult = await electronAPI.readFile!(nextFilePath);
+            if (!fileResult.success || !fileResult.data) {
+                throw new Error(fileResult.error || `Failed to read file: ${nextFileName}`);
+            }
+
+            const freshData = new Uint8Array(fileResult.data);
+            return new File([freshData as any], nextFileName, {
+                type: inferMimeTypeFromName(nextFileName),
+                lastModified: Date.now(),
+            });
+        },
+    } as FileSystemFileHandle;
 };
 
 const normalizeLoraName = (
@@ -3045,10 +3094,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                     ...sourceImage,
                     id: nextImageId,
                     name: normalizedRelativePath,
-                    handle: {
-                        ...(sourceImage.handle as any),
-                        name: nextFileName,
-                    } as FileSystemFileHandle,
+                    handle: createRenamedFileHandle(sourceImage.handle, nextFileName),
                 };
                 renamedImage = nextImage;
                 thumbnailVersionKeyToClear = imageId !== nextImageId

@@ -9,6 +9,12 @@ vi.mock('../services/folderSelectionStorage', () => ({
   saveExcludedFolders: vi.fn().mockResolvedValue(undefined),
 }));
 
+declare global {
+  interface Window {
+    electronAPI?: any;
+  }
+}
+
 const createImage = (id: string, name: string): IndexedImage => ({
   id,
   name,
@@ -52,6 +58,7 @@ const createCluster = (overrides: Partial<ImageCluster>): ImageCluster => ({
 describe('renameImageRecord', () => {
   beforeEach(() => {
     useImageStore.getState().resetState();
+    delete window.electronAPI;
   });
 
   it('remaps collection image references when the image id changes', () => {
@@ -157,5 +164,36 @@ describe('renameImageRecord', () => {
       thumbnailStatus: 'loaded',
       thumbnailError: null,
     });
+  });
+
+  it('rebuilds Electron file handles so renamed images point to the new absolute path', async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      success: true,
+      data: new Uint8Array([1, 2, 3]).buffer,
+    });
+    window.electronAPI = { readFile };
+
+    const image: IndexedImage = {
+      ...createImage('dir-1::old.png', 'old.png'),
+      handle: {
+        name: 'old.png',
+        kind: 'file',
+        _filePath: 'D:/library/old.png',
+        getFile: async () => new File([new Uint8Array([9])], 'old.png', { type: 'image/png' }),
+      } as any,
+    };
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+    } as any);
+
+    const renamedImage = useImageStore.getState().renameImageRecord('dir-1::old.png', 'new.png');
+
+    expect((renamedImage?.handle as any)?._filePath).toBe('D:/library/new.png');
+
+    const renamedFile = await renamedImage!.handle.getFile();
+    expect(readFile).toHaveBeenCalledWith('D:/library/new.png');
+    expect(renamedFile.name).toBe('new.png');
   });
 });
