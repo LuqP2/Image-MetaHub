@@ -1398,6 +1398,11 @@ function setupFileOperationHandlers() {
 
   const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const PNG_EXPORTABLE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+  const PNG_METADATA_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt', 'eXIf', 'tIME']);
+  const WEBP_METADATA_CHUNKS = new Set(['EXIF', 'XMP ']);
+  const WEBP_VP8X_EXIF_FLAG = 0x08;
+  const WEBP_VP8X_XMP_FLAG = 0x04;
+  const activeCanceledExportIds = new Set();
 
   const createCrc32Table = () => {
     const table = new Uint32Array(256);
@@ -1480,6 +1485,205 @@ function setupFileOperationHandlers() {
     }
 
     throw new Error('PNG IEND chunk not found.');
+  };
+
+  const stripMetadataFromPngBuffer = (pngBuffer) => {
+    if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length < PNG_SIGNATURE.length + 12) {
+      throw new Error('Invalid PNG buffer.');
+    }
+
+    if (!pngBuffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new Error('PNG signature missing.');
+    }
+
+    const outputChunks = [PNG_SIGNATURE];
+    let offset = PNG_SIGNATURE.length;
+
+    while (offset + 12 <= pngBuffer.length) {
+      const chunkLength = pngBuffer.readUInt32BE(offset);
+      const chunkTotalLength = chunkLength + 12;
+      if (offset + chunkTotalLength > pngBuffer.length) {
+        throw new Error('Corrupted PNG chunk layout.');
+      }
+
+      const chunkType = pngBuffer.subarray(offset + 4, offset + 8).toString('ascii');
+      const chunkBuffer = pngBuffer.subarray(offset, offset + chunkTotalLength);
+
+      if (!PNG_METADATA_CHUNKS.has(chunkType)) {
+        outputChunks.push(chunkBuffer);
+      }
+
+      offset += chunkTotalLength;
+
+      if (chunkType === 'IEND') {
+        return Buffer.concat(outputChunks);
+      }
+    }
+
+    throw new Error('PNG IEND chunk not found.');
+  };
+
+  const isJpegMarkerStandalone = (marker) => marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7);
+
+  const shouldKeepJpegAppSegment = (marker, segmentData) => {
+    if (marker === 0xe0) {
+      return (
+        segmentData.subarray(0, 5).equals(Buffer.from('JFIF\0', 'binary')) ||
+        segmentData.subarray(0, 5).equals(Buffer.from('JFXX\0', 'binary'))
+      );
+    }
+
+    if (marker === 0xe2) {
+      return segmentData.subarray(0, 12).equals(Buffer.from('ICC_PROFILE\0', 'binary'));
+    }
+
+    if (marker === 0xee) {
+      return segmentData.subarray(0, 5).equals(Buffer.from('Adobe', 'binary'));
+    }
+
+    return false;
+  };
+
+  const stripMetadataFromJpegBuffer = (jpegBuffer) => {
+    if (!Buffer.isBuffer(jpegBuffer) || jpegBuffer.length < 4) {
+      throw new Error('Invalid JPEG buffer.');
+    }
+
+    if (jpegBuffer[0] !== 0xff || jpegBuffer[1] !== 0xd8) {
+      throw new Error('JPEG SOI marker missing.');
+    }
+
+    const outputChunks = [jpegBuffer.subarray(0, 2)];
+    let offset = 2;
+
+    while (offset < jpegBuffer.length) {
+      if (jpegBuffer[offset] !== 0xff) {
+        outputChunks.push(jpegBuffer.subarray(offset));
+        break;
+      }
+
+      let markerOffset = offset + 1;
+      while (markerOffset < jpegBuffer.length && jpegBuffer[markerOffset] === 0xff) {
+        markerOffset += 1;
+      }
+
+      if (markerOffset >= jpegBuffer.length) {
+        break;
+      }
+
+      const marker = jpegBuffer[markerOffset];
+      const segmentStart = markerOffset - 1;
+
+      if (marker === 0xd9) {
+        outputChunks.push(jpegBuffer.subarray(segmentStart, markerOffset + 1));
+        break;
+      }
+
+      if (marker === 0xda) {
+        outputChunks.push(jpegBuffer.subarray(segmentStart));
+        break;
+      }
+
+      if (isJpegMarkerStandalone(marker)) {
+        outputChunks.push(jpegBuffer.subarray(segmentStart, markerOffset + 1));
+        offset = markerOffset + 1;
+        continue;
+      }
+
+      if (markerOffset + 2 >= jpegBuffer.length) {
+        throw new Error('Corrupted JPEG segment length.');
+      }
+
+      const segmentLength = jpegBuffer.readUInt16BE(markerOffset + 1);
+      const segmentEnd = markerOffset + 1 + segmentLength;
+      if (segmentLength < 2 || segmentEnd > jpegBuffer.length) {
+        throw new Error('Corrupted JPEG segment bounds.');
+      }
+
+      const fullSegment = jpegBuffer.subarray(segmentStart, segmentEnd);
+      const segmentData = jpegBuffer.subarray(markerOffset + 3, segmentEnd);
+      const isAppMarker = marker >= 0xe0 && marker <= 0xef;
+      const shouldDrop =
+        marker === 0xfe ||
+        (isAppMarker && !shouldKeepJpegAppSegment(marker, segmentData));
+
+      if (!shouldDrop) {
+        outputChunks.push(fullSegment);
+      }
+
+      offset = segmentEnd;
+    }
+
+    return Buffer.concat(outputChunks);
+  };
+
+  const createRiffChunk = (type, data) => {
+    const typeBuffer = Buffer.from(type, 'ascii');
+    const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    const header = Buffer.alloc(8);
+    typeBuffer.copy(header, 0);
+    header.writeUInt32LE(dataBuffer.length, 4);
+    const padding = dataBuffer.length % 2 === 1 ? Buffer.from([0]) : Buffer.alloc(0);
+    return Buffer.concat([header, dataBuffer, padding]);
+  };
+
+  const stripMetadataFromWebpBuffer = (webpBuffer) => {
+    if (!Buffer.isBuffer(webpBuffer) || webpBuffer.length < 12) {
+      throw new Error('Invalid WebP buffer.');
+    }
+
+    if (webpBuffer.subarray(0, 4).toString('ascii') !== 'RIFF' || webpBuffer.subarray(8, 12).toString('ascii') !== 'WEBP') {
+      throw new Error('WEBP RIFF header missing.');
+    }
+
+    const outputChunks = [];
+    let offset = 12;
+
+    while (offset + 8 <= webpBuffer.length) {
+      const chunkType = webpBuffer.subarray(offset, offset + 4).toString('ascii');
+      const chunkSize = webpBuffer.readUInt32LE(offset + 4);
+      const paddedChunkSize = chunkSize + (chunkSize % 2);
+      const chunkEnd = offset + 8 + paddedChunkSize;
+
+      if (chunkEnd > webpBuffer.length) {
+        throw new Error('Corrupted WebP chunk bounds.');
+      }
+
+      if (!WEBP_METADATA_CHUNKS.has(chunkType)) {
+        if (chunkType === 'VP8X' && chunkSize >= 10) {
+          const vp8xData = Buffer.from(webpBuffer.subarray(offset + 8, offset + 8 + chunkSize));
+          vp8xData[0] &= ~(WEBP_VP8X_EXIF_FLAG | WEBP_VP8X_XMP_FLAG);
+          outputChunks.push(createRiffChunk('VP8X', vp8xData));
+        } else {
+          outputChunks.push(webpBuffer.subarray(offset, chunkEnd));
+        }
+      }
+
+      offset = chunkEnd;
+    }
+
+    const body = Buffer.concat(outputChunks);
+    const header = Buffer.alloc(12);
+    header.write('RIFF', 0, 'ascii');
+    header.writeUInt32LE(body.length + 4, 4);
+    header.write('WEBP', 8, 'ascii');
+    return Buffer.concat([header, body]);
+  };
+
+  const stripMetadataFromImageBuffer = (buffer, sourceExtension) => {
+    if (sourceExtension === '.png') {
+      return stripMetadataFromPngBuffer(buffer);
+    }
+
+    if (sourceExtension === '.jpg' || sourceExtension === '.jpeg') {
+      return stripMetadataFromJpegBuffer(buffer);
+    }
+
+    if (sourceExtension === '.webp') {
+      return stripMetadataFromWebpBuffer(buffer);
+    }
+
+    throw new Error('This file format can only be exported with metadata preserved in v1.');
   };
 
   const toLoraPayload = (loras) => {
@@ -1613,6 +1817,14 @@ function setupFileOperationHandlers() {
     const sourceExtension = path.extname(relativePath).toLowerCase();
     if (!PNG_EXPORTABLE_EXTENSIONS.has(sourceExtension)) {
       throw new Error('This file format can only be exported with metadata preserved in v1.');
+    }
+
+    if (metadataPolicy === 'strip' && targetFormat === 'original') {
+      const sourceBuffer = await fs.readFile(sourcePath);
+      return {
+        buffer: stripMetadataFromImageBuffer(sourceBuffer, sourceExtension),
+        fileName: path.basename(relativePath),
+      };
     }
 
     const image = nativeImage.createFromPath(sourcePath);
@@ -3064,6 +3276,15 @@ function setupFileOperationHandlers() {
     }
   });
 
+  ipcMain.handle('cancel-export-batch', async (event, { exportId } = {}) => {
+    if (!exportId) {
+      return { success: false, error: 'No export ID provided.' };
+    }
+
+    activeCanceledExportIds.add(String(exportId));
+    return { success: true };
+  });
+
   ipcMain.handle('export-images-batch', async (event, {
     files,
     destDir,
@@ -3112,10 +3333,17 @@ function setupFileOperationHandlers() {
           console.warn('[Electron] Failed to send export progress update', error);
         }
       };
+      const isCanceled = () => progressId ? activeCanceledExportIds.has(progressId) : false;
 
       sendProgress(true);
 
       for (const file of files) {
+        if (isCanceled()) {
+          stage = 'canceled';
+          sendProgress(true);
+          break;
+        }
+
         try {
           const sourcePath = path.resolve(file.directoryPath, file.relativePath);
           if (!isPathAllowed(sourcePath)) {
@@ -3143,8 +3371,21 @@ function setupFileOperationHandlers() {
         }
       }
 
-      stage = 'done';
+      const wasCanceled = isCanceled();
+      stage = wasCanceled ? 'canceled' : 'done';
       sendProgress(true);
+      if (progressId) {
+        activeCanceledExportIds.delete(progressId);
+      }
+
+      if (wasCanceled) {
+        return {
+          success: false,
+          exportedCount,
+          failedCount,
+          error: 'Export canceled.',
+        };
+      }
 
       const success = exportedCount > 0;
       return {
@@ -3154,6 +3395,9 @@ function setupFileOperationHandlers() {
         error: success ? undefined : 'No files were exported.',
       };
     } catch (error) {
+      if (exportId) {
+        activeCanceledExportIds.delete(String(exportId));
+      }
       console.error('Error exporting images in batch:', error);
       return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
     }
@@ -3207,6 +3451,7 @@ function setupFileOperationHandlers() {
           console.warn('[Electron] Failed to send export progress update', error);
         }
       };
+      const isCanceled = () => progressId ? activeCanceledExportIds.has(progressId) : false;
 
       const output = fsSync.createWriteStream(destZipPath);
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -3222,6 +3467,14 @@ function setupFileOperationHandlers() {
       sendProgress(true);
 
       for (const file of files) {
+        if (isCanceled()) {
+          stage = 'canceled';
+          sendProgress(true);
+          archive.abort();
+          output.destroy();
+          break;
+        }
+
         try {
           const sourcePath = path.resolve(file.directoryPath, file.relativePath);
           if (!isPathAllowed(sourcePath)) {
@@ -3248,6 +3501,22 @@ function setupFileOperationHandlers() {
         }
       }
 
+      const wasCanceled = isCanceled();
+      if (wasCanceled) {
+        try {
+          await fs.rm(destZipPath, { force: true });
+        } catch {}
+        if (progressId) {
+          activeCanceledExportIds.delete(progressId);
+        }
+        return {
+          success: false,
+          exportedCount,
+          failedCount,
+          error: 'Export canceled.',
+        };
+      }
+
       stage = 'finalizing';
       sendProgress(true);
 
@@ -3256,6 +3525,9 @@ function setupFileOperationHandlers() {
 
       stage = 'done';
       sendProgress(true);
+      if (progressId) {
+        activeCanceledExportIds.delete(progressId);
+      }
 
       const success = exportedCount > 0;
       return {
@@ -3265,6 +3537,9 @@ function setupFileOperationHandlers() {
         error: success ? undefined : 'No files were exported.',
       };
     } catch (error) {
+      if (exportId) {
+        activeCanceledExportIds.delete(String(exportId));
+      }
       console.error('Error exporting images to ZIP:', error);
       return { success: false, error: error.message, exportedCount: 0, failedCount: 0 };
     }

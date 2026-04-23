@@ -91,6 +91,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   const [progress, setProgress] = useState<ExportBatchProgress | null>(null);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
   const activeExportIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -110,6 +111,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setProgress(null);
       setActiveExportId(null);
       setExportPath(null);
+      setIsCancelling(false);
     }
   }, [isOpen, hasSelected, preferredSource, requestedImageIds]);
 
@@ -154,6 +156,28 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     }
   };
 
+  const handleRequestClose = async () => {
+    if (!isExporting) {
+      onClose();
+      return;
+    }
+
+    const exportId = activeExportIdRef.current;
+    if (!exportId || !window.electronAPI?.cancelBatchExport || isCancelling) {
+      return;
+    }
+
+    setIsCancelling(true);
+    setStatus({ type: 'error', message: 'Canceling export...' });
+
+    try {
+      await window.electronAPI.cancelBatchExport({ exportId });
+    } catch (error: any) {
+      setStatus({ type: 'error', message: error?.message || 'Failed to cancel export.' });
+      setIsCancelling(false);
+    }
+  };
+
   const handleExport = async () => {
     if (!window.electronAPI) {
       setStatus({ type: 'error', message: 'Export is only available in the desktop app.' });
@@ -192,6 +216,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     }
 
     setIsExporting(true);
+    setIsCancelling(false);
     setStatus(null);
     setExportPath(null);
 
@@ -222,7 +247,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           metadataPolicy,
           applyShadowEdits,
           scope: getScopeFromSelection(source, files.length),
-          targetFormat: metadataPolicy === 'preserve' ? 'original' : 'png',
+          targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
         });
 
         if (!exportResult.success) {
@@ -265,7 +290,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           metadataPolicy,
           applyShadowEdits,
           scope: getScopeFromSelection(source, files.length),
-          targetFormat: metadataPolicy === 'preserve' ? 'original' : 'png',
+          targetFormat: metadataPolicy === 'metahub_standard' ? 'png' : 'original',
         });
 
         if (!exportResult.success) {
@@ -284,6 +309,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
     } finally {
       setIsExporting(false);
       setActiveExportId(null);
+      setIsCancelling(false);
     }
   };
 
@@ -300,10 +326,10 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             <h2 className="text-lg font-semibold text-white">Export Images</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { void handleRequestClose(); }}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            title="Close"
-            disabled={isExporting}
+            title={isExporting ? 'Cancel export' : 'Close'}
+            disabled={isCancelling}
           >
             <X className="w-4 h-4 text-gray-400" />
           </button>
@@ -421,7 +447,9 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
           <div className="bg-gray-800/70 border border-gray-700 rounded-lg p-3 text-sm text-gray-300">
             {isExporting && progress ? (
               <span>
-                {progress.stage === 'finalizing'
+                {progress.stage === 'canceled'
+                  ? 'Canceling export...'
+                  : progress.stage === 'finalizing'
                   ? 'Finalizing ZIP...'
                   : `Exporting ${progress.processed} of ${progress.total} images.`}
               </span>
@@ -438,7 +466,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
             )}
             {metadataPolicy !== 'preserve' && (
               <span className="block text-xs text-amber-300/90 mt-1">
-                Rewritten exports are saved as PNG copies for metadata safety and compatibility.
+                Metadata stripping keeps the original format for PNG, JPEG, and WebP when possible. MetaHub metadata export still saves PNG copies for compatibility.
               </span>
             )}
             {metadataPolicy !== 'preserve' && unsupportedRewriteCount > 0 && (
@@ -485,11 +513,11 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
         <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-700">
           <button
-            onClick={onClose}
-            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            disabled={isExporting}
+            onClick={() => { void handleRequestClose(); }}
+            className="px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-60"
+            disabled={isCancelling}
           >
-            Cancel
+            {isExporting ? (isCancelling ? 'Canceling...' : 'Cancel Export') : 'Cancel'}
           </button>
           <button
             onClick={handleExport}

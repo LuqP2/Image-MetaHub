@@ -33,7 +33,7 @@ export interface ExportBatchProgress {
   processed: number;
   exportedCount: number;
   failedCount: number;
-  stage: 'copying' | 'finalizing' | 'done';
+  stage: 'copying' | 'finalizing' | 'done' | 'canceled';
 }
 
 export type MetadataExportPolicy = 'preserve' | 'strip' | 'metahub_standard';
@@ -154,6 +154,7 @@ export interface ElectronAPI {
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: ExportBatchRequest & { destDir: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
   exportBatchToZip: (args: ExportBatchRequest & { destZipPath: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
+  cancelBatchExport: (args: { exportId: string }) => Promise<{ success: boolean; error?: string }>;
   transferIndexedImages: (args: {
     files: { directoryPath: string; relativePath: string }[];
     destDir: string;

@@ -142,6 +142,7 @@ const electronAPI = {
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
   exportBatchToFolder: (args) => ipcRenderer.invoke('export-images-batch', args),
   exportBatchToZip: (args) => ipcRenderer.invoke('export-images-zip', args),
+  cancelBatchExport: (args) => ipcRenderer.invoke('cancel-export-batch', args),
   transferIndexedImages: (args) => ipcRenderer.invoke('transfer-indexed-images', args),
   deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
   ensureDirectory: (dirPath) => ipcRenderer.invoke('ensure-directory', dirPath),
