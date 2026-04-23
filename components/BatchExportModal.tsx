@@ -104,10 +104,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   }, [hasSelected, source]);
 
   useEffect(() => {
-    if (restrictToRequestedSelection && source !== 'selected') {
+    // Only enforce 'selected' source when restricted AND images are actually available
+    // This prevents oscillation with the fallback effect below
+    if (restrictToRequestedSelection && hasSelected && source !== 'selected') {
       setSource('selected');
     }
-  }, [restrictToRequestedSelection, source]);
+  }, [restrictToRequestedSelection, hasSelected, source]);
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {

@@ -3482,15 +3482,22 @@ function setupFileOperationHandlers() {
             continue;
           }
 
-          const artifact = await createExportArtifact({
-            sourcePath,
-            relativePath: file.relativePath,
-            metadataPolicy,
-            targetFormat,
-            effectiveMetadata: file.effectiveMetadata,
-          });
-          const uniqueName = getUniqueName(artifact.fileName, usedNames);
-          archive.append(artifact.buffer, { name: uniqueName });
+          const uniqueName = getUniqueName(path.basename(file.relativePath), usedNames);
+          
+          // For preserved files, stream directly from disk to avoid buffering entire file in memory
+          if (metadataPolicy === 'preserve') {
+            archive.file(sourcePath, { name: uniqueName });
+          } else {
+            // For rewritten artifacts (strip, metahub_standard), process through createExportArtifact
+            const artifact = await createExportArtifact({
+              sourcePath,
+              relativePath: file.relativePath,
+              metadataPolicy,
+              targetFormat,
+              effectiveMetadata: file.effectiveMetadata,
+            });
+            archive.append(artifact.buffer, { name: uniqueName });
+          }
           exportedCount += 1;
         } catch (error) {
           console.warn('[Electron] Failed to export file to ZIP:', file?.relativePath, error);
