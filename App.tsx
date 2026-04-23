@@ -57,6 +57,7 @@ import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria } from
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
 import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
 import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
+import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 
 interface OpenImageModalState {
   modalId: string;
@@ -754,54 +755,10 @@ export default function App() {
     return normalizedPath.slice(0, lastSlash);
   };
 
-  const normalizeRelativeImageName = (value: string) => normalizeFolderPath(value).replace(/^\/+/, '');
-
   const resolveWatchedRemovalIds = useCallback((
     directory: Directory,
-    payload: {
-      files?: Array<{ name: string; path?: string; relativePath?: string }>;
-      folders?: Array<{ path?: string; relativePath?: string }>;
-    }
-  ) => {
-    const removedNames = new Set<string>();
-    for (const file of payload.files ?? []) {
-      removedNames.add(normalizeRelativeImageName(file.relativePath || file.name));
-    }
-
-    const removedFolders = (payload.folders ?? [])
-      .map((folder) => {
-        const relativePath = Object.prototype.hasOwnProperty.call(folder, 'relativePath')
-          ? folder.relativePath ?? ''
-          : (folder.path ? folder.path.replace(/\\/g, '/').slice(normalizeFolderPath(directory.path).length + 1) : null);
-        if (relativePath === null) {
-          return null;
-        }
-        return normalizeRelativeImageName(relativePath);
-      })
-      .filter((folder): folder is string => folder !== null);
-
-    const images = useImageStore.getState().images;
-    const removedIds = images
-      .filter((image) => {
-        if (image.directoryId !== directory.id) {
-          return false;
-        }
-
-        const imageName = normalizeRelativeImageName(image.name);
-        return removedFolders.includes('') ||
-          removedNames.has(imageName) ||
-          removedFolders.some((folder) => imageName === folder || imageName.startsWith(`${folder}/`));
-      })
-      .map((image) => image.id);
-
-    return {
-      removedIds,
-      removedNames: [
-        ...removedNames,
-        ...removedFolders,
-      ],
-    };
-  }, []);
+    payload: WatchedFilesRemovedPayload
+  ) => resolveWatchedRemovalIdsForDirectory(directory, payload, useImageStore.getState().images), []);
 
   // Listen for new images from file watcher
   useEffect(() => {
