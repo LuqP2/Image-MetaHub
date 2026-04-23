@@ -48,7 +48,7 @@ export interface ComfyUIResourceCatalog {
 
 export interface ComfyUIPromptNode {
   class_type: string;
-  inputs: Record<string, any>;
+  inputs: Record<string, unknown>;
   _meta?: {
     title?: string;
   };
@@ -60,7 +60,7 @@ export interface ComfyUIExecutionPayload {
   prompt: ComfyUIPromptGraph;
   client_id: string;
   extra_data?: {
-    extra_pnginfo?: Record<string, any>;
+    extra_pnginfo?: Record<string, unknown>;
   };
 }
 
@@ -149,6 +149,19 @@ const UNIQUE_MODEL_LOADERS: Array<{ node: string; inputKey: string; family: Comf
 ];
 
 const TEXT_INPUT_PREFERENCES = ['text', 'prompt', 'positive', 'negative', 'positive_prompt', 'negative_prompt'];
+type UnknownRecord = Record<string, unknown>;
+type WorkflowMetadata = BaseMetadata & {
+  cfgScale?: number;
+  denoise?: number;
+  batch_size?: number;
+  numberOfImages?: number;
+};
+type ComfyUIResourceCatalogInfoNode = {
+  input?: {
+    required?: Record<string, [unknown[]]>;
+  };
+};
+type ComfyUIResourceCatalogInfo = Record<string, ComfyUIResourceCatalogInfoNode>;
 
 function sanitizeJsonString(value: string): string {
   return value.replace(/\bNaN\b/g, 'null');
@@ -203,9 +216,13 @@ function isPromptGraph(value: unknown): value is ComfyUIPromptGraph {
     return false;
   }
 
-  return Object.values(value as Record<string, any>).some(
-    (node) => !!node && typeof node === 'object' && typeof node.class_type === 'string'
+  return Object.values(value as Record<string, unknown>).some(
+    (node) => isRecord(node) && typeof (node as UnknownRecord).class_type === 'string'
   );
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function getNodeIdFromConnection(value: unknown): string | null {
@@ -549,7 +566,7 @@ export function buildImageSourceReference(image: IndexedImage): SourceImageRefer
   };
 }
 
-export function buildComfyUIResourceCatalog(objectInfo: any): ComfyUIResourceCatalog {
+export function buildComfyUIResourceCatalog(objectInfo: ComfyUIResourceCatalogInfo | null | undefined): ComfyUIResourceCatalog {
   const models: ComfyUIModelResource[] = [];
   const loras = new Set<string>();
 
@@ -594,19 +611,28 @@ export function buildComfyUIResourceCatalog(objectInfo: any): ComfyUIResourceCat
   };
 }
 
-export function extractEmbeddedComfyWorkflow(source: IndexedImage | Record<string, any>): {
+export function extractEmbeddedComfyWorkflow(source: IndexedImage | UnknownRecord): {
   workflow: ComfyUIWorkflowUi | null;
   prompt: ComfyUIPromptGraph | null;
 } {
-  const metadata: Record<string, any> = 'metadata' in source ? ((source as IndexedImage).metadata as any) : source;
-  const rawMetaHub = parseMaybeJson<Record<string, any>>(metadata?.imagemetahub_data) || metadata?.imagemetahub_data || null;
+  const rawMetadata = 'metadata' in source
+    ? ((source as IndexedImage).metadata as UnknownRecord)
+    : (source as UnknownRecord);
+  const normalizedMetadata = isRecord(rawMetadata.normalizedMetadata)
+    ? rawMetadata.normalizedMetadata
+    : null;
+  const metadata = normalizedMetadata
+    ? { ...normalizedMetadata, ...rawMetadata }
+    : rawMetadata;
+  const rawMetaHubValue = metadata['imagemetahub_data'];
+  const rawMetaHub = parseMaybeJson<UnknownRecord>(rawMetaHubValue) || rawMetaHubValue || null;
 
   const workflow = parseMaybeJson<ComfyUIWorkflowUi>(
-    rawMetaHub?.workflow ?? metadata?.workflow
+    (isRecord(rawMetaHub) ? rawMetaHub['workflow'] : undefined) ?? metadata['workflow']
   );
 
   const prompt = parseMaybeJson<ComfyUIPromptGraph>(
-    rawMetaHub?.prompt_api ?? rawMetaHub?.prompt ?? metadata?.prompt
+    (isRecord(rawMetaHub) ? rawMetaHub['prompt_api'] ?? rawMetaHub['prompt'] : undefined) ?? metadata['prompt']
   );
 
   return {
@@ -615,7 +641,7 @@ export function extractEmbeddedComfyWorkflow(source: IndexedImage | Record<strin
   };
 }
 
-export function analyzeComfyWorkflow(source: IndexedImage | Record<string, any>, normalizedMetadata?: BaseMetadata): ComfyWorkflowAnalysis {
+export function analyzeComfyWorkflow(source: IndexedImage | UnknownRecord, normalizedMetadata?: BaseMetadata): ComfyWorkflowAnalysis {
   const embedded = extractEmbeddedComfyWorkflow(source);
   const warnings: string[] = [];
   const samplerTargets: string[] = [];
@@ -793,7 +819,7 @@ function ensureTimerNode(
       widgets_values: [],
       inputs: [],
       outputs: [],
-    } as any);
+    } as ComfyUIWorkflowUi['nodes'][number]);
   }
 
   return timerNodeId;
@@ -875,7 +901,7 @@ function ensureSaveNode(
       widgets_values: ['MetaHub_%date%_%time%_%counter%', 'PNG'],
       inputs: [],
       outputs: [],
-    } as any);
+    } as ComfyUIWorkflowUi['nodes'][number]);
   }
 
   return true;
@@ -886,8 +912,9 @@ function applyNumericOverrides(
   analysis: ComfyWorkflowAnalysis,
   metadata: BaseMetadata
 ): void {
-  const cfgScale = (metadata as any).cfgScale ?? metadata.cfg_scale;
-  const denoiseValue = (metadata as any).denoise;
+  const workflowMetadata = metadata as WorkflowMetadata;
+  const cfgScale = workflowMetadata.cfgScale ?? metadata.cfg_scale;
+  const denoiseValue = workflowMetadata.denoise;
   const resolvedSeed = resolveExecutionSeed(metadata.seed);
 
   for (const samplerNodeId of analysis.samplerTargets) {
@@ -925,7 +952,7 @@ function applyNumericOverrides(
     }
   }
 
-  const batchSizeRaw = (metadata as any).batch_size ?? (metadata as any).numberOfImages;
+  const batchSizeRaw = workflowMetadata.batch_size ?? workflowMetadata.numberOfImages;
   const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0
     ? Math.min(10, Math.floor(batchSizeRaw))
     : 1;
@@ -1154,7 +1181,7 @@ export async function prepareOriginalWorkflowForExecution(
     };
   }
 
-  const extraPngInfo: Record<string, any> = {
+  const extraPngInfo: Record<string, unknown> = {
     workflow: workflow || runtimeAnalysis.rawWorkflow || {},
     prompt,
     parent_image: buildImageSourceReference(options.image),
@@ -1182,7 +1209,7 @@ export function getWorkflowCopyPayload(
   image: IndexedImage,
   mode: ComfyUIWorkflowMode,
   metadata?: BaseMetadata
-): Record<string, any> {
+): Record<string, unknown> {
   const resolvedMetadata = metadata || (image.metadata?.normalizedMetadata as BaseMetadata | undefined);
   if (mode === 'original') {
     const embedded = extractEmbeddedComfyWorkflow(image);

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
+import { IndexedImage, Directory, ThumbnailStatus, ImageAnnotations, TagInfo, ImageCluster, TFIDFModel, AutoTag, IndexedImageTransferProgress, InclusionFilterMode, ImageRating, SmartCollection, AutomationRule, type AdvancedFilters, type FilterOptions, type SelectedFiltersUpdate, type TagMatchMode } from '../types';
 import { loadSelectedFolders, saveSelectedFolders, loadExcludedFolders, saveExcludedFolders } from '../services/folderSelectionStorage';
 import {
   loadAllAnnotations,
@@ -21,10 +21,22 @@ import {
   resolveSmartCollectionImages,
   saveSmartCollection,
 } from '../services/imageAnnotationsStorage';
+import {
+    deleteAutomationRule,
+    getAllAutomationRules,
+    normalizeAutomationRule,
+    saveAutomationRule,
+} from '../services/automationRulesStorage';
+import {
+    applyAutomationRuleToImages,
+    previewAutomationRule,
+    type AutomationRulePreview,
+} from '../services/automationRuleEngine';
 import { normalizeFacetValue, sanitizeIndexedImageFacets } from '../utils/facetNormalization';
 import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../utils/dateFilterUtils';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
 import { getImageGenerator, getImageGpuDevice, hasTelemetryData } from '../utils/analyticsUtils';
+import { resolveMediaType } from '../utils/mediaTypes.js';
 import { createCacheDebugSnapshot, traceCacheDebug } from '../utils/cacheDebugTrace';
 import { useLicenseStore } from './useLicenseStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -40,6 +52,12 @@ import {
 } from '../services/lineageRegistry';
 import { loadLineageRegistrySnapshot, saveLineageRegistrySnapshot } from '../services/lineageRegistryCache';
 import { MAX_RECENT_TAG_HISTORY } from '../utils/tagSuggestions';
+import {
+    isPerformanceDiagnosticsEnabled,
+    recordPerformanceCounter,
+    recordPerformanceDuration,
+} from '../utils/performanceDiagnostics';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 const RECENT_TAGS_STORAGE_KEY = 'image-metahub-recent-tags';
 const MAX_RECENT_TAGS = MAX_RECENT_TAG_HISTORY;
@@ -57,6 +75,108 @@ type DirectoryProgressState = {
     total: number;
 };
 
+type FacetCountMap = Map<string, number>;
+
+type DerivedFacetState = {
+    availableModels: string[];
+    availableLoras: string[];
+    availableSamplers: string[];
+    availableSchedulers: string[];
+    availableGenerators: string[];
+    availableGpuDevices: string[];
+    availableDimensions: string[];
+    modelFacetCounts: FacetCountMap;
+    loraFacetCounts: FacetCountMap;
+    samplerFacetCounts: FacetCountMap;
+    schedulerFacetCounts: FacetCountMap;
+};
+
+type SearchWorkerImage = {
+    id: string;
+    name: string;
+    relativePath: string;
+    directoryId: string;
+    directoryName: string;
+    metadataString: string;
+    prompt: string;
+    negativePrompt: string;
+    enrichmentState: 'catalog' | 'enriched' | '';
+    models: string[];
+    loraNames: string[];
+    sampler: string;
+    scheduler: string;
+    board: string;
+    dimensions: string;
+    lastModified: number;
+    steps: number | null;
+    cfgScale: number | null;
+    generationType: 'txt2img' | 'img2img' | null;
+    mediaType: 'image' | 'video' | 'audio';
+    generator: string;
+    gpuDevice: string | null;
+    hasTelemetry: boolean;
+    hasVerifiedTelemetry: boolean;
+    generationTimeMs: number | null;
+    stepsPerSecond: number | null;
+    vramPeakMb: number | null;
+    isFavorite: boolean;
+    rating: ImageRating | null;
+    tags: string[];
+    autoTags: string[];
+};
+
+type SearchWorkerCriteria = {
+    searchQuery: string;
+    selectedModels: string[];
+    excludedModels: string[];
+    selectedLoras: string[];
+    excludedLoras: string[];
+    selectedSamplers: string[];
+    excludedSamplers: string[];
+    selectedSchedulers: string[];
+    excludedSchedulers: string[];
+    selectedGenerators: string[];
+    excludedGenerators: string[];
+    selectedGpuDevices: string[];
+    excludedGpuDevices: string[];
+    selectedTags: string[];
+    selectedTagsMatchMode: TagMatchMode;
+    excludedTags: string[];
+    selectedAutoTags: string[];
+    excludedAutoTags: string[];
+    favoriteFilterMode: InclusionFilterMode;
+    selectedRatings: ImageRating[];
+    advancedFilters: AdvancedFilters;
+    sortOrder: ImageState['sortOrder'];
+    randomSeed: number;
+    selectedFolders: string[];
+    excludedFolders: string[];
+    includeSubfolders: boolean;
+    visibleDirectories: Array<{ id: string; path: string }>;
+    safeMode: {
+        enableSafeMode: boolean;
+        blurSensitiveImages: boolean;
+        sensitiveTags: string[];
+    };
+};
+
+type SearchWorkerResultPayload = {
+    filteredIds: string[];
+    facets: {
+        availableModels: string[];
+        availableLoras: string[];
+        availableSamplers: string[];
+        availableSchedulers: string[];
+        availableGenerators: string[];
+        availableGpuDevices: string[];
+        availableDimensions: string[];
+        modelFacetCounts: Array<[string, number]>;
+        loraFacetCounts: Array<[string, number]>;
+        samplerFacetCounts: Array<[string, number]>;
+        schedulerFacetCounts: Array<[string, number]>;
+    };
+};
+
 const DEFAULT_LINEAGE_BUILD_STATE: LineageBuildState = {
     status: 'idle',
     processed: 0,
@@ -66,6 +186,20 @@ const DEFAULT_LINEAGE_BUILD_STATE: LineageBuildState = {
     source: 'none',
     lastBuiltAt: null,
 };
+
+const createEmptyFacetState = (): DerivedFacetState => ({
+    availableModels: [],
+    availableLoras: [],
+    availableSamplers: [],
+    availableSchedulers: [],
+    availableGenerators: [],
+    availableGpuDevices: [],
+    availableDimensions: [],
+    modelFacetCounts: new Map(),
+    loraFacetCounts: new Map(),
+    samplerFacetCounts: new Map(),
+    schedulerFacetCounts: new Map(),
+});
 
 const markLineageBuildStateDirty = (state: LineageBuildState): LineageBuildState => ({
     ...state,
@@ -262,6 +396,128 @@ const syncCollectionCounts = (collections: SmartCollection[], images: IndexedIma
         ),
     );
 
+const uniqueIds = (imageIds: string[]): string[] =>
+    Array.from(new Set(imageIds.filter((imageId) => typeof imageId === 'string' && imageId.trim().length > 0)));
+
+const addImagesToCollectionRecord = (collection: SmartCollection, imageIds: string[]): SmartCollection => {
+    const nextImageIds = uniqueIds([...(collection.imageIds ?? []), ...imageIds]);
+    return normalizeSmartCollection(
+        {
+            ...collection,
+            imageIds: nextImageIds,
+            updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+    );
+};
+
+const remapCollectionImageReferences = (
+    collection: SmartCollection,
+    sourceImageId: string,
+    targetImageId: string,
+): SmartCollection => {
+    let changed = false;
+    const remapId = <T extends string | null | undefined>(imageId: T): T | string => {
+        if (imageId === sourceImageId) {
+            changed = true;
+            return targetImageId;
+        }
+        return imageId;
+    };
+    const remapIds = (imageIds?: string[]): string[] | undefined => {
+        if (!imageIds) {
+            return undefined;
+        }
+        if (!imageIds.includes(sourceImageId)) {
+            return imageIds;
+        }
+        changed = true;
+        return uniqueIds(imageIds.map((imageId) => imageId === sourceImageId ? targetImageId : imageId));
+    };
+
+    const nextCollection = {
+        ...collection,
+        coverImageId: remapId(collection.coverImageId),
+        thumbnailId: remapId(collection.thumbnailId),
+        imageIds: remapIds(collection.imageIds),
+        snapshotImageIds: remapIds(collection.snapshotImageIds),
+        excludedImageIds: remapIds(collection.excludedImageIds),
+    };
+
+    if (!changed) {
+        return collection;
+    }
+
+    return normalizeSmartCollection(
+        {
+            ...nextCollection,
+            updatedAt: Date.now(),
+        },
+        collection.sortIndex,
+    );
+};
+
+const remapImageId = (imageId: string, sourceImageId: string, targetImageId: string): string =>
+    imageId === sourceImageId ? targetImageId : imageId;
+
+const remapImageListReference = (
+    images: IndexedImage[] | null,
+    sourceImageId: string,
+    targetImage: IndexedImage,
+): IndexedImage[] | null => {
+    if (!images?.some((image) => image.id === sourceImageId)) {
+        return images;
+    }
+
+    return images.map((image) => image.id === sourceImageId ? targetImage : image);
+};
+
+const remapClusterImageReferences = (
+    cluster: ImageCluster,
+    sourceImageId: string,
+    targetImageId: string,
+): ImageCluster => {
+    if (!cluster.imageIds.includes(sourceImageId) && cluster.coverImageId !== sourceImageId) {
+        return cluster;
+    }
+
+    const imageIds = uniqueIds(cluster.imageIds.map((imageId) => remapImageId(imageId, sourceImageId, targetImageId)));
+    return {
+        ...cluster,
+        imageIds,
+        coverImageId: remapImageId(cluster.coverImageId, sourceImageId, targetImageId),
+        size: imageIds.length,
+        updatedAt: Date.now(),
+    };
+};
+
+const remapImageIdSet = (imageIds: Set<string>, sourceImageId: string, targetImageId: string): Set<string> => {
+    if (!imageIds.has(sourceImageId)) {
+        return imageIds;
+    }
+
+    const nextImageIds = new Set(imageIds);
+    nextImageIds.delete(sourceImageId);
+    nextImageIds.add(targetImageId);
+    return nextImageIds;
+};
+
+const remapThumbnailEntries = (
+    thumbnailEntries: Record<string, ThumbnailEntryState>,
+    sourceImageId: string,
+    targetImageId: string,
+): Record<string, ThumbnailEntryState> => {
+    const sourceEntry = thumbnailEntries[sourceImageId];
+    if (!sourceEntry || sourceImageId === targetImageId) {
+        return thumbnailEntries;
+    }
+
+    const nextThumbnailEntries = { ...thumbnailEntries };
+    delete nextThumbnailEntries[sourceImageId];
+    nextThumbnailEntries[targetImageId] = sourceEntry;
+    return nextThumbnailEntries;
+};
+
 const normalizePath = (path: string) => {
     if (!path) return '';
     return path.replace(/\\/g, '/').replace(/[\\/]+$/, '');
@@ -340,7 +596,7 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
     }
     if (image.loras?.length) {
         const loraNames = image.loras.map(lora => {
-            const normalized = normalizeFacetValue(lora);
+            const normalized = normalizeLoraName(typeof lora === 'string' ? lora : lora);
             return normalized ? normalized.toLowerCase() : '';
         }).filter(Boolean);
         if (loraNames.length > 0) {
@@ -358,6 +614,123 @@ const buildEnrichedSearchText = (image: IndexedImage): string => {
     }
 
     return segments.join(' ');
+};
+
+const getImageAnalyticsSnapshot = (image: IndexedImage) => {
+    return image.metadata?.normalizedMetadata?.analytics ??
+        (image.metadata?.normalizedMetadata as { _analytics?: Record<string, unknown> } | undefined)?._analytics ??
+        null;
+};
+
+const getImageGenerationType = (image: IndexedImage): 'txt2img' | 'img2img' | null => {
+    const generationType = image.metadata?.normalizedMetadata?.generationType;
+    return generationType === 'txt2img' || generationType === 'img2img' ? generationType : null;
+};
+
+type ElectronFileHandleLike = FileSystemFileHandle & {
+    _filePath?: string;
+};
+
+const replaceAbsoluteFileName = (filePath: string, nextFileName: string): string => {
+    if (!filePath) {
+        return filePath;
+    }
+
+    return filePath.replace(/[^\\/]+$/, nextFileName);
+};
+
+const createRenamedFileHandle = (
+    handle: FileSystemFileHandle,
+    nextFileName: string,
+): FileSystemFileHandle => {
+    const nextHandle = {
+        ...(handle as Record<string, unknown>),
+        name: nextFileName,
+    } as ElectronFileHandleLike;
+
+    const electronAPI = typeof window !== 'undefined' ? (window as Window & { electronAPI?: { readFile?: (filePath: string) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }> } }).electronAPI : undefined;
+    const currentFilePath = typeof nextHandle._filePath === 'string' ? nextHandle._filePath : null;
+
+    if (!currentFilePath || typeof electronAPI?.readFile !== 'function') {
+        return nextHandle as FileSystemFileHandle;
+    }
+
+    const nextFilePath = replaceAbsoluteFileName(currentFilePath, nextFileName);
+
+    return {
+        ...nextHandle,
+        _filePath: nextFilePath,
+        getFile: async () => {
+            const fileResult = await electronAPI.readFile!(nextFilePath);
+            if (!fileResult.success || !fileResult.data) {
+                throw new Error(fileResult.error || `Failed to read file: ${nextFileName}`);
+            }
+
+            const freshData = new Uint8Array(fileResult.data);
+            return new File([freshData as any], nextFileName, {
+                type: inferMimeTypeFromName(nextFileName),
+                lastModified: Date.now(),
+            });
+        },
+    } as FileSystemFileHandle;
+};
+
+const normalizeLoraName = (
+    value: string | { name?: string; model_name?: string } | null | undefined,
+): string | null => normalizeFacetValue(value);
+
+const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
+    const analytics = getImageAnalyticsSnapshot(image);
+    const generationTimeMs = typeof analytics?.generation_time_ms === 'number' ? analytics.generation_time_ms : null;
+    const stepsPerSecond = typeof analytics?.steps_per_second === 'number' ? analytics.steps_per_second : null;
+    const vramPeakMb = typeof analytics?.vram_peak_mb === 'number' ? analytics.vram_peak_mb : null;
+    const relativePath = getRelativeImagePath(image);
+    const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
+    const inferredMediaType = resolveMediaType(image.name, image.fileType);
+    const mediaType =
+        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+            ? metadataMediaType
+            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                ? inferredMediaType
+                : 'image';
+
+    return {
+        id: image.id,
+        name: image.name || '',
+        relativePath,
+        directoryId: image.directoryId || '',
+        directoryName: image.directoryName || '',
+        metadataString: image.metadataString ? String(image.metadataString) : '',
+        prompt: image.prompt ? String(image.prompt) : '',
+        negativePrompt: image.negativePrompt ? String(image.negativePrompt) : '',
+        enrichmentState: image.enrichmentState ?? '',
+        models: (image.models || [])
+            .map(model => normalizeFacetValue(model))
+            .filter((model): model is string => Boolean(model)),
+        loraNames: (image.loras || [])
+            .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+            .filter((lora): lora is string => Boolean(lora)),
+        sampler: normalizeFacetValue(image.sampler) ?? '',
+        scheduler: normalizeFacetValue(image.scheduler) ?? '',
+        board: image.board ? String(image.board) : '',
+        dimensions: normalizeFacetValue(image.dimensions) ?? '',
+        lastModified: image.lastModified,
+        steps: typeof image.steps === 'number' ? image.steps : null,
+        cfgScale: typeof image.cfgScale === 'number' ? image.cfgScale : null,
+        generationType: getImageGenerationType(image),
+        mediaType,
+        generator: getImageGenerator(image),
+        gpuDevice: getImageGpuDevice(image),
+        hasTelemetry: hasTelemetryData(image),
+        hasVerifiedTelemetry: hasVerifiedTelemetry(image),
+        generationTimeMs,
+        stepsPerSecond,
+        vramPeakMb,
+        isFavorite: image.isFavorite === true,
+        rating: image.rating ?? null,
+        tags: (image.tags || []).map(tag => String(tag).toLowerCase()),
+        autoTags: (image.autoTags || []).map(tag => String(tag).toLowerCase()),
+    };
 };
 
 interface ImageState {
@@ -390,6 +763,8 @@ interface ImageState {
   selectedImages: Set<string>;
   activeImageScope: IndexedImage[] | null;
   collections: SmartCollection[];
+  automationRules: AutomationRule[];
+  isAutomationRulesLoaded: boolean;
   activeCollectionId: string | null;
   previewImage: IndexedImage | null;
   focusedImageIndex: number | null;
@@ -411,6 +786,10 @@ interface ImageState {
   availableGenerators: string[];
   availableGpuDevices: string[];
   availableDimensions: string[];
+  modelFacetCounts: FacetCountMap;
+  loraFacetCounts: FacetCountMap;
+  samplerFacetCounts: FacetCountMap;
+  schedulerFacetCounts: FacetCountMap;
   selectedModels: string[];
   excludedModels: string[];
   selectedLoras: string[];
@@ -495,6 +874,7 @@ interface ImageState {
   removeImage: (imageId: string) => void;
   removeImages: (imageIds: string[]) => void;
   updateImage: (imageId: string, newName: string) => void;
+  renameImageRecord: (imageId: string, newRelativePath: string) => IndexedImage | null;
   clearImages: (directoryId?: string) => void;
   setImageThumbnail: (
     imageId: string,
@@ -521,9 +901,16 @@ interface ImageState {
   setSelectedImage: (image: IndexedImage | null) => void;
   setActiveImageScope: (images: IndexedImage[] | null) => void;
   loadCollections: () => Promise<void>;
+  loadAutomationRules: () => Promise<void>;
   createCollection: (collection: Omit<SmartCollection, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<SmartCollection>;
   updateCollection: (collectionId: string, updates: Partial<Omit<SmartCollection, 'id' | 'createdAt'>>) => Promise<SmartCollection | null>;
   deleteCollectionById: (collectionId: string) => Promise<void>;
+  createAutomationRule: (rule: Omit<AutomationRule, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<AutomationRule>;
+  updateAutomationRule: (ruleId: string, updates: Partial<Omit<AutomationRule, 'id' | 'createdAt'>>) => Promise<AutomationRule | null>;
+  deleteAutomationRuleById: (ruleId: string) => Promise<void>;
+  previewAutomationRule: (rule: AutomationRule, images?: IndexedImage[]) => AutomationRulePreview;
+  applyAutomationRuleNow: (ruleId: string, images?: IndexedImage[]) => Promise<AutomationRulePreview | null>;
+  applyEnabledAutomationRulesToImages: (images: IndexedImage[]) => Promise<AutomationRulePreview[]>;
   setActiveCollectionId: (collectionId: string | null) => void;
   reorderCollections: (orderedCollectionIds: string[]) => Promise<void>;
   addImagesToCollection: (collectionId: string, imageIds: string[]) => Promise<SmartCollection | null>;
@@ -637,6 +1024,12 @@ export const useImageStore = create<ImageState>((set, get) => {
     const MERGE_FLUSH_INTERVAL_INDEXING_LARGE_MS = 15000;
     const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
     const FILTER_RECOMPUTE_INDEXING_MS = 5000;
+    let searchWorker: Worker | null = null;
+    let cachedSearchWorkerImages: IndexedImage[] | null = null;
+    let cachedSearchWorkerDirectories: Directory[] | null = null;
+    let cachedSearchWorkerDataset: SearchWorkerImage[] | null = null;
+    let searchDatasetVersion = 0;
+    let latestSearchCriteriaKey = '';
 
     const clearPendingQueue = () => {
         pendingImagesQueue = [];
@@ -653,6 +1046,18 @@ export const useImageStore = create<ImageState>((set, get) => {
             clearTimeout(pendingFilterRecomputeTimer);
             pendingFilterRecomputeTimer = null;
         }
+    };
+
+    const invalidateSearchWorkerDataset = () => {
+        cachedSearchWorkerImages = null;
+        cachedSearchWorkerDirectories = null;
+        cachedSearchWorkerDataset = null;
+        searchDatasetVersion += 1;
+    };
+
+    const terminateSearchWorker = () => {
+        searchWorker?.terminate();
+        searchWorker = null;
     };
 
     const purgePendingDirectoryEntries = (directoryId: string) => {
@@ -793,56 +1198,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (isIndexing && !forceFullRecompute) {
                 const filtersActive = isFilteringActive(state);
                 let nextFilteredImages = state.filteredImages;
-                let availableFiltersUpdate: Partial<ImageState> = {};
 
                 if (!filtersActive) {
                     nextFilteredImages = merged;
-                    const models = new Set(state.availableModels);
-                    const loras = new Set(state.availableLoras);
-                    const samplers = new Set(state.availableSamplers);
-                    const schedulers = new Set(state.availableSchedulers);
-                    const generators = new Set(state.availableGenerators);
-                    const gpuDevices = new Set(state.availableGpuDevices);
-                    const dimensions = new Set(state.availableDimensions);
-
-                    for (const img of updates.values()) {
-                        img.models?.forEach(model => { if (typeof model === 'string' && model) models.add(model); });
-                        img.loras?.forEach(lora => {
-                            if (typeof lora === 'string' && lora) {
-                                loras.add(lora);
-                            } else if (lora && typeof lora === 'object' && lora.name) {
-                                loras.add(lora.name);
-                            }
-                        });
-                        if (img.sampler) {
-                            samplers.add(img.sampler);
-                        }
-                        if (img.scheduler) {
-                            schedulers.add(img.scheduler);
-                        }
-                        generators.add(getImageGenerator(img));
-                        const gpuDevice = getImageGpuDevice(img);
-                        if (gpuDevice) {
-                            gpuDevices.add(gpuDevice);
-                        }
-                        if (img.dimensions) {
-                            dimensions.add(img.dimensions);
-                        }
-                    }
-
-                    availableFiltersUpdate = {
-                        availableModels: Array.from(models),
-                        availableLoras: Array.from(loras),
-                        availableSamplers: Array.from(samplers),
-                        availableSchedulers: Array.from(schedulers),
-                        availableGenerators: Array.from(generators),
-                        availableGpuDevices: Array.from(gpuDevices),
-                        availableDimensions: Array.from(dimensions),
-                    };
                 } else {
                     nextFilteredImages = state.filteredImages.map(img => updates.get(img.id) ?? img);
                     scheduleFilterRecompute();
                 }
+
+                const derivedFacets = recalculateAvailableFilters(nextFilteredImages);
 
                 return {
                     ...state,
@@ -851,13 +1215,16 @@ export const useImageStore = create<ImageState>((set, get) => {
                     selectionTotalImages: merged.length,
                     selectionDirectoryCount: state.directories.length,
                     lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
-                    ...availableFiltersUpdate,
+                    ...derivedFacets,
                 };
             }
 
             return _updateState(state, merged);
         });
 
+        if (get().isAnnotationsLoaded) {
+            void get().importMetadataTags(updatesToMerge);
+        }
         maybeQueueLineageBuild(700);
 
         traceCacheDebug('store:flushPendingMerges', () => ({
@@ -905,6 +1272,169 @@ export const useImageStore = create<ImageState>((set, get) => {
         return false;
     };
 
+    const getSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
+        if (
+            cachedSearchWorkerDataset &&
+            cachedSearchWorkerImages === state.images &&
+            cachedSearchWorkerDirectories === state.directories
+        ) {
+            return cachedSearchWorkerDataset;
+        }
+
+        const dataset = state.images.map(toSearchWorkerImage);
+        cachedSearchWorkerImages = state.images;
+        cachedSearchWorkerDirectories = state.directories;
+        cachedSearchWorkerDataset = dataset;
+
+        return dataset;
+    };
+
+    const buildSearchWorkerCriteria = (state: ImageState): SearchWorkerCriteria => {
+        const { sensitiveTags, blurSensitiveImages, enableSafeMode } = useSettingsStore.getState();
+
+        return {
+            searchQuery: state.searchQuery,
+            selectedModels: [...state.selectedModels],
+            excludedModels: [...state.excludedModels],
+            selectedLoras: [...state.selectedLoras],
+            excludedLoras: [...state.excludedLoras],
+            selectedSamplers: [...state.selectedSamplers],
+            excludedSamplers: [...state.excludedSamplers],
+            selectedSchedulers: [...state.selectedSchedulers],
+            excludedSchedulers: [...state.excludedSchedulers],
+            selectedGenerators: [...state.selectedGenerators],
+            excludedGenerators: [...state.excludedGenerators],
+            selectedGpuDevices: [...state.selectedGpuDevices],
+            excludedGpuDevices: [...state.excludedGpuDevices],
+            selectedTags: [...state.selectedTags],
+            selectedTagsMatchMode: state.selectedTagsMatchMode,
+            excludedTags: [...state.excludedTags],
+            selectedAutoTags: [...state.selectedAutoTags],
+            excludedAutoTags: [...state.excludedAutoTags],
+            favoriteFilterMode: state.favoriteFilterMode,
+            selectedRatings: [...state.selectedRatings],
+            advancedFilters: state.advancedFilters,
+            sortOrder: state.sortOrder,
+            randomSeed: state.randomSeed,
+            selectedFolders: Array.from(state.selectedFolders).sort(),
+            excludedFolders: Array.from(state.excludedFolders).sort(),
+            includeSubfolders: state.includeSubfolders,
+            visibleDirectories: state.directories
+                .filter(dir => dir.visible ?? true)
+                .map(dir => ({ id: dir.id, path: dir.path })),
+            safeMode: {
+                enableSafeMode,
+                blurSensitiveImages,
+                sensitiveTags: (sensitiveTags ?? [])
+                    .map(tag => (typeof tag === 'string' ? tag.trim().toLowerCase() : ''))
+                    .filter(Boolean),
+            },
+        };
+    };
+
+    const buildSearchCriteriaKey = (state: ImageState) => JSON.stringify({
+        datasetVersion: searchDatasetVersion,
+        criteria: buildSearchWorkerCriteria(state),
+    });
+
+    const toFacetStateFromWorker = (payload: SearchWorkerResultPayload['facets']): DerivedFacetState => ({
+        availableModels: payload.availableModels,
+        availableLoras: payload.availableLoras,
+        availableSamplers: payload.availableSamplers,
+        availableSchedulers: payload.availableSchedulers,
+        availableGenerators: payload.availableGenerators,
+        availableGpuDevices: payload.availableGpuDevices,
+        availableDimensions: payload.availableDimensions,
+        modelFacetCounts: new Map(payload.modelFacetCounts),
+        loraFacetCounts: new Map(payload.loraFacetCounts),
+        samplerFacetCounts: new Map(payload.samplerFacetCounts),
+        schedulerFacetCounts: new Map(payload.schedulerFacetCounts),
+    });
+
+    const ensureSearchWorker = () => {
+        if (searchWorker) {
+            return searchWorker;
+        }
+
+        const worker = new Worker(
+            new URL('../services/workers/searchFilterWorker.ts', import.meta.url),
+            { type: 'module' }
+        );
+
+        worker.onmessage = (event: MessageEvent) => {
+            const { type, payload } = event.data as
+                | { type: 'complete'; payload: SearchWorkerResultPayload & { criteriaKey: string } }
+                | { type: 'error'; payload: { error: string } };
+
+            if (type === 'error') {
+                console.error('Search/filter worker error:', payload.error);
+                return;
+            }
+
+            if (type !== 'complete') {
+                return;
+            }
+
+            const currentState = get();
+            if (payload.criteriaKey !== latestSearchCriteriaKey) {
+                return;
+            }
+            if (payload.criteriaKey !== buildSearchCriteriaKey(currentState)) {
+                return;
+            }
+
+            const imagesById = new Map(currentState.images.map(image => [image.id, image]));
+            const filteredImages = payload.filteredIds
+                .map(id => imagesById.get(id))
+                .filter((image): image is IndexedImage => Boolean(image));
+            const derivedFacets = toFacetStateFromWorker(payload.facets);
+
+            set(state => {
+                if (payload.criteriaKey !== latestSearchCriteriaKey) {
+                    return state;
+                }
+
+                return {
+                    ...state,
+                    filteredImages,
+                    selectionTotalImages: state.images.length,
+                    selectionDirectoryCount: state.directories.length,
+                    ...derivedFacets,
+                };
+            });
+        };
+
+        searchWorker = worker;
+        return worker;
+    };
+
+    const runAsyncSearchRecompute = (state: ImageState) => {
+        const worker = ensureSearchWorker();
+        const dataset = getSearchWorkerDataset(state);
+        const criteria = buildSearchWorkerCriteria(state);
+        const criteriaKey = JSON.stringify({
+            datasetVersion: searchDatasetVersion,
+            criteria,
+        });
+
+        latestSearchCriteriaKey = criteriaKey;
+        worker.postMessage({
+            type: 'syncDataset',
+            payload: {
+                datasetVersion: searchDatasetVersion,
+                images: dataset,
+            },
+        });
+        worker.postMessage({
+            type: 'compute',
+            payload: {
+                criteriaKey,
+                datasetVersion: searchDatasetVersion,
+                criteria,
+            },
+        });
+    };
+
     const scheduleFilterRecompute = () => {
         if (pendingFilterRecomputeTimer) {
             return;
@@ -912,15 +1442,122 @@ export const useImageStore = create<ImageState>((set, get) => {
         pendingFilterRecomputeTimer = setTimeout(() => {
             pendingFilterRecomputeTimer = null;
             set(state => {
+                if (state.searchQuery) {
+                    runAsyncSearchRecompute(state);
+                    return state;
+                }
                 const filteredResult = filterAndSort(state);
-                const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
-                return { ...state, ...filteredResult, ...availableFilters };
+                return { ...state, ...filteredResult };
             });
         }, FILTER_RECOMPUTE_INDEXING_MS);
     };
 
     const getImageById = (state: ImageState, imageId: string): IndexedImage | undefined => {
         return state.images.find(img => img.id === imageId) || state.filteredImages.find(img => img.id === imageId);
+    };
+
+    const applyAutomationRuleToCurrentState = async (
+        rule: AutomationRule,
+        sourceImages?: IndexedImage[],
+        options?: { ignoreEnabled?: boolean },
+    ): Promise<AutomationRulePreview> => {
+        const sourceIds = sourceImages && sourceImages.length > 0
+            ? new Set(sourceImages.map((image) => image.id))
+            : null;
+        let preview: AutomationRulePreview = {
+            matchedImageIds: [],
+            matchCount: 0,
+            changeCount: 0,
+            tagChangeCount: 0,
+            collectionChangeCount: 0,
+        };
+        let updatedRule: AutomationRule | null = null;
+        let annotationsToPersist: ImageAnnotations[] = [];
+        let collectionsToPersist: SmartCollection[] = [];
+        const tagCatalogUpdates = new Set<string>();
+
+        set(state => {
+            const targetImages = sourceIds
+                ? state.images.filter((image) => sourceIds.has(image.id))
+                : state.images;
+            const result = applyAutomationRuleToImages(rule, targetImages, state.annotations, state.collections, options);
+            preview = {
+                matchedImageIds: result.matchedImageIds,
+                matchCount: result.matchCount,
+                changeCount: result.changeCount,
+                tagChangeCount: result.tagChangeCount,
+                collectionChangeCount: result.collectionChangeCount,
+            };
+
+            const nextAnnotations = new Map(state.annotations);
+            for (const annotation of result.updatedAnnotations) {
+                nextAnnotations.set(annotation.imageId, annotation);
+            }
+
+            annotationsToPersist = result.updatedAnnotations;
+            rule.actions.addTags.forEach((tag) => {
+                const normalized = normalizeTagName(tag);
+                if (normalized) {
+                    tagCatalogUpdates.add(normalized);
+                }
+            });
+
+            const collectionAddMap = result.collectionImageAdds;
+            collectionsToPersist = [];
+            const nextCollections = state.collections.map((collection) => {
+                const adds = collectionAddMap.get(collection.id);
+                if (!adds || adds.length === 0) {
+                    return collection;
+                }
+
+                const updatedCollection = addImagesToCollectionRecord(collection, adds);
+                collectionsToPersist.push(updatedCollection);
+                return updatedCollection;
+            });
+
+            updatedRule = normalizeAutomationRule({
+                ...rule,
+                lastAppliedAt: Date.now(),
+                lastMatchCount: preview.matchCount,
+                lastChangeCount: preview.changeCount,
+                updatedAt: Date.now(),
+            });
+
+            const updatedImages = annotationsToPersist.length > 0
+                ? applyAnnotationsToImages(state.images, nextAnnotations)
+                : state.images;
+            const syncedCollections = collectionsToPersist.length > 0
+                ? syncCollectionCounts(nextCollections, updatedImages)
+                : state.collections;
+            const nextRules = state.automationRules.map((existingRule) =>
+                existingRule.id === rule.id ? updatedRule as AutomationRule : existingRule
+            );
+
+            const newState = {
+                ...state,
+                annotations: nextAnnotations,
+                images: updatedImages,
+                collections: syncedCollections,
+                automationRules: nextRules,
+            };
+
+            return { ...newState, ...filterAndSort(newState) };
+        });
+
+        await Promise.all([
+            annotationsToPersist.length > 0 ? bulkSaveAnnotations(annotationsToPersist) : Promise.resolve(),
+            ...Array.from(tagCatalogUpdates).map((tagName) => ensureManualTagExists(tagName)),
+            ...collectionsToPersist.map((collection) => saveSmartCollection(collection)),
+            updatedRule ? saveAutomationRule(updatedRule) : Promise.resolve(),
+        ]).catch(error => {
+            console.error('Failed to apply automation rule:', error);
+        });
+
+        if (annotationsToPersist.length > 0 || tagCatalogUpdates.size > 0) {
+            await get().refreshAvailableTags();
+        }
+
+        return preview;
     };
 
     let lineageBuildTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1135,24 +1772,36 @@ export const useImageStore = create<ImageState>((set, get) => {
         const generators = new Set<string>();
         const gpuDevices = new Set<string>();
         const dimensions = new Set<string>();
+        const modelFacetCounts = new Map<string, number>();
+        const loraFacetCounts = new Map<string, number>();
+        const samplerFacetCounts = new Map<string, number>();
+        const schedulerFacetCounts = new Map<string, number>();
 
         for (const image of visibleImages) {
             image.models?.forEach(model => {
                 const normalized = normalizeFacetValue(model);
                 if (normalized) {
                     models.add(normalized);
+                    modelFacetCounts.set(normalized, (modelFacetCounts.get(normalized) ?? 0) + 1);
                 }
             });
             image.loras?.forEach(lora => {
                 const normalized = normalizeFacetValue(lora);
                 if (normalized) {
                     loras.add(normalized);
+                    loraFacetCounts.set(normalized, (loraFacetCounts.get(normalized) ?? 0) + 1);
                 }
             });
             const sampler = normalizeFacetValue(image.sampler);
-            if (sampler) samplers.add(sampler);
+            if (sampler) {
+                samplers.add(sampler);
+                samplerFacetCounts.set(sampler, (samplerFacetCounts.get(sampler) ?? 0) + 1);
+            }
             const scheduler = normalizeFacetValue(image.scheduler);
-            if (scheduler) schedulers.add(scheduler);
+            if (scheduler) {
+                schedulers.add(scheduler);
+                schedulerFacetCounts.set(scheduler, (schedulerFacetCounts.get(scheduler) ?? 0) + 1);
+            }
             generators.add(getImageGenerator(image));
             const gpuDevice = getImageGpuDevice(image);
             if (gpuDevice) gpuDevices.add(gpuDevice);
@@ -1178,6 +1827,10 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const [bWidth, bHeight] = b.split('x').map(Number);
                 return (aWidth * aHeight) - (bWidth * bHeight);
             }),
+            modelFacetCounts,
+            loraFacetCounts,
+            samplerFacetCounts,
+            schedulerFacetCounts,
         };
     };
 
@@ -1221,17 +1874,15 @@ export const useImageStore = create<ImageState>((set, get) => {
             return currentState;
         }
 
+        invalidateSearchWorkerDataset();
+
         const newState: Partial<ImageState> = {
             images: imagesWithAnnotations,
         };
 
         const combinedState = { ...currentState, ...newState };
 
-        // First, get filtered images based on folder selection
         const filteredResult = filterAndSort(combinedState);
-
-        // Then, recalculate available filters based on the filtered images (after folder selection)
-        const availableFilters = recalculateAvailableFilters(filteredResult.filteredImages);
         const syncedCollections = syncCollectionCounts(combinedState.collections, imagesWithAnnotations);
         const activeCollectionId = syncedCollections.some((collection) => collection.id === combinedState.activeCollectionId)
             ? combinedState.activeCollectionId
@@ -1240,7 +1891,6 @@ export const useImageStore = create<ImageState>((set, get) => {
         return {
             ...combinedState,
             ...filteredResult,
-            ...availableFilters,
             collections: syncedCollections,
             activeCollectionId,
             ...(imagesWithAnnotations.length === 0
@@ -1257,6 +1907,20 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     // --- Helper function for basic filtering and sorting ---
     const filterAndSort = (state: ImageState) => {
+        const perfEnabled = isPerformanceDiagnosticsEnabled();
+        const perfNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        const filterStartedAt = perfEnabled ? perfNow() : 0;
+        let phaseStartedAt = filterStartedAt;
+        const phaseDurations: Record<string, number> = {};
+        const closePhase = (phaseName: string) => {
+            if (!perfEnabled) {
+                return;
+            }
+
+            const current = perfNow();
+            phaseDurations[phaseName] = Math.round((current - phaseStartedAt) * 100) / 100;
+            phaseStartedAt = current;
+        };
         const {
             images,
             searchQuery,
@@ -1333,6 +1997,7 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             return false;
         });
+        closePhase('folderSelection');
 
         let results = selectionFiltered;
 
@@ -1395,7 +2060,16 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return !state.excludedAutoTags.some(tag => img.autoTags!.includes(tag));
             });
         }
+        closePhase('preSearchFilters');
 
+        const searchMetrics = {
+            imagesEvaluated: 0,
+            catalogBuildMs: 0,
+            catalogChars: 0,
+            enrichedBuildMs: 0,
+            enrichedChars: 0,
+            matchMs: 0,
+        };
         if (searchQuery) {
             const searchTerms = searchQuery
                 .toLowerCase()
@@ -1404,21 +2078,51 @@ export const useImageStore = create<ImageState>((set, get) => {
 
             if (searchTerms.length > 0) {
                 results = results.filter(image => {
-                    const catalogText = buildCatalogSearchText(image);
+                    const matchStartedAt = perfEnabled ? perfNow() : 0;
+                    searchMetrics.imagesEvaluated++;
+
+                    let catalogText = '';
+                    if (perfEnabled) {
+                        const catalogStartedAt = perfNow();
+                        catalogText = buildCatalogSearchText(image);
+                        searchMetrics.catalogBuildMs += perfNow() - catalogStartedAt;
+                        searchMetrics.catalogChars += catalogText.length;
+                    } else {
+                        catalogText = buildCatalogSearchText(image);
+                    }
                     const catalogMatch = searchTerms.every(term => catalogText.includes(term));
                     if (catalogMatch) {
+                        if (perfEnabled) {
+                            searchMetrics.matchMs += perfNow() - matchStartedAt;
+                        }
                         return true;
                     }
 
-                    const enrichedText = buildEnrichedSearchText(image);
+                    let enrichedText = '';
+                    if (perfEnabled) {
+                        const enrichedStartedAt = perfNow();
+                        enrichedText = buildEnrichedSearchText(image);
+                        searchMetrics.enrichedBuildMs += perfNow() - enrichedStartedAt;
+                        searchMetrics.enrichedChars += enrichedText.length;
+                    } else {
+                        enrichedText = buildEnrichedSearchText(image);
+                    }
                     if (!enrichedText) {
+                        if (perfEnabled) {
+                            searchMetrics.matchMs += perfNow() - matchStartedAt;
+                        }
                         return false;
                     }
 
-                    return searchTerms.every(term => enrichedText.includes(term));
+                    const matched = searchTerms.every(term => enrichedText.includes(term));
+                    if (perfEnabled) {
+                        searchMetrics.matchMs += perfNow() - matchStartedAt;
+                    }
+                    return matched;
                 });
             }
         }
+        closePhase('search');
 
         if (selectedModels.length > 0) {
             results = results.filter(image =>
@@ -1437,9 +2141,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                 if (!image.loras || image.loras.length === 0) return false;
 
                 // Extract LoRA names from both strings and LoRAInfo objects
-                const loraNames = image.loras.map(lora =>
-                    typeof lora === 'string' ? lora : (lora?.name || '')
-                ).filter(Boolean);
+                const loraNames = image.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((lora): lora is string => Boolean(lora));
 
                 return selectedLoras.some(sl => loraNames.includes(sl));
             });
@@ -1449,9 +2153,9 @@ export const useImageStore = create<ImageState>((set, get) => {
             results = results.filter(image => {
                 if (!image.loras || image.loras.length === 0) return true;
 
-                const loraNames = image.loras.map(lora =>
-                    typeof lora === 'string' ? lora : (lora?.name || '')
-                ).filter(Boolean);
+                const loraNames = image.loras
+                    .map(lora => normalizeLoraName(typeof lora === 'string' ? lora : lora))
+                    .filter((lora): lora is string => Boolean(lora));
 
                 return !state.excludedLoras.some(sl => loraNames.includes(sl));
             });
@@ -1570,21 +2274,22 @@ export const useImageStore = create<ImageState>((set, get) => {
                         return advancedFilters.generationModes.includes(explicitGenerationType);
                     }
 
-                    const isVideo =
-                        normalizedMetadata?.media_type === 'video' ||
-                        (image.fileType ?? '').startsWith('video/');
+                    const mediaType = normalizedMetadata?.media_type ?? resolveMediaType(image.name, image.fileType);
+                    const isGeneratedImageCandidate = mediaType !== 'video' && mediaType !== 'audio';
 
-                    return !isVideo && advancedFilters.generationModes.includes('txt2img');
+                    return isGeneratedImageCandidate && advancedFilters.generationModes.includes('txt2img');
                 });
             }
             if (Array.isArray(advancedFilters.mediaTypes) && advancedFilters.mediaTypes.length > 0) {
                 results = results.filter(image => {
                     const metadataMediaType = image.metadata?.normalizedMetadata?.media_type;
-                    const fileType = image.fileType ?? '';
+                    const inferredMediaType = resolveMediaType(image.name, image.fileType);
                     const resolvedMediaType =
-                        metadataMediaType === 'video' || fileType.startsWith('video/')
-                            ? 'video'
-                            : 'image';
+                        metadataMediaType === 'video' || metadataMediaType === 'audio' || metadataMediaType === 'image'
+                            ? metadataMediaType
+                            : inferredMediaType === 'video' || inferredMediaType === 'audio'
+                                ? inferredMediaType
+                                : 'image';
                     return advancedFilters.mediaTypes.includes(resolvedMediaType);
                 });
             }
@@ -1646,6 +2351,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 });
             }
         }
+        closePhase('postSearchFilters');
 
         const totalInScope = images.length; // Total absoluto de imagens indexadas
         const selectionDirectoryCount = state.directories.length;
@@ -1718,11 +2424,30 @@ export const useImageStore = create<ImageState>((set, get) => {
             if (sortOrder === 'random') return compareRandom(a, b);
             return compareById(a, b);
         });
+        closePhase('sort');
+
+        if (perfEnabled) {
+            recordPerformanceDuration('store.filter-and-sort', perfNow() - filterStartedAt, {
+                query: searchQuery,
+                imageCount: images.length,
+                resultCount: sorted.length,
+                sortOrder,
+                selectionDirectoryCount,
+                phases: phaseDurations,
+                searchMetrics: searchQuery ? {
+                    ...searchMetrics,
+                    catalogBuildMs: Math.round(searchMetrics.catalogBuildMs * 100) / 100,
+                    enrichedBuildMs: Math.round(searchMetrics.enrichedBuildMs * 100) / 100,
+                    matchMs: Math.round(searchMetrics.matchMs * 100) / 100,
+                } : undefined,
+            });
+        }
 
         return {
             filteredImages: sorted,
             selectionTotalImages: totalInScope,
-            selectionDirectoryCount
+            selectionDirectoryCount,
+            ...recalculateAvailableFilters(sorted),
         };
     };
 
@@ -1756,17 +2481,13 @@ export const useImageStore = create<ImageState>((set, get) => {
         selectedImages: new Set(),
         activeImageScope: null,
         collections: [],
+        automationRules: [],
+        isAutomationRulesLoaded: false,
         activeCollectionId: null,
         focusedImageIndex: null,
         isStackingEnabled: false,
         searchQuery: '',
-        availableModels: [],
-        availableLoras: [],
-        availableSamplers: [],
-        availableSchedulers: [],
-        availableGenerators: [],
-        availableGpuDevices: [],
-        availableDimensions: [],
+        ...createEmptyFacetState(),
         selectedModels: [],
         excludedModels: [],
         selectedLoras: [],
@@ -1935,14 +2656,9 @@ export const useImageStore = create<ImageState>((set, get) => {
                         selection.add(normalizedPath);
                     }
                 } else {
-                    // Single select: replace all with this folder
-                    // If clicking the same folder that's already the only selection, clear it
-                    if (selection.size === 1 && selection.has(normalizedPath)) {
-                        selection.clear();
-                    } else {
-                        selection.clear();
-                        selection.add(normalizedPath);
-                    }
+                    // Single select: always focus this folder. The clear button owns clearing.
+                    selection.clear();
+                    selection.add(normalizedPath);
                 }
 
                 const newState = { ...state, selectedFolders: selection };
@@ -2174,7 +2890,14 @@ export const useImageStore = create<ImageState>((set, get) => {
             return matches.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
         },
 
-        filterAndSortImages: () => set(state => filterAndSort(state)),
+        filterAndSortImages: () => set(state => {
+            if (state.searchQuery) {
+                runAsyncSearchRecompute(state);
+                return state;
+            }
+
+            return filterAndSort(state);
+        }),
         recomputeDerivedState: () => set(state => _updateState(state, state.images)),
 
         setImages: (images) => {
@@ -2284,13 +3007,16 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
 
             flushPendingImages(true);
-            flushPendingMerges();
+        flushPendingMerges();
             set(state => {
                 const updates = new Map(updatedImages.map(img => [img.id, img]));
                 const merged = state.images.map(img => updates.get(img.id) ?? img);
                 return _updateState(state, merged);
             });
 
+            if (get().isAnnotationsLoaded) {
+                void get().importMetadataTags(updatedImages);
+            }
             maybeQueueLineageBuild(700);
         },
 
@@ -2343,6 +3069,108 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
             maybeQueueLineageBuild(500);
+        },
+
+        renameImageRecord: (imageId, newRelativePath) => {
+            let renamedImage: IndexedImage | null = null;
+            let thumbnailVersionKeyToClear: string | null = null;
+            let collectionsToPersist: SmartCollection[] = [];
+            const normalizedRelativePath = newRelativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+
+            set(state => {
+                const sourceImage = state.images.find(img => img.id === imageId);
+                if (!sourceImage || !sourceImage.directoryId) {
+                    renamedImage = null;
+                    return state;
+                }
+
+                const nextImageId = `${sourceImage.directoryId}::${normalizedRelativePath}`;
+                if (nextImageId !== imageId && state.images.some(img => img.id === nextImageId)) {
+                    renamedImage = null;
+                    return state;
+                }
+
+                const nextFileName = normalizedRelativePath.split('/').pop() || normalizedRelativePath;
+                const nextImage: IndexedImage = {
+                    ...sourceImage,
+                    id: nextImageId,
+                    name: nextFileName,
+                    handle: createRenamedFileHandle(sourceImage.handle, nextFileName),
+                };
+                renamedImage = nextImage;
+                thumbnailVersionKeyToClear = imageId !== nextImageId
+                    ? `${imageId}:${sourceImage.lastModified}`
+                    : null;
+
+                const updatedImages = state.images.map(img => img.id === imageId ? nextImage : img);
+                const selectedImages = new Set(Array.from(state.selectedImages).map(id => id === imageId ? nextImageId : id));
+                const annotations = new Map(state.annotations);
+                const annotation = annotations.get(imageId);
+                if (annotation) {
+                    annotations.delete(imageId);
+                    annotations.set(nextImageId, {
+                        ...annotation,
+                        imageId: nextImageId,
+                        updatedAt: Date.now(),
+                    });
+                }
+
+                const replaceImage = (image: IndexedImage | null) => image?.id === imageId ? nextImage : image;
+                const remappedClusters = state.clusters.map((cluster) =>
+                    remapClusterImageReferences(cluster, imageId, nextImageId)
+                );
+                const clusteringMetadata = state.clusteringMetadata
+                    ? {
+                        ...state.clusteringMetadata,
+                        lockedImageIds: remapImageIdSet(state.clusteringMetadata.lockedImageIds, imageId, nextImageId),
+                    }
+                    : null;
+                const remappedCollectionIds = new Set<string>();
+                const remappedCollections = state.collections.map((collection) => {
+                    const nextCollection = remapCollectionImageReferences(collection, imageId, nextImageId);
+                    if (nextCollection !== collection) {
+                        remappedCollectionIds.add(collection.id);
+                    }
+                    return nextCollection;
+                });
+                const syncedCollections = syncCollectionCounts(remappedCollections, updatedImages);
+                collectionsToPersist = syncedCollections.filter((collection) => remappedCollectionIds.has(collection.id));
+                const resultState = {
+                    ...state,
+                    images: updatedImages,
+                    selectedImages,
+                    annotations,
+                    collections: syncedCollections,
+                    clusters: remappedClusters,
+                    clusteringMetadata,
+                    thumbnailEntries: remapThumbnailEntries(state.thumbnailEntries, imageId, nextImageId),
+                    selectedImage: replaceImage(state.selectedImage),
+                    previewImage: replaceImage(state.previewImage),
+                    activeImageScope: remapImageListReference(state.activeImageScope, imageId, nextImage),
+                    clusterNavigationContext: remapImageListReference(state.clusterNavigationContext, imageId, nextImage),
+                    comparisonImages: state.comparisonImages.map(image => image.id === imageId ? nextImage : image),
+                    lineageBuildState: markLineageBuildStateDirty(state.lineageBuildState),
+                };
+
+                return {
+                    ...resultState,
+                    ...filterAndSort(resultState),
+                };
+            });
+
+            if (thumbnailVersionKeyToClear) {
+                thumbnailUpdateTimestamps.delete(thumbnailVersionKeyToClear);
+                thumbnailUpdateInProgress.delete(thumbnailVersionKeyToClear);
+                lastThumbnailState.delete(thumbnailVersionKeyToClear);
+            }
+
+            if (collectionsToPersist.length > 0) {
+                void Promise.all(collectionsToPersist.map((collection) => saveSmartCollection(collection))).catch(error => {
+                    console.error('Failed to persist renamed image collection references:', error);
+                });
+            }
+            maybeQueueLineageBuild(500);
+            return renamedImage;
         },
 
         setImageThumbnail: (imageId, data) => {
@@ -2420,6 +3248,10 @@ export const useImageStore = create<ImageState>((set, get) => {
 
                     if (stats.count > 10) {
                         console.warn(`⚠️ Circuit breaker activated: ${imageId} received ${stats.count} updates in 1s. Blocking update.`);
+                        recordPerformanceCounter('thumbnail.store-update-circuit-breaker', {
+                            imageId,
+                            count: stats.count,
+                        });
                         return state;
                     }
 
@@ -2471,7 +3303,19 @@ export const useImageStore = create<ImageState>((set, get) => {
             }
         },
 
-        setSearchQuery: (query) => set(state => ({ ...filterAndSort({ ...state, searchQuery: query }), searchQuery: query })),
+        setSearchQuery: (query) => set(state => {
+            if (query === state.searchQuery) {
+                return state;
+            }
+
+            const nextState = {
+                ...state,
+                searchQuery: query,
+            };
+
+            runAsyncSearchRecompute(nextState);
+            return nextState;
+        }),
 
         setFilterOptions: (options) => set({
             availableModels: options.models,
@@ -2550,6 +3394,13 @@ export const useImageStore = create<ImageState>((set, get) => {
                 };
             });
         },
+        loadAutomationRules: async () => {
+            const rules = await getAllAutomationRules();
+            set({
+                automationRules: rules,
+                isAutomationRulesLoaded: true,
+            });
+        },
         createCollection: async (collection) => {
             const state = get();
             const nextSortIndex = getNextCollectionSortIndex(state.collections);
@@ -2578,6 +3429,85 @@ export const useImageStore = create<ImageState>((set, get) => {
             });
 
             return nextCollection;
+        },
+        createAutomationRule: async (rule) => {
+            const nextRule = normalizeAutomationRule({
+                ...rule,
+                id: rule.id ?? crypto.randomUUID(),
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+            });
+
+            await saveAutomationRule(nextRule);
+
+            set((state) => ({
+                automationRules: [...state.automationRules, nextRule],
+                isAutomationRulesLoaded: true,
+            }));
+
+            return nextRule;
+        },
+        updateAutomationRule: async (ruleId, updates) => {
+            const currentRule = get().automationRules.find((rule) => rule.id === ruleId);
+            if (!currentRule) {
+                return null;
+            }
+
+            const nextRule = normalizeAutomationRule({
+                ...currentRule,
+                ...updates,
+                updatedAt: Date.now(),
+            });
+
+            await saveAutomationRule(nextRule);
+
+            set((state) => ({
+                automationRules: state.automationRules.map((rule) => rule.id === ruleId ? nextRule : rule),
+            }));
+
+            return nextRule;
+        },
+        deleteAutomationRuleById: async (ruleId) => {
+            await deleteAutomationRule(ruleId);
+            set((state) => ({
+                automationRules: state.automationRules.filter((rule) => rule.id !== ruleId),
+            }));
+        },
+        previewAutomationRule: (rule, imagesToPreview) => {
+            const state = get();
+            return previewAutomationRule(
+                rule,
+                imagesToPreview && imagesToPreview.length > 0 ? imagesToPreview : state.images,
+                state.annotations,
+                state.collections,
+                { ignoreEnabled: true },
+            );
+        },
+        applyAutomationRuleNow: async (ruleId, imagesToApply) => {
+            const rule = get().automationRules.find((entry) => entry.id === ruleId);
+            if (!rule) {
+                return null;
+            }
+
+            return applyAutomationRuleToCurrentState(rule, imagesToApply, { ignoreEnabled: true });
+        },
+        applyEnabledAutomationRulesToImages: async (imagesToApply) => {
+            const initialState = get();
+            if (!initialState.isAnnotationsLoaded || imagesToApply.length === 0) {
+                return [];
+            }
+
+            if (!initialState.isAutomationRulesLoaded) {
+                await get().loadAutomationRules();
+            }
+
+            const state = get();
+            const rules = state.automationRules.filter((rule) => rule.enabled && rule.runOnNewImages);
+            const previews: AutomationRulePreview[] = [];
+            for (const rule of rules) {
+                previews.push(await applyAutomationRuleToCurrentState(rule, imagesToApply));
+            }
+            return previews;
         },
         updateCollection: async (collectionId, updates) => {
             const currentCollection = get().collections.find((collection) => collection.id === collectionId);
@@ -2695,8 +3625,8 @@ export const useImageStore = create<ImageState>((set, get) => {
                 return [];
             }
 
-            const visibleIds = new Set(state.filteredImages.map((image) => image.id));
-            return resolveSmartCollectionImages(collection, state.images).filter((image) => visibleIds.has(image.id));
+            const collectionImageIds = new Set(resolveSmartCollectionImageIds(collection, state.images));
+            return state.filteredImages.filter((image) => collectionImageIds.has(image.id));
         },
         getCollectionImageCount: (collectionId) => {
             const state = get();
@@ -3733,43 +4663,45 @@ export const useImageStore = create<ImageState>((set, get) => {
                 updatedAnnotations.push(updatedAnnotation);
             }
 
-            if (updatedAnnotations.length === 0) return;
+            if (updatedAnnotations.length > 0) {
+                // Update state
+                set(state => {
+                    const newAnnotations = new Map(state.annotations);
+                    for (const annotation of updatedAnnotations) {
+                        newAnnotations.set(annotation.imageId, annotation);
+                    }
 
-            // Update state
-            set(state => {
-                const newAnnotations = new Map(state.annotations);
-                for (const annotation of updatedAnnotations) {
-                    newAnnotations.set(annotation.imageId, annotation);
-                }
+                    const updatedImages = state.images.map(img => {
+                        const annotation = newAnnotations.get(img.id);
+                        return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
+                    });
 
-                const updatedImages = state.images.map(img => {
-                    const annotation = newAnnotations.get(img.id);
-                    return annotation ? { ...img, tags: annotation.tags, rating: annotation.rating } : img;
+                    const newState = {
+                        ...state,
+                        annotations: newAnnotations,
+                        images: updatedImages,
+                    };
+
+                    return { ...newState, ...filterAndSort(newState) };
                 });
 
-                const newState = {
-                    ...state,
-                    annotations: newAnnotations,
-                    images: updatedImages,
-                };
+                const importedTagNames = Array.from(new Set(
+                    updatedAnnotations.flatMap(annotation => annotation.tags)
+                ));
 
-                return { ...newState, ...filterAndSort(newState) };
-            });
+                // Persist annotations
+                await Promise.all([
+                    bulkSaveAnnotations(updatedAnnotations),
+                    ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
+                ]).catch(error => {
+                    console.error('Failed to import metadata tags:', error);
+                });
 
-            const importedTagNames = Array.from(new Set(
-                updatedAnnotations.flatMap(annotation => annotation.tags)
-            ));
+                // Refresh available tags
+                await get().refreshAvailableTags();
+            }
 
-            // Persist annotations
-            await Promise.all([
-                bulkSaveAnnotations(updatedAnnotations),
-                ...importedTagNames.map(tagName => ensureManualTagExists(tagName)),
-            ]).catch(error => {
-                console.error('Failed to import metadata tags:', error);
-            });
-
-            // Refresh available tags
-            await get().refreshAvailableTags();
+            await get().applyEnabledAutomationRulesToImages(images);
         },
 
         flushPendingImages: () => {
@@ -3846,6 +4778,9 @@ export const useImageStore = create<ImageState>((set, get) => {
         resetState: () => {
             pendingMetadataTagImportMap.clear();
             clearLineageBuildTimer();
+            invalidateSearchWorkerDataset();
+            latestSearchCriteriaKey = '';
+            terminateSearchWorker();
             const { lineageWorker } = get();
             lineageWorker?.terminate();
             set({
@@ -3871,15 +4806,11 @@ export const useImageStore = create<ImageState>((set, get) => {
             selectedImages: new Set(),
             activeImageScope: null,
             collections: [],
+            automationRules: [],
+            isAutomationRulesLoaded: false,
             activeCollectionId: null,
             searchQuery: '',
-            availableModels: [],
-            availableLoras: [],
-            availableSamplers: [],
-            availableSchedulers: [],
-            availableGenerators: [],
-            availableGpuDevices: [],
-            availableDimensions: [],
+            ...createEmptyFacetState(),
             selectedModels: [],
             excludedModels: [],
             selectedLoras: [],

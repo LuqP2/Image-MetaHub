@@ -3,6 +3,13 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { hotkeyConfig } from '../services/hotkeyConfig';
 import { Keymap } from '../types';
 
+const formatRecordedKey = (key: string): string => {
+  if (key === ' ') return 'space';
+  if (key === 'Escape') return 'esc';
+  if (key.startsWith('Arrow')) return key.slice('Arrow'.length).toLowerCase();
+  return key.toLowerCase();
+};
+
 export const HotkeySettings = () => {
   const { keymap, updateKeybinding, resetKeymap } = useSettingsStore();
   const [recording, setRecording] = useState<{ scope: string; action: string } | null>(null);
@@ -32,7 +39,7 @@ export const HotkeySettings = () => {
     if (metaKey) keyParts.push('cmd');
     if (altKey) keyParts.push('alt');
     if (shiftKey) keyParts.push('shift');
-    keyParts.push(key.toLowerCase());
+    keyParts.push(formatRecordedKey(key));
 
     // Prevent single modifier keys from being set as hotkeys
     if (keyParts.length === 1 && ['ctrl', 'cmd', 'alt', 'shift'].includes(keyParts[0])) {

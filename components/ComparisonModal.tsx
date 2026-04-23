@@ -32,6 +32,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   const [viewMode, setViewMode] = useState<ComparisonViewMode>('side-by-side');
   const [layoutMode, setLayoutMode] = useState<ComparisonLayoutMode>('strip');
   const [metadataViewMode, setMetadataViewMode] = useState<'standard' | 'diff'>('standard');
+  const [activeMetadataIndex, setActiveMetadataIndex] = useState<number | null>(null);
 
   const imageCount = comparisonImages.length;
   const supportsOverlayModes = imageCount === 2;
@@ -81,7 +82,8 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
   };
 
   useEffect(() => {
-    setExpandedMetadataIndexes(new Set(comparisonImages.map((_, index) => index)));
+    setExpandedMetadataIndexes(new Set());
+    setActiveMetadataIndex(null);
   }, [comparisonImages]);
 
   useEffect(() => {
@@ -256,6 +258,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
             mode={viewMode as Exclude<ComparisonViewMode, 'side-by-side'>}
             sharedZoom={sharedZoom}
             onZoomChange={updateSharedZoom}
+            onActiveImageChange={setActiveMetadataIndex}
           />
         ) : (
           <div className="h-full overflow-auto bg-gray-950 p-2">
@@ -278,12 +281,15 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
                     key={image.id}
                     image={image}
                     directoryPath={directoryPathById.get(image.directoryId) || ''}
-                    syncEnabled={syncEnabled}
-                    externalZoom={syncEnabled ? sharedZoom : undefined}
-                    onZoomChange={handleZoomChange}
-                    className={`h-full rounded-xl border border-gray-800 overflow-hidden ${isOddLastGridItem ? 'md:col-span-2' : ''}`}
-                    imageLabel={`Image ${index + 1}`}
-                  />
+                  syncEnabled={syncEnabled}
+                  externalZoom={syncEnabled ? sharedZoom : undefined}
+                  onZoomChange={handleZoomChange}
+                  onHoverChange={(isHovered) =>
+                    setActiveMetadataIndex((current) => (isHovered ? index : current === index ? null : current))
+                  }
+                  className={`h-full rounded-xl border border-gray-800 overflow-hidden ${isOddLastGridItem ? 'md:col-span-2' : ''}`}
+                  imageLabel={`Image ${index + 1}`}
+                />
                 );
               })}
             </div>
@@ -341,6 +347,7 @@ const ComparisonModal: FC<ComparisonModalProps> = ({ isOpen, onClose }) => {
                 otherImageMetadata={otherImageMetadata}
                 className={isOddLastGridItem ? 'md:col-span-2' : ''}
                 compareLabel={index === 0 ? 'Reference' : metadataViewMode === 'diff' ? 'vs Image 1' : undefined}
+                isHighlighted={activeMetadataIndex === index}
               />
             );
           })}

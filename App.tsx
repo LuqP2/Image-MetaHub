@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { startTransition, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { useLicenseStore } from './store/useLicenseStore';
@@ -31,6 +31,8 @@ import ProOnlyModal from './components/ProOnlyModal';
 import SmartLibrary from './components/SmartLibrary';
 import { ModelView } from './components/ModelView';
 import NodeView from './components/NodeView';
+import FindSimilarModal from './components/FindSimilarModal';
+import ModelPromptPickerModal from './components/ModelPromptPickerModal';
 import CollectionsWorkspace from './components/CollectionsWorkspace';
 import GridToolbar from './components/GridToolbar';
 import AnalyticsSummaryStrip from './components/AnalyticsSummaryStrip';
@@ -38,6 +40,12 @@ import BatchExportModal from './components/BatchExportModal';
 import CollectionFormModal, { CollectionFormValues } from './components/CollectionFormModal';
 import { useA1111ProgressContext } from './contexts/A1111ProgressContext';
 import { useGenerationQueueSync } from './hooks/useGenerationQueueSync';
+import {
+  beginPerformanceFlow,
+  createProfilerOnRender,
+  finishPerformanceFlowAfterNextPaint,
+  markPerformanceFlow,
+} from './utils/performanceDiagnostics';
 import { useGenerationQueueStore } from './store/useGenerationQueueStore';
 // Ensure the correct path to ImageTable
 import ImageTable from './components/ImageTable'; // Verify this file exists or adjust the path
@@ -45,17 +53,36 @@ import { A1111GenerateModal, type GenerationParams as A1111GenerationParams } fr
 import { ComfyUIGenerateModal, type GenerationParams as ComfyUIGenerationParams } from './components/ComfyUIGenerateModal';
 import { useGenerateWithA1111 } from './hooks/useGenerateWithA1111';
 import { useGenerateWithComfyUI } from './hooks/useGenerateWithComfyUI';
-import { type IndexedImage, type BaseMetadata } from './types';
+import { type IndexedImage, type BaseMetadata, type SimilarSearchCriteria } from './types';
 import { type SettingsFocusSection, type SettingsTab, type SettingsTabInput, resolveSettingsTab } from './components/settings/types';
+import { buildSlideshowPlaylist } from './utils/slideshowPlaylist';
+import { getModelPromptOverlapGroups, type ModelPromptOverlapGroup } from './services/similarImageSearch';
+import { resolveWatchedRemovalIdsForDirectory, type WatchedFilesRemovedPayload } from './utils/watcherRemovalUtils';
 
 interface OpenImageModalState {
   modalId: string;
   imageId: string;
   navigationImageIds: string[];
-  navigationSource: 'filtered' | 'cluster' | 'scope';
+  navigationSource: 'filtered' | 'cluster' | 'scope' | 'slideshow';
   zIndex: number;
   initialWindowOffset: number;
   isMinimized: boolean;
+  diagnosticsFlowId?: string | null;
+  windowState?: ImageModalWindowState;
+  startSlideshow?: boolean;
+}
+
+interface ImageModalWindowState {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface FindSimilarState {
+  sourceImage: IndexedImage;
+  currentViewImages: IndexedImage[];
+  initialCriteria?: Partial<SimilarSearchCriteria>;
 }
 
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
@@ -215,7 +242,7 @@ export default function App() {
   const setAdvancedFilters = useImageStore((state) => state.setAdvancedFilters);
   const setSelectedImage = useImageStore((state) => state.setSelectedImage);
   const removeImage = useImageStore((state) => state.removeImage);
-  const updateImage = useImageStore((state) => state.updateImage);
+  const removeImages = useImageStore((state) => state.removeImages);
   const toggleAutoWatch = useImageStore((state) => state.toggleAutoWatch);
   const toggleFolderSelection = useImageStore((state) => state.toggleFolderSelection);
   const clearFolderSelection = useImageStore((state) => state.clearFolderSelection);
@@ -234,6 +261,7 @@ export default function App() {
   const initializeFolderSelection = useImageStore((state) => state.initializeFolderSelection);
   const loadAnnotations = useImageStore((state) => state.loadAnnotations);
   const loadCollections = useImageStore((state) => state.loadCollections);
+  const loadAutomationRules = useImageStore((state) => state.loadAutomationRules);
   const imageStoreSetSortOrder = useImageStore((state) => state.setSortOrder);
   const sortOrder = useImageStore((state) => state.sortOrder);
   const reshuffle = useImageStore((state) => state.reshuffle);
@@ -284,7 +312,9 @@ export default function App() {
 
   // --- Local UI State ---
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchInputValue, setSearchInputValue] = useState(searchQuery);
   const previousSearchQueryRef = useRef(searchQuery);
+  const pendingSearchFlowIdRef = useRef<string | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('library');
   const [settingsSection, setSettingsSection] = useState<SettingsFocusSection>(null);
@@ -342,16 +372,52 @@ export default function App() {
   const [isA1111GenerateModalOpen, setIsA1111GenerateModalOpen] = useState(false);
   const [isComfyUIGenerateModalOpen, setIsComfyUIGenerateModalOpen] = useState(false);
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
-  const [newImagesToast, setNewImagesToast] = useState<{ count: number; directoryName: string } | null>(null);
+  const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
+  const [findSimilarState, setFindSimilarState] = useState<FindSimilarState | null>(null);
+  const [modelPromptPickerState, setModelPromptPickerState] = useState<{
+    modelName: string;
+    groups: ModelPromptOverlapGroup[];
+  } | null>(null);
   const lastOpenedModalImageIdRef = useRef<string | null>(null);
+  const suppressSelectedImageModalOpenRef = useRef<string | null>(null);
+  const appProfilerOnRender = useMemo(() => createProfilerOnRender('App'), []);
 
   const queueCount = useGenerationQueueStore((state) =>
     state.items.filter((item) => item.status === 'waiting' || item.status === 'processing').length
   );
+
+  const handleSearchChange = useCallback((query: string) => {
+    if (pendingSearchFlowIdRef.current) {
+      markPerformanceFlow(pendingSearchFlowIdRef.current, 'superseded', {
+        nextQuery: query,
+      });
+      finishPerformanceFlowAfterNextPaint(
+        pendingSearchFlowIdRef.current,
+        {
+          status: 'superseded',
+          nextQuery: query,
+        },
+        1
+      );
+    }
+    pendingSearchFlowIdRef.current = beginPerformanceFlow('search.interaction', {
+      query,
+      previousQuery: previousSearchQueryRef.current,
+      queryLength: query.length,
+    });
+    setSearchInputValue(query);
+  }, []);
+
+  const beginModalOpenFlow = useCallback((imageId: string, source: string) => (
+    beginPerformanceFlow('modal.open', {
+      imageId,
+      source,
+    })
+  ), []);
 
   useEffect(() => {
     if (libraryView !== 'node' && libraryView !== 'collections' && activeImageScope !== null) {
@@ -514,6 +580,10 @@ export default function App() {
   useEffect(() => {
     loadCollections();
   }, [loadCollections]);
+
+  useEffect(() => {
+    loadAutomationRules();
+  }, [loadAutomationRules]);
 
   // Initialize license and keep trial opt-in
   useEffect(() => {
@@ -685,6 +755,11 @@ export default function App() {
     return normalizedPath.slice(0, lastSlash);
   };
 
+  const resolveWatchedRemovalIds = useCallback((
+    directory: Directory,
+    payload: WatchedFilesRemovedPayload
+  ) => resolveWatchedRemovalIdsForDirectory(directory, payload, useImageStore.getState().images), []);
+
   // Listen for new images from file watcher
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -696,7 +771,9 @@ export default function App() {
       if (!directory || !files || files.length === 0) return;
 
       // Show toast notification
-      setNewImagesToast({ count: files.length, directoryName: directory.name });
+      setNewImagesToast({
+        message: `${files.length} new image${files.length !== 1 ? 's' : ''} detected in ${directory.name}`,
+      });
 
       // Processar novos arquivos usando a função do useImageLoader
       await processNewWatchedFiles(directory, files);
@@ -742,6 +819,56 @@ export default function App() {
 
     return () => unsubscribe();
   }, [directories, excludedFolders, includeSubfolders, processNewWatchedFiles, selectedFolders, sortOrder]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onWatchedFilesRemoved) return;
+
+    const unsubscribe = window.electronAPI.onWatchedFilesRemoved(async (data) => {
+      const directory = directories.find(d => d.id === data.directoryId);
+      if (!directory) return;
+
+      const { removedIds, removedNames } = resolveWatchedRemovalIds(directory, data);
+      if (removedIds.length === 0 && removedNames.length === 0) {
+        return;
+      }
+
+      if (removedIds.length > 0) {
+        removeImages(removedIds);
+        const removedIdSet = new Set(removedIds);
+        setOpenImageModals((current) =>
+          current.flatMap((modal) => {
+            const navigationImageIds = modal.navigationImageIds.filter((id) => !removedIdSet.has(id));
+            if (removedIdSet.has(modal.imageId)) {
+              return [];
+            }
+            return [{ ...modal, navigationImageIds }];
+          })
+        );
+
+        useImageStore.setState((state) => ({
+          selectedImages: new Set(Array.from(state.selectedImages).filter((id) => !removedIdSet.has(id))),
+          previewImage: state.previewImage && removedIdSet.has(state.previewImage.id) ? null : state.previewImage,
+          selectedImage: state.selectedImage && removedIdSet.has(state.selectedImage.id) ? null : state.selectedImage,
+          comparisonImages: state.comparisonImages.filter((image) => !removedIdSet.has(image.id)),
+        }));
+      }
+
+      await cacheManager.removeCachedImages(
+        directory.path,
+        directory.name,
+        removedIds,
+        removedNames,
+        useImageStore.getState().scanSubfolders,
+      );
+
+      const removedCount = Math.max(removedIds.length, removedNames.length);
+      setNewImagesToast({
+        message: `${removedCount} file${removedCount !== 1 ? 's' : ''} removed from ${directory.name}`,
+      });
+    });
+
+    return unsubscribe;
+  }, [directories, removeImages, resolveWatchedRemovalIds]);
 
   useEffect(() => {
     if (!window.electronAPI?.onTransferIndexedImagesProgress) return;
@@ -913,11 +1040,42 @@ export default function App() {
   }, [handleSelectFolder, toggleViewMode]);
 
   useEffect(() => {
+    setSearchInputValue(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (searchInputValue !== searchQuery) {
+        startTransition(() => {
+          setSearchQuery(searchInputValue);
+        });
+      }
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInputValue, searchQuery, setSearchQuery]);
+
+  useEffect(() => {
     if (previousSearchQueryRef.current !== searchQuery) {
       setCurrentPage(1);
+      if (pendingSearchFlowIdRef.current) {
+        markPerformanceFlow(pendingSearchFlowIdRef.current, 'store-commit', {
+          query: searchQuery,
+          resultCount: safeFilteredImages.length,
+        });
+        finishPerformanceFlowAfterNextPaint(
+          pendingSearchFlowIdRef.current,
+          {
+            query: searchQuery,
+            resultCount: safeFilteredImages.length,
+          },
+          2
+        );
+        pendingSearchFlowIdRef.current = null;
+      }
       previousSearchQueryRef.current = searchQuery;
     }
-  }, [searchQuery]);
+  }, [safeFilteredImages.length, searchQuery]);
 
   // Reset page if current page exceeds available pages after filtering
   useEffect(() => {
@@ -1019,6 +1177,13 @@ export default function App() {
   useEffect(() => {
     if (!selectedImage) {
       lastOpenedModalImageIdRef.current = null;
+      suppressSelectedImageModalOpenRef.current = null;
+      return;
+    }
+
+    if (suppressSelectedImageModalOpenRef.current === selectedImage.id) {
+      suppressSelectedImageModalOpenRef.current = null;
+      lastOpenedModalImageIdRef.current = selectedImage.id;
       return;
     }
 
@@ -1038,6 +1203,10 @@ export default function App() {
         : safeActiveImageScope
           ? 'scope'
           : 'filtered';
+
+    const existingModalForSelectedImage = openImageModals.find((modal) => modal.imageId === selectedImage.id);
+    const selectedModalId = existingModalForSelectedImage?.modalId ?? `image-modal-${Date.now()}-${selectedImage.id}`;
+    setActiveImageModalId(selectedModalId);
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -1077,22 +1246,21 @@ export default function App() {
             ? 'scope'
             : 'filtered';
 
-      const modalId = `image-modal-${Date.now()}-${selectedImage.id}`;
-
       return [
         ...current,
         {
-          modalId,
+          modalId: selectedModalId,
           imageId: selectedImage.id,
           navigationImageIds,
           navigationSource: navigationSourceType,
           zIndex: highestZIndex + 1,
           initialWindowOffset: current.length * 28,
           isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(selectedImage.id, 'selected-image'),
         },
       ];
     });
-  }, [clusterNavigationContext, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
+  }, [beginModalOpenFlow, clusterNavigationContext, openImageModals, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages, selectedImage]);
 
   const filteredNavigationImageIds = useMemo(
     () => safeFilteredImages.map((image) => image.id),
@@ -1126,8 +1294,12 @@ export default function App() {
       return activeScopeNavigationImageIds ?? modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
     }
 
+    if (modal.navigationSource === 'slideshow') {
+      return modal.navigationImageIds.filter((imageId) => Boolean(getImageByIdFromStore(imageId)));
+    }
+
     return modal.navigationImageIds.filter((imageId) => imageLookup.has(imageId));
-  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, imageLookup]);
+  }, [activeScopeNavigationImageIds, filteredNavigationImageIds, getImageByIdFromStore, imageLookup]);
 
   useEffect(() => {
     if (openImageModals.length === 0) {
@@ -1172,15 +1344,24 @@ export default function App() {
       .filter((modal) => !modal.isMinimized)
       .sort((left, right) => right.zIndex - left.zIndex)[0];
     const nextActiveModalId = nextActiveModal?.modalId ?? null;
+    const currentActiveModal = activeImageModalId
+      ? openImageModals.find((modal) => modal.modalId === activeImageModalId && !modal.isMinimized)
+      : null;
 
-    if (nextActiveModalId !== activeImageModalId) {
+    if (selectedImageId && nextActiveModalId !== activeImageModalId) {
       setActiveImageModalId(nextActiveModalId);
       return;
     }
 
-    if (nextActiveModal) {
-      const nextActiveImage = getImageByIdFromStore(nextActiveModal.imageId);
+    if (activeImageModalId && !currentActiveModal) {
+      setActiveImageModalId(nextActiveModalId);
+      return;
+    }
+
+    if (currentActiveModal) {
+      const nextActiveImage = getImageByIdFromStore(currentActiveModal.imageId);
       if (nextActiveImage && selectedImageId !== nextActiveImage.id) {
+        suppressSelectedImageModalOpenRef.current = nextActiveImage.id;
         setSelectedImage(nextActiveImage);
       }
     } else {
@@ -1210,9 +1391,19 @@ export default function App() {
     }
   }, [removeImage, setSelectedImage]);
 
-  const handleImageRenamed = useCallback((imageId: string, newName: string) => {
-    updateImage(imageId, newName);
-  }, [updateImage]);
+  const handleImageRenamed = useCallback((oldImageId: string, newImageId: string) => {
+    if (oldImageId === newImageId) {
+      return;
+    }
+
+    setOpenImageModals((current) =>
+      current.map((modal) => ({
+        ...modal,
+        imageId: modal.imageId === oldImageId ? newImageId : modal.imageId,
+        navigationImageIds: modal.navigationImageIds.map((id) => id === oldImageId ? newImageId : id),
+      }))
+    );
+  }, []);
 
   const handleActivateImageModal = useCallback((modalId: string) => {
     setOpenImageModals((current) => {
@@ -1230,6 +1421,7 @@ export default function App() {
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
     const targetImage = targetModal ? getImageByIdFromStore(targetModal.imageId) ?? null : null;
     if (targetImage && useImageStore.getState().selectedImage?.id !== targetImage.id) {
+      suppressSelectedImageModalOpenRef.current = targetImage.id;
       setSelectedImage(targetImage);
     }
   }, [getImageByIdFromStore, openImageModals, setSelectedImage]);
@@ -1242,17 +1434,40 @@ export default function App() {
     );
   }, []);
 
-  const handleMinimizeAllImageModals = useCallback(() => {
+  const handleImageModalWindowStateChange = useCallback((
+    modalId: string,
+    windowState: ImageModalWindowState
+  ) => {
     setOpenImageModals((current) => {
-      if (current.every((modal) => modal.isMinimized)) {
+      const targetIndex = current.findIndex((modal) => modal.modalId === modalId);
+      if (targetIndex === -1) {
         return current;
       }
 
-      return current.map((modal) => (
-        modal.isMinimized ? modal : { ...modal, isMinimized: true }
-      ));
+      const targetModal = current[targetIndex];
+      const currentWindowState = targetModal.windowState;
+      if (
+        currentWindowState &&
+        currentWindowState.x === windowState.x &&
+        currentWindowState.y === windowState.y &&
+        currentWindowState.width === windowState.width &&
+        currentWindowState.height === windowState.height
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+      next[targetIndex] = { ...targetModal, windowState };
+      return next;
     });
   }, []);
+
+  const handleDeactivateImageModal = useCallback(() => {
+    setActiveImageModalId(null);
+    if (useImageStore.getState().selectedImage !== null) {
+      setSelectedImage(null);
+    }
+  }, [setSelectedImage]);
 
   const handleCloseImageModal = useCallback((modalId: string, imageId: string) => {
     setOpenImageModals((current) => current.filter((modal) => modal.modalId !== modalId));
@@ -1270,6 +1485,14 @@ export default function App() {
 
     handleCloseImageModal(targetModal.modalId, targetModal.imageId);
   }, [handleCloseImageModal, openImageModals]);
+
+  const handleSlideshowStartAcknowledged = useCallback((modalId: string) => {
+    setOpenImageModals((current) =>
+      current.map((modal) =>
+        modal.modalId === modalId ? { ...modal, startSlideshow: false } : modal
+      )
+    );
+  }, []);
 
   const handleImageModalNavigate = useCallback((modalId: string, direction: 'next' | 'previous') => {
     const targetModal = openImageModals.find((modal) => modal.modalId === modalId);
@@ -1301,18 +1524,31 @@ export default function App() {
 
     const nextImage = getImageByIdFromStore(nextImageId);
     if (nextImage && useImageStore.getState().selectedImage?.id !== nextImage.id) {
+      suppressSelectedImageModalOpenRef.current = nextImage.id;
       setSelectedImage(nextImage);
     }
   }, [getImageByIdFromStore, openImageModals, resolveModalNavigationImageIds, setSelectedImage]);
 
-  const handleOpenImageModalInBackground = useCallback((image: IndexedImage) => {
-    const navigationSource =
-      safeClusterNavigationContext.length > 0
+  const handleOpenImageModalInBackground = useCallback((
+    image: IndexedImage,
+    navigationImageOverride?: IndexedImage[],
+    navigationSourceOverride?: OpenImageModalState['navigationSource']
+  ) => {
+    const hasNavigationOverride = Boolean(navigationImageOverride?.length);
+    const navigationSource = hasNavigationOverride
+      ? navigationImageOverride!
+      : safeClusterNavigationContext.length > 0
         ? safeClusterNavigationContext
-        : safeFilteredImages;
+        : safeActiveImageScope ?? safeFilteredImages;
     const navigationImageIds = navigationSource.map((entry) => entry.id);
     const navigationSourceType: OpenImageModalState['navigationSource'] =
-      safeClusterNavigationContext.length > 0 ? 'cluster' : 'filtered';
+      navigationSourceOverride ?? (
+        safeClusterNavigationContext.length > 0
+          ? 'cluster'
+          : safeActiveImageScope
+            ? 'scope'
+            : 'filtered'
+      );
 
     setOpenImageModals((current) => {
       const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
@@ -1345,10 +1581,11 @@ export default function App() {
           zIndex: nextZIndex,
           initialWindowOffset: current.length * 28,
           isMinimized: true,
+          diagnosticsFlowId: beginModalOpenFlow(image.id, 'background'),
         },
       ];
     });
-  }, [safeClusterNavigationContext, safeFilteredImages]);
+  }, [beginModalOpenFlow, safeActiveImageScope, safeClusterNavigationContext, safeFilteredImages]);
 
   const handleGridImageClick = useCallback((image: IndexedImage, event: React.MouseEvent) => {
     if (event.button === 1) {
@@ -1403,7 +1640,111 @@ export default function App() {
       : libraryView === 'node'
       ? nodeViewResultImages
       : safeFilteredImages;
+
+  const openFindSimilar = useCallback((
+    sourceImage: IndexedImage,
+    currentViewImages?: IndexedImage[],
+    initialCriteria?: Partial<SimilarSearchCriteria>,
+  ) => {
+    setFindSimilarState({
+      sourceImage,
+      currentViewImages: (currentViewImages && currentViewImages.length > 0 ? currentViewImages : safeFilteredImages)
+        .filter((image) => Boolean(image)),
+      initialCriteria,
+    });
+  }, [safeFilteredImages]);
+
+  const closeFindSimilar = useCallback(() => {
+    setFindSimilarState(null);
+  }, []);
+
+  const handleOpenFindSimilarCompare = useCallback((images: IndexedImage[]) => {
+    setComparisonImages(images);
+    openComparisonModal();
+    setFindSimilarState(null);
+  }, [openComparisonModal, setComparisonImages]);
+
+  const openModelPromptPicker = useCallback((modelName: string) => {
+    setModelPromptPickerState({
+      modelName,
+      groups: getModelPromptOverlapGroups(modelName, safeImages),
+    });
+  }, [safeImages]);
+
+  const closeModelPromptPicker = useCallback(() => {
+    setModelPromptPickerState(null);
+  }, []);
+
+  const handleSelectModelPromptGroup = useCallback((group: ModelPromptOverlapGroup) => {
+    setModelPromptPickerState(null);
+    openFindSimilar(group.sourceImage, safeImages);
+  }, [openFindSimilar, safeImages]);
+
   const canSaveCurrentFilteredAsCollection = libraryView !== 'smart' && displayImages.length > 0;
+  const slideshowPlaylistPreview = useMemo(
+    () =>
+      buildSlideshowPlaylist({
+        scopeImages: displayImages,
+        selectedImageIds: safeSelectedImages,
+        allImages: safeImages,
+      }),
+    [displayImages, safeImages, safeSelectedImages]
+  );
+  const slideshowImageCount = slideshowPlaylistPreview.images.length;
+  const slideshowSourceLabel = slideshowPlaylistPreview.source === 'selection' ? 'selected files' : 'current view';
+
+  const handleStartSlideshow = useCallback(() => {
+    const playlist = slideshowPlaylistPreview.images;
+    if (playlist.length === 0) {
+      setError('No image or video files are available for a slideshow.');
+      return;
+    }
+
+    const firstImage = playlist[0];
+    const navigationImageIds = playlist.map((image) => image.id);
+    const existingModalForFirstImage = openImageModals.find((modal) => modal.imageId === firstImage.id);
+    const slideshowModalId = existingModalForFirstImage?.modalId ?? `image-modal-${Date.now()}-${firstImage.id}`;
+
+    setActiveImageModalId(slideshowModalId);
+    suppressSelectedImageModalOpenRef.current = firstImage.id;
+    setSelectedImage(firstImage);
+    setOpenImageModals((current) => {
+      const highestZIndex = current.length > 0 ? Math.max(...current.map((modal) => modal.zIndex)) : 59;
+      const existingModal = current.find((modal) => modal.imageId === firstImage.id);
+
+      if (existingModal) {
+        const nextZIndex = current.length > 1 ? highestZIndex + 1 : existingModal.zIndex;
+        return current.map((modal) =>
+          modal.modalId === existingModal.modalId
+            ? {
+                ...modal,
+                imageId: firstImage.id,
+                navigationImageIds,
+                navigationSource: 'slideshow',
+                zIndex: nextZIndex,
+                isMinimized: false,
+                startSlideshow: true,
+              }
+            : modal
+        );
+      }
+
+      return [
+        ...current,
+        {
+          modalId: slideshowModalId,
+          imageId: firstImage.id,
+          navigationImageIds,
+          navigationSource: 'slideshow',
+          zIndex: highestZIndex + 1,
+          initialWindowOffset: current.length * 28,
+          isMinimized: false,
+          diagnosticsFlowId: beginModalOpenFlow(firstImage.id, 'slideshow'),
+          startSlideshow: true,
+        },
+      ];
+    });
+  }, [beginModalOpenFlow, openImageModals, setError, setSelectedImage, slideshowPlaylistPreview.images]);
 
   useEffect(() => {
     const scopedTotalPages = Math.ceil(displayImages.length / itemsPerPage);
@@ -1442,6 +1783,9 @@ export default function App() {
         }
 
         const navigationImageIds = resolveModalNavigationImageIds(modal);
+        const navigationImages = navigationImageIds
+          .map((imageId) => getImageByIdFromStore(imageId))
+          .filter((candidate): candidate is IndexedImage => Boolean(candidate));
         const currentIndex = navigationImageIds.findIndex((imageId) => imageId === modal.imageId);
         const directoryPath = directoryPathById.get(image.directoryId);
         if (!directoryPath) {
@@ -1451,6 +1795,7 @@ export default function App() {
         return {
           ...modal,
           image,
+          navigationImages,
           directoryPath,
           currentIndex: currentIndex === -1 ? 0 : currentIndex,
           totalImages: navigationImageIds.length,
@@ -1458,6 +1803,7 @@ export default function App() {
       })
       .filter(Boolean) as Array<OpenImageModalState & {
         image: IndexedImage;
+        navigationImages: IndexedImage[];
         directoryPath: string;
         currentIndex: number;
         totalImages: number;
@@ -1488,7 +1834,12 @@ export default function App() {
         isMinimized: boolean;
       }>;
   }, [activeImageModalId, getImageByIdFromStore, openImageModals]);
-  const hasVisibleImageModal = openImageModalEntries.some((modal) => !modal.isMinimized);
+  const hasActiveVisibleImageModal = openImageModalEntries.some(
+    (modal) => !modal.isMinimized && modal.modalId === activeImageModalId
+  );
+  const libraryContentFocusClass = hasActiveVisibleImageModal
+    ? 'blur-[1px] opacity-95'
+    : 'blur-0 opacity-100';
 
   const activeFolderHasProgress = (() => {
     const progressDirectoryIds = Object.keys(directoryProgress);
@@ -1563,6 +1914,7 @@ export default function App() {
     activeFolderHasProgress;
 
   return (
+    <React.Profiler id="App" onRender={appProfilerOnRender}>
     <div className="min-h-screen bg-gradient-to-r from-gray-950 to-gray-900 text-gray-200 font-sans">
       <BrowserCompatibilityWarning />
 
@@ -1608,8 +1960,8 @@ export default function App() {
           width={sidebarWidth}
           isResizing={isLeftSidebarResizing}
           onResizeStart={handleSidebarResizeStart}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          searchQuery={searchInputValue}
+          onSearchChange={handleSearchChange}
           availableModels={availableModels}
           availableLoras={availableLoras}
           availableSamplers={availableSamplers}
@@ -1623,6 +1975,7 @@ export default function App() {
           onSamplerChange={(samplers) => setSelectedFilters({ samplers })}
           onSchedulerChange={(schedulers) => setSelectedFilters({ schedulers })}
           onClearAllFilters={() => {
+            setSearchInputValue('');
             setSearchQuery('');
             setSelectedFilters({
               models: [],
@@ -1780,7 +2133,7 @@ export default function App() {
                 <div className="flex items-center gap-2 flex-1">
                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                   <span className="text-sm">
-                    <span className="font-semibold">{newImagesToast.count}</span> new image{newImagesToast.count !== 1 ? 's' : ''} detected in <span className="font-semibold">{newImagesToast.directoryName}</span>
+                    {newImagesToast.message}
                   </span>
                 </div>
                 <button
@@ -1842,10 +2195,13 @@ export default function App() {
                       openComparisonModal();
                     }}
                     onBatchExport={handleOpenBatchExport}
+                    onStartSlideshow={handleStartSlideshow}
+                    slideshowImageCount={slideshowImageCount}
+                    slideshowSourceLabel={slideshowSourceLabel}
                   />
                 )}
 
-              <div className="flex-1 min-h-0">
+              <div className={`flex-1 min-h-0 transition-[filter,opacity] duration-150 ease-out ${libraryContentFocusClass}`}>
                 {libraryView === 'library' ? (
                   shouldShowLibraryPlaceholder ? (
                     <div className="flex h-full items-center justify-center text-sm text-gray-500">
@@ -1860,13 +2216,17 @@ export default function App() {
                           totalPages={totalPages}
                           onPageChange={setCurrentPage}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         />
                       ) : (
                         <ImageTable
                           images={paginatedImages}
-                          onImageClick={handleImageSelection}
+                          onImageClick={handleGridImageClick}
                           selectedImages={safeSelectedImages}
                           onBatchExport={handleOpenBatchExport}
+                          onImageRenamed={handleImageRenamed}
+                          onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                         />
                   )
                 ) : libraryView === 'model' ? (
@@ -1877,6 +2237,7 @@ export default function App() {
                       setSelectedFilters({ models: [modelName] });
                       setLibraryView('library');
                     }}
+                    onFindMatchingPrompts={openModelPromptPicker}
                   />
                 ) : libraryView === 'collections' ? (
                   <CollectionsWorkspace
@@ -1894,15 +2255,19 @@ export default function App() {
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                       />
                     ) : (
                       <ImageTable
                         images={paginatedImages}
-                        onImageClick={handleImageSelection}
+                        onImageClick={handleGridImageClick}
                         selectedImages={safeSelectedImages}
                         onBatchExport={handleOpenBatchExport}
                         activeCollection={activeCollection}
                         isCollectionsView
+                        onImageRenamed={handleImageRenamed}
+                        onFindSimilar={(image) => openFindSimilar(image, displayImages, { checkpointMode: 'ignore' })}
                       />
                     )}
                   </CollectionsWorkspace>
@@ -1922,6 +2287,9 @@ export default function App() {
                     isQueueOpen={isQueueOpen}
                     onToggleQueue={() => setIsQueueOpen((prev) => !prev)}
                     onBatchExport={handleOpenBatchExport}
+                    onOpenImageInBackground={(image, navigationImages) => {
+                      handleOpenImageModalInBackground(image, navigationImages, 'cluster');
+                    }}
                   />
                 )}
               </div>
@@ -1960,6 +2328,7 @@ export default function App() {
         {openImageModalEntries.map((modal) => (
           <ImageModal
             key={modal.modalId}
+            modalId={modal.modalId}
             image={modal.image}
             onClose={() => handleCloseImageModal(modal.modalId, modal.image.id)}
             onImageDeleted={handleImageDeleted}
@@ -1974,15 +2343,22 @@ export default function App() {
             isActive={activeImageModalId === modal.modalId && !modal.isMinimized}
             onActivate={() => handleActivateImageModal(modal.modalId)}
             initialWindowOffset={modal.initialWindowOffset}
+            initialWindowState={modal.windowState}
+            onWindowStateChange={(windowState) => handleImageModalWindowStateChange(modal.modalId, windowState)}
             isMinimized={modal.isMinimized}
             onMinimize={() => handleMinimizeImageModal(modal.modalId)}
+            startSlideshow={modal.startSlideshow}
+            diagnosticsFlowId={modal.diagnosticsFlowId}
+            onSlideshowStartAcknowledged={() => handleSlideshowStartAcknowledged(modal.modalId)}
+            onFindSimilar={(image) => openFindSimilar(image, modal.navigationImages)}
           />
         ))}
 
-        {hasVisibleImageModal && (
+        {hasActiveVisibleImageModal && (
           <div
-            className="fixed inset-0 z-50 bg-black/10 backdrop-blur-[2px] transition-opacity duration-200"
-            onClick={handleMinimizeAllImageModals}
+            className="fixed inset-0 z-[54] bg-transparent"
+            onClick={handleDeactivateImageModal}
+            aria-hidden="true"
           />
         )}
 
@@ -2007,6 +2383,24 @@ export default function App() {
           onStartTrial={startTrial}
           isExpired={isExpired}
           isPro={isPro}
+        />
+
+        <ModelPromptPickerModal
+          isOpen={modelPromptPickerState !== null}
+          modelName={modelPromptPickerState?.modelName ?? null}
+          groups={modelPromptPickerState?.groups ?? []}
+          onClose={closeModelPromptPicker}
+          onSelect={handleSelectModelPromptGroup}
+        />
+
+        <FindSimilarModal
+          isOpen={findSimilarState !== null}
+          sourceImage={findSimilarState?.sourceImage ?? null}
+          allImages={safeImages}
+          currentViewImages={findSimilarState?.currentViewImages}
+          initialCriteria={findSimilarState?.initialCriteria}
+          onClose={closeFindSimilar}
+          onOpenCompare={handleOpenFindSimilarCompare}
         />
 
         {/* Generate Modals */}
@@ -2082,5 +2476,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </React.Profiler>
   );
 }

@@ -20,8 +20,9 @@ import RatingStars from './RatingStars';
 import TagInputCombobox from './TagInputCombobox';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getRecentTagChips } from '../utils/tagSuggestions';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
+import AudioPlayer from './AudioPlayer';
 
-// Helper function to format LoRA with weight
 const formatLoRA = (lora: string | LoRAInfo): string => {
   if (typeof lora === 'string') {
     return lora;
@@ -37,7 +38,6 @@ const formatLoRA = (lora: string | LoRAInfo): string => {
   return name;
 };
 
-// Helper function to format generation time: 87ms, 1.5s, or 2m 15s
 const formatGenerationTime = (ms: number): string => {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   const seconds = ms / 1000;
@@ -47,11 +47,9 @@ const formatGenerationTime = (ms: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-// Helper function to format VRAM: "8.0 GB / 24 GB (33%)" or "8.0 GB"
 const formatVRAM = (vramMb: number, gpuDevice?: string | null): string => {
   const vramGb = vramMb / 1024;
 
-  // Known GPU VRAM mappings
   const gpuVramMap: Record<string, number> = {
     '4090': 24, '3090': 24, '3080': 10, '3070': 8, '3060': 12,
     'A100': 40, 'A6000': 48, 'V100': 16,
@@ -83,17 +81,6 @@ const formatDurationSeconds = (seconds: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
-
-// Helper component from ImageModal.tsx
 const MetadataItem: FC<{ label: string; value?: string | number | any[]; isPrompt?: boolean; onCopy?: (value: string) => void }> = ({ label, value, isPrompt = false, onCopy }) => {
   if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
     return null;
@@ -178,15 +165,15 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   const { copyToComfyUI, isCopying: isCopyingComfyUI, copyStatus: copyStatusComfyUI } = useCopyToComfyUI();
   const { generateWithComfyUI, isGenerating: isGeneratingComfyUI, generateStatus: generateStatusComfyUI } = useGenerateWithComfyUI();
 
-  // Feature access (license/trial gating)
   const { canUseA1111, canUseComfyUI, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const activeImage = previewImageFromStore || previewImage;
   const thumbnail = useResolvedThumbnail(activeImage);
   const isVideo = !!activeImage && isVideoFileName(activeImage.name, activeImage.fileType);
-  const showA1111Actions = !isVideo && a1111Enabled;
-  const showComfyUIActions = !isVideo && comfyUIEnabled;
+  const isAudio = !!activeImage && isAudioFileName(activeImage.name, activeImage.fileType);
+  const showA1111Actions = !isVideo && !isAudio && a1111Enabled;
+  const showComfyUIActions = !isVideo && !isAudio && comfyUIEnabled;
   const showComfyUIHeading = showA1111Actions && visibleProviders.length > 1;
   const a1111GenerateLabel = singleVisibleProvider?.id === 'a1111' ? 'Generate' : 'Generate with A1111';
   const comfyGenerateLabel = singleVisibleProvider?.id === 'comfyui' ? 'Generate' : 'Generate with ComfyUI';
@@ -210,7 +197,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     }
 
     const hasPreview = Boolean(preferredThumbnailUrl);
-    setImageUrl(isVideo ? null : preferredThumbnailUrl);
+    setImageUrl(isVideo || isAudio ? null : preferredThumbnailUrl);
 
     const loadImage = async () => {
       if (!isMounted) return;
@@ -235,7 +222,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo]);
+  }, [activeImage?.id, activeImage?.handle, activeImage?.thumbnailHandle, activeImage?.name, activeImage?.directoryId, directories, preferredThumbnailUrl, isVideo, isAudio]);
 
   useEffect(() => {
     if (!contextMenu.visible) {
@@ -267,13 +254,12 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const nMeta: BaseMetadata | undefined = activeImage.metadata?.normalizedMetadata;
   const videoInfo = (nMeta as any)?.video;
+  const audioInfo = (nMeta as any)?.audio;
   const motionModel = (nMeta as any)?.motion_model;
 
   const copyToClipboard = (text: string, type: string) => {
     if(!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      // You can add a notification here if you want
-    }).catch(err => {
+    navigator.clipboard.writeText(text).catch(err => {
       console.error(`Failed to copy ${type}:`, err);
     });
   };
@@ -318,7 +304,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
     hideContextMenu();
   };
 
-  // Tag management handlers
   const handleAddTag = (value = tagInput) => {
     if (!value.trim() || !activeImage) return;
     addTagToImage(activeImage.id, value);
@@ -337,7 +322,6 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
 
   const handlePromoteAutoTag = async (tag: string) => {
     if (!activeImage) return;
-    // Add as manual tag and remove from auto-tags
     await addTagToImage(activeImage.id, tag);
     removeAutoTagFromImage(activeImage.id, tag);
   };
@@ -390,7 +374,13 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         {/* Image */}
         <div className="bg-black flex items-center justify-center rounded-lg">
           {imageUrl ? (
-            isVideo ? (
+            isAudio ? (
+              <AudioPlayer
+                src={imageUrl}
+                title={activeImage.name}
+                compact
+              />
+            ) : isVideo ? (
               <video
                 src={imageUrl}
                 className="max-w-full max-h-96 object-contain"
@@ -399,7 +389,7 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                 poster={preferredThumbnailUrl ?? undefined}
               />
             ) : (
-              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain" />
+              <img src={imageUrl} alt={activeImage.name} className="max-w-full max-h-96 object-contain image-alpha-grid" />
             )
           ) : (
             <div className="w-full h-64 animate-pulse bg-gray-700 rounded-md"></div>
@@ -570,6 +560,18 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
                   )}
                   <MetadataItem label="Video Codec" value={videoInfo.codec} />
                   <MetadataItem label="Video Format" value={videoInfo.format} />
+                </div>
+              )}
+              {audioInfo && (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {audioInfo.duration_seconds != null && (
+                    <MetadataItem label="Duration" value={formatDurationSeconds(Number(audioInfo.duration_seconds))} />
+                  )}
+                  <MetadataItem label="Audio Codec" value={audioInfo.codec} />
+                  <MetadataItem label="Audio Format" value={audioInfo.format} />
+                  <MetadataItem label="Sample Rate" value={audioInfo.sample_rate ? `${audioInfo.sample_rate} Hz` : undefined} />
+                  <MetadataItem label="Channels" value={audioInfo.channels} />
+                  <MetadataItem label="Bit Rate" value={audioInfo.bit_rate ? `${audioInfo.bit_rate} bps` : undefined} />
                 </div>
               )}
               {motionModel?.name && (
@@ -925,5 +927,4 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
   );
 };
 
-// Memoize to prevent unnecessary re-renders
 export default React.memo(ImagePreviewSidebar);

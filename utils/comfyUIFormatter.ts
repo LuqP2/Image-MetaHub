@@ -6,6 +6,7 @@
 import { BaseMetadata, IndexedImage } from '../types';
 import { ComfyUIApiClient } from '../services/comfyUIApiClient';
 import { extractEmbeddedComfyWorkflow } from '../services/comfyUIWorkflowBuilder';
+import { getCfgScale, getNormalizedMetadata } from './imageMetadata';
 
 /**
  * Format metadata as ComfyUI workflow JSON
@@ -32,7 +33,7 @@ export function formatImageForComfyUI(image: IndexedImage): string {
     }, null, 2);
   }
 
-  const metadata = image.metadata?.normalizedMetadata as BaseMetadata | undefined;
+  const metadata = getNormalizedMetadata(image);
   if (!metadata) {
     return JSON.stringify({}, null, 2);
   }
@@ -72,8 +73,8 @@ export function formatMetadataAsText(metadata: BaseMetadata): string {
     params.push(`Scheduler: ${metadata.scheduler}`);
   }
 
-  const cfgScale = (metadata as any).cfgScale || metadata.cfg_scale;
-  if (cfgScale) {
+  const cfgScale = getCfgScale(metadata);
+  if (cfgScale !== undefined && cfgScale !== null) {
     params.push(`CFG scale: ${cfgScale}`);
   }
 

@@ -18,12 +18,13 @@ interface ModelViewProps {
   isQueueOpen?: boolean;
   onToggleQueue?: () => void;
   onModelSelect: (modelName: string) => void;
+  onFindMatchingPrompts?: (modelName: string) => void;
 }
 
 
-export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect }) => {
-  const images = useImageStore((state) => state.images); // Use all images, not filtered ones
-  const filteredImages = useImageStore((state) => state.filteredImages); // For footer stats
+export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onToggleQueue, onModelSelect, onFindMatchingPrompts }) => {
+  const images = useImageStore((state) => state.images);
+  const filteredImages = useImageStore((state) => state.filteredImages);
   const selectionTotalImages = useImageStore((state) => state.selectionTotalImages);
   const selectionDirectoryCount = useImageStore((state) => state.selectionDirectoryCount);
   const enrichmentProgress = useImageStore((state) => state.enrichmentProgress);
@@ -37,7 +38,6 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
   const [page, setPage] = useState(1);
   const [sortBy] = useState<'count' | 'name'>('count');
 
-  // Extract models and group images
   const modelEntries = useMemo(() => {
     const models = new Map<string, IndexedImage[]>();
 
@@ -45,25 +45,20 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
       if (image.models && image.models.length > 0) {
         image.models.forEach(modelName => {
           if (!modelName) return;
-          
           if (!models.has(modelName)) {
             models.set(modelName, []);
           }
           models.get(modelName)?.push(image);
         });
-      } else {
-        // Handle images with no model metadata if needed, or skip
-        // For now, skipping un-modeled images in this view
       }
     });
 
     const entries: ModelEntry[] = Array.from(models.entries()).map(([name, modelImages]) => ({
       name,
-      images: modelImages.sort((a, b) => b.lastModified - a.lastModified), // Sort images by newest first
+      images: modelImages.sort((a, b) => b.lastModified - a.lastModified),
       count: modelImages.length
     }));
 
-    // Sort models
     return entries.sort((a, b) => {
       if (sortBy === 'count') {
         const countDiff = b.count - a.count;
@@ -107,6 +102,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ isQueueOpen = false, onTog
                 images={entry.images}
                 imageCount={entry.count}
                 onClick={() => onModelSelect(entry.name)}
+                onFindMatchingPrompts={onFindMatchingPrompts ? () => onFindMatchingPrompts(entry.name) : undefined}
               />
             ))}
           </div>

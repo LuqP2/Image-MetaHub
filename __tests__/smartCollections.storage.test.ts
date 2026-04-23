@@ -210,6 +210,47 @@ describe('smart collection storage', () => {
     installFakeIndexedDb();
   });
 
+  it('round-trips automation rules through IndexedDB', async () => {
+    const {
+      deleteAutomationRule,
+      getAllAutomationRules,
+      saveAutomationRule,
+    } = await import('../services/automationRulesStorage');
+    const { PREFERENCES_DB_VERSION, PREFERENCES_STORE_NAMES } = await import('../services/preferencesDb');
+
+    expect(PREFERENCES_DB_VERSION).toBe(7);
+    expect(PREFERENCES_STORE_NAMES.automationRules).toBe('automationRules');
+
+    await saveAutomationRule({
+      id: 'rule-1',
+      name: 'Cats',
+      enabled: true,
+      criteria: {
+        matchMode: 'all',
+        textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+        conditionRows: [{ id: 'row-1', field: 'model', operator: 'includes', value: 'CyberRealistic' }],
+        filters: {},
+      },
+      actions: { addTags: ['Animal'], addToCollectionIds: ['collection-1'] },
+      runOnNewImages: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    expect(await getAllAutomationRules()).toMatchObject([
+      {
+        id: 'rule-1',
+        criteria: {
+          conditionRows: [{ id: 'row-1', field: 'model', operator: 'includes', value: 'CyberRealistic' }],
+        },
+        actions: { addTags: ['animal'], addToCollectionIds: ['collection-1'] },
+      },
+    ]);
+
+    await deleteAutomationRule('rule-1');
+    expect(await getAllAutomationRules()).toEqual([]);
+  });
+
   it('round-trips manual and tag_rule collections through IndexedDB', async () => {
     const {
       getAllSmartCollections,

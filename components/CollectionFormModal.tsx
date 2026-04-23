@@ -7,6 +7,7 @@ export interface CollectionFormValues {
   sourceTag: string;
   autoUpdate: boolean;
   includeTargetImages: boolean;
+  configureAutomationRules?: boolean;
 }
 
 interface CollectionFormModalProps {
@@ -16,12 +17,14 @@ interface CollectionFormModalProps {
   initialValues: CollectionFormValues;
   onClose: () => void;
   onSubmit: (values: CollectionFormValues) => Promise<void> | void;
+  overlayClassName?: string;
   subtitle?: string;
   showSourceTag?: boolean;
   disableSourceTag?: boolean;
   showAutoUpdate?: boolean;
   showIncludeTargetImages?: boolean;
   includeTargetImagesLabel?: string;
+  showAutomationRulesOption?: boolean;
 }
 
 const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
@@ -31,12 +34,14 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
   initialValues,
   onClose,
   onSubmit,
+  overlayClassName = 'z-[80]',
   subtitle,
   showSourceTag = false,
   disableSourceTag = false,
   showAutoUpdate = false,
   showIncludeTargetImages = false,
   includeTargetImagesLabel = 'Add the current images now',
+  showAutomationRulesOption = false,
 }) => {
   const {
     name: initialName,
@@ -52,8 +57,10 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
     sourceTag: initialSourceTag,
     autoUpdate: initialAutoUpdate,
     includeTargetImages: initialIncludeTargetImages,
+    configureAutomationRules: initialValues.configureAutomationRules ?? false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const hasSourceTag = values.sourceTag.trim().length > 0;
 
   useEffect(() => {
@@ -67,14 +74,17 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
       sourceTag: initialSourceTag,
       autoUpdate: initialAutoUpdate,
       includeTargetImages: initialIncludeTargetImages,
+      configureAutomationRules: initialValues.configureAutomationRules ?? false,
     });
     setIsSubmitting(false);
+    setIsAdvancedOpen(false);
   }, [
     initialAutoUpdate,
     initialDescription,
     initialIncludeTargetImages,
     initialName,
     initialSourceTag,
+    initialValues.configureAutomationRules,
     isOpen,
   ]);
 
@@ -129,6 +139,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
         name: values.name.trim(),
         description: values.description.trim(),
         sourceTag: values.sourceTag.trim().toLowerCase(),
+        configureAutomationRules: values.configureAutomationRules ?? false,
       });
     } finally {
       setIsSubmitting(false);
@@ -137,7 +148,7 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      className={`fixed inset-0 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm ${overlayClassName}`}
       onClick={onClose}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -237,6 +248,38 @@ const CollectionFormModal: React.FC<CollectionFormModalProps> = ({
                 <span className="block text-sm font-medium text-gray-100">{includeTargetImagesLabel}</span>
               </span>
             </label>
+          )}
+
+          {showAutomationRulesOption && (
+            <div className="rounded-xl border border-gray-700 bg-gray-800/40">
+              <button
+                type="button"
+                onClick={() => setIsAdvancedOpen((current) => !current)}
+                className="flex w-full items-center justify-between px-3 py-3 text-left text-sm text-gray-200 transition-colors hover:bg-gray-800/70"
+              >
+                <span className="font-medium">Advanced</span>
+                <span className="text-xs text-gray-500">{isAdvancedOpen ? 'Hide' : 'Show'}</span>
+              </button>
+              {isAdvancedOpen && (
+                <label className="flex items-start gap-3 border-t border-gray-700 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={values.configureAutomationRules ?? false}
+                    onChange={(event) => setValues((current) => ({
+                      ...current,
+                      configureAutomationRules: event.target.checked,
+                    }))}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-100">Set up rules after creating</span>
+                    <span className="mt-1 block text-xs text-gray-400">
+                      Create the collection first, then open Rules with this collection already selected.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </div>
           )}
         </div>
 

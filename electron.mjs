@@ -1,5 +1,5 @@
 import electron from 'electron';
-const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen } = electron;
+const { app, BrowserWindow, shell, dialog, ipcMain, nativeTheme, Menu, nativeImage, screen, protocol } = electron;
 // console.log('📦 Loaded electron module');
 
 import electronUpdater from 'electron-updater';
@@ -7,7 +7,7 @@ const { autoUpdater } = electronUpdater;
 // console.log('📦 Loaded electron-updater module, autoUpdater available:', !!autoUpdater);
 
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import crypto from 'crypto';
@@ -21,16 +21,26 @@ import {
   normalizeLauncherWorkingDirectory,
   resolveLauncherWorkingDirectory,
 } from './utils/generatorLauncher.mjs';
+import {
+  inferMimeTypeFromName,
+  isSupportedMediaFileName,
+} from './utils/mediaTypes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Simple development check
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const gpuMitigationEnabled = process.env.IMH_DISABLE_GPU === '1' || process.env.IMH_DISABLE_GPU === 'true';
+
+if (gpuMitigationEnabled) {
+  app.disableHardwareAcceleration();
+  console.warn('[GPU] Hardware acceleration disabled via IMH_DISABLE_GPU.');
+}
 
 // Parser version - increment when parser logic changes
 // This ensures cache is invalidated when parsing rules change
-const PARSER_VERSION = 6; // v6: Persist ComfyUI workflow node types for Node View
+const PARSER_VERSION = 7; // v7: Add audio media indexing and metadata
 
 // Get platform-specific icon
 function getIconPath() {
@@ -43,25 +53,60 @@ function getIconPath() {
 }
 
 const execFileAsync = promisify(execFile);
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
 const DEFAULT_WINDOW_WIDTH = 1400;
 const DEFAULT_WINDOW_HEIGHT = 900;
 const MIN_WINDOW_WIDTH = 800;
 const MIN_WINDOW_HEIGHT = 600;
 const FILE_STAT_CONCURRENCY = 64;
+const MEDIA_PROTOCOL_SCHEME = 'imh-media';
 
-const getMimeTypeFromName = (name) => {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
-  return 'application/octet-stream';
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MEDIA_PROTOCOL_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
+
+const getMimeTypeFromName = (name) => inferMimeTypeFromName(name);
+
+const buildMediaProtocolUrl = (filePath) => {
+  const normalizedFilePath = path.resolve(filePath);
+  return `${MEDIA_PROTOCOL_SCHEME}://local/?path=${encodeURIComponent(normalizedFilePath)}`;
+};
+
+const registerMediaProtocol = () => {
+  protocol.registerFileProtocol(MEDIA_PROTOCOL_SCHEME, async (request, callback) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const requestedPath = requestUrl.searchParams.get('path');
+      if (!requestedPath) {
+        callback({ error: -6 });
+        return;
+      }
+
+      const normalizedFilePath = path.resolve(requestedPath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to load media outside of allowed directories.');
+        console.error('  [imh-media] Requested path:', requestedPath);
+        console.error('  [imh-media] Normalized path:', normalizedFilePath);
+        console.error('  [imh-media] Allowed directories:', Array.from(allowedDirectoryPaths));
+        callback({ error: -10 });
+        return;
+      }
+
+      await fs.access(normalizedFilePath);
+      callback({ path: normalizedFilePath });
+    } catch (error) {
+      console.error('Error serving media protocol request:', request.url, error);
+      callback({ error: -2 });
+    }
+  });
 };
 
 const parseFrameRate = (value) => {
@@ -91,7 +136,31 @@ const buildVideoInfoFromProbe = (stream, format) => {
   };
 };
 
-async function readVideoMetadataWithFfprobe(filePath) {
+const normalizeProbeNumber = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const buildAudioInfoFromProbe = (stream, format) => {
+  const durationValue = normalizeProbeNumber(stream?.duration) ?? normalizeProbeNumber(format?.duration);
+
+  return {
+    duration_seconds: durationValue,
+    codec: stream?.codec_name || null,
+    format: format?.format_name || null,
+    sample_rate: normalizeProbeNumber(stream?.sample_rate),
+    channels: normalizeProbeNumber(stream?.channels),
+    bit_rate: normalizeProbeNumber(stream?.bit_rate) ?? normalizeProbeNumber(format?.bit_rate),
+  };
+};
+
+async function readMediaMetadataWithFfprobe(filePath) {
   const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
   const { stdout } = await execFileAsync(ffprobePath, [
     '-v', 'quiet',
@@ -106,14 +175,20 @@ async function readVideoMetadataWithFfprobe(filePath) {
   const format = payload?.format ?? {};
   const tags = format.tags ?? {};
   const streams = Array.isArray(payload?.streams) ? payload.streams : [];
-  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+  const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? null;
+  const audioStream = streams.find((stream) => stream?.codec_type === 'audio') ?? null;
 
   return {
     comment: tags.comment,
     description: tags.description,
     title: tags.title,
-    video: buildVideoInfoFromProbe(videoStream, format),
+    video: videoStream ? buildVideoInfoFromProbe(videoStream, format) : buildVideoInfoFromProbe({}, format),
+    audio: audioStream ? buildAudioInfoFromProbe(audioStream, format) : null,
   };
+}
+
+async function readVideoMetadataWithFfprobe(filePath) {
+  return readMediaMetadataWithFfprobe(filePath);
 }
 
 let mainWindow;
@@ -915,7 +990,7 @@ async function createWindow(startupDirectory = null) {
     mainWindow.setTitle(`Image MetaHub v${appVersion}`);
   } catch (e) {
     // Fallback if app.getVersion is not available
-    mainWindow.setTitle('Image MetaHub v0.14.1');
+    mainWindow.setTitle('Image MetaHub v0.15.0');
   }
 
   // Load the app
@@ -1080,6 +1155,8 @@ async function createWindow(startupDirectory = null) {
 
 // App event handlers
 app.whenReady().then(async () => {
+  registerMediaProtocol();
+
   // Listen for theme changes and notify renderer
   nativeTheme.on('updated', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1132,6 +1209,37 @@ app.whenReady().then(async () => {
 // Store allowed directory paths for security
 const allowedDirectoryPaths = new Set();
 
+const normalizeAllowedPath = (inputPath) => {
+  if (!inputPath) return '';
+
+  const resolvedPath = path.resolve(inputPath);
+  const parsedPath = path.parse(resolvedPath);
+  const normalizedPath = resolvedPath === parsedPath.root
+    ? resolvedPath
+    : resolvedPath.replace(/[\\/]+$/, '');
+
+  return process.platform === 'win32'
+    ? normalizedPath.toLowerCase()
+    : normalizedPath;
+};
+
+const isSameOrChildPath = (candidatePath, allowedPath) => {
+  if (!candidatePath || !allowedPath) return false;
+  if (candidatePath === allowedPath) return true;
+
+  const allowedPrefix = allowedPath.endsWith(path.sep)
+    ? allowedPath
+    : `${allowedPath}${path.sep}`;
+
+  return candidatePath.startsWith(allowedPrefix);
+};
+
+const isPathAllowed = (filePath) => {
+  if (allowedDirectoryPaths.size === 0 || !filePath) return false;
+  const normalizedFilePath = normalizeAllowedPath(filePath);
+  return Array.from(allowedDirectoryPaths).some((allowedPath) => isSameOrChildPath(normalizedFilePath, allowedPath));
+};
+
 // Helper function for recursive file search
 async function mapWithConcurrency(items, concurrency, mapper) {
   const results = [];
@@ -1154,10 +1262,7 @@ async function statMediaEntries(directory, entries, baseDirectory) {
     if (!entry.isFile()) {
       return false;
     }
-    const lowerName = entry.name.toLowerCase();
-    const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp') || lowerName.endsWith('.gif');
-    const isVideo = Array.from(VIDEO_EXTENSIONS).some((ext) => lowerName.endsWith(ext));
-    return isImage || isVideo;
+    return isSupportedMediaFileName(entry.name);
   });
 
   const fileRecords = await mapWithConcurrency(mediaEntries, FILE_STAT_CONCURRENCY, async (entry) => {
@@ -1232,37 +1337,6 @@ async function getFilesRecursively(directory, baseDirectory) {
 }
 
 function setupFileOperationHandlers() {
-  const normalizeAllowedPath = (inputPath) => {
-    if (!inputPath) return '';
-
-    const resolvedPath = path.resolve(inputPath);
-    const parsedPath = path.parse(resolvedPath);
-    const normalizedPath = resolvedPath === parsedPath.root
-      ? resolvedPath
-      : resolvedPath.replace(/[\\/]+$/, '');
-
-    return process.platform === 'win32'
-      ? normalizedPath.toLowerCase()
-      : normalizedPath;
-  };
-
-  const isSameOrChildPath = (candidatePath, allowedPath) => {
-    if (!candidatePath || !allowedPath) return false;
-    if (candidatePath === allowedPath) return true;
-
-    const allowedPrefix = allowedPath.endsWith(path.sep)
-      ? allowedPath
-      : `${allowedPath}${path.sep}`;
-
-    return candidatePath.startsWith(allowedPrefix);
-  };
-
-  // Security helper to check if a file path is within one of the allowed directories
-  const isPathAllowed = (filePath) => {
-    if (allowedDirectoryPaths.size === 0 || !filePath) return false;
-    const normalizedFilePath = normalizeAllowedPath(filePath);
-    return Array.from(allowedDirectoryPaths).some(allowedPath => isSameOrChildPath(normalizedFilePath, allowedPath));
-  };
   const approvedWriteRoots = new Set();
   const registerApprovedWriteRoot = (targetPath) => {
     if (!targetPath) return;
@@ -1708,9 +1782,17 @@ function setupFileOperationHandlers() {
           })
         : image;
 
+      const lowerExt = path.extname(filePath).toLowerCase();
+      const preserveAlpha = lowerExt === '.png' || lowerExt === '.webp' || lowerExt === '.gif';
+
+      if (preserveAlpha) {
+        const data = resizedImage.toPNG();
+        return { success: true, data, mimeType: 'image/png' };
+      }
+
       const jpegQuality = Math.max(1, Math.min(100, Math.round(quality)));
       const data = resizedImage.toJPEG(jpegQuality);
-      return { success: true, data };
+      return { success: true, data, mimeType: 'image/jpeg' };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -1908,6 +1990,19 @@ function setupFileOperationHandlers() {
       }
       
       console.log('Attempting to rename file:', oldPath, 'to', newPath);
+      const oldStats = await fs.lstat(oldPath);
+      try {
+        const targetStats = await fs.lstat(newPath);
+        const isSameFile = oldStats.dev === targetStats.dev && oldStats.ino === targetStats.ino;
+        if (!isSameFile) {
+          return { success: false, error: 'A file with that name already exists.' };
+        }
+      } catch (error) {
+        if (error?.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
       await fs.rename(oldPath, newPath);
       return { success: true };
     } catch (error) {
@@ -1925,17 +2020,29 @@ function setupFileOperationHandlers() {
       const normalizedFilePath = path.normalize(filePath);
       console.log('📂 Attempting to show item in folder:', normalizedFilePath);
 
-      // Verify the file exists before trying to show it
+      // Verify the path exists before trying to open or show it
+      let stats;
       try {
-        await fs.access(normalizedFilePath);
-        console.log('✅ File exists:', normalizedFilePath);
+        stats = await fs.stat(normalizedFilePath);
+        console.log('✅ Path exists:', normalizedFilePath);
       } catch (accessError) {
-        console.error('❌ File does not exist:', normalizedFilePath, accessError);
-        return { success: false, error: `File does not exist: ${normalizedFilePath}` };
+        console.error('❌ Path does not exist:', normalizedFilePath, accessError);
+        return { success: false, error: `Path does not exist: ${normalizedFilePath}` };
+      }
+
+      if (stats.isDirectory()) {
+        const openError = await shell.openPath(normalizedFilePath);
+        if (openError) {
+          console.error('❌ shell.openPath failed for:', normalizedFilePath, openError);
+          return { success: false, error: openError };
+        }
+
+        console.log('✅ shell.openPath called for directory:', normalizedFilePath);
+        return { success: true };
       }
 
       shell.showItemInFolder(normalizedFilePath);
-      console.log('✅ shell.showItemInFolder called for:', normalizedFilePath);
+      console.log('✅ shell.showItemInFolder called for file:', normalizedFilePath);
 
       return { success: true };
     } catch (error) {
@@ -1983,14 +2090,39 @@ function setupFileOperationHandlers() {
         return { success: false, error: `Folder does not exist: ${normalizedPath}` };
       }
 
-      // Read directory and filter to only directories
+      // Read directory and include real directories plus symlinks/aliases that resolve to directories.
       const entries = await fs.readdir(normalizedPath, { withFileTypes: true });
-      const subfolders = entries
-        .filter(entry => entry.isDirectory())
-        .map(entry => ({
-          name: entry.name,
-          path: path.join(normalizedPath, entry.name)
-        }));
+      const subfolders = [];
+
+      for (const entry of entries) {
+        const entryPath = path.join(normalizedPath, entry.name);
+        let isDirectory = entry.isDirectory();
+        let realPath = entryPath;
+
+        if (!isDirectory && entry.isSymbolicLink()) {
+          try {
+            const stats = await fs.stat(entryPath);
+            isDirectory = stats.isDirectory();
+            realPath = await fs.realpath(entryPath);
+          } catch (error) {
+            console.warn('Skipping inaccessible symlink while listing subfolders:', entryPath, error.message);
+          }
+        } else if (isDirectory) {
+          try {
+            realPath = await fs.realpath(entryPath);
+          } catch {
+            realPath = entryPath;
+          }
+        }
+
+        if (isDirectory) {
+          subfolders.push({
+            name: entry.name,
+            path: entryPath,
+            realPath
+          });
+        }
+      }
 
       console.log(`✅ Found ${subfolders.length} subfolders in ${normalizedPath}`);
       return { success: true, subfolders };
@@ -2150,6 +2282,40 @@ function setupFileOperationHandlers() {
   });
 
   // Handle reading file content
+  ipcMain.handle('resolve-media-url', async (event, filePath) => {
+    try {
+      if (!filePath) {
+        return { success: false, error: 'No file path provided' };
+      }
+
+      const normalizedFilePath = path.resolve(filePath);
+      if (!isPathAllowed(normalizedFilePath)) {
+        console.error('SECURITY VIOLATION: Attempted to resolve media URL outside of allowed directories.');
+        console.error('  [resolve-media-url] Requested path:', filePath);
+        console.error('  [resolve-media-url] Normalized path:', normalizedFilePath);
+        console.error('  [resolve-media-url] Allowed directories:', Array.from(allowedDirectoryPaths));
+        return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
+      }
+
+      await fs.access(normalizedFilePath);
+      return { success: true, url: buildMediaProtocolUrl(normalizedFilePath) };
+    } catch (error) {
+      const isFileNotFound = error.code === 'ENOENT' || error.message?.includes('no such file');
+      const isPermissionError = error.code === 'EACCES' || error.code === 'EPERM';
+
+      if (!isFileNotFound) {
+        console.error('Error resolving media URL:', filePath, error);
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        errorType: isFileNotFound ? 'FILE_NOT_FOUND' : (isPermissionError ? 'PERMISSION_ERROR' : 'UNKNOWN_ERROR'),
+        errorCode: error.code,
+      };
+    }
+  });
+
   ipcMain.handle('read-file', async (event, filePath) => {
     try {
       if (!filePath) {
@@ -2187,7 +2353,7 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('read-video-metadata', async (event, args) => {
+  const handleReadMediaMetadata = async (args) => {
     try {
       const filePath = args?.filePath;
       if (!filePath) {
@@ -2202,7 +2368,7 @@ function setupFileOperationHandlers() {
         return { success: false, error: 'Access denied', errorType: 'PERMISSION_DENIED' };
       }
 
-      const metadata = await readVideoMetadataWithFfprobe(filePath);
+      const metadata = await readMediaMetadataWithFfprobe(filePath);
       return { success: true, ...metadata };
     } catch (error) {
       const isBinaryMissing = error?.code === 'ENOENT' || error?.message?.includes('ffprobe');
@@ -2211,7 +2377,10 @@ function setupFileOperationHandlers() {
         error: isBinaryMissing ? 'FFPROBE_NOT_FOUND' : (error?.message || String(error)),
       };
     }
-  });
+  };
+
+  ipcMain.handle('read-media-metadata', async (event, args) => handleReadMediaMetadata(args));
+  ipcMain.handle('read-video-metadata', async (event, args) => handleReadMediaMetadata(args));
 
   // Handle getting skipped versions
   ipcMain.handle('get-skipped-versions', () => {
@@ -2245,10 +2414,44 @@ function setupFileOperationHandlers() {
     return { success: false, error: 'Main window not available' };
   });
 
+  ipcMain.handle('get-fullscreen-state', () => {
+    if (mainWindow) {
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
+  });
+
+  ipcMain.handle('set-fullscreen', (event, isFullscreen) => {
+    if (mainWindow) {
+      const nextFullscreenState = Boolean(isFullscreen);
+      if (mainWindow.isFullScreen() !== nextFullscreenState) {
+        mainWindow.setFullScreen(nextFullscreenState);
+      }
+      return { success: true, isFullscreen: mainWindow.isFullScreen() };
+    }
+    return { success: false, error: 'Main window not available' };
+  });
+
+  const DEFAULT_FULL_READ_MAX_FILE_BYTES = 32 * 1024 * 1024;
+  const DEFAULT_FULL_READ_MAX_TOTAL_BYTES = 96 * 1024 * 1024;
+
   // Handle reading multiple files in a batch
-  ipcMain.handle('read-files-batch', async (event, filePaths) => {
+  ipcMain.handle('read-files-batch', async (event, batchArgs) => {
     try {
-      if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      const filePaths = Array.isArray(batchArgs)
+        ? batchArgs
+        : Array.isArray(batchArgs?.filePaths)
+          ? batchArgs.filePaths
+          : [];
+      const maxFileBytes = Array.isArray(batchArgs)
+        ? DEFAULT_FULL_READ_MAX_FILE_BYTES
+        : Math.max(1, Math.floor(batchArgs?.maxFileBytes ?? DEFAULT_FULL_READ_MAX_FILE_BYTES));
+      const maxTotalBytes = Array.isArray(batchArgs)
+        ? Number.POSITIVE_INFINITY
+        : Math.max(1, Math.floor(batchArgs?.maxTotalBytes ?? DEFAULT_FULL_READ_MAX_TOTAL_BYTES));
+      const reason = Array.isArray(batchArgs) ? undefined : batchArgs?.reason;
+
+      if (filePaths.length === 0) {
         return { success: false, error: 'No file paths provided' };
       }
 
@@ -2264,11 +2467,78 @@ function setupFileOperationHandlers() {
       }
       // --- END SECURITY CHECK ---
 
-      const promises = filePaths.map(filePath => fs.readFile(filePath));
+      let scheduledBytes = 0;
+      let skippedByLimit = 0;
+      const limitedReadPlan = await Promise.all(filePaths.map(async (filePath) => {
+        try {
+          const stats = await fs.stat(filePath);
+          const fileSize = stats.size ?? 0;
+
+          if (fileSize > maxFileBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: file too large for IPC batch',
+                errorType: 'FILE_TOO_LARGE',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          if (scheduledBytes + fileSize > maxTotalBytes) {
+            skippedByLimit += 1;
+            return {
+              filePath,
+              skip: {
+                success: false,
+                path: filePath,
+                error: 'Skipped full read: batch byte budget exceeded',
+                errorType: 'BATCH_BYTE_LIMIT',
+                errorCode: 'IPC_FULL_READ_LIMIT',
+              },
+            };
+          }
+
+          scheduledBytes += fileSize;
+          return { filePath };
+        } catch (error) {
+          return {
+            filePath,
+            skip: {
+              success: false,
+              path: filePath,
+              error: error.message,
+              errorType: error.code === 'ENOENT' ? 'FILE_NOT_FOUND' : 'UNKNOWN_ERROR',
+              errorCode: error.code,
+            },
+          };
+        }
+      }));
+
+      if (skippedByLimit > 0) {
+        console.warn('[read-files-batch] skipped oversized full reads', {
+          reason: reason ?? 'unspecified',
+          requested: filePaths.length,
+          skipped: skippedByLimit,
+          maxFileBytes,
+          maxTotalBytes: Number.isFinite(maxTotalBytes) ? maxTotalBytes : null,
+        });
+      }
+
+      const promises = limitedReadPlan.map((entry) => (
+        entry.skip ? Promise.resolve(entry.skip) : fs.readFile(entry.filePath)
+      ));
       const results = await Promise.allSettled(promises);
 
       const data = results.map((result, index) => {
+        const planEntry = limitedReadPlan[index];
         if (result.status === 'fulfilled') {
+          if (planEntry.skip) {
+            return result.value;
+          }
           return { success: true, data: result.value, path: filePaths[index] };
         } else {
           if (!result.reason.message?.includes('ENOENT')) {
@@ -2585,6 +2855,9 @@ function setupFileOperationHandlers() {
         }
         lastProgressAt = now;
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('export-batch-progress', {
             exportId: progressId,
             mode: 'folder',
@@ -2594,8 +2867,8 @@ function setupFileOperationHandlers() {
             failedCount,
             stage,
           });
-        } catch (err) {
-          // ignore sender errors (window closed)
+        } catch (error) {
+          console.warn('[Electron] Failed to send export progress update', error);
         }
       };
 
@@ -2664,6 +2937,9 @@ function setupFileOperationHandlers() {
         }
         lastProgressAt = now;
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('export-batch-progress', {
             exportId: progressId,
             mode: 'zip',
@@ -2673,8 +2949,8 @@ function setupFileOperationHandlers() {
             failedCount,
             stage,
           });
-        } catch (err) {
-          // ignore sender errors (window closed)
+        } catch (error) {
+          console.warn('[Electron] Failed to send export progress update', error);
         }
       };
 
@@ -2760,6 +3036,9 @@ function setupFileOperationHandlers() {
       const progressTransferId = transferId ? String(transferId) : null;
       const sendProgress = (stage = 'copying', statusText) => {
         try {
+          if (event.sender.isDestroyed()) {
+            return;
+          }
           event.sender.send('transfer-indexed-images-progress', {
             transferId: progressTransferId,
             mode,
@@ -2770,8 +3049,8 @@ function setupFileOperationHandlers() {
             stage,
             statusText,
           });
-        } catch {
-          // ignore sender errors
+        } catch (error) {
+          console.warn('[Electron] Failed to send transfer progress update', error);
         }
       };
 

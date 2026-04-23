@@ -9,14 +9,19 @@ import { ComfyUIProgressProvider } from './contexts/ComfyUIProgressContext.tsx';
 import { useLicenseStore } from './store/useLicenseStore';
 import { useImageStore } from './store/useImageStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { initializePerformanceDiagnostics } from './utils/performanceDiagnostics';
 
 // Expose stores globally for debugging
 if (process.env.NODE_ENV === 'development') {
-  (window as any).useLicenseStore = useLicenseStore;
-  (window as any).useImageStore = useImageStore;
-  (window as any).useSettingsStore = useSettingsStore;
+  Object.assign(window, {
+    useLicenseStore,
+    useImageStore,
+    useSettingsStore,
+  });
   console.log('🔧 [DEV] Stores exposed globally: useLicenseStore, useImageStore, useSettingsStore');
 }
+
+initializePerformanceDiagnostics();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

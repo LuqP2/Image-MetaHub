@@ -2,6 +2,7 @@ import chokidar, { FSWatcher } from 'chokidar';
 import path from 'path';
 import { BrowserWindow } from 'electron';
 import fs from 'fs';
+import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map<string, FSWatcher>();
@@ -86,7 +87,7 @@ export function startWatching(
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      if (!['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'].includes(ext)) {
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
         return;
       }
 
@@ -94,7 +95,7 @@ export function startWatching(
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Set());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${filePath}`);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${filePath}`);
       pendingFiles.get(directoryId)!.add(filePath);
 
       if (processingTimeouts.has(directoryId)) {

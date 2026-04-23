@@ -4,13 +4,48 @@ import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import exifr from 'exifr';
-import { BaseMetadata, ImageMetadata, type VideoInfo, isEasyDiffusionJson } from '../types';
+import { BaseMetadata, ImageMetadata, type AudioInfo, type VideoInfo, isEasyDiffusionJson } from '../types';
 import { parseImageMetadata as normalizeMetadata } from './parsers/metadataParserFactory';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 interface Dimensions {
   width: number;
   height: number;
 }
+
+interface VideoProbeStream {
+  r_frame_rate?: string | number;
+  avg_frame_rate?: string | number;
+  nb_frames?: string | number;
+  width?: number;
+  height?: number;
+  codec_name?: string;
+  codec_type?: string;
+  duration?: string | number;
+  sample_rate?: string | number;
+  channels?: string | number;
+  bit_rate?: string | number;
+}
+
+interface VideoProbeFormat {
+  duration?: string | number;
+  format_name?: string;
+  bit_rate?: string | number;
+  tags?: {
+    comment?: string;
+    description?: string;
+    title?: string;
+  };
+}
+
+interface VideoProbePayload {
+  streams?: VideoProbeStream[];
+  format?: VideoProbeFormat;
+}
+
+type MetadataRecord = Record<string, unknown>;
+
+const getErrorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 export interface MetadataEngineResult {
   file: string;
@@ -18,7 +53,7 @@ export interface MetadataEngineResult {
   rawMetadata: ImageMetadata | null;
   metadata: BaseMetadata | null;
   dimensions?: Dimensions | null;
-  rawSource?: 'png' | 'jpeg' | 'sidecar' | 'video' | 'unknown';
+  rawSource?: 'png' | 'jpeg' | 'sidecar' | 'video' | 'audio' | 'unknown';
   errors?: string[];
   schema_version: string;
   _telemetry: {
@@ -39,12 +74,6 @@ const execFileAsync = promisify(execFile) as (
   args: string[],
   options: { encoding: BufferEncoding }
 ) => Promise<{ stdout: string; stderr: string }>;
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
-
-const isVideoFilePath = (filePath: string): boolean => {
-  const ext = path.extname(filePath).toLowerCase();
-  return VIDEO_EXTENSIONS.has(ext);
-};
 
 const parseFrameRate = (value: unknown): number | null => {
   if (typeof value !== 'string' || !value.includes('/')) {
@@ -57,23 +86,47 @@ const parseFrameRate = (value: unknown): number | null => {
   return num / den;
 };
 
-const buildVideoInfoFromProbe = (stream: any, format: any): VideoInfo => {
-  const frameRate = parseFrameRate(stream?.r_frame_rate) ?? parseFrameRate(stream?.avg_frame_rate);
-  const frameCount = typeof stream?.nb_frames === 'string' ? Number(stream.nb_frames) : stream?.nb_frames;
-  const durationValue = typeof format?.duration === 'string' ? Number(format.duration) : format?.duration;
+const buildVideoInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFormat): VideoInfo => {
+  const frameRate = parseFrameRate(stream.r_frame_rate) ?? parseFrameRate(stream.avg_frame_rate);
+  const frameCount = typeof stream.nb_frames === 'string' ? Number(stream.nb_frames) : stream.nb_frames;
+  const durationValue = typeof format.duration === 'string' ? Number(format.duration) : format.duration;
 
   return {
     frame_rate: Number.isFinite(frameRate) ? frameRate : null,
     frame_count: Number.isFinite(frameCount) ? frameCount : null,
     duration_seconds: Number.isFinite(durationValue) ? durationValue : null,
-    width: typeof stream?.width === 'number' ? stream.width : null,
-    height: typeof stream?.height === 'number' ? stream.height : null,
-    codec: stream?.codec_name || null,
-    format: format?.format_name || null,
+    width: typeof stream.width === 'number' ? stream.width : null,
+    height: typeof stream.height === 'number' ? stream.height : null,
+    codec: stream.codec_name || null,
+    format: format.format_name || null,
   };
 };
 
-async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo } | null> {
+const normalizeProbeNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const buildAudioInfoFromProbe = (stream: VideoProbeStream, format: VideoProbeFormat): AudioInfo => {
+  const durationValue = normalizeProbeNumber(stream.duration) ?? normalizeProbeNumber(format.duration);
+
+  return {
+    duration_seconds: durationValue,
+    codec: stream.codec_name || null,
+    format: format.format_name || null,
+    sample_rate: normalizeProbeNumber(stream.sample_rate),
+    channels: normalizeProbeNumber(stream.channels),
+    bit_rate: normalizeProbeNumber(stream.bit_rate) ?? normalizeProbeNumber(format.bit_rate),
+  };
+};
+
+async function readMediaMetadataWithFfprobe(filePath: string): Promise<{ comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null } | null> {
   const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
 
   try {
@@ -85,17 +138,19 @@ async function readVideoMetadataWithFfprobe(filePath: string): Promise<{ comment
       filePath,
     ], { encoding: 'utf8' });
 
-    const payload = JSON.parse(stdout);
-    const format = payload?.format ?? {};
+    const payload = JSON.parse(stdout) as VideoProbePayload;
+    const format = payload.format ?? {};
     const tags = format.tags ?? {};
-    const streams = Array.isArray(payload?.streams) ? payload.streams : [];
-    const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? {};
+    const streams = Array.isArray(payload.streams) ? payload.streams : [];
+    const videoStream = streams.find((stream) => stream?.codec_type === 'video') ?? null;
+    const audioStream = streams.find((stream) => stream?.codec_type === 'audio') ?? null;
 
     return {
       comment: tags.comment,
       description: tags.description,
       title: tags.title,
-      video: buildVideoInfoFromProbe(videoStream, format),
+      video: videoStream ? buildVideoInfoFromProbe(videoStream, format) : buildVideoInfoFromProbe({}, format),
+      audio: audioStream ? buildAudioInfoFromProbe(audioStream, format) : null,
     };
   } catch (error) {
     return null;
@@ -187,7 +242,7 @@ async function parsePNGMetadata(buffer: ArrayBuffer): Promise<ImageMetadata | nu
   }
 
   if (chunks.workflow) {
-    const comfyMetadata: Record<string, any> = {};
+    const comfyMetadata: MetadataRecord = {};
     comfyMetadata.workflow = chunks.workflow;
     if (chunks.prompt) comfyMetadata.prompt = chunks.prompt;
     return comfyMetadata as ImageMetadata;
@@ -379,30 +434,33 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   let rawMetadata: ImageMetadata | null = null;
   let rawSource: MetadataEngineResult['rawSource'] = 'unknown';
   let videoInfo: VideoInfo | null = null;
-  const isVideo = isVideoFilePath(absolutePath);
+  let audioInfo: AudioInfo | null = null;
+  const isVideo = isVideoFileName(absolutePath);
+  const isAudio = isAudioFileName(absolutePath);
 
-  if (isVideo) {
-    rawSource = 'video';
-    const videoMetadata = await readVideoMetadataWithFfprobe(absolutePath);
-    if (videoMetadata) {
-      const raw: Record<string, any> = {
-        description: videoMetadata.description,
-        comment: videoMetadata.comment,
-        title: videoMetadata.title,
+  if (isVideo || isAudio) {
+    rawSource = isAudio ? 'audio' : 'video';
+    const mediaMetadata = await readMediaMetadataWithFfprobe(absolutePath);
+    if (mediaMetadata) {
+      const raw: MetadataRecord = {
+        description: mediaMetadata.description,
+        comment: mediaMetadata.comment,
+        title: mediaMetadata.title,
       };
 
-      if (videoMetadata.comment) {
+      if (mediaMetadata.comment) {
         try {
-          raw.videometahub_data = JSON.parse(videoMetadata.comment);
-        } catch (err: any) {
-          errors.push(`Failed to parse video metadata JSON: ${err?.message ?? 'unknown error'}`);
+          raw.videometahub_data = JSON.parse(mediaMetadata.comment);
+        } catch (err: unknown) {
+          errors.push(`Failed to parse media metadata JSON: ${getErrorMessage(err)}`);
         }
       }
 
       rawMetadata = raw as ImageMetadata;
-      videoInfo = videoMetadata.video ?? null;
+      videoInfo = mediaMetadata.video ?? null;
+      audioInfo = mediaMetadata.audio ?? null;
     } else {
-      errors.push('ffprobe not available or failed to read video metadata.');
+      errors.push('ffprobe not available or failed to read media metadata.');
     }
   } else {
     const view = new DataView(arrayBuffer);
@@ -427,14 +485,15 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
   if (rawMetadata) {
     try {
       // ComfyUI workflows sometimes come as stringified JSON with NaN; sanitize first
-      if (typeof (rawMetadata as any).workflow === 'string') {
-        (rawMetadata as any).workflow = JSON.parse(sanitizeJson((rawMetadata as any).workflow));
+      const rawRecord = rawMetadata as MetadataRecord;
+      if (typeof rawRecord.workflow === 'string') {
+        rawRecord.workflow = JSON.parse(sanitizeJson(rawRecord.workflow));
       }
-      if (typeof (rawMetadata as any).prompt === 'string') {
-        (rawMetadata as any).prompt = JSON.parse(sanitizeJson((rawMetadata as any).prompt));
+      if (typeof rawRecord.prompt === 'string') {
+        rawRecord.prompt = JSON.parse(sanitizeJson(rawRecord.prompt));
       }
-    } catch (err: any) {
-      errors.push(`Failed to parse workflow/prompt JSON: ${err?.message ?? 'unknown error'}`);
+    } catch (err: unknown) {
+      errors.push(`Failed to parse workflow/prompt JSON: ${getErrorMessage(err)}`);
     }
 
     metadata = await normalizeMetadata(rawMetadata, arrayBuffer);
@@ -450,6 +509,12 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
     metadata.height = metadata.height || (videoInfo.height ?? 0);
     metadata.video = metadata.video ?? videoInfo;
   }
+  if (metadata && isAudio) {
+    metadata.width = metadata.width || 0;
+    metadata.height = metadata.height || 0;
+    metadata.media_type = 'audio';
+    metadata.audio = metadata.audio ?? audioInfo;
+  }
   if (!metadata && isVideo && videoInfo) {
     metadata = {
       prompt: '',
@@ -462,10 +527,28 @@ export async function parseImageFile(filePath: string): Promise<MetadataEngineRe
       video: videoInfo,
     };
   }
+  if (!metadata && isAudio) {
+    metadata = {
+      prompt: '',
+      model: '',
+      width: 0,
+      height: 0,
+      steps: 0,
+      scheduler: '',
+      media_type: 'audio',
+      audio: audioInfo,
+    };
+  }
   if (isVideo && metadata) {
     dimensions = {
       width: metadata.width || 0,
       height: metadata.height || 0,
+    };
+  }
+  if (isAudio && metadata) {
+    dimensions = {
+      width: 0,
+      height: 0,
     };
   }
 
@@ -498,14 +581,14 @@ export async function parseFiles(filePaths: string[]): Promise<MetadataEngineRes
     try {
       const parsed = await parseImageFile(file);
       results.push(parsed);
-    } catch (err: any) {
+    } catch (err: unknown) {
       results.push({
         file: path.resolve(file),
         sha256: '',
         rawMetadata: null,
         metadata: null,
         rawSource: 'unknown',
-        errors: [`Failed to parse file: ${err?.message ?? 'unknown error'}`],
+        errors: [`Failed to parse file: ${getErrorMessage(err)}`],
         dimensions: null,
         schema_version: SCHEMA_VERSION,
         _telemetry: {

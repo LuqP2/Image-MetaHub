@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Box } from 'lucide-react';
+import { Box, Search } from 'lucide-react';
 import { IndexedImage } from '../types';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
@@ -9,9 +9,10 @@ interface ModelCardProps {
   images: IndexedImage[];
   imageCount: number;
   onClick: () => void;
+  onFindMatchingPrompts?: () => void;
 }
 
-const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, onClick }) => {
+const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, onClick, onFindMatchingPrompts }) => {
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const rafRef = useRef<number | null>(null);
@@ -19,8 +20,7 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
 
   const previewImage = images[previewIndex] ?? images[0] ?? null;
   const thumbnail = useResolvedThumbnail(previewImage);
-  
-  // Use the hook to load the thumbnail handling changes in previewImage
+
   useThumbnail(previewImage);
 
   React.useEffect(() => {
@@ -84,6 +84,30 @@ const ModelCard: React.FC<ModelCardProps> = ({ modelName, images, imageCount, on
           <Box className="w-3.5 h-3.5" />
           {imageCount}
         </div>
+
+        {onFindMatchingPrompts && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(event) => {
+              event.stopPropagation();
+              onFindMatchingPrompts();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                onFindMatchingPrompts();
+              }
+            }}
+            className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-400/40 bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-cyan-100 transition-colors hover:border-cyan-300 hover:bg-cyan-500/20"
+            title={`Find matching prompts for ${modelName}`}
+            aria-label={`Find matching prompts for ${modelName}`}
+          >
+            <Search className="h-3.5 w-3.5" />
+            Match prompts
+          </div>
+        )}
         
         {/* Overlay gradient for text readability */}
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />

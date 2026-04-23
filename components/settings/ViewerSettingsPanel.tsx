@@ -1,5 +1,9 @@
 import React from 'react';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import {
+  MAX_SLIDESHOW_INTERVAL_SECONDS,
+  MIN_SLIDESHOW_INTERVAL_SECONDS,
+  useSettingsStore,
+} from '../../store/useSettingsStore';
 import {
   DEFAULT_RECENT_TAG_CHIP_LIMIT,
   DEFAULT_TAG_SUGGESTION_LIMIT,
@@ -22,6 +26,10 @@ export const ViewerSettingsPanel: React.FC = () => {
   const setTagSuggestionLimit = useSettingsStore((state) => state.setTagSuggestionLimit);
   const recentTagChipLimit = useSettingsStore((state) => state.recentTagChipLimit);
   const setRecentTagChipLimit = useSettingsStore((state) => state.setRecentTagChipLimit);
+  const slideshowIntervalSeconds = useSettingsStore((state) => state.slideshowIntervalSeconds);
+  const setSlideshowIntervalSeconds = useSettingsStore((state) => state.setSlideshowIntervalSeconds);
+  const slideshowShowFilename = useSettingsStore((state) => state.slideshowShowFilename);
+  const setSlideshowShowFilename = useSettingsStore((state) => state.setSlideshowShowFilename);
 
   return (
     <SettingsPanel title="Viewer" description="Control what appears in the library and how images open.">
@@ -40,6 +48,28 @@ export const ViewerSettingsPanel: React.FC = () => {
           label="Double-click to open"
           description="Keep single click for selection and open details on double click."
           control={<SettingSwitch checked={doubleClickToOpen} onChange={setDoubleClickToOpen} />}
+        />
+      </SettingsSectionCard>
+
+      <SettingsSectionCard title="Slideshow">
+        <SettingRow
+          label="Default interval"
+          description={`Seconds between slides. Range ${MIN_SLIDESHOW_INTERVAL_SECONDS}-${MAX_SLIDESHOW_INTERVAL_SECONDS}.`}
+          control={
+            <input
+              type="number"
+              min={MIN_SLIDESHOW_INTERVAL_SECONDS}
+              max={MAX_SLIDESHOW_INTERVAL_SECONDS}
+              value={slideshowIntervalSeconds}
+              onChange={(event) => setSlideshowIntervalSeconds(Number(event.target.value))}
+              className="w-24 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-right text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+          }
+        />
+        <SettingRow
+          label="Show filename overlay"
+          description="Show filenames while a slideshow is running."
+          control={<SettingSwitch checked={slideshowShowFilename} onChange={setSlideshowShowFilename} />}
         />
       </SettingsSectionCard>
 

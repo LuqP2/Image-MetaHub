@@ -7,10 +7,15 @@ import type {
   IndexedImageTransferMode,
   IndexedImageTransferResultItem,
 } from '../types';
+import { inferMimeTypeFromName } from '../utils/mediaTypes.js';
 
 interface TransferIndexedImagesParams {
   images: IndexedImage[];
-  destinationDirectory: Directory;
+  destinationDirectory: Directory & {
+    rootDirectoryPath?: string;
+    destinationRelativePath?: string;
+    displayName?: string;
+  };
   mode: IndexedImageTransferMode;
   onStatus?: (status: string) => void;
 }
@@ -55,19 +60,6 @@ function createMockFileHandle(fileName: string, absolutePath: string): FileSyste
   } as ElectronFileHandle as FileSystemFileHandle;
 }
 
-function inferMimeTypeFromName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
-  return 'image/jpeg';
-}
-
 function buildTransferredEntry(item: IndexedImageTransferResultItem) {
   return {
     handle: createMockFileHandle(item.fileName, item.destinationAbsolutePath),
@@ -77,6 +69,12 @@ function buildTransferredEntry(item: IndexedImageTransferResultItem) {
     type: item.type,
     birthtimeMs: item.lastModified ?? Date.now(),
   };
+}
+
+function joinRelativePath(prefix: string | undefined, fileName: string): string {
+  const normalizedPrefix = (prefix ?? '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  const normalizedFileName = fileName.replace(/\\/g, '/').replace(/^\/+/g, '');
+  return normalizedPrefix ? `${normalizedPrefix}/${normalizedFileName}` : normalizedFileName;
 }
 
 export async function transferIndexedImages({
@@ -142,6 +140,7 @@ export async function transferIndexedImages({
     };
   }
 
+  const destinationRelativePrefix = destinationDirectory.destinationRelativePath ?? '';
   const transferResult = await window.electronAPI.transferIndexedImages({
     files: sourceFiles,
     destDir: destinationDirectory.path,
@@ -160,6 +159,12 @@ export async function transferIndexedImages({
     };
   }
 
+  const transferredItems = transferResult.transferred.map((item) => ({
+    ...item,
+    destinationDirectoryPath: destinationDirectory.rootDirectoryPath ?? item.destinationDirectoryPath,
+    destinationRelativePath: joinRelativePath(destinationRelativePrefix, item.destinationRelativePath),
+  }));
+
   const sourceByPath = new Map(
     sourceDescriptors.map(({ sourceKey, image }) => [sourceKey, image]),
   );
@@ -168,7 +173,7 @@ export async function transferIndexedImages({
   const persistenceTransfers: Array<{ sourceImage: IndexedImage; targetImageId: string }> = [];
 
   onStatus?.('Preserving tags and metadata...');
-  for (const item of transferResult.transferred) {
+  for (const item of transferredItems) {
     const sourceImage = sourceByPath.get(`${item.sourceDirectoryPath}::${item.sourceRelativePath}`);
     if (!sourceImage) {
       continue;
@@ -188,9 +193,9 @@ export async function transferIndexedImages({
     }
   }
 
-  const transferredEntries = transferResult.transferred.map(buildTransferredEntry);
+  const transferredEntries = transferredItems.map(buildTransferredEntry);
   const fileStatsMap = new Map(
-    transferResult.transferred.map((item) => [
+    transferredItems.map((item) => [
       item.destinationRelativePath,
       {
         size: item.size,
@@ -219,6 +224,7 @@ export async function transferIndexedImages({
   const failedCount = transferResult.failedCount ?? 0;
   const actionLabel = mode === 'move' ? 'Moved' : 'Copied';
   const shouldRelyOnWatcher = destinationDirectory.autoWatch === true;
+  const destinationLabel = destinationDirectory.displayName ?? destinationDirectory.name;
 
   if (shouldRelyOnWatcher) {
     if (mode === 'move') {
@@ -236,7 +242,7 @@ export async function transferIndexedImages({
 
     const statusMessage = failedCount > 0
       ? `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} with ${failedCount} failure${failedCount === 1 ? '' : 's'}. Destination will refresh shortly.`
-      : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationDirectory.name}. Destination will refresh shortly.`;
+      : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationLabel}. Destination will refresh shortly.`;
 
     setSuccess(statusMessage);
     setTransferProgress({
@@ -291,7 +297,7 @@ export async function transferIndexedImages({
   void refreshAvailableTags();
   const statusMessage = failedCount > 0
     ? `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} with ${failedCount} failure${failedCount === 1 ? '' : 's'}.`
-    : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationDirectory.name}.`;
+    : `${actionLabel} ${transferredCount} image${transferredCount === 1 ? '' : 's'} to ${destinationLabel}.`;
 
   if (transferredCount > 0) {
     setSuccess(statusMessage);

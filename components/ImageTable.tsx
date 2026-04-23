@@ -1,21 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { type IndexedImage, type Directory, SmartCollection } from '../types';
 import { useContextMenu } from '../hooks/useContextMenu';
 import { useImageStore } from '../store/useImageStore';
-import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, RefreshCw, Star } from 'lucide-react';
+import { Copy, Folder, Download, ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, Info, Package, Play, Music, RefreshCw, Search, Star, Pencil } from 'lucide-react';
 import { useThumbnail } from '../hooks/useThumbnail';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
 import ProBadge from './ProBadge';
-import TransferImagesModal from './TransferImagesModal';
+import TransferImagesModal, { type TransferDestination } from './TransferImagesModal';
 import { transferIndexedImages } from '../services/fileTransferService';
 import { RATING_VALUES, RatingValueIcons, getRatingBadgeClasses, getRatingChipClasses, getRatingLabel } from './RatingStars';
 import { getContextMenuRatingTargetIds } from '../utils/ratingSelection';
 import { useReparseMetadata } from '../hooks/useReparseMetadata';
 import CollectionFormModal, { CollectionFormValues } from './CollectionFormModal';
+import RenameImageModal from './RenameImageModal';
+import { isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 interface ImageTableProps {
   images: IndexedImage[];
@@ -24,24 +27,26 @@ interface ImageTableProps {
   onBatchExport: () => void;
   activeCollection?: SmartCollection | null;
   isCollectionsView?: boolean;
+  onImageRenamed?: (oldImageId: string, newImageId: string) => void;
+  onFindSimilar?: (image: IndexedImage) => void;
 }
 
 type SortField = 'filename' | 'model' | 'steps' | 'cfg' | 'size' | 'seed';
 type SortDirection = 'asc' | 'desc' | null;
 
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.mov', '.avi'];
-
-const isVideoFileName = (fileName: string, fileType?: string | null): boolean => {
-  if (fileType && fileType.startsWith('video/')) {
-    return true;
-  }
-  const lower = fileName.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => lower.endsWith(ext));
-};
-
 const getRelativeImagePath = (image: IndexedImage): string => {
   const [, relativePath = ''] = image.id.split('::');
   return relativePath || image.name;
+};
+
+const formatAudioDuration = (seconds?: number | null): string | null => {
+  if (seconds == null || !Number.isFinite(seconds)) {
+    return null;
+  }
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const joinDisplayPath = (basePath: string, relativePath: string): string => {
@@ -66,6 +71,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
   onBatchExport,
   activeCollection = null,
   isCollectionsView = false,
+  onImageRenamed,
+  onFindSimilar,
 }) => {
   const directories = useImageStore((state) => state.directories);
   const transferProgress = useImageStore((state) => state.transferProgress);
@@ -79,6 +86,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
   const [isCollectionSubmenuOpen, setIsCollectionSubmenuOpen] = useState(false);
   const [isAddToCollectionSubmenuOpen, setIsAddToCollectionSubmenuOpen] = useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [renameImage, setRenameImage] = useState<IndexedImage | null>(null);
   const [transferStatusText, setTransferStatusText] = useState<string>('');
   const bulkSetImageRating = useImageStore((state) => state.bulkSetImageRating);
   const collections = useImageStore((state) => state.collections);
@@ -91,6 +99,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
   const {
     contextMenu,
+    contextMenuRef,
     showContextMenu,
     hideContextMenu,
     copyPrompt,
@@ -102,6 +111,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
     exportImage,
     copyRawMetadata
   } = useContextMenu();
+
+  const submenuHorizontalClass = contextMenu.horizontalDirection === 'left' ? 'right-full' : 'left-full';
 
   useEffect(() => {
     if (!contextMenu.visible && isCopySubmenuOpen) {
@@ -127,6 +138,15 @@ const ImageTable: React.FC<ImageTableProps> = ({
     onBatchExport();
   };
 
+  const openFindSimilar = useCallback(() => {
+    if (!contextMenu.image || !onFindSimilar) {
+      return;
+    }
+
+    onFindSimilar(contextMenu.image);
+    hideContextMenu();
+  }, [contextMenu.image, hideContextMenu, onFindSimilar]);
+
   const getContextTargetImages = useCallback(() => {
     if (!contextMenu.image) {
       return [];
@@ -138,6 +158,9 @@ const ImageTable: React.FC<ImageTableProps> = ({
 
     return [contextMenu.image];
   }, [contextMenu.image, images, selectedImages]);
+
+  const contextImagePrompt = contextMenu.image?.prompt || contextMenu.image?.metadata?.normalizedMetadata?.prompt;
+  const canFindSimilar = Boolean(contextImagePrompt) && Boolean(onFindSimilar);
 
   const handleSetRating = useCallback((rating: 1 | 2 | 3 | 4 | 5 | null) => {
     const targetImageIds = getContextMenuRatingTargetIds(selectedImages, contextMenu.image?.id);
@@ -245,7 +268,22 @@ const ImageTable: React.FC<ImageTableProps> = ({
     hideContextMenu();
   }, [canUseFileManagement, getContextTargetImages, hideContextMenu, showProModal]);
 
-  const handleTransferConfirm = useCallback(async (directory: Directory) => {
+  const openRenameModal = useCallback((image: IndexedImage | null | undefined) => {
+    if (!image) {
+      hideContextMenu();
+      return;
+    }
+    if (!canUseFileManagement) {
+      showProModal('file_management');
+      hideContextMenu();
+      return;
+    }
+
+    setRenameImage(image);
+    hideContextMenu();
+  }, [canUseFileManagement, hideContextMenu, showProModal]);
+
+  const handleTransferConfirm = useCallback(async (directory: TransferDestination) => {
     if (!transferMode) {
       return;
     }
@@ -471,8 +509,10 @@ const ImageTable: React.FC<ImageTableProps> = ({
         </div>
       </div>
 
-      {contextMenu.visible && (
+      {contextMenu.visible && typeof document !== 'undefined' &&
+        createPortal(
         <div
+          ref={contextMenuRef}
           className="fixed z-[60] bg-gray-800 border border-gray-600 rounded-lg shadow-xl py-1 min-w-[160px] context-menu-class"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -504,7 +544,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             </button>
 
             {isCollectionSubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <div
                   className="relative"
                   onMouseEnter={() => setIsAddToCollectionSubmenuOpen(true)}
@@ -519,7 +559,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
                   </button>
 
                   {isAddToCollectionSubmenuOpen && (
-                    <div className="absolute left-full top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+                    <div className={`absolute top-0 min-w-[220px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                       {collections.length === 0 ? (
                         <div className="px-4 py-2 text-sm text-gray-500">No collections yet</div>
                       ) : (
@@ -590,7 +630,7 @@ const ImageTable: React.FC<ImageTableProps> = ({
             </button>
 
             {isCopySubmenuOpen && (
-              <div className="absolute left-full top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl">
+              <div className={`absolute top-0 min-w-[190px] rounded-lg border border-gray-600 bg-gray-800 py-1 shadow-xl ${submenuHorizontalClass}`}>
                 <button
                   onClick={copyPrompt}
                   className="w-full px-4 py-2 text-left text-sm text-gray-200 transition-colors hover:bg-gray-700 hover:text-white"
@@ -660,6 +700,16 @@ const ImageTable: React.FC<ImageTableProps> = ({
             </button>
 
           <button
+            onClick={openFindSimilar}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canFindSimilar}
+            title={canFindSimilar ? 'Find images with matching prompt and metadata' : 'Requires prompt metadata'}
+          >
+            <Search className="w-4 h-4" />
+            Find similar...
+          </button>
+
+          <button
             onClick={handleReparseMetadata}
             className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
             disabled={isReparsing}
@@ -676,6 +726,16 @@ const ImageTable: React.FC<ImageTableProps> = ({
           >
             <Folder className="w-4 h-4" />
             Show in Folder
+          </button>
+
+          <button
+            onClick={() => openRenameModal(contextMenu.image)}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+            title={!canUseFileManagement && initialized ? 'Pro feature - start trial' : undefined}
+          >
+            <Pencil className="w-4 h-4" />
+            <span className="flex-1">Rename...</span>
+            {!canUseDuringTrialOrPro && <ProBadge size="sm" />}
           </button>
 
           <button
@@ -714,7 +774,8 @@ const ImageTable: React.FC<ImageTableProps> = ({
                 Batch Export Selected ({selectedCount})
               </button>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
 
       <CollectionFormModal
@@ -746,6 +807,13 @@ const ImageTable: React.FC<ImageTableProps> = ({
         progress={transferProgress}
         onConfirm={handleTransferConfirm}
       />
+
+      <RenameImageModal
+        isOpen={!!renameImage}
+        image={renameImage}
+        onClose={() => setRenameImage(null)}
+        onRenamed={({ oldImageId, newImageId }) => onImageRenamed?.(oldImageId, newImageId)}
+      />
     </div>
   );
 };
@@ -768,6 +836,8 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
   const thumbnailsDisabled = useSettingsStore((state) => state.disableThumbnails);
   const showFullFilePath = useSettingsStore((state) => state.showFullFilePath);
   const isVideo = isVideoFileName(image.name, image.fileType);
+  const isAudio = isAudioFileName(image.name, image.fileType);
+  const audioDuration = formatAudioDuration((image.metadata as any)?.normalizedMetadata?.audio?.duration_seconds);
   const relativeImagePath = getRelativeImagePath(image);
   const directoryPath = directories.find((dir) => dir.id === image.directoryId)?.path || '';
   const fullImagePath = joinDisplayPath(directoryPath, relativeImagePath);
@@ -788,7 +858,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       return;
     }
 
-    if (isVideo) {
+    if (isVideo || isAudio) {
       setImageUrl(null);
       setIsLoading(false);
       return;
@@ -802,7 +872,7 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
 
     setImageUrl(null);
     setIsLoading(true);
-  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo]);
+  }, [thumbnail?.thumbnailHandle, image.handle, thumbnail?.thumbnailStatus, thumbnail?.thumbnailUrl, thumbnailsDisabled, isVideo, isAudio]);
 
   const handlePreviewClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -814,7 +884,20 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
       className={`border-b border-gray-700 hover:bg-gray-800/50 cursor-pointer transition-colors group grid items-center ${
         isSelected ? 'bg-blue-900/30 border-blue-700' : ''
       }`}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
       onClick={(e) => onImageClick(image, e)}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          onImageClick(image, e);
+        }
+      }}
       onContextMenu={(e) => onContextMenu && onContextMenu(image, e)}
       style={{ height: '64px', gridTemplateColumns }}
     >
@@ -822,12 +905,28 @@ const ImageTableRow: React.FC<ImageTableRowProps> = React.memo(({ image, onImage
         <div className="relative w-12 h-12 bg-gray-700 rounded overflow-hidden flex items-center justify-center">
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+          ) : isAudio ? (
+            <>
+              <div className="flex h-full w-full flex-col items-center justify-center bg-gray-900 text-cyan-200">
+                <Music className="h-5 w-5" />
+                {audioDuration && (
+                  <span className="mt-0.5 font-mono text-[9px] text-gray-300">{audioDuration}</span>
+                )}
+              </div>
+              <button
+                onClick={handlePreviewClick}
+                className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-500/70"
+                title="Show details"
+              >
+                <Info className="h-4 w-4 text-white" />
+              </button>
+            </>
           ) : imageUrl ? (
             <>
               <img
                 src={imageUrl}
                 alt={image.handle.name}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover image-alpha-grid"
                 loading="lazy"
               />
               {image.rating && (

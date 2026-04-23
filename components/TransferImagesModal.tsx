@@ -2,6 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRightLeft, Copy, Folder, MoveRight, X } from 'lucide-react';
 import type { Directory, IndexedImage, IndexedImageTransferMode, IndexedImageTransferProgress } from '../types';
 
+export type TransferDestination = Directory & {
+  rootDirectoryPath: string;
+  destinationRelativePath: string;
+  displayName: string;
+};
+
 interface TransferImagesModalProps {
   isOpen: boolean;
   images: IndexedImage[];
@@ -11,8 +17,32 @@ interface TransferImagesModalProps {
   statusText?: string;
   progress?: IndexedImageTransferProgress | null;
   onClose: () => void;
-  onConfirm: (directory: Directory) => Promise<void> | void;
+  onConfirm: (directory: TransferDestination) => Promise<void> | void;
 }
+
+interface DestinationOption {
+  id: string;
+  rootDirectory: Directory;
+  name: string;
+  path: string;
+  realPath?: string;
+  relativePath: string;
+  depth: number;
+}
+
+const toForwardSlashes = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '');
+
+const getRelativePath = (rootPath: string, targetPath: string) => {
+  const normalizedRoot = toForwardSlashes(rootPath);
+  const normalizedTarget = toForwardSlashes(targetPath);
+  if (!normalizedRoot || normalizedRoot === normalizedTarget) {
+    return '';
+  }
+  if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
+    return normalizedTarget.slice(normalizedRoot.length + 1);
+  }
+  return '';
+};
 
 const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   isOpen,
@@ -26,6 +56,9 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
   onConfirm,
 }) => {
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<string>('');
+  const [subfolderOptions, setSubfolderOptions] = useState<DestinationOption[]>([]);
+  const [isLoadingSubfolders, setIsLoadingSubfolders] = useState(false);
+  const [subfolderLoadError, setSubfolderLoadError] = useState<string | null>(null);
 
   const imageCount = images.length;
   const firstImage = images[0];
@@ -36,16 +69,130 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
     [directories],
   );
 
+  const destinationOptions = useMemo<DestinationOption[]>(() => {
+    const rootOptions = sortedDirectories.map((directory) => ({
+      id: `${directory.id}::.`,
+      rootDirectory: directory,
+      name: directory.name,
+      path: directory.path,
+      relativePath: '',
+      depth: 0,
+    }));
+
+    return [...rootOptions, ...subfolderOptions].sort((a, b) => {
+      const rootCompare = a.rootDirectory.name.localeCompare(b.rootDirectory.name);
+      if (rootCompare !== 0) return rootCompare;
+      return a.relativePath.localeCompare(b.relativePath);
+    });
+  }, [sortedDirectories, subfolderOptions]);
+
   useEffect(() => {
     if (!isOpen) {
       return;
     }
-    setSelectedDirectoryId(sortedDirectories[0]?.id ?? '');
+    setSelectedDirectoryId((current) => (
+      current && destinationOptions.some((option) => option.id === current)
+        ? current
+        : destinationOptions[0]?.id ?? ''
+    ));
+  }, [isOpen, destinationOptions]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSubfolderOptions([]);
+      setIsLoadingSubfolders(false);
+      setSubfolderLoadError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSubfolders = async () => {
+      const canListSubfolders = typeof window !== 'undefined' && window.electronAPI?.listSubfolders;
+      if (!canListSubfolders || sortedDirectories.length === 0) {
+        setSubfolderOptions([]);
+        setSubfolderLoadError(null);
+        return;
+      }
+
+      setIsLoadingSubfolders(true);
+      setSubfolderLoadError(null);
+      const loadedOptions: DestinationOption[] = [];
+      const visitedRealPaths = new Set<string>();
+
+      const visit = async (rootDirectory: Directory, folderPath: string, depth: number) => {
+        const result = await window.electronAPI!.listSubfolders(folderPath);
+        if (!result.success) {
+          if (!cancelled) {
+            setSubfolderLoadError(result.error || 'Some subfolders could not be loaded.');
+          }
+          return;
+        }
+
+        const subfolders = [...(result.subfolders ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+        for (const subfolder of subfolders) {
+          const visitKey = (subfolder.realPath || subfolder.path).replace(/\\/g, '/');
+          if (visitedRealPaths.has(visitKey)) {
+            continue;
+          }
+          visitedRealPaths.add(visitKey);
+
+          const relativePath = getRelativePath(rootDirectory.path, subfolder.path);
+          if (!relativePath) {
+            continue;
+          }
+
+          loadedOptions.push({
+            id: `${rootDirectory.id}::${relativePath}`,
+            rootDirectory,
+            name: subfolder.name,
+            path: subfolder.path,
+            realPath: subfolder.realPath,
+            relativePath,
+            depth,
+          });
+
+          await visit(rootDirectory, subfolder.path, depth + 1);
+        }
+      };
+
+      try {
+        for (const directory of sortedDirectories) {
+          const rootKey = directory.path.replace(/\\/g, '/');
+          visitedRealPaths.add(rootKey);
+          await visit(directory, directory.path, 1);
+        }
+      } finally {
+        if (!cancelled) {
+          setSubfolderOptions(loadedOptions);
+          setIsLoadingSubfolders(false);
+        }
+      }
+    };
+
+    void loadSubfolders();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, sortedDirectories]);
+
 
   if (!isOpen) return null;
 
-  const selectedDirectory = sortedDirectories.find((directory) => directory.id === selectedDirectoryId);
+  const selectedOption = destinationOptions.find((directory) => directory.id === selectedDirectoryId);
+  const selectedDirectory: TransferDestination | null = selectedOption
+    ? {
+        ...selectedOption.rootDirectory,
+        path: selectedOption.path,
+        name: selectedOption.relativePath || selectedOption.rootDirectory.name,
+        rootDirectoryPath: selectedOption.rootDirectory.path,
+        destinationRelativePath: selectedOption.relativePath,
+        displayName: selectedOption.relativePath
+          ? `${selectedOption.rootDirectory.name}/${selectedOption.relativePath}`
+          : selectedOption.rootDirectory.name,
+      }
+    : null;
   const actionIcon = mode === 'move' ? <MoveRight className="w-5 h-5 text-amber-300" /> : <Copy className="w-5 h-5 text-blue-300" />;
 
   const progressPercent = progress && progress.total > 0
@@ -108,7 +255,7 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
           <div className="space-y-2">
             <label className="text-sm text-gray-300">Destination folder</label>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {sortedDirectories.map((directory) => (
+              {destinationOptions.map((directory) => (
                 <button
                   key={directory.id}
                   type="button"
@@ -119,13 +266,30 @@ const TransferImagesModal: React.FC<TransferImagesModalProps> = ({
                       : 'border-gray-700 bg-gray-800/40 text-gray-200 hover:bg-gray-800'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" style={{ paddingLeft: `${directory.depth * 16}px` }}>
                     <Folder className="w-4 h-4 flex-shrink-0" />
-                    <span className="font-medium truncate">{directory.name}</span>
+                    <span className="font-medium truncate">
+                      {directory.depth === 0 ? directory.name : directory.relativePath}
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-400 truncate">{directory.path}</p>
                 </button>
               ))}
+              {isLoadingSubfolders && (
+                <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-400">
+                  Loading subfolders...
+                </div>
+              )}
+              {!isLoadingSubfolders && subfolderLoadError && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  {subfolderLoadError}
+                </div>
+              )}
+              {!isLoadingSubfolders && !subfolderLoadError && destinationOptions.length === sortedDirectories.length && (
+                <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3 text-sm text-gray-400">
+                  No subfolders found. Root folders are still available.
+                </div>
+              )}
             </div>
           </div>
 

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-04-22
+
+### Added
+
+- **Automation Rules**: Added persistent rules that can automatically tag images and add them to collections based on searchable conditions, metadata facets, ratings, favorites, telemetry, prompts, filenames, dimensions, generators, and other library filters. Includes live previews, manual apply, duplication, enable/disable controls, and optional execution for newly indexed images.
+- **Find Similar + Compare Flow**: Added a new `Find similar...` workflow in the grid, table, Image Modal, and Model View for finding prompt matches and related images across checkpoints, then sending the results directly into Compare Mode.
+- **Slideshow Mode**: Added fullscreen slideshow playback for the current selection or active browse scope, with keyboard controls plus configurable interval and filename overlay settings.
+- **Audio Library Support**: Added indexing, metadata extraction, filtering, library views, and in-app playback for common audio formats including MP3, WAV, FLAC, OGG/OGA, M4A, AAC, OPUS, AIFF/AIF, and WMA.
+- **Image Rename Workflows**: Added inline rename in the grid plus rename actions in grid/table context menus and the Image Modal, while preserving subfolders and original extensions.
+- **Indexed Subfolder Transfers**: Bulk copy/move actions can now target indexed subfolders, including nested folders and symlinked or aliased destinations.
+
+### Improved
+
+- **Compare Mode Clarity**: Compare Mode now highlights the matching metadata panel based on hover position and opens with metadata collapsed by default for faster visual review.
+- **Transparency-Aware Previews**: Grid thumbnails, table previews, sidebar previews, footer previews, and the Image Modal now preserve alpha channels consistently and display transparent images over a checkerboard background.
+- **Windowed Viewer UX**: Floating image windows are more reliable around focus, activation, dragging, offscreen recovery, footer layering, sidebar resizing, and optional minimize/restore motion.
+- **Selection and Navigation Scope**: Opening images from the grid, table, stacks, collections, or background-open actions now preserves multi-selection and keeps navigation tied to the active scope.
+- **Tagging and Filtering Workflow**: Added clear buttons to facet searches, kept mixed-selection tags available in batch tagging, and allowed clicking existing batch-tag chips to apply that tag to the full selection.
+- **Large Library Responsiveness**: Improved worst-case Smart Library clustering behavior and added optional performance diagnostics for troubleshooting search, grid, thumbnail, and viewer responsiveness.
+
+### Fixed
+
+- **Library Watcher Refresh**: Moved or deleted files, removed watched folders, sidecar metadata updates, and refreshed audio/video files now sync more reliably without stale or duplicated entries.
+- **Rename State Consistency**: Renamed images now keep selections, previews, detached modal references, annotations, collections, Smart Library clusters, and cached thumbnail state aligned to the new ID and path.
+- **ComfyUI Wildcard Prompt Parsing**: Fixed `ImpactWildcardProcessor` handling so linked `populated_text` / `wildcard_text` inputs resolve correctly instead of being treated as literal prompt text.
+
 ## [0.14.1] - 2026-04-10
 
 ### Added

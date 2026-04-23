@@ -9,6 +9,7 @@
     "electron.mjs",
     "preload.js",
     "services/**/*",
+    "utils/**/*.js",
     "utils/**/*.mjs",
     "public/icon.ico",
     "public/logo1.png"

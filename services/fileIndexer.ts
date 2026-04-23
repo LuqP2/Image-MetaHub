@@ -2,7 +2,7 @@
 /// <reference lib="dom.iterable" />
 import { IncrementalCacheWriter, type CacheImageMetadata } from './cacheManager';
 
-import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
+import { type IndexedImage, type ImageMetadata, type BaseMetadata, type VideoMetadata, type VideoInfo, type AudioInfo, isInvokeAIMetadata, isAutomatic1111Metadata, isComfyUIMetadata, isSwarmUIMetadata, isEasyDiffusionMetadata, isEasyDiffusionJson, isMidjourneyMetadata, isNijiMetadata, isForgeMetadata, isDalleMetadata, isFireflyMetadata, isDreamStudioMetadata, isDrawThingsMetadata, ComfyUIMetadata, InvokeAIMetadata, SwarmUIMetadata, EasyDiffusionMetadata, EasyDiffusionJson, MidjourneyMetadata, NijiMetadata, ForgeMetadata, DalleMetadata, FireflyMetadata, DrawThingsMetadata, FooocusMetadata } from '../types';
 import { parse } from 'exifr';
 import { resolvePromptFromGraph, parseComfyUIMetadataEnhanced } from './parsers/comfyUIParser';
 import { parseVideoMetaHubMetadata } from './parsers/videoMetaHubParser';
@@ -10,6 +10,7 @@ import { parseInvokeAIMetadata } from './parsers/invokeAIParser';
 import { parseA1111Metadata } from './parsers/automatic1111Parser';
 import { parseSwarmUIMetadata } from './parsers/swarmUIParser';
 import { traceCacheDebug } from '../utils/cacheDebugTrace';
+import { buildSupportedMediaRegex, inferMimeTypeFromName, isAudioFileName, isVideoFileName } from '../utils/mediaTypes.js';
 
 type ThrottledFunction<T extends (...args: any[]) => any> = T & {
   cancel: () => void;
@@ -148,6 +149,7 @@ function classifyFileType(source?: CatalogFileEntry): string {
   if (type === 'image/webp') return 'webp';
   if (type === 'image/jpeg') return 'jpeg';
   if (type.startsWith('video/')) return 'video';
+  if (type.startsWith('audio/')) return 'audio';
   return type || 'unknown';
 }
 
@@ -201,35 +203,11 @@ function detectImageType(view: DataView): 'png' | 'jpeg' | 'webp' | null {
   return null;
 }
 
-function inferMimeTypeFromName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.webm')) return 'video/webm';
-  if (lower.endsWith('.mkv')) return 'video/x-matroska';
-  if (lower.endsWith('.mov')) return 'video/quicktime';
-  if (lower.endsWith('.avi')) return 'video/x-msvideo';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  return 'image/jpeg';
-}
-
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi']);
-
-function isVideoFileName(name: string): boolean {
-  const lower = name.toLowerCase();
-  for (const ext of VIDEO_EXTENSIONS) {
-    if (lower.endsWith(ext)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-async function readVideoMetadataFromElectron(
+async function readMediaMetadataFromElectron(
   fileEntry: CatalogFileEntry
-): Promise<{ rawMetadata: VideoMetadata | null; videoInfo?: VideoInfo | null }> {
-  if (!isElectron || !(window as any).electronAPI?.readVideoMetadata) {
+): Promise<{ rawMetadata: VideoMetadata | null; videoInfo?: VideoInfo | null; audioInfo?: AudioInfo | null }> {
+  const readMediaMetadata = (window as any).electronAPI?.readMediaMetadata ?? (window as any).electronAPI?.readVideoMetadata;
+  if (!isElectron || !readMediaMetadata) {
     return { rawMetadata: null };
   }
 
@@ -239,7 +217,7 @@ async function readVideoMetadataFromElectron(
   }
 
   try {
-    const result = await (window as any).electronAPI.readVideoMetadata({ filePath: absolutePath });
+    const result = await readMediaMetadata({ filePath: absolutePath });
     if (!result?.success) {
       return { rawMetadata: null };
     }
@@ -263,9 +241,9 @@ async function readVideoMetadataFromElectron(
       rawMetadata.videometahub_data = metaHubData;
     }
 
-    return { rawMetadata, videoInfo: result.video || null };
+    return { rawMetadata, videoInfo: result.video || null, audioInfo: result.audio || null };
   } catch (error) {
-    console.error('[FileIndexer] Failed to read video metadata:', error);
+    console.error('[FileIndexer] Failed to read media metadata:', error);
     return { rawMetadata: null };
   }
 }
@@ -1359,12 +1337,15 @@ async function processSingleFileOptimized(
     let fileSizeValue: number | undefined = fileEntry.size;
     const inferredType = fileEntry.type ?? inferMimeTypeFromName(fileEntry.handle.name);
     const isVideo = isVideoFileName(fileEntry.handle.name) || inferredType.startsWith('video/');
+    const isAudio = isAudioFileName(fileEntry.handle.name) || inferredType.startsWith('audio/');
     let videoInfo: VideoInfo | null = null;
+    let audioInfo: AudioInfo | null = null;
 
-    if (isVideo) {
-      const videoResult = await readVideoMetadataFromElectron(fileEntry);
-      rawMetadata = videoResult.rawMetadata;
-      videoInfo = videoResult.videoInfo ?? null;
+    if (isVideo || isAudio) {
+      const mediaResult = await readMediaMetadataFromElectron(fileEntry);
+      rawMetadata = mediaResult.rawMetadata;
+      videoInfo = mediaResult.videoInfo ?? null;
+      audioInfo = mediaResult.audioInfo ?? null;
     } else if (fileData) {
       // OPTIMIZED: Parse directly from ArrayBuffer; avoid creating File/Blob
       const view = new DataView(fileData);
@@ -1593,6 +1574,18 @@ if (rawMetadata) {
       video: videoInfo,
     };
   }
+  if (!normalizedMetadata && isAudio) {
+    normalizedMetadata = {
+      prompt: '',
+      model: '',
+      width: 0,
+      height: 0,
+      steps: 0,
+      scheduler: '',
+      media_type: 'audio',
+      audio: audioInfo,
+    };
+  }
 
   // If we still couldn't normalize, try sidecar JSON as a final fallback.
   if (!normalizedMetadata) {
@@ -1604,6 +1597,25 @@ if (rawMetadata) {
       normalizedMetadata = parseEasyDiffusionJson(sidecarJson);
     }
   }
+}
+
+if (!normalizedMetadata && isAudio) {
+  normalizedMetadata = {
+    prompt: '',
+    model: '',
+    width: 0,
+    height: 0,
+    steps: 0,
+    scheduler: '',
+    media_type: 'audio',
+    audio: audioInfo,
+  };
+}
+if (normalizedMetadata && isAudio) {
+  normalizedMetadata.width = normalizedMetadata.width || 0;
+  normalizedMetadata.height = normalizedMetadata.height || 0;
+  normalizedMetadata.media_type = 'audio';
+  normalizedMetadata.audio = normalizedMetadata.audio ?? audioInfo;
 }
 
 // ==============================================================================
@@ -2175,7 +2187,8 @@ export async function processFiles(
     await pushUiBatch(true);
   }
 
-  const imageFiles = fileEntries.filter(entry => /\.(png|jpg|jpeg|webp|mp4|webm|mkv|mov|avi)$/i.test(entry.handle.name));
+  const supportedMediaRegex = buildSupportedMediaRegex();
+  const imageFiles = fileEntries.filter(entry => supportedMediaRegex.test(entry.handle.name));
 
   const asyncPool = async <T, R>(
     concurrency: number,
@@ -2209,6 +2222,8 @@ export async function processFiles(
   const FILE_READ_BATCH_SIZE = 64; // Reduced from 128 to avoid IPC clogging
   const HEAD_READ_MAX_BYTES = 64 * 1024; // Reduced from 256KB to 64KB
   const TAIL_READ_MAX_BYTES = 512 * 1024;
+  const FULL_READ_FALLBACK_MAX_FILE_BYTES = 32 * 1024 * 1024;
+  const FULL_READ_FALLBACK_MAX_BATCH_BYTES = 96 * 1024 * 1024;
   const TAIL_SCAN_SAMPLE_LIMIT = 256;
   let tailScanAttempts = 0;
   let tailScanHits = 0;
@@ -2757,6 +2772,7 @@ export async function processFiles(
         const fallbackEntries: CatalogEntryState[] = [];
         const tailCheckEntries: CatalogEntryState[] = [];
         const missingEntries = new Set<string>();
+        const blockedFromGenericFallback = new Set<string>();
 
         const headIterator = async (entry: CatalogEntryState) => {
           if (!entry.source) {
@@ -2855,12 +2871,35 @@ export async function processFiles(
         }
 
         if (fallbackEntries.length > 0) {
-          const fallbackPaths = fallbackEntries
-            .map(entry => (entry.source?.handle as ElectronFileHandle)?._filePath)
+          const eligibleFallbackEntries: CatalogEntryState[] = [];
+          for (const entry of fallbackEntries) {
+            const fileSize = entry.source?.size;
+            if (typeof fileSize === 'number' && fileSize > FULL_READ_FALLBACK_MAX_FILE_BYTES) {
+              blockedFromGenericFallback.add(entry.image.id);
+              continue;
+            }
+            eligibleFallbackEntries.push(entry);
+          }
+
+          const fallbackPathToImageId = new Map<string, string>();
+          const fallbackPaths = eligibleFallbackEntries
+            .map(entry => {
+              const filePath = (entry.source?.handle as ElectronFileHandle)?._filePath;
+              if (typeof filePath === 'string' && filePath.length > 0) {
+                fallbackPathToImageId.set(filePath, entry.image.id);
+                return filePath;
+              }
+              return null;
+            })
             .filter((path): path is string => typeof path === 'string' && path.length > 0);
           if (fallbackPaths.length > 0) {
             const fullReadStart = performance.now();
-            const fullReadResult = await (window as any).electronAPI.readFilesBatch(fallbackPaths);
+            const fullReadResult = await (window as any).electronAPI.readFilesBatch({
+              filePaths: fallbackPaths,
+              maxFileBytes: FULL_READ_FALLBACK_MAX_FILE_BYTES,
+              maxTotalBytes: FULL_READ_FALLBACK_MAX_BATCH_BYTES,
+              reason: 'phaseB-metadata-fallback',
+            });
             const fullReadDuration = performance.now() - fullReadStart;
             phaseBStats.fullReadFiles += fallbackPaths.length;
             phaseBStats.fullReadMs += fullReadDuration;
@@ -2870,6 +2909,12 @@ export async function processFiles(
             if (fullReadResult.success && Array.isArray(fullReadResult.files)) {
               for (const file of fullReadResult.files) {
                 if (!file.success || !file.data) {
+                  if (file.errorType === 'FILE_TOO_LARGE' || file.errorType === 'BATCH_BYTE_LIMIT') {
+                    const imageId = fallbackPathToImageId.get(file.path);
+                    if (imageId) {
+                      blockedFromGenericFallback.add(imageId);
+                    }
+                  }
                   continue;
                 }
                 const raw = file.data as ArrayBuffer | ArrayBufferView;
@@ -2907,13 +2952,15 @@ export async function processFiles(
               return null;
             };
 
-            await asyncPool(concurrencyLimit, fallbackEntries, fallbackIterator);
+            await asyncPool(concurrencyLimit, eligibleFallbackEntries, fallbackIterator);
           }
         }
 
         for (const entry of batch) {
           if (missingEntries.has(entry.image.id)) {
-            await iterator(entry);
+            if (!blockedFromGenericFallback.has(entry.image.id)) {
+              await iterator(entry);
+            }
             continue;
           }
           const result = resultsById.get(entry.image.id);

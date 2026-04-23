@@ -174,6 +174,39 @@ describe('useImageStore tri-state filters', () => {
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
   });
 
+  it('matches LoRA filters when metadata only provides model_name', () => {
+    const objectLoraImage = createImage({
+      name: 'object-lora.png',
+      id: 'dir-1::object-lora.png',
+      loras: [{ model_name: 'detailer' } as any],
+    });
+    const plainImage = createImage({
+      name: 'plain.png',
+      id: 'dir-1::plain.png',
+      loras: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [objectLoraImage, plainImage],
+      filteredImages: [objectLoraImage, plainImage],
+      sortOrder: 'asc',
+    });
+    useImageStore.getState().filterAndSortImages();
+
+    useImageStore.getState().setSelectedFilters({
+      loras: ['detailer'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['object-lora.png']);
+
+    useImageStore.getState().setSelectedFilters({
+      loras: [],
+      excludedLoras: ['detailer'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['plain.png']);
+  });
+
   it('treats sampler as an independent filter from scheduler', () => {
     useImageStore.getState().setSelectedFilters({
       samplers: ['dpmpp_2m'],
@@ -356,12 +389,22 @@ describe('useImageStore tri-state filters', () => {
         },
       } as any,
     });
+    const audioImage = createImage({
+      name: 'song.mp3',
+      id: 'dir-1::song.mp3',
+      fileType: 'audio/mpeg',
+      metadata: {
+        normalizedMetadata: {
+          media_type: 'audio',
+        },
+      } as any,
+    });
 
     useImageStore.getState().resetState();
     useImageStore.setState({
       directories: [directory],
-      images: [txt2imgImage, img2imgImage, videoImage],
-      filteredImages: [txt2imgImage, img2imgImage, videoImage],
+      images: [txt2imgImage, img2imgImage, videoImage, audioImage],
+      filteredImages: [txt2imgImage, img2imgImage, videoImage, audioImage],
       sortOrder: 'asc',
     });
 
@@ -374,6 +417,12 @@ describe('useImageStore tri-state filters', () => {
       generationModes: ['img2img'],
     });
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['img2img.png']);
+
+    useImageStore.getState().setAdvancedFilters({
+      generationModes: [],
+      mediaTypes: ['audio'],
+    });
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['song.mp3']);
   });
 
   it('filters by multiple selected ratings with OR logic', () => {
@@ -466,5 +515,106 @@ describe('useImageStore tri-state filters', () => {
     });
 
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toContain('i.png');
+  });
+
+  it('applies automation rules to annotations and collection membership', async () => {
+    const catImage = createImage({
+      id: 'dir-1::cat.png',
+      name: 'cat.png',
+      prompt: 'cat portrait',
+      tags: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [catImage],
+      filteredImages: [catImage],
+      annotations: new Map(),
+      isAnnotationsLoaded: true,
+      automationRules: [
+        {
+          id: 'rule-1',
+          name: 'Cats',
+          enabled: true,
+          criteria: {
+            matchMode: 'all',
+            textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+            filters: {},
+          },
+          actions: { addTags: ['animal'], addToCollectionIds: ['collection-1'] },
+          runOnNewImages: true,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      collections: [
+        {
+          id: 'collection-1',
+          kind: 'manual',
+          name: 'Animals',
+          sortIndex: 0,
+          imageIds: [],
+          snapshotImageIds: [],
+          excludedImageIds: [],
+          imageCount: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+
+    const result = await useImageStore.getState().applyAutomationRuleNow('rule-1');
+
+    expect(result).toMatchObject({ matchCount: 1, changeCount: 2 });
+    expect(useImageStore.getState().images[0]?.tags).toEqual(['animal']);
+    expect(useImageStore.getState().annotations.get(catImage.id)?.tags).toEqual(['animal']);
+    expect(useImageStore.getState().collections[0]?.imageIds).toEqual([catImage.id]);
+    expect(useImageStore.getState().collections[0]?.imageCount).toBe(1);
+  });
+
+  it('loads automation rules before auto-applying them to new images', async () => {
+    const catImage = createImage({
+      id: 'dir-1::startup-cat.png',
+      name: 'startup-cat.png',
+      prompt: 'cat portrait',
+      tags: [],
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [catImage],
+      filteredImages: [catImage],
+      annotations: new Map(),
+      isAnnotationsLoaded: true,
+      isAutomationRulesLoaded: true,
+    });
+
+    await useImageStore.getState().createAutomationRule({
+      id: 'startup-rule',
+      name: 'Startup Cats',
+      enabled: true,
+      criteria: {
+        matchMode: 'all',
+        textConditions: [{ id: 'c1', field: 'prompt', operator: 'contains', value: 'cat' }],
+        filters: {},
+      },
+      actions: { addTags: ['startup-animal'], addToCollectionIds: [] },
+      runOnNewImages: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    useImageStore.setState({
+      automationRules: [],
+      isAutomationRulesLoaded: false,
+    });
+
+    const result = await useImageStore.getState().applyEnabledAutomationRulesToImages([catImage]);
+
+    expect(result.some((preview) => preview.matchCount === 1 && preview.changeCount === 1)).toBe(true);
+    expect(useImageStore.getState().images[0]?.tags).toContain('startup-animal');
+    expect(useImageStore.getState().isAutomationRulesLoaded).toBe(true);
   });
 });

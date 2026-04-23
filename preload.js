@@ -131,10 +131,12 @@ const electronAPI = {
   openCacheLocation: (cachePath) => ipcRenderer.invoke('open-cache-location', cachePath),
   listSubfolders: (folderPath) => ipcRenderer.invoke('list-subfolders', folderPath),
   listDirectoryFiles: (args) => ipcRenderer.invoke('list-directory-files', args),
+  resolveMediaUrl: (filePath) => ipcRenderer.invoke('resolve-media-url', filePath),
   readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
   readFilesBatch: (filePaths) => ipcRenderer.invoke('read-files-batch', filePaths),
   readFilesHeadBatch: (args) => ipcRenderer.invoke('read-files-head-batch', args),
   readFilesTailBatch: (args) => ipcRenderer.invoke('read-files-tail-batch', args),
+  readMediaMetadata: (args) => ipcRenderer.invoke('read-media-metadata', args),
   readVideoMetadata: (args) => ipcRenderer.invoke('read-video-metadata', args),
   getFileStats: (filePath) => ipcRenderer.invoke('get-file-stats', filePath),
   writeFile: (filePath, data) => ipcRenderer.invoke('write-file', filePath, data),
@@ -153,6 +155,8 @@ const electronAPI = {
   joinPaths: (...paths) => ipcRenderer.invoke('join-paths', ...paths),
   joinPathsBatch: (args) => ipcRenderer.invoke('join-paths-batch', args),
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  getFullscreenState: () => ipcRenderer.invoke('get-fullscreen-state'),
+  setFullscreen: (isFullscreen) => ipcRenderer.invoke('set-fullscreen', isFullscreen),
   startFileDrag: (args) => ipcRenderer.send('start-file-drag', args),
 
   // --- Caching ---
@@ -183,6 +187,11 @@ const electronAPI = {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('new-images-detected', subscription);
     return () => ipcRenderer.removeListener('new-images-detected', subscription);
+  },
+  onWatchedFilesRemoved: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('watched-files-removed', subscription);
+    return () => ipcRenderer.removeListener('watched-files-removed', subscription);
   },
   onWatcherDebug: (callback) => {
     const subscription = (event, data) => callback(data);

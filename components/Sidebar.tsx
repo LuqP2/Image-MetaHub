@@ -1,26 +1,15 @@
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronLeft, Plus, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Plus, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import SearchBar from './SearchBar';
 import AdvancedFilters from './AdvancedFilters';
 import TagsAndFavorites from './TagsAndFavorites';
 import ActiveFilters from './ActiveFilters';
 import FacetFilterSection from './FacetFilterSection';
+import AutomationRulesModal from './AutomationRulesModal';
 import { useImageStore } from '../store/useImageStore';
 import type { AdvancedFilters as AdvancedFilterState, ImageRating } from '../types';
-
-const toFacetLabel = (value: unknown): string | null => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-
-  return null;
-};
+import { createProfilerOnRender } from '../utils/performanceDiagnostics';
 
 interface SidebarProps {
   searchQuery: string;
@@ -96,13 +85,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   onReshuffle
 }) => {
   const [isGenerationParametersExpanded, setIsGenerationParametersExpanded] = useState(true);
+  const [isAutomationRulesOpen, setIsAutomationRulesOpen] = useState(false);
   const selectedTags = useImageStore((state) => state.selectedTags);
   const excludedTags = useImageStore((state) => state.excludedTags);
   const selectedAutoTags = useImageStore((state) => state.selectedAutoTags);
   const excludedAutoTags = useImageStore((state) => state.excludedAutoTags);
   const favoriteFilterMode = useImageStore((state) => state.favoriteFilterMode);
-  const allImages = useImageStore((state) => state.images);
-  const filteredImages = useImageStore((state) => state.filteredImages);
   const excludedModels = useImageStore((state) => state.excludedModels);
   const excludedLoras = useImageStore((state) => state.excludedLoras);
   const excludedSamplers = useImageStore((state) => state.excludedSamplers);
@@ -111,79 +99,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   const excludedGenerators = useImageStore((state) => state.excludedGenerators);
   const selectedGpuDevices = useImageStore((state) => state.selectedGpuDevices);
   const excludedGpuDevices = useImageStore((state) => state.excludedGpuDevices);
+  const modelFacetCounts = useImageStore((state) => state.modelFacetCounts);
+  const loraFacetCounts = useImageStore((state) => state.loraFacetCounts);
+  const samplerFacetCounts = useImageStore((state) => state.samplerFacetCounts);
+  const schedulerFacetCounts = useImageStore((state) => state.schedulerFacetCounts);
+  const automationRules = useImageStore((state) => state.automationRules);
   const setSelectedFilters = useImageStore((state) => state.setSelectedFilters);
-  const countFacetValues = useMemo(() => {
-    if (isIndexing) {
-      return {
-        modelCounts: new Map<string, number>(),
-        loraCounts: new Map<string, number>(),
-        samplerCounts: new Map<string, number>(),
-        schedulerCounts: new Map<string, number>(),
-      };
-    }
-
-    const modelCounts = new Map<string, number>();
-    const loraCounts = new Map<string, number>();
-    const samplerCounts = new Map<string, number>();
-    const schedulerCounts = new Map<string, number>();
-
-    for (const image of filteredImages) {
-      image.models?.forEach((value) => {
-        if (value) modelCounts.set(value, (modelCounts.get(value) ?? 0) + 1);
-      });
-
-      image.loras?.forEach((value) => {
-        const label = typeof value === 'string' ? value : value?.name;
-        if (label) loraCounts.set(label, (loraCounts.get(label) ?? 0) + 1);
-      });
-
-      if (image.sampler) {
-        samplerCounts.set(image.sampler, (samplerCounts.get(image.sampler) ?? 0) + 1);
-      }
-
-      if (image.scheduler) {
-        schedulerCounts.set(image.scheduler, (schedulerCounts.get(image.scheduler) ?? 0) + 1);
-      }
-    }
-
-    return { modelCounts, loraCounts, samplerCounts, schedulerCounts };
-  }, [filteredImages, isIndexing]);
-
-  const facetUniverse = useMemo(() => {
-    const models = new Set<string>();
-    const loras = new Set<string>();
-    const samplers = new Set<string>();
-    const schedulers = new Set<string>();
-
-    for (const image of allImages) {
-      image.models?.forEach((value) => {
-        const label = toFacetLabel(value);
-        if (label) models.add(label);
-      });
-
-      image.loras?.forEach((value) => {
-        const label = toFacetLabel(typeof value === 'string' ? value : value?.name);
-        if (label) loras.add(label);
-      });
-
-      const samplerLabel = toFacetLabel(image.sampler);
-      if (samplerLabel) {
-        samplers.add(samplerLabel);
-      }
-
-      const schedulerLabel = toFacetLabel(image.scheduler);
-      if (schedulerLabel) {
-        schedulers.add(schedulerLabel);
-      }
-    }
-
-    return {
-      models: Array.from(models).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-      loras: Array.from(loras).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-      samplers: Array.from(samplers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-      schedulers: Array.from(schedulers).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-    };
-  }, [allImages]);
+  const sidebarProfilerOnRender = useMemo(() => createProfilerOnRender('Sidebar'), []);
 
   const toggleExplicitFacet = (
     value: string,
@@ -212,40 +134,40 @@ const Sidebar: React.FC<SidebarProps> = ({
   const generationFacets = [
     {
       title: 'Checkpoints',
-      items: facetUniverse.models,
+      items: availableModels,
       selectedValues: selectedModels,
       excludedValues: excludedModels,
-      counts: countFacetValues.modelCounts,
+      counts: modelFacetCounts,
       onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'include', { selected: 'models', excluded: 'excludedModels' }),
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedModels, excludedModels, 'exclude', { selected: 'models', excluded: 'excludedModels' }),
       onClear: () => setSelectedFilters({ models: [], excludedModels: [] }),
     },
     {
       title: 'LoRAs',
-      items: facetUniverse.loras,
+      items: availableLoras,
       selectedValues: selectedLoras,
       excludedValues: excludedLoras,
-      counts: countFacetValues.loraCounts,
+      counts: loraFacetCounts,
       onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'include', { selected: 'loras', excluded: 'excludedLoras' }),
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedLoras, excludedLoras, 'exclude', { selected: 'loras', excluded: 'excludedLoras' }),
       onClear: () => setSelectedFilters({ loras: [], excludedLoras: [] }),
     },
     {
       title: 'Samplers',
-      items: facetUniverse.samplers,
+      items: availableSamplers,
       selectedValues: selectedSamplers,
       excludedValues: excludedSamplers,
-      counts: countFacetValues.samplerCounts,
+      counts: samplerFacetCounts,
       onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'include', { selected: 'samplers', excluded: 'excludedSamplers' }),
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSamplers, excludedSamplers, 'exclude', { selected: 'samplers', excluded: 'excludedSamplers' }),
       onClear: () => setSelectedFilters({ samplers: [], excludedSamplers: [] }),
     },
     {
       title: 'Schedulers',
-      items: facetUniverse.schedulers,
+      items: availableSchedulers,
       selectedValues: selectedSchedulers,
       excludedValues: excludedSchedulers,
-      counts: countFacetValues.schedulerCounts,
+      counts: schedulerFacetCounts,
       onIncludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'include', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
       onExcludeToggle: (value: string) => toggleExplicitFacet(value, selectedSchedulers, excludedSchedulers, 'exclude', { selected: 'schedulers', excluded: 'excludedSchedulers' }),
       onClear: () => setSelectedFilters({ schedulers: [], excludedSchedulers: [] }),
@@ -275,9 +197,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     favoriteFilterMode !== 'neutral' ||
     selectedRatings.length > 0 ||
     Object.keys(advancedFilters || {}).length > 0;
+  const activeAutomationRuleCount = automationRules.filter((rule) => rule.enabled).length;
 
   if (isCollapsed) {
     return (
+      <React.Profiler id="Sidebar" onRender={sidebarProfilerOnRender}>
       <div
         data-area="sidebar"
         tabIndex={-1}
@@ -314,10 +238,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+      </React.Profiler>
     );
   }
 
   return (
+    <React.Profiler id="Sidebar" onRender={sidebarProfilerOnRender}>
+    <>
     <div
       data-area="sidebar"
       tabIndex={-1}
@@ -339,7 +266,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <img src="logo1.png" alt="Image MetaHub" className="h-11 w-11 flex-shrink-0 rounded-xl object-contain" />
           <div className="min-w-0 flex-1 flex flex-col overflow-hidden">
             <h1 className="truncate text-lg font-semibold tracking-tight text-white">Image MetaHub</h1>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.14.1</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-gray-500">v0.15.0</span>
           </div>
           <button
             onClick={onToggleCollapse}
@@ -391,23 +318,39 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {onAddFolder && (
-          <div className="px-3 py-2 border-b border-gray-700">
+        <div className="px-3 py-2 border-b border-gray-700">
+          <div className={`grid gap-2 ${onAddFolder ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {onAddFolder && (
+              <button
+                onClick={onAddFolder}
+                disabled={isIndexing}
+                className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
+                  isIndexing
+                    ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
+                }`}
+                title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              >
+                <Plus size={14} />
+                <span>Add Folder</span>
+              </button>
+            )}
             <button
-              onClick={onAddFolder}
-              disabled={isIndexing}
-              className={`w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded text-sm transition-all duration-200 ${
-                isIndexing
-                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                  : 'bg-gray-700/40 text-gray-300 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20'
-              }`}
-              title={isIndexing ? "Cannot add folder during indexing" : "Add a new folder"}
+              type="button"
+              onClick={() => setIsAutomationRulesOpen(true)}
+              className="relative flex items-center justify-center gap-1 rounded bg-gray-700/40 px-2 py-1.5 text-sm text-gray-300 transition-all duration-200 hover:bg-gray-700/60 hover:text-gray-50 hover:shadow-md hover:shadow-accent/20"
+              title="Automation rules"
             >
-              <Plus size={14} />
-              <span>Add Folder</span>
+              <SlidersHorizontal size={14} />
+              <span>Rules</span>
+              {activeAutomationRuleCount > 0 && (
+                <span className="absolute -right-1 -top-1 rounded-full border border-blue-700/50 bg-blue-950 px-1.5 py-0.5 text-[10px] leading-none text-blue-200">
+                  {activeAutomationRuleCount}
+                </span>
+              )}
             </button>
           </div>
-        )}
+        </div>
 
         {children && React.isValidElement(children) ? (
           React.cloneElement(children as React.ReactElement<any>, {
@@ -475,6 +418,9 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </div>
+    <AutomationRulesModal isOpen={isAutomationRulesOpen} onClose={() => setIsAutomationRulesOpen(false)} />
+    </>
+    </React.Profiler>
   );
 };
 

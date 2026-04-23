@@ -1,13 +1,16 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs';
+import { SUPPORTED_MEDIA_EXTENSIONS } from '../utils/mediaTypes.js';
 
 // Active watchers: directoryId -> watcher instance
 const activeWatchers = new Map();
 
 // Pending files for batching (directoryId -> Map(filePath -> { forceReindex }))
 const pendingFiles = new Map();
+const pendingRemovals = new Map();
 const processingTimeouts = new Map();
+const removalTimeouts = new Map();
 
 const WATCHER_READY_TIMEOUT_MS = 10000;
 
@@ -21,6 +24,57 @@ const shouldUsePolling = (dirPath) => {
 const isPermissionError = (error) => {
   const code = error?.code;
   return code === 'EPERM' || code === 'EACCES';
+};
+
+const isTransientVanishError = (error) => {
+  const code = error?.code;
+  const syscall = typeof error?.syscall === 'string' ? error.syscall.toLowerCase() : '';
+  const message = (error?.message || String(error || '')).toLowerCase();
+
+  if (code === 'ENOENT') {
+    return true;
+  }
+
+  if (syscall === 'lstat' || message.includes('lstat')) {
+    return code === 'UNKNOWN' || code === 'ENOENT' || message.includes('no such file') || message.includes('unknown error');
+  }
+
+  return false;
+};
+
+const isMediaFile = (filePath) => SUPPORTED_MEDIA_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
+
+const findMediaFilesForSidecar = (sidecarPath) => {
+  const sidecarExt = path.extname(sidecarPath);
+  const sidecarBaseName = path.basename(sidecarPath, sidecarExt);
+  const sidecarDir = path.dirname(sidecarPath);
+
+  try {
+    return fs.readdirSync(sidecarDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() || entry.isSymbolicLink())
+      .map((entry) => entry.name)
+      .filter((fileName) => {
+        const mediaExt = path.extname(fileName);
+        if (!SUPPORTED_MEDIA_EXTENSIONS.includes(mediaExt.toLowerCase())) {
+          return false;
+        }
+        return fileName.slice(0, -mediaExt.length) === sidecarBaseName;
+      })
+      .map((fileName) => path.join(sidecarDir, fileName));
+  } catch {
+    return [];
+  }
+};
+
+const toRelativePath = (rootPath, targetPath) => {
+  const relativePath = path.relative(rootPath, targetPath);
+  if (relativePath === '') {
+    return '';
+  }
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return path.basename(targetPath);
+  }
+  return relativePath.replace(/\\/g, '/');
 };
 
 const sendWatcherDebug = (mainWindow, message) => {
@@ -95,15 +149,15 @@ export function startWatching(directoryId, dirPath, mainWindow) {
       sendWatcherDebug(mainWindow, `[FileWatcher] Watcher ready for ${directoryId} - monitoring: ${dirPath}`);
     });
 
-    const enqueueImage = (imagePath, forceReindex = false) => {
-      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${imagePath}`);
+    const enqueueMedia = (mediaPath, forceReindex = false) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] File detected: ${mediaPath}`);
       if (!pendingFiles.has(directoryId)) {
         pendingFiles.set(directoryId, new Map());
       }
-      sendWatcherDebug(mainWindow, `[FileWatcher] Adding image to batch: ${imagePath}`);
+      sendWatcherDebug(mainWindow, `[FileWatcher] Adding media to batch: ${mediaPath}`);
       const pendingMap = pendingFiles.get(directoryId);
-      const existing = pendingMap.get(imagePath);
-      pendingMap.set(imagePath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
+      const existing = pendingMap.get(mediaPath);
+      pendingMap.set(mediaPath, { forceReindex: Boolean(existing?.forceReindex || forceReindex) });
 
       if (processingTimeouts.has(directoryId)) {
         clearTimeout(processingTimeouts.get(directoryId));
@@ -116,30 +170,83 @@ export function startWatching(directoryId, dirPath, mainWindow) {
 
     watcher.on('add', (filePath) => {
       const ext = path.extname(filePath).toLowerCase();
-      const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mkv', '.mov', '.avi'];
 
       if (ext === '.json') {
-        const basePath = filePath.slice(0, -ext.length);
-        const matches = imageExts
-          .map((imageExt) => `${basePath}${imageExt}`)
-          .filter((candidate) => fs.existsSync(candidate));
+        const matches = findMediaFilesForSidecar(filePath);
         if (matches.length === 0) {
           return;
         }
-        matches.forEach((match) => enqueueImage(match, true));
+        matches.forEach((match) => enqueueMedia(match, true));
         return;
       }
 
-      if (!imageExts.includes(ext)) {
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
         return;
       }
 
-      enqueueImage(filePath, false);
+      enqueueMedia(filePath, false);
+    });
+
+    watcher.on('change', (filePath) => {
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (ext === '.json') {
+        findMediaFilesForSidecar(filePath).forEach((match) => enqueueMedia(match, true));
+        return;
+      }
+
+      if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) {
+        return;
+      }
+
+      enqueueMedia(filePath, true);
+    });
+
+    const enqueueRemoval = (removedPath, kind) => {
+      sendWatcherDebug(mainWindow, `[FileWatcher] ${kind === 'folder' ? 'Folder' : 'File'} removed: ${removedPath}`);
+      if (!pendingRemovals.has(directoryId)) {
+        pendingRemovals.set(directoryId, { files: new Map(), folders: new Map() });
+      }
+
+      const relativePath = toRelativePath(dirPath, removedPath);
+      const targetMap = kind === 'folder'
+        ? pendingRemovals.get(directoryId).folders
+        : pendingRemovals.get(directoryId).files;
+
+      targetMap.set(removedPath, {
+        name: path.basename(removedPath),
+        path: removedPath,
+        relativePath,
+      });
+
+      if (removalTimeouts.has(directoryId)) {
+        clearTimeout(removalTimeouts.get(directoryId));
+      }
+
+      removalTimeouts.set(directoryId, setTimeout(() => {
+        processRemovalBatch(directoryId, mainWindow);
+      }, 500));
+    };
+
+    watcher.on('unlink', (filePath) => {
+      if (!isMediaFile(filePath)) {
+        return;
+      }
+      enqueueRemoval(filePath, 'file');
+    });
+
+    watcher.on('unlinkDir', (folderPath) => {
+      enqueueRemoval(folderPath, 'folder');
     });
 
     watcher.on('error', (error) => {
       if (isPermissionError(error)) {
         sendWatcherDebug(mainWindow, `[FileWatcher] Watcher permission error for ${directoryId}: ${error.message || error}`);
+        return;
+      }
+
+      if (isTransientVanishError(error)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Ignoring transient watcher vanish error for ${directoryId}: ${error.message || error}`);
         return;
       }
 
@@ -179,7 +286,12 @@ export function stopWatching(directoryId) {
       clearTimeout(processingTimeouts.get(directoryId));
       processingTimeouts.delete(directoryId);
     }
+    if (removalTimeouts.has(directoryId)) {
+      clearTimeout(removalTimeouts.get(directoryId));
+      removalTimeouts.delete(directoryId);
+    }
     pendingFiles.delete(directoryId);
+    pendingRemovals.delete(directoryId);
   }
 
   return { success: true };
@@ -227,6 +339,10 @@ function processBatch(directoryId, dirPath, mainWindow) {
         forceReindex: pendingInfo.forceReindex === true
       };
     } catch (err) {
+      if (isTransientVanishError(err)) {
+        sendWatcherDebug(mainWindow, `[FileWatcher] Skipping vanished file during batch processing: ${filePath}`);
+        return null;
+      }
       console.error(`Error getting stats for ${filePath}:`, err);
       return null;
     }
@@ -242,4 +358,23 @@ function processBatch(directoryId, dirPath, mainWindow) {
 
   pendingFiles.delete(directoryId);
   processingTimeouts.delete(directoryId);
+}
+
+function processRemovalBatch(directoryId, mainWindow) {
+  const removals = pendingRemovals.get(directoryId);
+
+  if (!removals || (removals.files.size === 0 && removals.folders.size === 0)) return;
+
+  const files = Array.from(removals.files.values());
+  const folders = Array.from(removals.folders.values());
+  sendWatcherDebug(mainWindow, `[FileWatcher] Processing removal batch for ${directoryId}, ${files.length} files, ${folders.length} folders`);
+
+  sendToRenderer(mainWindow, 'watched-files-removed', {
+    directoryId,
+    files,
+    folders,
+  });
+
+  pendingRemovals.delete(directoryId);
+  removalTimeouts.delete(directoryId);
 }

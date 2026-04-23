@@ -2,6 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import ImageTable from '../components/ImageTable';
+import { useImageSelection } from '../hooks/useImageSelection';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { IndexedImage } from '../types';
@@ -30,6 +31,11 @@ vi.mock('../hooks/useContextMenu', () => ({
     exportImage: vi.fn(),
     copyRawMetadata: vi.fn(),
   }),
+}));
+
+vi.mock('react-virtualized-auto-sizer', () => ({
+  default: ({ children }: { children: (size: { height: number; width: number }) => React.ReactNode }) =>
+    children({ height: 600, width: 1200 }),
 }));
 
 vi.mock('../hooks/useThumbnail', () => ({
@@ -85,6 +91,20 @@ const createImage = (overrides: Partial<IndexedImage>): IndexedImage => ({
   workflowNodes: overrides.workflowNodes ?? [],
   ...overrides,
 });
+
+const SelectionHarness = ({ images }: { images: IndexedImage[] }) => {
+  const selectedImages = useImageStore((state) => state.selectedImages);
+  const { handleImageSelection } = useImageSelection();
+
+  return (
+    <ImageTable
+      images={images}
+      onImageClick={handleImageSelection}
+      selectedImages={selectedImages}
+      onBatchExport={vi.fn()}
+    />
+  );
+};
 
 describe('ImageTable context menu', () => {
   beforeEach(() => {
@@ -181,5 +201,110 @@ describe('ImageTable context menu', () => {
     fireEvent.click(screen.getByText('Carros'));
 
     expect(addImagesToCollection).toHaveBeenCalledWith('collection-1', ['img-1']);
+  });
+
+  it('shows a find similar action in the image-table context menu', () => {
+    const onFindSimilar = vi.fn();
+    const image = createImage({ id: 'img-1', name: 'alpha.png', prompt: 'Test prompt' });
+    contextMenuStateMock.visible = true;
+    contextMenuStateMock.image = image;
+
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      collections: [],
+      createCollection: vi.fn().mockResolvedValue(undefined),
+      addImagesToCollection: vi.fn().mockResolvedValue(undefined),
+      removeImagesFromCollection: vi.fn().mockResolvedValue(undefined),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      bulkSetImageRating: vi.fn(),
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={[image]}
+        onImageClick={vi.fn()}
+        selectedImages={new Set()}
+        onBatchExport={vi.fn()}
+        onFindSimilar={onFindSimilar}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Find similar...'));
+    expect(onFindSimilar).toHaveBeenCalledWith(image);
+  });
+});
+
+describe('ImageTable selection opening behavior', () => {
+  beforeEach(() => {
+    showContextMenuMock.mockReset();
+    hideContextMenuMock.mockReset();
+    contextMenuStateMock.visible = false;
+    contextMenuStateMock.image = undefined;
+    useImageStore.getState().resetState();
+    useSettingsStore.getState().resetState();
+    useSettingsStore.setState({
+      disableThumbnails: false,
+      showFullFilePath: false,
+    } as any);
+  });
+
+  it('preserves checked images when plain-clicking another row to open it', () => {
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      transferProgress: null,
+    } as any);
+
+    render(<SelectionHarness images={images} />);
+
+    fireEvent.click(screen.getByText('gamma.png'));
+
+    expect(useImageStore.getState().selectedImage?.id).toBe('img-3');
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
+  });
+
+  it('emits middle-click as an open gesture without changing checked images', () => {
+    const onImageClick = vi.fn();
+    const images = [
+      createImage({ id: 'img-1', name: 'alpha.png' }),
+      createImage({ id: 'img-2', name: 'beta.png' }),
+      createImage({ id: 'img-3', name: 'gamma.png' }),
+    ];
+
+    useImageStore.setState({
+      images,
+      filteredImages: images,
+      directories: [{ id: 'dir-1', path: 'D:/library' }],
+      selectedImages: new Set(['img-1', 'img-2']),
+      transferProgress: null,
+    } as any);
+
+    render(
+      <ImageTable
+        images={images}
+        onImageClick={onImageClick}
+        selectedImages={useImageStore.getState().selectedImages}
+        onBatchExport={vi.fn()}
+      />,
+    );
+
+    const target = screen.getByText('gamma.png');
+    fireEvent.mouseDown(target, { button: 1 });
+    fireEvent(target, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+
+    expect(onImageClick).toHaveBeenCalledTimes(1);
+    expect(onImageClick.mock.calls[0]?.[0]).toMatchObject({ id: 'img-3' });
+    expect(useImageStore.getState().selectedImages).toEqual(new Set(['img-1', 'img-2']));
   });
 });

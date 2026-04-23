@@ -4,6 +4,12 @@ import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useGenerationQueueStore } from '../store/useGenerationQueueStore';
+import {
+  hasPromptMetadata,
+  mergeNormalizedMetadata,
+  NO_METADATA_MESSAGE,
+  TEMPORARY_STATUS_TIMEOUT_MS,
+} from '../utils/imageMetadata';
 
 interface GenerateStatus {
   success: boolean;
@@ -22,17 +28,14 @@ export function useGenerateWithA1111() {
 
   const generateWithA1111 = useCallback(
     async (image: IndexedImage, customParams?: Partial<BaseMetadata>, numberOfImages?: number) => {
-      // Merge custom params with original metadata if provided
-      const metadata = customParams
-        ? { ...image.metadata?.normalizedMetadata, ...customParams }
-        : image.metadata?.normalizedMetadata;
+      const metadata = mergeNormalizedMetadata(image, customParams);
 
-      if (!metadata || !metadata.prompt) {
+      if (!hasPromptMetadata(metadata)) {
         setGenerateStatus({
           success: false,
-          message: 'No metadata available for this image',
+          message: NO_METADATA_MESSAGE,
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
 
@@ -41,7 +44,7 @@ export function useGenerateWithA1111() {
           success: false,
           message: 'A1111 server URL not configured. Please check Settings.',
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
 
@@ -63,7 +66,7 @@ export function useGenerateWithA1111() {
           success: true,
           message: 'Generation queued. Waiting for current A1111 job to finish.',
         });
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
         return;
       }
       setActiveJob('a1111', jobId);
@@ -103,14 +106,15 @@ export function useGenerateWithA1111() {
         stopPolling();
 
         // Clear status after 5 seconds
-        setTimeout(() => setGenerateStatus(null), 5000);
-      } catch (error: any) {
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         setGenerateStatus({
           success: false,
-          message: `Error: ${error.message}`,
+          message: `Error: ${errorMessage}`,
         });
 
-        setJobStatus(jobId, 'failed', { error: error.message });
+        setJobStatus(jobId, 'failed', { error: errorMessage });
         const { activeJobs } = useGenerationQueueStore.getState();
         if (activeJobs.a1111 === jobId) {
           setActiveJob('a1111', null);
@@ -119,7 +123,7 @@ export function useGenerateWithA1111() {
         // Stop progress polling on error
         stopPolling();
 
-        setTimeout(() => setGenerateStatus(null), 5000);
+        setTimeout(() => setGenerateStatus(null), TEMPORARY_STATUS_TIMEOUT_MS);
       } finally {
         setIsGenerating(false);
       }

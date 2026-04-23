@@ -37,6 +37,6 @@ export default tseslint.config(
   },
   {
     // Ignores files from the linting process
-    ignores: ["node_modules/", "build/", "dist/"]
+    ignores: ["node_modules/", "build/", "dist/", "**/dist/"]
   }
 );

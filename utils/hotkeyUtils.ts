@@ -8,7 +8,9 @@ const KEY_ALIASES: Record<string, string> = {
 };
 
 const normalizeKey = (key: string): string => {
-  const normalized = key.trim().toLowerCase();
+  const raw = key.toLowerCase();
+  const aliasedRaw = KEY_ALIASES[raw] ?? raw;
+  const normalized = aliasedRaw.trim();
   return KEY_ALIASES[normalized] ?? normalized;
 };
 

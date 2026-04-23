@@ -1,19 +1,31 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { type IndexedImage } from '../types';
-import { copyImageToClipboard, showInExplorer, copyFilePathToClipboard } from '../utils/imageUtils';
+import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useFeatureAccess } from './useFeatureAccess';
+import {
+  getClipboardErrorMessage,
+  getNormalizedMetadata,
+  hasPromptMetadata,
+  NO_METADATA_MESSAGE,
+} from '../utils/imageMetadata';
 
 interface ContextMenuState {
   x: number;
   y: number;
+  anchorX: number;
+  anchorY: number;
   visible: boolean;
+  horizontalDirection: 'left' | 'right';
+  verticalDirection: 'up' | 'down';
   image?: IndexedImage;
   directoryPath?: string;
 }
+
+const CONTEXT_MENU_MARGIN = 8;
 
 const showNotification = (message: string) => {
   const notification = document.createElement('div');
@@ -28,10 +40,15 @@ const showNotification = (message: string) => {
 };
 
 export const useContextMenu = () => {
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
-    visible: false
+    anchorX: 0,
+    anchorY: 0,
+    visible: false,
+    horizontalDirection: 'right',
+    verticalDirection: 'down',
   });
 
   const { startPolling, stopPolling } = useA1111ProgressContext();
@@ -40,6 +57,67 @@ export const useContextMenu = () => {
   const hideContextMenu = useCallback(() => {
     setContextMenu((prev) => ({ ...prev, visible: false }));
   }, []);
+
+  useLayoutEffect(() => {
+    if (!contextMenu.visible || !contextMenuRef.current) {
+      return;
+    }
+
+    const repositionMenu = () => {
+      const menuElement = contextMenuRef.current;
+      if (!menuElement) {
+        return;
+      }
+
+      const rect = menuElement.getBoundingClientRect();
+      const maxX = Math.max(CONTEXT_MENU_MARGIN, window.innerWidth - rect.width - CONTEXT_MENU_MARGIN);
+      const maxY = Math.max(CONTEXT_MENU_MARGIN, window.innerHeight - rect.height - CONTEXT_MENU_MARGIN);
+
+      let nextX = contextMenu.anchorX;
+      let nextY = contextMenu.anchorY;
+      let horizontalDirection: 'left' | 'right' = 'right';
+      let verticalDirection: 'up' | 'down' = 'down';
+
+      if (nextX + rect.width > window.innerWidth - CONTEXT_MENU_MARGIN) {
+        nextX = contextMenu.anchorX - rect.width;
+        horizontalDirection = 'left';
+      }
+
+      if (nextY + rect.height > window.innerHeight - CONTEXT_MENU_MARGIN) {
+        nextY = contextMenu.anchorY - rect.height;
+        verticalDirection = 'up';
+      }
+
+      nextX = Math.min(Math.max(CONTEXT_MENU_MARGIN, nextX), maxX);
+      nextY = Math.min(Math.max(CONTEXT_MENU_MARGIN, nextY), maxY);
+
+      setContextMenu((prev) => {
+        if (
+          prev.x === nextX &&
+          prev.y === nextY &&
+          prev.horizontalDirection === horizontalDirection &&
+          prev.verticalDirection === verticalDirection
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          x: nextX,
+          y: nextY,
+          horizontalDirection,
+          verticalDirection,
+        };
+      });
+    };
+
+    repositionMenu();
+    window.addEventListener('resize', repositionMenu);
+
+    return () => {
+      window.removeEventListener('resize', repositionMenu);
+    };
+  }, [contextMenu.anchorX, contextMenu.anchorY, contextMenu.visible]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -63,7 +141,11 @@ export const useContextMenu = () => {
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
+      anchorX: e.clientX,
+      anchorY: e.clientY,
       visible: true,
+      horizontalDirection: 'right',
+      verticalDirection: 'down',
       image,
       directoryPath
     });
@@ -99,19 +181,21 @@ export const useContextMenu = () => {
   };
 
   const copyPrompt = () => {
-    const prompt = contextMenu.image?.prompt || (contextMenu.image?.metadata as any)?.prompt;
+    const prompt = contextMenu.image?.prompt || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.prompt : undefined);
     if (!prompt) return;
     copyToClipboardElectron(prompt, 'Prompt');
   };
 
   const copyNegativePrompt = () => {
-    const negativePrompt = contextMenu.image?.negativePrompt || (contextMenu.image?.metadata as any)?.negativePrompt;
+    const negativePrompt =
+      contextMenu.image?.negativePrompt ||
+      (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.negativePrompt : undefined);
     if (!negativePrompt) return;
     copyToClipboardElectron(negativePrompt, 'Negative Prompt');
   };
 
   const copySeed = () => {
-    const seed = contextMenu.image?.seed || (contextMenu.image?.metadata as any)?.seed;
+    const seed = contextMenu.image?.seed || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.seed : undefined);
     if (!seed) return;
     copyToClipboardElectron(String(seed), 'Seed');
   };
@@ -128,7 +212,7 @@ export const useContextMenu = () => {
   };
 
   const copyModel = () => {
-    const model = contextMenu.image?.models?.[0] || (contextMenu.image?.metadata as any)?.model;
+    const model = contextMenu.image?.models?.[0] || (contextMenu.image ? getNormalizedMetadata(contextMenu.image)?.model : undefined);
     if (!model) return;
     copyToClipboardElectron(model, 'Model');
   };
@@ -194,9 +278,9 @@ export const useContextMenu = () => {
       // 4. Success!
       alert(`Image exported successfully to: ${destPath}`);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Export error:', error);
-      alert(`An unexpected error occurred during export: ${error.message}`);
+      alert(`An unexpected error occurred during export: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -209,9 +293,9 @@ export const useContextMenu = () => {
       return;
     }
 
-    const metadata = contextMenu.image.metadata?.normalizedMetadata;
-    if (!metadata || !metadata.prompt) {
-      alert('No metadata available for this image');
+    const metadata = getNormalizedMetadata(contextMenu.image);
+    if (!hasPromptMetadata(metadata)) {
+      alert(NO_METADATA_MESSAGE);
       hideContextMenu();
       return;
     }
@@ -226,11 +310,8 @@ export const useContextMenu = () => {
       await navigator.clipboard.writeText(formattedText);
 
       showNotification('Copied! Paste into A1111 prompt box and click the Blue Arrow.');
-    } catch (error: any) {
-      const errorMessage = error.message?.includes('clipboard')
-        ? 'Clipboard access denied. Please use HTTPS or localhost.'
-        : `Error: ${error.message}`;
-      alert(errorMessage);
+    } catch (error: unknown) {
+      alert(getClipboardErrorMessage(error));
     }
   };
 
@@ -243,9 +324,9 @@ export const useContextMenu = () => {
       return;
     }
 
-    const metadata = contextMenu.image.metadata?.normalizedMetadata;
-    if (!metadata || !metadata.prompt) {
-      alert('No metadata available for this image');
+    const metadata = getNormalizedMetadata(contextMenu.image);
+    if (!hasPromptMetadata(metadata)) {
+      alert(NO_METADATA_MESSAGE);
       hideContextMenu();
       return;
     }
@@ -280,10 +361,10 @@ export const useContextMenu = () => {
       } else {
         alert(result.error || 'Generation failed');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Stop progress polling on error
       stopPolling();
-      alert(`Error: ${error.message}`);
+      alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -302,6 +383,7 @@ export const useContextMenu = () => {
 
   return {
     contextMenu,
+    contextMenuRef,
     showContextMenu,
     hideContextMenu,
     copyPrompt,

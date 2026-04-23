@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ImageSizeSlider from './ImageSizeSlider';
+import Tooltip from './Tooltip';
 import { Grid3X3, List, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ListChecks, X } from 'lucide-react';
 import { A1111ProgressState } from '../hooks/useA1111Progress';
 import { useFeatureAccess } from '../hooks/useFeatureAccess';
@@ -34,6 +35,7 @@ interface FooterProps {
   }>;
   onWindowSelect?: (id: string) => void;
   onWindowClose?: (id: string) => void;
+  sticky?: boolean;
 }
 
 const Token: React.FC<{ children: React.ReactNode; title?: string }> = ({ children, title }) => (
@@ -66,6 +68,7 @@ const Footer: React.FC<FooterProps> = ({
   windowItems = [],
   onWindowSelect,
   onWindowClose,
+  sticky = true,
 }) => {
   const { canUseA1111 } = useFeatureAccess();
   const [isEditingPage, setIsEditingPage] = useState(false);
@@ -135,7 +138,7 @@ const Footer: React.FC<FooterProps> = ({
   const hasAnyJob = hasEnrichmentJob || hasA1111Job || hasTransferJob;
 
   return (
-    <footer className="sticky bottom-0 z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up">
+    <footer className={`${sticky ? 'sticky bottom-0' : 'relative'} z-[55] bg-gray-900/90 backdrop-blur-md border-t border-gray-800/60 transition-all duration-300 shadow-footer-up`}>
       {windowItems.length > 0 && (
         <div className="relative border-b border-gray-800/60 px-4 py-2">
           {hoveredWindowItem?.isMinimized && previewLeft !== null && (
@@ -149,7 +152,7 @@ const Footer: React.FC<FooterProps> = ({
                     <img
                       src={hoveredThumbnail.thumbnailUrl}
                       alt={hoveredWindowItem.title}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover image-alpha-grid"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500">
@@ -177,6 +180,7 @@ const Footer: React.FC<FooterProps> = ({
             {windowItems.map((windowItem) => (
               <div
                 key={windowItem.id}
+                data-image-modal-window-id={windowItem.id}
                 onMouseEnter={(event) => handleWindowHover(event, windowItem.id)}
                 onAuxClick={(event) => {
                   if (event.button !== 1) {
@@ -314,12 +318,16 @@ const Footer: React.FC<FooterProps> = ({
           <>
             <div className="w-px h-4 bg-gray-700/50"></div>
             <div className="flex items-center gap-1 bg-gray-800/40 p-1 rounded-lg border border-gray-700/30">
-              <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="First page">
-                <ChevronsLeft className="w-4 h-4" />
-              </button>
-              <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Previous page">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+              <Tooltip label="First page">
+                <button onClick={() => onPageChange(1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="First page" aria-label="First page">
+                  <ChevronsLeft className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip label="Previous page">
+                <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Previous page" aria-label="Previous page">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </Tooltip>
               
               <div className="px-1 min-w-[80px] text-center">
                 {isEditingPage ? (
@@ -357,38 +365,47 @@ const Footer: React.FC<FooterProps> = ({
                 )}
               </div>
 
-              <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Next page">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Last page">
-                <ChevronsRight className="w-4 h-4" />
-              </button>
+              <Tooltip label="Next page">
+                <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Next page" aria-label="Next page">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip label="Last page">
+                <button onClick={() => onPageChange(totalPages)} disabled={currentPage === totalPages} className="p-1.5 hover:bg-gray-700 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:text-white text-gray-400" title="Last page" aria-label="Last page">
+                  <ChevronsRight className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
           </>
         )}
       </nav>
       <div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
         <ImageSizeSlider />
-        <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
-          {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
-        </button>
-        {onToggleQueue && (
-          <button
-            onClick={onToggleQueue}
-            className={`relative p-2 rounded-lg transition-all border ${
-              isQueueOpen
-                ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                : 'hover:bg-gray-800 text-gray-400 hover:text-white border-transparent hover:border-gray-700'
-            }`}
-            title="Toggle Queue"
-          >
-            <ListChecks className="h-4 w-4" />
-            {queueCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
-                {queueCount}
-              </span>
-            )}
+        <Tooltip label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
+          <button onClick={() => onViewModeChange(viewMode === 'grid' ? 'list' : 'grid')} className="p-2 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-all hover:shadow-md" title={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`} aria-label={`Switch to ${viewMode === 'grid' ? 'list' : 'grid'} view`}>
+            {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
+        </Tooltip>
+        {onToggleQueue && (
+          <Tooltip label="Toggle Queue">
+            <button
+              onClick={onToggleQueue}
+              className={`relative p-2 rounded-lg transition-all border ${
+                isQueueOpen
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                  : 'hover:bg-gray-800 text-gray-400 hover:text-white border-transparent hover:border-gray-700'
+              }`}
+              title="Toggle Queue"
+              aria-label="Toggle Queue"
+            >
+              <ListChecks className="h-4 w-4" />
+              {queueCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center shadow-sm">
+                  {queueCount}
+                </span>
+              )}
+            </button>
+          </Tooltip>
         )}
       </div>
       </div>

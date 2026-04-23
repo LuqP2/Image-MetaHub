@@ -1,3 +1,31 @@
+import type {
+  ImageMetadata as SharedImageMetadata,
+  InvokeAIMetadata as SharedInvokeAIMetadata,
+  Automatic1111Metadata as SharedAutomatic1111Metadata,
+  ComfyUINode as SharedComfyUINode,
+  ComfyUIWorkflow as SharedComfyUIWorkflow,
+  ComfyUIPrompt as SharedComfyUIPrompt,
+  ComfyUIMetadata as SharedComfyUIMetadata,
+  SwarmUIMetadata as SharedSwarmUIMetadata,
+  EasyDiffusionMetadata as SharedEasyDiffusionMetadata,
+  EasyDiffusionJson as SharedEasyDiffusionJson,
+  MidjourneyMetadata as SharedMidjourneyMetadata,
+  NijiMetadata as SharedNijiMetadata,
+  ForgeMetadata as SharedForgeMetadata,
+  DalleMetadata as SharedDalleMetadata,
+  DreamStudioMetadata as SharedDreamStudioMetadata,
+  FireflyMetadata as SharedFireflyMetadata,
+  DrawThingsMetadata as SharedDrawThingsMetadata,
+  FooocusMetadata as SharedFooocusMetadata,
+  SDNextMetadata as SharedSDNextMetadata,
+  LoRAInfo as SharedLoRAInfo,
+  BaseMetadata as SharedBaseMetadata,
+  ThumbnailStatus as SharedThumbnailStatus,
+  ImageRating as SharedImageRating,
+} from './packages/metadata-engine/src/core/types';
+
+import * as sharedCoreTypes from './packages/metadata-engine/src/core/types';
+
 export interface ExportBatchProgress {
   exportId: string | null;
   mode: 'folder' | 'zip';
@@ -33,6 +61,56 @@ export interface IndexedImageTransferResultItem {
   type?: string;
 }
 
+export interface PerformanceTraceEvent {
+  id: string;
+  name: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  detail?: Record<string, unknown>;
+}
+
+export interface PerformanceSummaryEntry {
+  name: string;
+  count: number;
+  lastMs: number;
+  minMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  maxMs: number;
+}
+
+export interface PerformanceDiagnosticsApi {
+  isEnabled: () => boolean;
+  getEvents: (limit?: number) => PerformanceTraceEvent[];
+  getSummary: () => PerformanceSummaryEntry[];
+  printSummary: () => void;
+  clear: () => void;
+  setConsoleLogging: (enabled: boolean) => void;
+}
+
+export interface WatchedFileRemovalPayload {
+  directoryId: string;
+  files: Array<{ path: string; name: string; relativePath?: string }>;
+  folders: Array<{ path: string; name: string; relativePath?: string }>;
+}
+
+export interface ElectronReadFilesBatchArgs {
+  filePaths: string[];
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+  reason?: string;
+}
+
+export interface ElectronReadFilesBatchItem {
+  success: boolean;
+  data?: Buffer;
+  path: string;
+  error?: string;
+  errorType?: string;
+  errorCode?: string;
+}
+
 export interface ElectronAPI {
   trashFile: (filename: string) => Promise<{ success: boolean; error?: string }>;
   renameFile: (oldName: string, newName: string) => Promise<{ success: boolean; error?: string }>;
@@ -42,15 +120,16 @@ export interface ElectronAPI {
   showSaveDialog: (options: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }) => Promise<{ success: boolean; path?: string; canceled?: boolean; error?: string }>;
   showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   openCacheLocation: (cachePath: string) => Promise<{ success: boolean; error?: string }>;
-  listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string }[]; error?: string }>;
+  listSubfolders: (folderPath: string) => Promise<{ success: boolean; subfolders?: { name: string; path: string; realPath?: string }[]; error?: string }>;
   listDirectoryFiles: (args: { dirPath: string; recursive?: boolean }) => Promise<{
     success: boolean;
     files?: { name: string; lastModified: number; size: number; type: string; birthtimeMs?: number; contentModifiedMs?: number }[];
     error?: string;
   }>;
   readFile: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string; errorType?: string; errorCode?: string }>;
-  readFilesBatch: (filePaths: string[]) => Promise<{ success: boolean; files?: { success: boolean; data?: Buffer; path: string; error?: string; errorType?: string; errorCode?: string }[]; error?: string }>;
-  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; error?: string }>;
+  readFilesBatch: (args: string[] | ElectronReadFilesBatchArgs) => Promise<{ success: boolean; files?: ElectronReadFilesBatchItem[]; error?: string }>;
+  readMediaMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
+  readVideoMetadata: (args: { filePath: string }) => Promise<{ success: boolean; comment?: string; description?: string; title?: string; video?: VideoInfo | null; audio?: AudioInfo | null; error?: string }>;
   getFileStats: (filePath: string) => Promise<{ success: boolean; stats?: any; error?: string }>;
   writeFile: (filePath: string, data: any) => Promise<{ success: boolean; error?: string }>;
   exportBatchToFolder: (args: { files: { directoryPath: string; relativePath: string }[]; destDir: string; exportId?: string }) => Promise<{ success: boolean; exportedCount: number; failedCount: number; error?: string }>;
@@ -77,6 +156,7 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   joinPaths: (...paths: string[]) => Promise<{ success: boolean; path?: string; error?: string }>;
   joinPathsBatch: (args: { basePath: string; fileNames: string[] }) => Promise<{ success: boolean; paths?: string[]; error?: string }>;
+  resolveMediaUrl: (filePath: string) => Promise<{ success: boolean; url?: string; error?: string; errorType?: string; errorCode?: string }>;
   startFileDrag: (args: { directoryPath: string; relativePath: string }) => void;
   copyImageToClipboard: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   
@@ -93,7 +173,7 @@ export interface ElectronAPI {
   clearCacheData: (cacheId: string) => Promise<{ success: boolean; error?: string }>;
   getThumbnail: (thumbnailId: string) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
   cacheThumbnail: (args: { thumbnailId: string; data: Uint8Array }) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
-  generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; error?: string }>;
+  generateThumbnailFromPath: (args: { filePath: string; maxEdge?: number; quality?: number }) => Promise<{ success: boolean; data?: Buffer; mimeType?: string; error?: string }>;
   clearMetadataCache: () => Promise<{ success: boolean; error?: string }>;
   clearThumbnailCache: () => Promise<{ success: boolean; error?: string }>;
   deleteCacheFolder: () => Promise<{ success: boolean; needsRestart?: boolean; error?: string }>;
@@ -108,6 +188,8 @@ export interface ElectronAPI {
   getTheme: () => Promise<{ shouldUseDarkColors: boolean }>;
   onThemeUpdated: (callback: (theme: { shouldUseDarkColors: boolean }) => void) => () => void;
   toggleFullscreen: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  getFullscreenState: () => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
+  setFullscreen: (isFullscreen: boolean) => Promise<{ success: boolean; isFullscreen?: boolean; error?: string }>;
   onFullscreenChanged: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onFullscreenStateCheck: (callback: (state: { isFullscreen: boolean }) => void) => () => void;
   onExportBatchProgress: (callback: (progress: ExportBatchProgress) => void) => () => void;
@@ -117,49 +199,21 @@ export interface ElectronAPI {
   startWatchingDirectory: (args: { directoryId: string; dirPath: string }) => Promise<{ success: boolean; error?: string }>;
   stopWatchingDirectory: (args: { directoryId: string }) => Promise<{ success: boolean }>;
   getWatcherStatus: (args: { directoryId: string }) => Promise<{ success: boolean; active: boolean }>;
-  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; size: number; type: string }> }) => void) => () => void;
+  onNewImagesDetected: (callback: (data: { directoryId: string; files: Array<{ name: string; path: string; lastModified: number; contentModifiedMs?: number; size: number; type: string; forceReindex?: boolean }> }) => void) => () => void;
+  onWatchedFilesRemoved: (callback: (data: WatchedFileRemovalPayload) => void) => () => void;
   onWatcherDebug: (callback: (data: { message: string }) => void) => () => void;
 }
 
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
+    __IMH_PERF__?: PerformanceDiagnosticsApi;
   }
 }
 
-export interface InvokeAIMetadata {
-  // Core generation fields
-  positive_prompt?: string;
-  negative_prompt?: string;
-  generation_mode?: string;
-  width?: number;
-  height?: number;
-  seed?: number;
-  steps?: number;
-  cfg_scale?: number;
-  cfg_rescale_multiplier?: number;
-  scheduler?: string;
-  seamless_x?: boolean;
-  seamless_y?: boolean;
-  model?: string;
-  vae?: string;
-  rand_device?: string;
-
-  // UI and organization fields
-  board_id?: string;
-  board_name?: string;
-  ref_images?: any[];
-
-  // App metadata
-  app_version?: string;
-
-  // Legacy field (might still be present in some versions)
-  prompt?: string | { prompt: string }[];
-
-  // Additional fields
+export type InvokeAIMetadata = Omit<SharedInvokeAIMetadata, 'normalizedMetadata'> & {
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
-}
+};
 
 export interface ShadowResource {
   id: string; // Unique ID for list management
@@ -184,59 +238,19 @@ export interface ShadowMetadata {
   updatedAt: number;
 }
 
-export interface Automatic1111Metadata {
-  parameters: string; // Formatted string containing all generation parameters
-  // Additional fields that might be present
+export type Automatic1111Metadata = Omit<SharedAutomatic1111Metadata, 'normalizedMetadata'> & {
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
-}
+};
 
-export interface ComfyUINode {
-  id: number;
-  type: string;
-  title?: string;
-  pos: [number, number];
-  size?: { 0: number; 1: number };
-  flags?: any;
-  order?: number;
-  mode?: number;
-  inputs?: Record<string, any>;
-  outputs?: any[];
-  properties?: Record<string, any>;
-  widgets_values?: any[];
-  color?: string;
-  bgcolor?: string;
-}
+export type ComfyUINode = SharedComfyUINode;
 
-export interface ComfyUIWorkflow {
-  last_node_id: number;
-  last_link_id: number;
-  nodes: ComfyUINode[];
-  links?: any[];
-  groups?: any[];
-  config?: any;
-  extra?: any;
-  version?: number;
-}
+export type ComfyUIWorkflow = SharedComfyUIWorkflow;
 
-export interface ComfyUIPrompt {
-  [nodeId: string]: {
-    inputs: Record<string, any>;
-    class_type: string;
-    _meta?: {
-      title?: string;
-    };
-  };
-}
+export type ComfyUIPrompt = SharedComfyUIPrompt;
 
-export interface ComfyUIMetadata {
-  workflow?: ComfyUIWorkflow | string;
-  parameters?: string // Can be object or JSON string
-  prompt?: ComfyUIPrompt | string; // Can be object or JSON string
-  // Additional fields that might be present
+export type ComfyUIMetadata = Omit<SharedComfyUIMetadata, 'normalizedMetadata'> & {
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
-}
+};
 
 export interface VideoMetadata {
   videometahub_data?: any;
@@ -247,138 +261,55 @@ export interface VideoMetadata {
   [key: string]: any;
 }
 
-export interface SwarmUIMetadata {
-  sui_image_params?: {
-    prompt?: string;
-    negativeprompt?: string;
-    model?: string;
-    images?: number;
-    seed?: number;
-    steps?: number;
-    cfgscale?: number;
-    aspectratio?: string;
-    width?: number;
-    height?: number;
-    sidelength?: number;
-    sampler?: string;
-    scheduler?: string;
-    automaticvae?: boolean;
-    loras?: string[];
-    loraweights?: string[];
-    swarm_version?: string;
-    date?: string;
-    generation_time?: string;
-    [key: string]: any;
-  };
-  sui_extra_data?: any;
-  // Additional fields that might be present
+export type SwarmUIMetadata = Omit<SharedSwarmUIMetadata, 'normalizedMetadata'> & {
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
-}
+};
 
-export interface EasyDiffusionMetadata {
-  parameters: string; // Easy Diffusion uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type EasyDiffusionMetadata = SharedEasyDiffusionMetadata;
 
-export interface EasyDiffusionJson {
-  prompt?: string;
-  negative_prompt?: string;
-  steps?: number;
-  cfg_scale?: number;
-  sampler?: string;
-  seed?: number;
-  model?: string;
-  width?: number;
-  height?: number;
-  // Additional fields that might be present in Easy Diffusion JSON
-  [key: string]: any;
-}
+export type EasyDiffusionJson = SharedEasyDiffusionJson;
 
-export interface MidjourneyMetadata {
-  parameters: string; // Midjourney uses format like: "prompt --v 5 --ar 16:9" or "Prompt: prompt text --v 5"
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type MidjourneyMetadata = SharedMidjourneyMetadata;
 
-export interface NijiMetadata {
-  parameters: string; // Niji Journey uses format like: "prompt --niji --v 5 --ar 16:9" or "Prompt: prompt text --niji 5"
-  niji_version?: number; // Niji version (5, 6, etc.)
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type NijiMetadata = SharedNijiMetadata;
 
-export interface ForgeMetadata {
-  parameters: string; // Forge uses same format as A1111: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type ForgeMetadata = SharedForgeMetadata;
 
-export interface DalleMetadata {
-  // C2PA/EXIF embedded metadata for DALL-E 3 images
-  c2pa_manifest?: any; // C2PA manifest data
-  exif_data?: any; // EXIF metadata
-  prompt?: string; // Original user prompt
-  revised_prompt?: string; // DALL-E's revised/enhanced prompt
-  model_version?: string; // DALL-E model version (e.g., "dall-e-3")
-  generation_date?: string; // ISO date string of generation
-  ai_tags?: string[]; // AI-generated content tags
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type DalleMetadata = SharedDalleMetadata;
 
-export interface DreamStudioMetadata {
-  parameters: string; // DreamStudio uses A1111-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type DreamStudioMetadata = SharedDreamStudioMetadata;
 
-export interface FireflyMetadata {
-  // C2PA/EXIF embedded metadata for Adobe Firefly images
-  c2pa_manifest?: any; // C2PA manifest data with actions and content credentials
-  exif_data?: any; // EXIF metadata
-  prompt?: string; // Original user prompt
-  edit_history?: any[]; // Array of edit actions from C2PA
-  firefly_version?: string; // Adobe Firefly model version
-  generation_params?: any; // Generation parameters (style, size, etc.)
-  ai_generated?: boolean; // AI generated content flag
-  content_credentials?: any; // Content Credentials data
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type FireflyMetadata = SharedFireflyMetadata;
 
-export interface DrawThingsMetadata {
-  parameters: string; // Draw Things uses SD-like format: "Prompt: ...\nNegative prompt: ...\nSteps: ..."
-  userComment?: string; // JSON metadata from EXIF UserComment field
-  // Additional fields that might be present
+export type DrawThingsMetadata = Omit<SharedDrawThingsMetadata, 'normalizedMetadata'> & {
   normalizedMetadata?: BaseMetadata;
-  [key: string]: any;
-}
+};
 
-export interface FooocusMetadata {
-  parameters: string; // Fooocus uses SD-like format with Flux backend support
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type FooocusMetadata = SharedFooocusMetadata;
 
-export interface SDNextMetadata {
-  parameters: string; // SD.Next uses A1111-like format with additional SD.Next specific fields
-  // Additional fields that might be present
-  [key: string]: any;
-}
+export type SDNextMetadata = SharedSDNextMetadata;
 
 // Union type for all supported metadata formats
-export type ImageMetadata = InvokeAIMetadata | Automatic1111Metadata | ComfyUIMetadata | SwarmUIMetadata | EasyDiffusionMetadata | EasyDiffusionJson | MidjourneyMetadata | NijiMetadata | ForgeMetadata | DalleMetadata | DreamStudioMetadata | FireflyMetadata | DrawThingsMetadata | FooocusMetadata | SDNextMetadata | VideoMetadata;
+export type ImageMetadata =
+  | InvokeAIMetadata
+  | Automatic1111Metadata
+  | ComfyUIMetadata
+  | SwarmUIMetadata
+  | EasyDiffusionMetadata
+  | EasyDiffusionJson
+  | MidjourneyMetadata
+  | NijiMetadata
+  | ForgeMetadata
+  | DalleMetadata
+  | DreamStudioMetadata
+  | FireflyMetadata
+  | DrawThingsMetadata
+  | FooocusMetadata
+  | SDNextMetadata
+  | VideoMetadata;
 
 // LoRA interface for detailed LoRA information
-export interface LoRAInfo {
-  name: string;
-  model_name?: string; // Alternative name field used in some parsers
-  weight?: number;
-  model_weight?: number; // Alternative weight field used in some parsers
-  clip_weight?: number; // CLIP weight used in some parsers
-}
+export type LoRAInfo = SharedLoRAInfo;
 
 // Base normalized metadata interface for unified access
 export interface VideoInfo {
@@ -389,6 +320,15 @@ export interface VideoInfo {
   height?: number | null;
   format?: string | null;
   codec?: string | null;
+}
+
+export interface AudioInfo {
+  duration_seconds?: number | null;
+  codec?: string | null;
+  format?: string | null;
+  sample_rate?: number | null;
+  channels?: number | null;
+  bit_rate?: number | null;
 }
 
 export interface MotionModelInfo {
@@ -419,263 +359,70 @@ export interface ImageLineage {
   resizeMode?: string | null;
 }
 
-export interface BaseMetadata {
-  prompt: string;
-  negativePrompt?: string;
-  model: string;
-  models?: string[];
-  width: number;
-  height: number;
-  seed?: number;
-  steps: number;
-  cfg_scale?: number;
-  scheduler: string;
-  sampler?: string;
+export interface BaseMetadata extends SharedBaseMetadata {
   clip_skip?: number;
-  loras?: (string | LoRAInfo)[]; // Support both string and detailed LoRA info
-  generator?: string; // Name of the AI generator/parser used
-  version?: string;
-  module?: string;
-  media_type?: 'image' | 'video';
+  media_type?: 'image' | 'video' | 'audio';
   video?: VideoInfo | null;
+  audio?: AudioInfo | null;
   motion_model?: MotionModelInfo | null;
   generationType?: GenerationType;
   lineage?: ImageLineage | null;
-  // MetaHub Save Node user inputs
-  tags?: string[]; // User-defined tags from MetaHub Save Node
-  notes?: string; // User notes from MetaHub Save Node
-  // Performance/benchmark metrics (from MetaHub Save Node analytics chunk)
+  tags?: string[];
+  notes?: string;
   analytics?: {
-    // Tier 1: CRITICAL metrics
     vram_peak_mb?: number | null;
     gpu_device?: string | null;
     generation_time_ms?: number | null;
-    // Tier 2: VERY USEFUL metrics
     steps_per_second?: number | null;
     comfyui_version?: string | null;
-    // Tier 3: NICE-TO-HAVE metrics
     torch_version?: string | null;
     python_version?: string | null;
-    // Legacy
     generation_time?: number | null;
   };
-  // Additional normalized fields
-  [key: string]: any;
 }
 
 // Type guard functions
-export function isInvokeAIMetadata(metadata: ImageMetadata): metadata is InvokeAIMetadata {
-  // More permissive detection - check for common InvokeAI fields
-  const hasInvokeAIFields = ('positive_prompt' in metadata) ||
-                           ('negative_prompt' in metadata) ||
-                           ('generation_mode' in metadata) ||
-                           ('app_version' in metadata) ||
-                           ('model_name' in metadata) ||
-                           ('cfg_scale' in metadata) ||
-                           ('scheduler' in metadata);
+export const isInvokeAIMetadata = (metadata: ImageMetadata): metadata is InvokeAIMetadata =>
+  sharedCoreTypes.isInvokeAIMetadata(metadata as SharedImageMetadata);
 
-  // Also check for legacy prompt field with generation parameters
-  const hasLegacyFields = ('prompt' in metadata) &&
-                         (('model' in metadata) || ('width' in metadata) || ('height' in metadata) || ('steps' in metadata));
+export const isSwarmUIMetadata = (metadata: ImageMetadata): metadata is SwarmUIMetadata =>
+  sharedCoreTypes.isSwarmUIMetadata(metadata as SharedImageMetadata);
 
-  // Check if it has InvokeAI-specific structure (not ComfyUI or A1111)
-  const notComfyUI = !('workflow' in metadata) && !('prompt' in metadata && typeof metadata.prompt === 'object');
-  const notA1111 = !('parameters' in metadata && typeof metadata.parameters === 'string');
+export const isEasyDiffusionMetadata = (metadata: ImageMetadata): metadata is EasyDiffusionMetadata =>
+  sharedCoreTypes.isEasyDiffusionMetadata(metadata as SharedImageMetadata);
 
-  return (hasInvokeAIFields || hasLegacyFields) && notComfyUI && notA1111;
-}
+export const isEasyDiffusionJson = (metadata: ImageMetadata): metadata is EasyDiffusionJson =>
+  sharedCoreTypes.isEasyDiffusionJson(metadata as SharedImageMetadata);
 
-export function isSwarmUIMetadata(metadata: ImageMetadata): metadata is SwarmUIMetadata {
-  // Check for direct SwarmUI metadata at root level
-  if ('sui_image_params' in metadata && typeof metadata.sui_image_params === 'object') {
-    return true;
-  }
+export const isMidjourneyMetadata = (metadata: ImageMetadata): metadata is MidjourneyMetadata =>
+  sharedCoreTypes.isMidjourneyMetadata(metadata as SharedImageMetadata);
 
-  // Check for SwarmUI metadata wrapped in parameters string (some SwarmUI images are saved this way)
-  if ('parameters' in metadata && typeof metadata.parameters === 'string') {
-    try {
-      const parsedParams = JSON.parse(metadata.parameters);
-      return 'sui_image_params' in parsedParams && typeof parsedParams.sui_image_params === 'object';
-    } catch {
-      // Not valid JSON, not SwarmUI
-      return false;
-    }
-  }
+export const isNijiMetadata = (metadata: ImageMetadata): metadata is NijiMetadata =>
+  sharedCoreTypes.isNijiMetadata(metadata as SharedImageMetadata);
 
-  return false;
-}
+export const isForgeMetadata = (metadata: ImageMetadata): metadata is ForgeMetadata =>
+  sharedCoreTypes.isForgeMetadata(metadata as SharedImageMetadata);
 
-export function isEasyDiffusionMetadata(metadata: ImageMetadata): metadata is EasyDiffusionMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         metadata.parameters.includes('Prompt:') && 
-         !('sui_image_params' in metadata) && 
-         !metadata.parameters.includes('Model hash:'); // Distinguish from A1111
-}
+export const isDalleMetadata = (metadata: ImageMetadata): metadata is DalleMetadata =>
+  sharedCoreTypes.isDalleMetadata(metadata as SharedImageMetadata);
 
-export function isEasyDiffusionJson(metadata: ImageMetadata): metadata is EasyDiffusionJson {
-  return 'prompt' in metadata && typeof metadata.prompt === 'string' && !('parameters' in metadata);
-}
+export const isFireflyMetadata = (metadata: ImageMetadata): metadata is FireflyMetadata =>
+  sharedCoreTypes.isFireflyMetadata(metadata as SharedImageMetadata);
 
-export function isMidjourneyMetadata(metadata: ImageMetadata): metadata is MidjourneyMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         (metadata.parameters.includes('Midjourney') || 
-          metadata.parameters.includes('--v') || 
-          metadata.parameters.includes('--ar') ||
-          metadata.parameters.includes('--q') ||
-          metadata.parameters.includes('--s'));
-}
+export const isDrawThingsMetadata = (metadata: ImageMetadata): metadata is DrawThingsMetadata =>
+  sharedCoreTypes.isDrawThingsMetadata(metadata as SharedImageMetadata);
 
-export function isNijiMetadata(metadata: ImageMetadata): metadata is NijiMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         metadata.parameters.includes('--niji');
-}
+export const isDreamStudioMetadata = (metadata: ImageMetadata): metadata is DreamStudioMetadata =>
+  sharedCoreTypes.isDreamStudioMetadata(metadata as SharedImageMetadata);
 
-export function isForgeMetadata(metadata: ImageMetadata): metadata is ForgeMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         (metadata.parameters.includes('Forge') || 
-          metadata.parameters.includes('Gradio') ||
-          (metadata.parameters.includes('Steps:') && 
-           metadata.parameters.includes('Sampler:') && 
-           metadata.parameters.includes('Model hash:'))); // Similar to A1111 but with Forge/Gradio indicators
-}
+export const isAutomatic1111Metadata = (metadata: ImageMetadata): metadata is Automatic1111Metadata =>
+  sharedCoreTypes.isAutomatic1111Metadata(metadata as SharedImageMetadata);
 
-export function isDalleMetadata(metadata: ImageMetadata): metadata is DalleMetadata {
-  // Check for C2PA manifest (primary indicator)
-  if ('c2pa_manifest' in metadata) {
-    return true;
-  }
+export const isComfyUIMetadata = (metadata: ImageMetadata): metadata is ComfyUIMetadata =>
+  sharedCoreTypes.isComfyUIMetadata(metadata as SharedImageMetadata);
 
-  // Check for OpenAI/DALL-E specific EXIF data
-  if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-    const exif = metadata.exif_data as any;
-    // Look for OpenAI/DALL-E indicators in EXIF
-    if (exif['openai:dalle'] || exif['Software']?.includes('DALL-E') || exif['Software']?.includes('OpenAI')) {
-      return true;
-    }
-  }
-
-  // Check for DALL-E specific fields
-  if ('prompt' in metadata && 'model_version' in metadata && 
-      (metadata.model_version?.includes('dall-e') || metadata.model_version?.includes('DALL-E'))) {
-    return true;
-  }
-
-  return false;
-}
-
-export function isFireflyMetadata(metadata: ImageMetadata): metadata is FireflyMetadata {
-  // Check for C2PA manifest with Firefly indicators
-  if ('c2pa_manifest' in metadata) {
-    const manifest = metadata.c2pa_manifest as any;
-    // Check for Adobe Firefly specific indicators
-    if (manifest?.['adobe:firefly'] || 
-        (typeof manifest === 'string' && manifest.includes('adobe:firefly'))) {
-      return true;
-    }
-    // Check c2pa.actions for Firefly signatures
-    if (manifest?.['c2pa.actions']) {
-      const actions = JSON.stringify(manifest['c2pa.actions']);
-      if (actions.includes('firefly') || actions.includes('adobe.com/firefly')) {
-        return true;
-      }
-    }
-  }
-
-  // Check for Adobe Firefly specific EXIF data
-  if ('exif_data' in metadata && typeof metadata.exif_data === 'object') {
-    const exif = metadata.exif_data as any;
-    if (exif['adobe:firefly'] || exif['Software']?.includes('Firefly') || exif['Software']?.includes('Adobe Firefly')) {
-      return true;
-    }
-  }
-
-  // Check for Firefly specific fields
-  if ('firefly_version' in metadata || 'ai_generated' in metadata) {
-    return true;
-  }
-
-  return false;
-}
-
-export function isDrawThingsMetadata(metadata: ImageMetadata): metadata is DrawThingsMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         (metadata.parameters.includes('Draw Things') || 
-          metadata.parameters.includes('iPhone') || 
-          metadata.parameters.includes('iPad') ||
-          (metadata.parameters.includes('Prompt:') && 
-           metadata.parameters.includes('Steps:') && 
-           metadata.parameters.includes('Seed:') &&
-           !metadata.parameters.includes('Model hash:') && // Exclude A1111
-           !metadata.parameters.includes('Forge') && // Exclude Forge
-           !metadata.parameters.includes('Gradio') && // Exclude Forge
-           !metadata.parameters.includes('DreamStudio') && // Exclude DreamStudio
-           !metadata.parameters.includes('Stability AI') && // Exclude DreamStudio
-           !metadata.parameters.includes('--niji') && // Exclude Niji Journey
-           !metadata.parameters.includes('Midjourney'))); // Exclude Midjourney
-}
-
-export function isDreamStudioMetadata(metadata: ImageMetadata): metadata is DreamStudioMetadata {
-  return 'parameters' in metadata && 
-         typeof metadata.parameters === 'string' && 
-         (metadata.parameters.includes('DreamStudio') || 
-          metadata.parameters.includes('Stability AI') ||
-          (metadata.parameters.includes('Prompt:') && 
-           metadata.parameters.includes('Steps:') && 
-           !metadata.parameters.includes('Model hash:') && // Exclude A1111
-           !metadata.parameters.includes('Forge') && // Exclude Forge
-           !metadata.parameters.includes('Gradio'))); // Exclude Forge
-}
-
-export function isAutomatic1111Metadata(metadata: ImageMetadata): metadata is Automatic1111Metadata {
-  if (!('parameters' in metadata) || typeof metadata.parameters !== 'string') {
-    return false;
-  }
-
-  // Exclude SwarmUI metadata (even when wrapped in parameters string)
-  if (metadata.parameters.includes('sui_image_params')) {
-    return false;
-  }
-
-  return true;
-}
-
-export function isComfyUIMetadata(metadata: ImageMetadata): metadata is ComfyUIMetadata {
-  // The presence of a 'workflow' property is the most reliable and unique indicator for ComfyUI.
-  // This check is intentionally lenient, trusting the dedicated parser to handle the details.
-  // An overly strict type guard was the cause of previous parsing failures.
-  if ('workflow' in metadata && (typeof metadata.workflow === 'object' || typeof metadata.workflow === 'string')) {
-    return true;
-  }
-
-  // As a fallback, check for the API-style 'prompt' object. This format, where keys are
-  // node IDs, is also unique to ComfyUI and distinct from other formats.
-  if ('prompt' in metadata && typeof metadata.prompt === 'object' && metadata.prompt !== null && !Array.isArray(metadata.prompt)) {
-    // A minimal structural check to ensure it's not just a random object.
-    // It should contain values that look like ComfyUI nodes.
-    return Object.values(metadata.prompt).some(
-      (node: any) => node && typeof node === 'object' && 'class_type' in node && 'inputs' in node
-    );
-  }
-
-  // Some exports store the ComfyUI graph directly at the top level.
-  return Object.entries(metadata as Record<string, any>).some(([key, value]) =>
-    key !== 'extra' &&
-    key !== 'extraMetadata' &&
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    'class_type' in value &&
-    'inputs' in value
-  );
-}
-
-export type ThumbnailStatus = 'pending' | 'loading' | 'ready' | 'error';
-export type ImageRating = 1 | 2 | 3 | 4 | 5;
+export type ThumbnailStatus = SharedThumbnailStatus;
+export type ImageRating = SharedImageRating;
 
 export interface NumericRangeFilter {
   min?: number | null;
@@ -694,12 +441,32 @@ export interface AdvancedFilters {
   cfg?: NumericRangeFilter;
   date?: DateRangeFilter;
   generationModes?: Array<'txt2img' | 'img2img'>;
-  mediaTypes?: Array<'image' | 'video'>;
+  mediaTypes?: Array<'image' | 'video' | 'audio'>;
   telemetryState?: 'present' | 'missing';
   hasVerifiedTelemetry?: boolean;
   generationTimeMs?: NumericRangeFilter;
   stepsPerSecond?: NumericRangeFilter;
   vramPeakMb?: NumericRangeFilter;
+}
+
+export type SimilarSearchScope = 'current-view' | 'all-images' | 'same-folder';
+export type CheckpointMatchMode = 'ignore' | 'same' | 'different';
+
+export interface SimilarSearchCriteria {
+  prompt: boolean;
+  lora: boolean;
+  matchLoraWeight: boolean;
+  seed: boolean;
+  checkpointMode: CheckpointMatchMode;
+  scope: SimilarSearchScope;
+}
+
+export interface SimilarSearchResult {
+  image: IndexedImage;
+  matchedFields: Array<'prompt' | 'lora' | 'loraWeight' | 'seed' | 'checkpoint'>;
+  preselected: boolean;
+  primaryCheckpoint: string | null;
+  sharesCheckpoint: boolean;
 }
 
 export interface SelectedFiltersUpdate {
@@ -715,6 +482,96 @@ export interface SelectedFiltersUpdate {
   excludedGenerators?: string[];
   gpuDevices?: string[];
   excludedGpuDevices?: string[];
+}
+
+export type AutomationRuleMatchMode = 'all' | 'any';
+export type AutomationTextField = 'prompt' | 'negativePrompt' | 'filename' | 'metadata' | 'search';
+export type AutomationTextOperator = 'contains' | 'not_contains' | 'equals' | 'not_equals';
+export type AutomationConditionField =
+  | AutomationTextField
+  | 'model'
+  | 'lora'
+  | 'sampler'
+  | 'scheduler'
+  | 'generator'
+  | 'gpu'
+  | 'tag'
+  | 'autoTag'
+  | 'dimension'
+  | 'date'
+  | 'generationMode'
+  | 'mediaType'
+  | 'favorite'
+  | 'rating'
+  | 'steps'
+  | 'cfg'
+  | 'generationTimeMs'
+  | 'stepsPerSecond'
+  | 'vramPeakMb'
+  | 'telemetry'
+  | 'verifiedTelemetry';
+export type AutomationConditionOperator =
+  | AutomationTextOperator
+  | 'includes'
+  | 'not_includes'
+  | 'is'
+  | 'is_not'
+  | 'at_least'
+  | 'at_most'
+  | 'between';
+
+export interface AutomationTextCondition {
+  id: string;
+  field: AutomationTextField;
+  operator: AutomationTextOperator;
+  value: string;
+}
+
+export interface AutomationConditionRow {
+  id: string;
+  field: AutomationConditionField;
+  operator: AutomationConditionOperator;
+  value: string;
+  valueEnd?: string;
+  groupMode?: AutomationRuleMatchMode;
+}
+
+export interface AutomationRuleFilterCriteria extends SelectedFiltersUpdate {
+  searchQuery?: string;
+  tags?: string[];
+  excludedTags?: string[];
+  tagMatchMode?: TagMatchMode;
+  autoTags?: string[];
+  excludedAutoTags?: string[];
+  favoriteFilterMode?: InclusionFilterMode;
+  ratings?: ImageRating[];
+  advancedFilters?: AdvancedFilters;
+}
+
+export interface AutomationRuleCriteria {
+  matchMode: AutomationRuleMatchMode;
+  textConditions: AutomationTextCondition[];
+  conditionRows?: AutomationConditionRow[];
+  filters: AutomationRuleFilterCriteria;
+}
+
+export interface AutomationRuleAction {
+  addTags: string[];
+  addToCollectionIds: string[];
+}
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  criteria: AutomationRuleCriteria;
+  actions: AutomationRuleAction;
+  runOnNewImages: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastAppliedAt?: number | null;
+  lastMatchCount?: number;
+  lastChangeCount?: number;
 }
 
 export interface IndexedImage {
@@ -841,6 +698,7 @@ export interface ComparisonPaneProps {
   syncEnabled: boolean;
   externalZoom?: ZoomState;
   onZoomChange?: (zoom: number, x: number, y: number) => void;
+  onHoverChange?: (isHovered: boolean) => void;
   className?: string;
   imageLabel?: string;
 }
@@ -858,6 +716,7 @@ export interface ComparisonMetadataPanelProps {
   otherImageMetadata?: BaseMetadata | null;
   className?: string;
   compareLabel?: string;
+  isHighlighted?: boolean;
 }
 
 // ===== Smart Clustering & Auto-Tagging Types =====

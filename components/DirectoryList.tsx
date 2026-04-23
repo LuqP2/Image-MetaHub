@@ -176,7 +176,11 @@ export default function DirectoryList({
     try {
       const isElectron = typeof window !== 'undefined' && (window as any).electronAPI;
       if (isElectron && (window as any).electronAPI.showItemInFolder) {
-        await (window as any).electronAPI.showItemInFolder(path);
+        const result = await (window as any).electronAPI.showItemInFolder(path);
+        if (!result.success) {
+          console.error('Failed to open folder:', result.error);
+          alert(result.error || 'Failed to open folder. Please check the path.');
+        }
       } else {
         alert('This feature requires the desktop app. Please use the Image MetaHub application.');
       }

@@ -6,10 +6,10 @@ import { compareField, formatFieldValue, diffText, DiffToken } from '../utils/me
 // Helper component for individual metadata fields
 const MetadataField: FC<{
   label: string;
-  value: any;
+  value: unknown;
   onCopy?: () => void;
   multiline?: boolean;
-  otherValue?: any;
+  otherValue?: unknown;
   isDiffMode?: boolean;
   field?: string;
 }> = ({ label, value, onCopy, multiline, otherValue, isDiffMode, field }) => {
@@ -109,6 +109,7 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   otherImageMetadata,
   className,
   compareLabel,
+  isHighlighted = false,
 }) => {
   const metadata = image.metadata?.normalizedMetadata;
   const isDiffMode = viewMode === 'diff';
@@ -152,10 +153,10 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
 
   if (!metadata) {
     return (
-      <div className={`p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 ${className ?? ''}`}>
+      <div className={`p-4 bg-gray-800/50 rounded-lg border ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
         <button
           onClick={onToggleExpanded}
-          className="w-full p-3 flex items-center justify-between text-left hover:bg-gray-700/30 transition-colors rounded-lg"
+          className={`w-full p-3 flex items-center justify-between text-left transition-colors rounded-lg ${isHighlighted ? 'bg-cyan-500/10 hover:bg-cyan-500/15' : 'hover:bg-gray-700/30'}`}
         >
           <span className="font-semibold text-gray-200 truncate flex-1" title={image.name}>
             {image.name}
@@ -173,11 +174,11 @@ const ComparisonMetadataPanel: FC<ComparisonMetadataPanelProps> = ({
   }
 
   return (
-    <div className={`bg-gray-800/50 rounded-lg border border-gray-700/50 overflow-hidden ${className ?? ''}`}>
+    <div className={`bg-gray-800/50 rounded-lg border overflow-hidden transition-colors ${isHighlighted ? 'border-cyan-500/70 shadow-[0_0_0_1px_rgba(34,211,238,0.25)] bg-cyan-500/5' : 'border-gray-700/50'} ${className ?? ''}`}>
       {/* Toggle Button */}
       <button
         onClick={onToggleExpanded}
-        className="w-full p-3 flex items-center justify-between text-left hover:bg-gray-700/30 transition-colors"
+        className={`w-full p-3 flex items-center justify-between text-left transition-colors ${isHighlighted ? 'bg-cyan-500/10 hover:bg-cyan-500/15' : 'hover:bg-gray-700/30'}`}
       >
         <span className="font-semibold text-gray-200 truncate flex-1 mr-2" title={image.name}>
           {image.name}
