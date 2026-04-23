@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink, Github, Heart, Puzzle } from 'lucide-react';
+import { X, ExternalLink, Github, BadgeCheck, Puzzle } from 'lucide-react';
 
 interface ChangelogModalProps {
   isOpen: boolean;
@@ -158,7 +158,7 @@ const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, curren
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white text-sm font-medium rounded-full transition-colors"
       >
-        <Heart size={16} className="fill-current" />
+        <BadgeCheck size={16} />
         Get Pro License
       </a>
       <a
