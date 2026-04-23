@@ -3,6 +3,7 @@ import { type IndexedImage } from '../types';
 import { copyImageToClipboard, showInExplorer } from '../utils/imageUtils';
 import { A1111ApiClient } from '../services/a1111ApiClient';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useImageStore } from '../store/useImageStore';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import { useA1111ProgressContext } from '../contexts/A1111ProgressContext';
 import { useFeatureAccess } from './useFeatureAccess';
@@ -42,6 +43,7 @@ const showNotification = (message: string) => {
 
 export const useContextMenu = () => {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedImages = useImageStore((state) => state.selectedImages);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     x: 0,
     y: 0,
@@ -227,13 +229,30 @@ export const useContextMenu = () => {
     showInExplorer(`${contextMenu.directoryPath}/${contextMenu.image.name}`);
   };
 
+  const getContextTargetImageIds = () => {
+    if (!contextMenu.image) {
+      return [];
+    }
+
+    if (selectedImages.has(contextMenu.image.id)) {
+      return Array.from(selectedImages);
+    }
+
+    return [contextMenu.image.id];
+  };
+
   const exportImage = () => {
     if (!contextMenu.image) return;
     hideContextMenu();
 
+    const imageIds = getContextTargetImageIds();
+    if (imageIds.length === 0) {
+      return;
+    }
+
     window.dispatchEvent(new CustomEvent(OPEN_BATCH_EXPORT_EVENT, {
       detail: {
-        imageIds: [contextMenu.image.id],
+        imageIds,
         preferredSource: 'selected',
       },
     }));
