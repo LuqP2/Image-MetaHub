@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { IndexedImage } from '../types';
+import { BaseMetadata, IndexedImage } from '../types';
 import { formatMetadataForA1111 } from '../utils/a1111Formatter';
 import {
   getClipboardErrorMessage,
@@ -18,8 +18,8 @@ export function useCopyToA1111() {
   const [isCopying, setIsCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
 
-  const copyToA1111 = useCallback(async (image: IndexedImage) => {
-    const metadata = getNormalizedMetadata(image);
+  const copyToA1111 = useCallback(async (image: IndexedImage, metadataOverride?: BaseMetadata) => {
+    const metadata = metadataOverride ?? getNormalizedMetadata(image);
 
     if (!hasPromptMetadata(metadata)) {
       setCopyStatus({

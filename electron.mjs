@@ -1396,6 +1396,241 @@ function setupFileOperationHandlers() {
     }
   };
 
+  const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const PNG_EXPORTABLE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+  const createCrc32Table = () => {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < 256; index += 1) {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = (value & 1) !== 0 ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+      }
+      table[index] = value >>> 0;
+    }
+    return table;
+  };
+
+  const CRC32_TABLE = createCrc32Table();
+
+  const computeCrc32 = (buffer) => {
+    let crc = 0xffffffff;
+    for (const byte of buffer) {
+      crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+
+  const createPngChunk = (type, data) => {
+    const typeBuffer = Buffer.from(type, 'ascii');
+    const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    const lengthBuffer = Buffer.alloc(4);
+    lengthBuffer.writeUInt32BE(dataBuffer.length, 0);
+    const crcBuffer = Buffer.alloc(4);
+    crcBuffer.writeUInt32BE(computeCrc32(Buffer.concat([typeBuffer, dataBuffer])), 0);
+    return Buffer.concat([lengthBuffer, typeBuffer, dataBuffer, crcBuffer]);
+  };
+
+  const createPngTextChunk = (keyword, text) => {
+    const keywordBuffer = Buffer.from(keyword, 'utf8');
+    const textBuffer = Buffer.from(text, 'utf8');
+    return createPngChunk('tEXt', Buffer.concat([keywordBuffer, Buffer.from([0]), textBuffer]));
+  };
+
+  const createPngInternationalTextChunk = (keyword, text) => {
+    const keywordBuffer = Buffer.from(keyword, 'utf8');
+    const textBuffer = Buffer.from(text, 'utf8');
+    return createPngChunk(
+      'iTXt',
+      Buffer.concat([
+        keywordBuffer,
+        Buffer.from([0, 0, 0, 0, 0]),
+        textBuffer,
+      ]),
+    );
+  };
+
+  const appendChunksToPng = (pngBuffer, chunks) => {
+    if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length < PNG_SIGNATURE.length + 12) {
+      throw new Error('Invalid PNG buffer.');
+    }
+
+    if (!pngBuffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new Error('PNG signature missing.');
+    }
+
+    let offset = PNG_SIGNATURE.length;
+    while (offset + 12 <= pngBuffer.length) {
+      const chunkLength = pngBuffer.readUInt32BE(offset);
+      const chunkType = pngBuffer.subarray(offset + 4, offset + 8).toString('ascii');
+      const chunkTotalLength = chunkLength + 12;
+      if (offset + chunkTotalLength > pngBuffer.length) {
+        break;
+      }
+
+      if (chunkType === 'IEND') {
+        return Buffer.concat([
+          pngBuffer.subarray(0, offset),
+          ...chunks,
+          pngBuffer.subarray(offset),
+        ]);
+      }
+
+      offset += chunkTotalLength;
+    }
+
+    throw new Error('PNG IEND chunk not found.');
+  };
+
+  const toLoraPayload = (loras) => {
+    if (!Array.isArray(loras)) {
+      return [];
+    }
+
+    return loras
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          const name = entry.trim();
+          return name ? { name } : null;
+        }
+
+        if (!entry || typeof entry !== 'object') {
+          return null;
+        }
+
+        const name = typeof entry.name === 'string' && entry.name.trim()
+          ? entry.name.trim()
+          : (typeof entry.model_name === 'string' ? entry.model_name.trim() : '');
+        if (!name) {
+          return null;
+        }
+
+        const weight = Number.isFinite(entry.weight)
+          ? entry.weight
+          : Number.isFinite(entry.model_weight)
+            ? entry.model_weight
+            : undefined;
+
+        return weight !== undefined ? { name, weight } : { name };
+      })
+      .filter(Boolean);
+  };
+
+  const formatMetadataForA1111Compat = (metadata) => {
+    if (!metadata || typeof metadata.prompt !== 'string' || !metadata.prompt.trim()) {
+      throw new Error('Prompt is required to generate A1111-compatible metadata.');
+    }
+
+    const lines = [metadata.prompt.trim()];
+    if (typeof metadata.negativePrompt === 'string' && metadata.negativePrompt.trim()) {
+      lines.push(`Negative prompt: ${metadata.negativePrompt.trim()}`);
+    }
+
+    const params = [];
+    if (Number.isFinite(metadata.steps)) {
+      params.push(`Steps: ${metadata.steps}`);
+    }
+
+    const sampler = metadata.sampler || metadata.scheduler;
+    if (typeof sampler === 'string' && sampler.trim()) {
+      params.push(`Sampler: ${sampler.trim()}`);
+    }
+
+    if (Number.isFinite(metadata.cfg_scale)) {
+      params.push(`CFG scale: ${metadata.cfg_scale}`);
+    }
+
+    if (Number.isFinite(metadata.seed)) {
+      params.push(`Seed: ${metadata.seed}`);
+    }
+
+    if (Number.isFinite(metadata.width) && Number.isFinite(metadata.height) && metadata.width > 0 && metadata.height > 0) {
+      params.push(`Size: ${metadata.width}x${metadata.height}`);
+    }
+
+    if (typeof metadata.model === 'string' && metadata.model.trim()) {
+      params.push(`Model: ${metadata.model.trim()}`);
+    }
+
+    if (params.length > 0) {
+      lines.push(params.join(', '));
+    }
+
+    return lines.join('\n');
+  };
+
+  const buildMetaHubExportPayload = (metadata) => ({
+    generator: 'Image MetaHub',
+    source_generator: typeof metadata?.generator === 'string' ? metadata.generator : null,
+    exported_at: new Date().toISOString(),
+    prompt: typeof metadata?.prompt === 'string' ? metadata.prompt : '',
+    negativePrompt: typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : '',
+    seed: Number.isFinite(metadata?.seed) ? metadata.seed : undefined,
+    steps: Number.isFinite(metadata?.steps) ? metadata.steps : undefined,
+    cfg: Number.isFinite(metadata?.cfg_scale) ? metadata.cfg_scale : undefined,
+    sampler_name: typeof metadata?.sampler === 'string' ? metadata.sampler : '',
+    scheduler: typeof metadata?.scheduler === 'string' ? metadata.scheduler : '',
+    model: typeof metadata?.model === 'string' ? metadata.model : '',
+    width: Number.isFinite(metadata?.width) ? metadata.width : 0,
+    height: Number.isFinite(metadata?.height) ? metadata.height : 0,
+    loras: toLoraPayload(metadata?.loras),
+    imh_pro: {
+      notes: typeof metadata?.notes === 'string' ? metadata.notes : '',
+      user_tags: Array.isArray(metadata?.tags) ? metadata.tags.join(', ') : '',
+    },
+  });
+
+  const buildPngExportBuffer = (pngBuffer, metadataPolicy, effectiveMetadata) => {
+    if (metadataPolicy === 'strip') {
+      return pngBuffer;
+    }
+
+    if (metadataPolicy !== 'metahub_standard') {
+      throw new Error(`Unsupported metadata export policy: ${metadataPolicy}`);
+    }
+
+    if (!effectiveMetadata) {
+      throw new Error('Edited metadata is required for MetaHub export.');
+    }
+
+    const metaHubPayload = buildMetaHubExportPayload(effectiveMetadata);
+    const parametersText = formatMetadataForA1111Compat(effectiveMetadata);
+    return appendChunksToPng(pngBuffer, [
+      createPngTextChunk('parameters', parametersText),
+      createPngInternationalTextChunk('imagemetahub_data', JSON.stringify(metaHubPayload)),
+    ]);
+  };
+
+  const createExportArtifact = async ({ sourcePath, relativePath, metadataPolicy = 'preserve', targetFormat = 'original', effectiveMetadata }) => {
+    if (metadataPolicy === 'preserve') {
+      const buffer = await fs.readFile(sourcePath);
+      return {
+        buffer,
+        fileName: path.basename(relativePath),
+      };
+    }
+
+    const sourceExtension = path.extname(relativePath).toLowerCase();
+    if (!PNG_EXPORTABLE_EXTENSIONS.has(sourceExtension)) {
+      throw new Error('This file format can only be exported with metadata preserved in v1.');
+    }
+
+    const image = nativeImage.createFromPath(sourcePath);
+    if (image.isEmpty()) {
+      throw new Error('Failed to decode source image for metadata export.');
+    }
+
+    const pngBuffer = image.toPNG();
+    const exportedBuffer = buildPngExportBuffer(pngBuffer, metadataPolicy, effectiveMetadata);
+    const targetExtension = targetFormat === 'original' && sourceExtension === '.png' ? '.png' : '.png';
+    const fileName = `${path.parse(relativePath).name}${targetExtension}`;
+
+    return {
+      buffer: exportedBuffer,
+      fileName,
+    };
+  };
+
   // --- Settings IPC ---
   ipcMain.handle('get-settings', async () => {
     const settings = await readSettings();
@@ -2829,7 +3064,13 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-batch', async (event, { files, destDir, exportId } = {}) => {
+  ipcMain.handle('export-images-batch', async (event, {
+    files,
+    destDir,
+    exportId,
+    metadataPolicy = 'preserve',
+    targetFormat = 'original',
+  } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -2882,12 +3123,19 @@ function setupFileOperationHandlers() {
             continue;
           }
 
-          const baseName = path.basename(file.relativePath);
-          const uniqueName = getUniqueName(baseName, usedNames);
+          const artifact = await createExportArtifact({
+            sourcePath,
+            relativePath: file.relativePath,
+            metadataPolicy,
+            targetFormat,
+            effectiveMetadata: file.effectiveMetadata,
+          });
+          const uniqueName = getUniqueName(artifact.fileName, usedNames);
           const destPath = path.resolve(destDir, uniqueName);
-          await fs.copyFile(sourcePath, destPath);
+          await fs.writeFile(destPath, artifact.buffer);
           exportedCount += 1;
         } catch (error) {
+          console.warn('[Electron] Failed to export file to folder:', file?.relativePath, error);
           failedCount += 1;
         } finally {
           processedCount += 1;
@@ -2911,7 +3159,13 @@ function setupFileOperationHandlers() {
     }
   });
 
-  ipcMain.handle('export-images-zip', async (event, { files, destZipPath, exportId } = {}) => {
+  ipcMain.handle('export-images-zip', async (event, {
+    files,
+    destZipPath,
+    exportId,
+    metadataPolicy = 'preserve',
+    targetFormat = 'original',
+  } = {}) => {
     try {
       if (!Array.isArray(files) || files.length === 0) {
         return { success: false, error: 'No files provided for export.', exportedCount: 0, failedCount: 0 };
@@ -2975,12 +3229,18 @@ function setupFileOperationHandlers() {
             continue;
           }
 
-          await fs.access(sourcePath);
-          const baseName = path.basename(file.relativePath);
-          const uniqueName = getUniqueName(baseName, usedNames);
-          archive.file(sourcePath, { name: uniqueName });
+          const artifact = await createExportArtifact({
+            sourcePath,
+            relativePath: file.relativePath,
+            metadataPolicy,
+            targetFormat,
+            effectiveMetadata: file.effectiveMetadata,
+          });
+          const uniqueName = getUniqueName(artifact.fileName, usedNames);
+          archive.append(artifact.buffer, { name: uniqueName });
           exportedCount += 1;
         } catch (error) {
+          console.warn('[Electron] Failed to export file to ZIP:', file?.relativePath, error);
           failedCount += 1;
         } finally {
           processedCount += 1;

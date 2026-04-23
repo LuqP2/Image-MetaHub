@@ -4,8 +4,8 @@
  */
 
 import { useState, useCallback } from 'react';
-import { IndexedImage } from '../types';
-import { formatImageForComfyUI } from '../utils/comfyUIFormatter';
+import { BaseMetadata, IndexedImage } from '../types';
+import { formatImageForComfyUI, formatMetadataForComfyUI } from '../utils/comfyUIFormatter';
 import {
   getClipboardErrorMessage,
   getNormalizedMetadata,
@@ -23,8 +23,8 @@ export function useCopyToComfyUI() {
   const [isCopying, setIsCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus | null>(null);
 
-  const copyToComfyUI = useCallback(async (image: IndexedImage) => {
-    const metadata = getNormalizedMetadata(image);
+  const copyToComfyUI = useCallback(async (image: IndexedImage, metadataOverride?: BaseMetadata) => {
+    const metadata = metadataOverride ?? getNormalizedMetadata(image);
     if (!hasPromptMetadata(metadata)) {
       setCopyStatus({
         success: false,
@@ -38,7 +38,9 @@ export function useCopyToComfyUI() {
     setCopyStatus(null);
 
     try {
-      const workflowJSON = formatImageForComfyUI(image);
+      const workflowJSON = metadataOverride
+        ? formatMetadataForComfyUI(metadataOverride)
+        : formatImageForComfyUI(image);
 
       // Copy to clipboard
       await navigator.clipboard.writeText(workflowJSON);
