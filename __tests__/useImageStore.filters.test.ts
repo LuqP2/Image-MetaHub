@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Directory, IndexedImage } from '../types';
 import { useImageStore } from '../store/useImageStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -106,6 +106,78 @@ const imageI = createImage({
   lastModified: new Date(2026, 3, 3, 22, 0, 0, 0).getTime(),
 });
 
+const mockWorkerInstances: MockSearchWorker[] = [];
+
+class MockSearchWorker {
+  onmessage: ((event: MessageEvent<any>) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  readonly postMessage = vi.fn((message: any) => {
+    if (message?.type === 'syncDataset') {
+      this.dataset = message.payload.images;
+      return;
+    }
+
+    if (message?.type === 'compute') {
+      const filteredIds = this.computeFilteredIds(message.payload.criteria.searchQuery);
+      queueMicrotask(() => {
+        this.onmessage?.({
+          data: {
+            type: 'complete',
+            payload: {
+              criteriaKey: message.payload.criteriaKey,
+              filteredIds,
+              facets: {
+                availableModels: [],
+                availableLoras: [],
+                availableSamplers: [],
+                availableSchedulers: [],
+                availableGenerators: [],
+                availableGpuDevices: [],
+                availableDimensions: [],
+                modelFacetCounts: [],
+                loraFacetCounts: [],
+                samplerFacetCounts: [],
+                schedulerFacetCounts: [],
+              },
+            },
+          },
+        } as MessageEvent);
+      });
+    }
+  });
+  readonly terminate = vi.fn();
+  private dataset: Array<{ id: string; catalogText: string; searchText: string }> = [];
+
+  constructor() {
+    mockWorkerInstances.push(this);
+  }
+
+  private computeFilteredIds(searchQuery: string): string[] {
+    const terms = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) {
+      return this.dataset.map((image) => image.id);
+    }
+
+    return this.dataset
+      .filter((image) => {
+        const catalogMatch = terms.every((term) => image.catalogText.includes(term));
+        if (catalogMatch) {
+          return true;
+        }
+        if (!image.searchText) {
+          return false;
+        }
+        return terms.every((term) => image.searchText.includes(term));
+      })
+      .map((image) => image.id);
+  }
+}
+
+const flushSearchWorker = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 const seedStore = () => {
   useSettingsStore.setState({
     enableSafeMode: false,
@@ -125,7 +197,15 @@ const seedStore = () => {
 
 describe('useImageStore tri-state filters', () => {
   beforeEach(() => {
+    vi.stubGlobal('Worker', MockSearchWorker as unknown as typeof Worker);
+    mockWorkerInstances.length = 0;
     seedStore();
+  });
+
+  afterEach(() => {
+    useImageStore.getState().resetState();
+    vi.unstubAllGlobals();
+    mockWorkerInstances.length = 0;
   });
 
   it('filters favorites with include and exclude modes', () => {
@@ -172,6 +252,80 @@ describe('useImageStore tri-state filters', () => {
     });
 
     expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['a.png']);
+  });
+
+  it('searches prompt, model, lora, scheduler, and workflow node terms through the compact worker corpus', async () => {
+    const searchable = createImage({
+      id: 'dir-1::searchable.png',
+      name: 'searchable.png',
+      prompt: 'Galactic cat portrait',
+      models: ['NovaXL'],
+      loras: ['detailer'],
+      scheduler: 'karras',
+      workflowNodes: ['KSampler', 'CLIPTextEncode'],
+      metadataString: '{"workflow":{"huge":"blob"}}',
+      enrichmentState: 'enriched',
+    });
+    const plain = createImage({
+      id: 'dir-1::plain.png',
+      name: 'plain.png',
+      prompt: 'forest landscape',
+      models: ['OtherModel'],
+      loras: ['other-lora'],
+      scheduler: 'normal',
+      workflowNodes: ['LoadImage'],
+      enrichmentState: 'enriched',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [searchable, plain],
+      filteredImages: [searchable, plain],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setSearchQuery('galactic');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
+
+    useImageStore.getState().setSearchQuery('novaxl');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
+
+    useImageStore.getState().setSearchQuery('detailer');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
+
+    useImageStore.getState().setSearchQuery('karras');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
+
+    useImageStore.getState().setSearchQuery('ksampler');
+    await flushSearchWorker();
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['searchable.png']);
+  });
+
+  it('does not match search terms that exist only inside raw metadata JSON blobs', async () => {
+    const rawOnly = createImage({
+      id: 'dir-1::raw-only.png',
+      name: 'raw-only.png',
+      metadataString: '{"workflow":{"secret_token":"raw-json-only-marker"}}',
+      enrichmentState: 'enriched',
+    });
+
+    useImageStore.getState().resetState();
+    useImageStore.setState({
+      directories: [directory],
+      images: [rawOnly],
+      filteredImages: [rawOnly],
+      sortOrder: 'asc',
+    });
+
+    useImageStore.getState().setSearchQuery('raw-json-only-marker');
+    await flushSearchWorker();
+
+    expect(useImageStore.getState().filteredImages).toEqual([]);
   });
 
   it('matches LoRA filters when metadata only provides model_name', () => {
