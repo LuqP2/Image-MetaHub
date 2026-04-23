@@ -13,11 +13,12 @@ const makeEntry = (id: string, name: string): CacheImageMetadata => ({
 });
 
 describe('pruneCacheMetadata', () => {
-  it('removes watched files by id and normalized relative name', () => {
+  it('removes watched files by id and exact normalized relative name', () => {
     const metadata = [
       makeEntry('root::a.png', 'a.png'),
       makeEntry('root::nested/b.png', 'nested/b.png'),
       makeEntry('root::nested/c.png', 'nested\\c.png'),
+      makeEntry('root::other/nested/c.png', 'other/nested/c.png'),
     ];
 
     expect(
@@ -25,10 +26,10 @@ describe('pruneCacheMetadata', () => {
         ids: ['root::a.png'],
         names: ['nested/c.png'],
       }).map((entry) => entry.id),
-    ).toEqual(['root::nested/b.png']);
+    ).toEqual(['root::nested/b.png', 'root::other/nested/c.png']);
   });
 
-  it('removes watched folder contents by normalized relative prefix', () => {
+  it('does not remove unrelated files that share a basename', () => {
     const metadata = [
       makeEntry('root::nested/a.png', 'nested/a.png'),
       makeEntry('root::nested/deeper/b.png', 'nested\\deeper\\b.png'),
@@ -38,12 +39,12 @@ describe('pruneCacheMetadata', () => {
 
     expect(
       pruneCacheMetadata(metadata, {
-        names: ['nested'],
+        names: ['a.png'],
       }).map((entry) => entry.id),
-    ).toEqual(['root::nested-like/c.png', 'root::other.png']);
+    ).toEqual(['root::nested/a.png', 'root::nested/deeper/b.png', 'root::nested-like/c.png', 'root::other.png']);
   });
 
-  it('removes all cached entries when the watched root is removed', () => {
+  it('removes all cached entries when ids cover every record', () => {
     const metadata = [
       makeEntry('root::a.png', 'a.png'),
       makeEntry('root::nested/b.png', 'nested/b.png'),
@@ -51,7 +52,7 @@ describe('pruneCacheMetadata', () => {
 
     expect(
       pruneCacheMetadata(metadata, {
-        names: [''],
+        ids: ['root::a.png', 'root::nested/b.png'],
       }),
     ).toEqual([]);
   });

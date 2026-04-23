@@ -67,20 +67,14 @@ export function pruneCacheMetadata(
     Array.from(options.names ?? [])
       .map((name) => name.replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
   );
-  const removesRoot = names.has('');
-  const namePrefixes = Array.from(names).map((name) => `${name}/`);
 
   if (ids.size === 0 && names.size === 0) {
     return metadata;
   }
 
   return metadata.filter((entry) => {
-    if (removesRoot) {
-      return false;
-    }
-
     const normalizedName = entry.name.replace(/\\/g, '/').replace(/^\/+/, '');
-    const matchedName = names.has(normalizedName) || namePrefixes.some((prefix) => normalizedName.startsWith(prefix));
+    const matchedName = names.has(normalizedName);
     return !ids.has(entry.id) && !matchedName;
   });
 }
