@@ -1862,7 +1862,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
         return;
       }
 
-      if (eventMatchesKeybinding(event, previewKeymap?.deleteImageInViewer)) {
+      const deleteImageKeybinding = previewKeymap?.deleteImageInViewer?.trim() || 'delete';
+      const isNativeDeleteKey =
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (
+          event.key === 'Delete' ||
+          event.key === 'Del' ||
+          event.key === 'Backspace' ||
+          event.code === 'Delete' ||
+          event.code === 'NumpadDecimal'
+        );
+
+      if (isNativeDeleteKey || eventMatchesKeybinding(event, deleteImageKeybinding)) {
         event.preventDefault();
         handleDelete().catch((error) => {
           console.error('Failed to delete image from shortcut:', error);

@@ -1,4 +1,5 @@
 const KEY_ALIASES: Record<string, string> = {
+  del: 'delete',
   arrowleft: 'left',
   arrowright: 'right',
   arrowup: 'up',

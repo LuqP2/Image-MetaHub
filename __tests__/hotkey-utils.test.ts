@@ -19,6 +19,7 @@ describe('eventMatchesKeybinding', () => {
   it('matches aliases and modifier combinations', () => {
     expect(eventMatchesKeybinding(keyboardEvent({ key: 'ArrowLeft' }), 'left')).toBe(true);
     expect(eventMatchesKeybinding(keyboardEvent({ key: ' ' }), 'space')).toBe(true);
+    expect(eventMatchesKeybinding(keyboardEvent({ key: 'Del' }), 'delete')).toBe(true);
     expect(eventMatchesKeybinding(keyboardEvent({ key: 'Enter', altKey: true }), 'alt+enter')).toBe(true);
     expect(eventMatchesKeybinding(keyboardEvent({ key: 'x', ctrlKey: true }), 'delete, ctrl+x')).toBe(true);
     expect(eventMatchesKeybinding(keyboardEvent({ key: 'k', metaKey: true }), 'ctrl+k, cmd+k')).toBe(true);
