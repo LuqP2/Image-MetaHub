@@ -22,10 +22,14 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getElectronAbsoluteMediaPath, mediaSourceCache } from '../services/mediaSourceCache';
 import { useResolvedThumbnail } from '../hooks/useResolvedThumbnail';
 
+import { bulkSaveShadowMetadata } from '../services/imageAnnotationsStorage';
+import { copyEditableMetadata, readEditableMetadataClipboard } from '../services/metadataClipboard';
 import { hasVerifiedTelemetry } from '../utils/telemetryDetection';
+import { buildEffectiveMetadata, getEditableMetadataFields } from '../utils/editableMetadata';
 import { eventMatchesKeybinding, isTypingElement } from '../utils/hotkeyUtils';
 import { useShadowMetadata } from '../hooks/useShadowMetadata';
-import { MetadataEditorModal } from './MetadataEditorModal';
+import { MetadataEditorModal, type MetadataEditorDraft } from './MetadataEditorModal';
+import BatchExportModal from './BatchExportModal';
 import ImageLineageSection from './ImageLineageSection';
 import { getGenerationTypeLabel } from '../utils/imageLineage';
 import RatingStars from './RatingStars';
@@ -769,7 +773,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const { addImage, comparisonCount } = useImageComparison();
   const { isReparsing, reparseImages } = useReparseMetadata();
 
-  const { canUseA1111, canUseComfyUI, canUseComparison, showProModal, initialized } = useFeatureAccess();
+  const { canUseA1111, canUseComfyUI, canUseComparison, canUseBatchExport, showProModal, initialized } = useFeatureAccess();
   const { a1111Enabled, comfyUIEnabled, visibleProviders, singleVisibleProvider } = useGenerationProviderAvailability();
 
   const toggleFavorite = useImageStore((state) => state.toggleFavorite);
@@ -785,9 +789,16 @@ const ImageModal: React.FC<ImageModalProps> = ({
   const collections = useImageStore((state) => state.collections);
   const createCollection = useImageStore((state) => state.createCollection);
   const addImagesToCollection = useImageStore((state) => state.addImagesToCollection);
+  const directories = useImageStore((state) => state.directories);
+  const filteredImages = useImageStore((state) => state.filteredImages);
+  const allImages = useImageStore((state) => state.images);
+  const selectedImages = useImageStore((state) => state.selectedImages);
+  const activeImageScope = useImageStore((state) => state.activeImageScope);
+  const clusterNavigationContext = useImageStore((state) => state.clusterNavigationContext);
 
   const { metadata: shadowMetadata, saveMetadata: saveShadowMetadata, deleteMetadata: deleteShadowMetadata } = useShadowMetadata(image.id);
   const [isMetadataEditorOpen, setIsMetadataEditorOpen] = useState(false);
+  const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
 
   const imageFromStore = useImageStore(
@@ -818,6 +829,28 @@ const ImageModal: React.FC<ImageModalProps> = ({
     limit: recentTagChipLimit,
   }), [currentTags, recentTagChipLimit, recentTags]);
   const createdAtLabel = useMemo(() => new Date(image.lastModified).toLocaleString(), [image.lastModified]);
+  const exportScopeImages = useMemo(() => {
+    const candidateScopes = [
+      clusterNavigationContext,
+      activeImageScope,
+      filteredImages,
+    ].filter((scope): scope is IndexedImage[] => Array.isArray(scope) && scope.length > 0);
+
+    for (const scope of candidateScopes) {
+      if (scope.some((candidate) => candidate.id === liveImage.id)) {
+        return scope;
+      }
+    }
+
+    return [liveImage];
+  }, [activeImageScope, clusterNavigationContext, filteredImages, liveImage]);
+  const exportSelectionIds = useMemo(() => {
+    if (selectedImages.has(liveImage.id)) {
+      return new Set(selectedImages);
+    }
+
+    return new Set([liveImage.id]);
+  }, [liveImage.id, selectedImages]);
 
   const [tagInput, setTagInput] = useState('');
   const [isMediaOverlayVisible, setIsMediaOverlayVisible] = useState(false);
@@ -1180,29 +1213,29 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [applyModalWindowStyles, isFullscreen, modalInteraction, scheduleModalWindowPaint]);
 
-  const nMeta: BaseMetadata | undefined = image.metadata?.normalizedMetadata;
+  const nMeta: BaseMetadata | undefined = liveImage.metadata?.normalizedMetadata;
   const canFindSimilar = Boolean(nMeta?.prompt) && Boolean(onFindSimilar);
-  const effectiveMetadata: BaseMetadata | undefined = (nMeta && !showOriginal) ? {
-    ...nMeta,
-    prompt: shadowMetadata?.prompt ?? nMeta.prompt,
-    negativePrompt: shadowMetadata?.negativePrompt ?? nMeta.negativePrompt,
-    seed: shadowMetadata?.seed ?? nMeta.seed,
-    width: shadowMetadata?.width ?? nMeta.width,
-    height: shadowMetadata?.height ?? nMeta.height,
-    model: (shadowMetadata?.resources?.find(r => r.type === 'model')?.name) ?? nMeta.model,
-  } : (shadowMetadata && !showOriginal) ? {
-     prompt: shadowMetadata.prompt || '',
-     negativePrompt: shadowMetadata.negativePrompt,
-     seed: shadowMetadata.seed,
-     width: shadowMetadata.width || 0,
-     height: shadowMetadata.height || 0,
-     model: shadowMetadata.resources?.find(r => r.type === 'model')?.name || 'Unknown',
-     steps: 0,
-     scheduler: 'Unknown',
-     topics: [],
-  } as BaseMetadata : nMeta;
-
+  const effectiveMetadata = buildEffectiveMetadata(nMeta, shadowMetadata, showOriginal);
+  const generationImage = useMemo<IndexedImage>(() => (
+    effectiveMetadata
+      ? {
+          ...liveImage,
+          metadata: {
+            ...liveImage.metadata,
+            normalizedMetadata: effectiveMetadata,
+          },
+        }
+      : liveImage
+  ), [effectiveMetadata, liveImage]);
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
+  const editorInitialMetadata = useMemo<MetadataEditorDraft | null>(() => {
+    const editableFields = getEditableMetadataFields(nMeta, shadowMetadata);
+    return {
+      imageId: liveImage.id,
+      updatedAt: shadowMetadata?.updatedAt ?? Date.now(),
+      ...editableFields,
+    };
+  }, [liveImage.id, nMeta, shadowMetadata]);
 
 
   const videoInfo = (nMeta as any)?.video;
@@ -1417,7 +1450,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
   };
 
   const copySeed = () => {
-    copyToClipboardElectron(String(nMeta?.seed || ''), 'Seed');
+    copyToClipboardElectron(String(effectiveMetadata?.seed || ''), 'Seed');
     hideContextMenu();
   };
 
@@ -1472,56 +1505,18 @@ const ImageModal: React.FC<ImageModalProps> = ({
     await reparseImages([liveImage]);
   };
 
-  const exportImage = async () => {
+  const openBatchExport = useCallback(() => {
+    if (exportSelectionIds.size > 1 && !canUseBatchExport) {
+      showProModal('batch_export');
+      return;
+    }
+
+    setIsBatchExportModalOpen(true);
+  }, [canUseBatchExport, exportSelectionIds.size, showProModal]);
+
+  const exportImage = () => {
     hideContextMenu();
-    
-    if (!window.electronAPI) {
-      alert('Export feature is only available in the desktop app version.');
-      return;
-    }
-    
-    if (!directoryPath) {
-      alert('Cannot export image: source directory path is missing.');
-      return;
-    }
-
-    try {
-      const destResult = await window.electronAPI.showDirectoryDialog();
-      if (destResult.canceled || !destResult.path) {
-        return;
-      }
-      const destDir = destResult.path;
-      const sourcePathResult = await window.electronAPI.joinPaths(directoryPath, image.name);
-      if (!sourcePathResult.success || !sourcePathResult.path) {
-        throw new Error(`Failed to construct source path: ${sourcePathResult.error}`);
-      }
-      const destPathResult = await window.electronAPI.joinPaths(destDir, image.name);
-      if (!destPathResult.success || !destPathResult.path) {
-        throw new Error(`Failed to construct destination path: ${destPathResult.error}`);
-      }
-
-      const sourcePath = sourcePathResult.path;
-      const destPath = destPathResult.path;
-
-      const readResult = await window.electronAPI.readFile(sourcePath);
-      if (!readResult.success || !readResult.data) {
-        alert(`Failed to read original file: ${readResult.error}`);
-        return;
-      }
-
-      const writeResult = await window.electronAPI.writeFile(destPath, readResult.data);
-      if (!writeResult.success) {
-        alert(`Failed to export image: ${writeResult.error}`);
-        return;
-      }
-
-      alert(`Image exported successfully to: ${destPath}`);
-
-    } catch (error) {
-      console.error('Export error:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      alert(`An unexpected error occurred during export: ${errorMessage}`);
-    }
+    openBatchExport();
   };
 
   useEffect(() => {
@@ -2724,8 +2719,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     {((nMeta as any).vae || (nMeta as any).vaes?.[0]?.name) && (
                       <MetadataItem label="VAE" value={(nMeta as any).vae || (nMeta as any).vaes?.[0]?.name} />
                     )}
-                    {nMeta.loras && nMeta.loras.length > 0 && (
-                      <MetadataItem label="LoRAs" value={nMeta.loras.map(formatLoRA).join(', ')} />
+                    {effectiveMetadata?.loras && effectiveMetadata.loras.length > 0 && (
+                      <MetadataItem label="LoRAs" value={effectiveMetadata.loras.map(formatLoRA).join(', ')} />
                     )}
                     <div className="grid grid-cols-2 gap-2">
                       <MetadataItem label="Steps" value={effectiveMetadata?.steps} />
@@ -2733,8 +2728,8 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       {nMeta.clip_skip && nMeta.clip_skip > 1 && (
                         <MetadataItem label="Clip Skip" value={nMeta.clip_skip} />
                       )}
-                      <MetadataItem label="Seed" value={nMeta.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
-                      <MetadataItem label="Sampler" value={nMeta.sampler} />
+                      <MetadataItem label="Seed" value={effectiveMetadata?.seed} onCopy={(v) => copyToClipboard(v, "Seed")} />
+                      <MetadataItem label="Sampler" value={effectiveMetadata?.sampler} />
                       <MetadataItem label="Scheduler" value={effectiveMetadata?.scheduler} />
                       <MetadataItem label="Dimensions" value={effectiveMetadata?.width && effectiveMetadata?.height ? `${effectiveMetadata.width}x${effectiveMetadata.height}` : undefined} />
                       {(nMeta as any).denoise != null && (nMeta as any).denoise < 1 && (
@@ -2913,7 +2908,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   }
                   setIsGenerateModalOpen(true);
                 }}
-                disabled={canUseA1111 && !nMeta.prompt}
+                disabled={canUseA1111 && !effectiveMetadata?.prompt}
                 className="w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-200 dark:border-blue-500/50 hover:border-blue-300 dark:hover:border-blue-400 text-blue-700 dark:text-blue-100 px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isGenerating && canUseA1111 ? (
@@ -2940,9 +2935,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     showProModal('a1111');
                     return;
                   }
-                  copyToA1111(image);
+                  copyToA1111(generationImage, effectiveMetadata);
                 }}
-                disabled={canUseA1111 && (isCopying || !nMeta.prompt)}
+                disabled={canUseA1111 && (isCopying || !effectiveMetadata?.prompt)}
                 className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopying && canUseA1111 ? (
@@ -2974,11 +2969,11 @@ const ImageModal: React.FC<ImageModalProps> = ({
               )}
 
               {/* Generate Variation Modal */}
-              {showA1111Actions && isGenerateModalOpen && nMeta && (
+              {showA1111Actions && isGenerateModalOpen && effectiveMetadata && (
                 <A1111GenerateModal
                   isOpen={isGenerateModalOpen}
                   onClose={() => setIsGenerateModalOpen(false)}
-                  image={image}
+                  image={generationImage}
                   onGenerate={async (params: A1111GenerationParams) => {
                     const customMetadata: Partial<BaseMetadata> = {
                       prompt: params.prompt,
@@ -2988,10 +2983,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       seed: params.randomSeed ? -1 : params.seed,
                       width: params.width,
                       height: params.height,
-                      model: params.model || nMeta?.model,
+                      model: params.model || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                     };
-                    await generateWithA1111(image, customMetadata, params.numberOfImages);
+                    await generateWithA1111(generationImage, customMetadata, params.numberOfImages);
                     setIsGenerateModalOpen(false);
                   }}
                   isGenerating={isGenerating}
@@ -3001,7 +2996,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
           )}
 
           {/* ComfyUI Integration */}
-          {nMeta && showComfyUIActions && (
+          {effectiveMetadata && showComfyUIActions && (
             <div className={`mt-3 ${showComfyUIHeading ? 'pt-3 border-t border-gray-700' : ''}`}>
               {showComfyUIHeading && (
                 <h4 className="text-xs text-gray-400 uppercase tracking-wider mb-2">ComfyUI</h4>
@@ -3030,9 +3025,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
                     showProModal('comfyui');
                     return;
                   }
-                  copyToComfyUI(image);
+                  copyToComfyUI(generationImage, effectiveMetadata);
                 }}
-                disabled={canUseComfyUI && (isCopyingComfyUI || !nMeta.prompt)}
+                disabled={canUseComfyUI && (isCopyingComfyUI || !effectiveMetadata?.prompt)}
                 className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 disabled:bg-gray-100 dark:disabled:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all duration-200"
               >
                 {isCopyingComfyUI && canUseComfyUI ? (
@@ -3108,6 +3103,13 @@ const ImageModal: React.FC<ImageModalProps> = ({
                   <Pencil size={14} />
                 </button>
                 <button
+                  onClick={openBatchExport}
+                  className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-white"
+                  title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : 'Open export flow'}
+                >
+                  <Download size={14} />
+                </button>
+                <button
                   onClick={() => setShowRawMetadata(!showRawMetadata)}
                   className="text-xs text-gray-400 hover:text-white underline"
                 >
@@ -3136,12 +3138,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
                       width: params.width,
                       height: params.height,
                       batch_size: params.numberOfImages,
-                      model: params.model?.name || nMeta?.model,
+                      model: params.model?.name || effectiveMetadata?.model,
                       ...(params.sampler ? { sampler: params.sampler } : {}),
                       ...(params.scheduler ? { scheduler: params.scheduler } : {}),
                     };
 
-                    await generateWithComfyUI(image, {
+                    await generateWithComfyUI(generationImage, {
                       customMetadata,
                       overrides: {
                         model: params.model || undefined,
@@ -3228,9 +3230,50 @@ const ImageModal: React.FC<ImageModalProps> = ({
         <MetadataEditorModal
           isOpen={isMetadataEditorOpen}
           onClose={() => setIsMetadataEditorOpen(false)}
-          initialMetadata={shadowMetadata}
-          onSave={async (m) => { await saveShadowMetadata(m); }}
-          imageId={image.id}
+          initialMetadata={editorInitialMetadata}
+          onSave={async (metadata) => { await saveShadowMetadata(metadata); }}
+          onExportEditedCopy={openBatchExport}
+          onApplyToSelected={exportSelectionIds.size > 1 ? async (metadata) => {
+            await bulkSaveShadowMetadata(Array.from(exportSelectionIds).map((imageId) => ({
+              ...metadata,
+              imageId,
+              updatedAt: Date.now(),
+            })));
+          } : null}
+          selectedImageCount={exportSelectionIds.size}
+          onCopyEditableMetadata={(metadata) => {
+            copyEditableMetadata(metadata, liveImage.id);
+          }}
+          onPasteEditableMetadata={() => {
+            const clipboardMetadata = readEditableMetadataClipboard()?.metadata;
+            if (!clipboardMetadata) {
+              return null;
+            }
+
+            return {
+              ...(editorInitialMetadata ?? {
+                imageId: liveImage.id,
+                updatedAt: Date.now(),
+              }),
+              ...clipboardMetadata,
+              imageId: liveImage.id,
+              updatedAt: Date.now(),
+            };
+          }}
+          imageId={liveImage.id}
+        />
+      </div>
+
+      <div className="pointer-events-auto">
+        <BatchExportModal
+          isOpen={isBatchExportModalOpen}
+          onClose={() => setIsBatchExportModalOpen(false)}
+          selectedImageIds={exportSelectionIds}
+          filteredImages={exportScopeImages}
+          allImages={allImages}
+          directories={directories}
+          requestedImageIds={Array.from(exportSelectionIds)}
+          preferredSource="selected"
         />
       </div>
 
@@ -3424,9 +3467,10 @@ const ImageModal: React.FC<ImageModalProps> = ({
               <button
                 onClick={exportImage}
                 className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+                title={exportSelectionIds.size > 1 && !canUseBatchExport && initialized ? 'Pro feature - start trial' : undefined}
               >
                 <Download className="w-4 h-4" />
-                Export Image
+                Export...
               </button>
             </>
           )}

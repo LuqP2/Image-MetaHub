@@ -85,8 +85,16 @@ interface FindSimilarState {
   initialCriteria?: Partial<SimilarSearchCriteria>;
 }
 
+type BatchExportSource = 'selected' | 'filtered';
+
+interface BatchExportRequestState {
+  imageIds?: string[];
+  preferredSource?: BatchExportSource;
+}
+
 const SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-sidebar-width';
 const RIGHT_SIDEBAR_WIDTH_STORAGE_KEY = 'image-metahub-right-sidebar-width';
+const OPEN_BATCH_EXPORT_EVENT = 'imagemetahub:open-batch-export';
 const SIDEBAR_DEFAULT_WIDTH = 320;
 const SIDEBAR_MIN_WIDTH = 280;
 const SIDEBAR_MAX_WIDTH = 640;
@@ -374,6 +382,7 @@ export default function App() {
   const [selectedImageForGeneration, setSelectedImageForGeneration] = useState<IndexedImage | null>(null);
   const [newImagesToast, setNewImagesToast] = useState<{ message: string } | null>(null);
   const [isBatchExportModalOpen, setIsBatchExportModalOpen] = useState(false);
+  const [batchExportRequest, setBatchExportRequest] = useState<BatchExportRequestState | null>(null);
   const [isSaveFilteredCollectionModalOpen, setIsSaveFilteredCollectionModalOpen] = useState(false);
   const [openImageModals, setOpenImageModals] = useState<OpenImageModalState[]>([]);
   const [activeImageModalId, setActiveImageModalId] = useState<string | null>(null);
@@ -1597,13 +1606,43 @@ export default function App() {
     handleImageSelection(image, event);
   }, [handleImageSelection, handleOpenImageModalInBackground]);
 
-  const handleOpenBatchExport = useCallback(() => {
-    if (!canUseBatchExport) {
+  const openBatchExportModal = useCallback((request: BatchExportRequestState | null = null) => {
+    const isSingleImageExportRequest = (request?.imageIds?.length ?? 0) === 1;
+
+    if (!isSingleImageExportRequest && !canUseBatchExport) {
       showProModal('batch_export');
       return;
     }
+
+    setBatchExportRequest(request);
     setIsBatchExportModalOpen(true);
   }, [canUseBatchExport, showProModal]);
+
+  const handleOpenBatchExport = useCallback(() => {
+    openBatchExportModal();
+  }, [openBatchExportModal]);
+
+  const handleCloseBatchExport = useCallback(() => {
+    setIsBatchExportModalOpen(false);
+    setBatchExportRequest(null);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleOpenBatchExportEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<BatchExportRequestState | undefined>;
+      openBatchExportModal(customEvent.detail ?? null);
+    };
+
+    window.addEventListener(OPEN_BATCH_EXPORT_EVENT, handleOpenBatchExportEvent as EventListener);
+
+    return () => {
+      window.removeEventListener(OPEN_BATCH_EXPORT_EVENT, handleOpenBatchExportEvent as EventListener);
+    };
+  }, [openBatchExportModal]);
 
   const activeCollection = useMemo(
     () => safeCollections.find((collection) => collection.id === activeCollectionId) ?? null,
@@ -1947,10 +1986,13 @@ export default function App() {
 
       <BatchExportModal
         isOpen={isBatchExportModalOpen}
-        onClose={() => setIsBatchExportModalOpen(false)}
+        onClose={handleCloseBatchExport}
         selectedImageIds={safeSelectedImages}
         filteredImages={displayImages}
+        allImages={safeImages}
         directories={safeDirectories}
+        requestedImageIds={batchExportRequest?.imageIds ?? null}
+        preferredSource={batchExportRequest?.preferredSource ?? null}
       />
 
       {hasDirectories && (

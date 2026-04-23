@@ -644,11 +644,11 @@ const createRenamedFileHandle = (
     nextFileName: string,
 ): FileSystemFileHandle => {
     const nextHandle = {
-        ...(handle as Record<string, unknown>),
+        ...(handle as unknown as Record<string, unknown>),
         name: nextFileName,
     } as ElectronFileHandleLike;
 
-    const electronAPI = typeof window !== 'undefined' ? (window as Window & { electronAPI?: { readFile?: (filePath: string) => Promise<{ success: boolean; data?: ArrayBuffer; error?: string }> } }).electronAPI : undefined;
+    const electronAPI = typeof window !== 'undefined' ? (window as unknown as Window & { electronAPI?: { readFile?: (filePath: string) => Promise<{ success: boolean; data?: Buffer; error?: string }> } }).electronAPI : undefined;
     const currentFilePath = typeof nextHandle._filePath === 'string' ? nextHandle._filePath : null;
 
     if (!currentFilePath || typeof electronAPI?.readFile !== 'function') {
