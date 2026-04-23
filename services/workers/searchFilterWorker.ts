@@ -4,13 +4,11 @@ import { parseLocalDateFilterEndExclusive, parseLocalDateFilterStart } from '../
 type SearchWorkerImage = {
   id: string;
   name: string;
+  catalogText: string;
+  searchText: string;
   relativePath: string;
   directoryId: string;
   directoryName: string;
-  metadataString: string;
-  prompt: string;
-  negativePrompt: string;
-  enrichmentState: 'catalog' | 'enriched' | '';
   models: string[];
   loraNames: string[];
   sampler: string;
@@ -87,11 +85,6 @@ type WorkerMessage =
       };
     };
 
-type PreparedSearchWorkerImage = SearchWorkerImage & {
-  catalogText: string;
-  enrichedText: string;
-};
-
 type WorkerResponse =
   | {
       type: 'complete';
@@ -123,7 +116,7 @@ type WorkerResponse =
 type CompletePayload = Extract<WorkerResponse, { type: 'complete' }>['payload'];
 
 let datasetVersion = -1;
-let preparedImages: PreparedSearchWorkerImage[] = [];
+let workerImages: SearchWorkerImage[] = [];
 
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 
@@ -150,33 +143,6 @@ const getFolderPath = (image: SearchWorkerImage, parentDirectory: string) => {
   return joinPath(parentDirectory, segments.slice(0, -1).join('/'));
 };
 
-const buildCatalogSearchText = (image: SearchWorkerImage): string => {
-  const relativePath = image.relativePath.replace(/\\/g, '/').toLowerCase();
-  const name = (image.name || '').toLowerCase();
-  const directory = (image.directoryName || '').replace(/\\/g, '/').toLowerCase();
-  return [name, relativePath, directory].filter(Boolean).join(' ');
-};
-
-const buildEnrichedSearchText = (image: SearchWorkerImage): string => {
-  if (image.enrichmentState !== 'enriched') {
-    return '';
-  }
-
-  const segments = [
-    image.metadataString,
-    image.prompt,
-    image.negativePrompt,
-    image.models.join(' '),
-    image.loraNames.join(' '),
-    image.scheduler,
-    image.board,
-  ]
-    .filter(Boolean)
-    .map(value => value.toLowerCase());
-
-  return segments.join(' ');
-};
-
 const caseInsensitiveSort = (a: string, b: string) =>
   a.localeCompare(b, undefined, { sensitivity: 'accent' });
 
@@ -190,18 +156,12 @@ const stringHash = (str: string) => {
   return hash;
 };
 
-const buildPreparedImage = (image: SearchWorkerImage): PreparedSearchWorkerImage => ({
-  ...image,
-  catalogText: buildCatalogSearchText(image),
-  enrichedText: buildEnrichedSearchText(image),
-});
-
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   const message = event.data;
 
   try {
     if (message.type === 'syncDataset') {
-      preparedImages = message.payload.images.map(buildPreparedImage);
+      workerImages = message.payload.images;
       datasetVersion = message.payload.datasetVersion;
       return;
     }
@@ -249,7 +209,7 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
     .split(/\s+/)
     .filter(Boolean);
 
-  let results = preparedImages.filter((image) => {
+  let results = workerImages.filter((image) => {
     if (!visibleDirectoryIds.has(image.directoryId)) {
       return false;
     }
@@ -337,11 +297,11 @@ function computeResults(criteria: SearchWorkerCriteria): Omit<CompletePayload, '
         return true;
       }
 
-      if (!image.enrichedText) {
+      if (!image.searchText) {
         return false;
       }
 
-      return searchTerms.every(term => image.enrichedText.includes(term));
+      return searchTerms.every(term => image.searchText.includes(term));
     });
   }
 
@@ -512,29 +472,29 @@ function numericRangeMatch(
 }
 
 function compareImages(
-  left: PreparedSearchWorkerImage,
-  right: PreparedSearchWorkerImage,
+  left: SearchWorkerImage,
+  right: SearchWorkerImage,
   sortOrder: SearchWorkerCriteria['sortOrder'],
   randomSeed: number
 ): number {
-  const compareById = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => a.id.localeCompare(b.id);
-  const compareByNameAsc = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => {
+  const compareById = (a: SearchWorkerImage, b: SearchWorkerImage) => a.id.localeCompare(b.id);
+  const compareByNameAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
     const nameComparison = (a.name || '').localeCompare(b.name || '');
     return nameComparison !== 0 ? nameComparison : compareById(a, b);
   };
-  const compareByNameDesc = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => {
+  const compareByNameDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
     const nameComparison = (b.name || '').localeCompare(a.name || '');
     return nameComparison !== 0 ? nameComparison : compareById(a, b);
   };
-  const compareByDateAsc = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => {
+  const compareByDateAsc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
     const dateComparison = a.lastModified - b.lastModified;
     return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
   };
-  const compareByDateDesc = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => {
+  const compareByDateDesc = (a: SearchWorkerImage, b: SearchWorkerImage) => {
     const dateComparison = b.lastModified - a.lastModified;
     return dateComparison !== 0 ? dateComparison : compareByNameAsc(a, b);
   };
-  const compareRandom = (a: PreparedSearchWorkerImage, b: PreparedSearchWorkerImage) => {
+  const compareRandom = (a: SearchWorkerImage, b: SearchWorkerImage) => {
     const hashA = stringHash(`${a.id}${randomSeed}`);
     const hashB = stringHash(`${b.id}${randomSeed}`);
     return hashA !== hashB ? hashA - hashB : a.id.localeCompare(b.id);
@@ -548,7 +508,7 @@ function compareImages(
   return compareById(left, right);
 }
 
-function collectFacets(images: PreparedSearchWorkerImage[]) {
+function collectFacets(images: SearchWorkerImage[]) {
   const models = new Set<string>();
   const loras = new Set<string>();
   const samplers = new Set<string>();

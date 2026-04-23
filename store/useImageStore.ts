@@ -94,13 +94,11 @@ type DerivedFacetState = {
 type SearchWorkerImage = {
     id: string;
     name: string;
+    catalogText: string;
+    searchText: string;
     relativePath: string;
     directoryId: string;
     directoryName: string;
-    metadataString: string;
-    prompt: string;
-    negativePrompt: string;
-    enrichmentState: 'catalog' | 'enriched' | '';
     models: string[];
     loraNames: string[];
     sampler: string;
@@ -570,50 +568,60 @@ const buildCatalogSearchText = (image: IndexedImage): string => {
     return [name, relativePath, directory].filter(Boolean).join(' ');
 };
 
-const buildEnrichedSearchText = (image: IndexedImage): string => {
-    if (image.enrichmentState !== 'enriched') {
-        return '';
-    }
+const MAX_SEARCH_TEXT_LENGTH = 8192;
 
+const buildCompactSearchText = (image: IndexedImage): string => {
     const segments: string[] = [];
-    if (image.metadataString) {
-        segments.push(String(image.metadataString).toLowerCase());
-    }
-    if (image.prompt) {
-        segments.push(String(image.prompt).toLowerCase());
-    }
-    if (image.negativePrompt) {
-        segments.push(String(image.negativePrompt).toLowerCase());
-    }
-    if (image.models?.length) {
-        segments.push(
-            image.models
-                .map(model => normalizeFacetValue(model))
-                .filter((model): model is string => Boolean(model))
-                .map(model => model.toLowerCase())
-                .join(' ')
-        );
-    }
-    if (image.loras?.length) {
-        const loraNames = image.loras.map(lora => {
-            const normalized = normalizeLoraName(typeof lora === 'string' ? lora : lora);
-            return normalized ? normalized.toLowerCase() : '';
-        }).filter(Boolean);
-        if (loraNames.length > 0) {
-            segments.push(loraNames.join(' '));
+    const pushValue = (value: unknown) => {
+        if (typeof value === 'number') {
+            segments.push(String(value));
+            return;
         }
-    }
-    if (image.scheduler) {
-        const normalized = normalizeFacetValue(image.scheduler);
+
+        if (typeof value !== 'string') {
+            return;
+        }
+
+        const normalized = value.trim().toLowerCase();
         if (normalized) {
-            segments.push(normalized.toLowerCase());
+            segments.push(normalized);
         }
+    };
+
+    pushValue(image.prompt);
+    pushValue(image.negativePrompt);
+
+    image.models?.forEach(model => pushValue(normalizeFacetValue(model)));
+    image.loras?.forEach(lora => pushValue(normalizeLoraName(typeof lora === 'string' ? lora : lora)));
+
+    pushValue(normalizeFacetValue(image.sampler));
+    pushValue(normalizeFacetValue(image.scheduler));
+    pushValue(image.board);
+    pushValue(getImageGenerator(image));
+    pushValue(normalizeFacetValue(image.dimensions));
+
+    if (typeof image.seed === 'number') {
+        pushValue(image.seed);
     }
-    if (image.board) {
-        segments.push(String(image.board).toLowerCase());
+    if (typeof image.steps === 'number') {
+        pushValue(image.steps);
+    }
+    if (typeof image.cfgScale === 'number') {
+        pushValue(image.cfgScale);
     }
 
-    return segments.join(' ');
+    image.tags?.forEach(tag => pushValue(tag));
+    image.autoTags?.forEach(tag => pushValue(tag));
+    image.workflowNodes?.forEach(nodeType => pushValue(nodeType));
+
+    pushValue(getImageGpuDevice(image));
+
+    const searchText = segments.join(' ');
+    if (searchText.length <= MAX_SEARCH_TEXT_LENGTH) {
+        return searchText;
+    }
+
+    return searchText.slice(0, MAX_SEARCH_TEXT_LENGTH);
 };
 
 const getImageAnalyticsSnapshot = (image: IndexedImage) => {
@@ -697,13 +705,11 @@ const toSearchWorkerImage = (image: IndexedImage): SearchWorkerImage => {
     return {
         id: image.id,
         name: image.name || '',
+        catalogText: buildCatalogSearchText(image),
+        searchText: buildCompactSearchText(image),
         relativePath,
         directoryId: image.directoryId || '',
         directoryName: image.directoryName || '',
-        metadataString: image.metadataString ? String(image.metadataString) : '',
-        prompt: image.prompt ? String(image.prompt) : '',
-        negativePrompt: image.negativePrompt ? String(image.negativePrompt) : '',
-        enrichmentState: image.enrichmentState ?? '',
         models: (image.models || [])
             .map(model => normalizeFacetValue(model))
             .filter((model): model is string => Boolean(model)),
@@ -1025,10 +1031,8 @@ export const useImageStore = create<ImageState>((set, get) => {
     const MERGE_FLUSH_LARGE_THRESHOLD = 8000;
     const FILTER_RECOMPUTE_INDEXING_MS = 5000;
     let searchWorker: Worker | null = null;
-    let cachedSearchWorkerImages: IndexedImage[] | null = null;
-    let cachedSearchWorkerDirectories: Directory[] | null = null;
-    let cachedSearchWorkerDataset: SearchWorkerImage[] | null = null;
     let searchDatasetVersion = 0;
+    let searchWorkerSyncedDatasetVersion = -1;
     let latestSearchCriteriaKey = '';
 
     const clearPendingQueue = () => {
@@ -1049,15 +1053,13 @@ export const useImageStore = create<ImageState>((set, get) => {
     };
 
     const invalidateSearchWorkerDataset = () => {
-        cachedSearchWorkerImages = null;
-        cachedSearchWorkerDirectories = null;
-        cachedSearchWorkerDataset = null;
         searchDatasetVersion += 1;
     };
 
     const terminateSearchWorker = () => {
         searchWorker?.terminate();
         searchWorker = null;
+        searchWorkerSyncedDatasetVersion = -1;
     };
 
     const purgePendingDirectoryEntries = (directoryId: string) => {
@@ -1272,21 +1274,8 @@ export const useImageStore = create<ImageState>((set, get) => {
         return false;
     };
 
-    const getSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
-        if (
-            cachedSearchWorkerDataset &&
-            cachedSearchWorkerImages === state.images &&
-            cachedSearchWorkerDirectories === state.directories
-        ) {
-            return cachedSearchWorkerDataset;
-        }
-
-        const dataset = state.images.map(toSearchWorkerImage);
-        cachedSearchWorkerImages = state.images;
-        cachedSearchWorkerDirectories = state.directories;
-        cachedSearchWorkerDataset = dataset;
-
-        return dataset;
+    const buildSearchWorkerDataset = (state: ImageState): SearchWorkerImage[] => {
+        return state.images.map(toSearchWorkerImage);
     };
 
     const buildSearchWorkerCriteria = (state: ImageState): SearchWorkerCriteria => {
@@ -1410,7 +1399,6 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const runAsyncSearchRecompute = (state: ImageState) => {
         const worker = ensureSearchWorker();
-        const dataset = getSearchWorkerDataset(state);
         const criteria = buildSearchWorkerCriteria(state);
         const criteriaKey = JSON.stringify({
             datasetVersion: searchDatasetVersion,
@@ -1418,13 +1406,16 @@ export const useImageStore = create<ImageState>((set, get) => {
         });
 
         latestSearchCriteriaKey = criteriaKey;
-        worker.postMessage({
-            type: 'syncDataset',
-            payload: {
-                datasetVersion: searchDatasetVersion,
-                images: dataset,
-            },
-        });
+        if (searchWorkerSyncedDatasetVersion !== searchDatasetVersion) {
+            worker.postMessage({
+                type: 'syncDataset',
+                payload: {
+                    datasetVersion: searchDatasetVersion,
+                    images: buildSearchWorkerDataset(state),
+                },
+            });
+            searchWorkerSyncedDatasetVersion = searchDatasetVersion;
+        }
         worker.postMessage({
             type: 'compute',
             payload: {
@@ -2101,11 +2092,11 @@ export const useImageStore = create<ImageState>((set, get) => {
                     let enrichedText = '';
                     if (perfEnabled) {
                         const enrichedStartedAt = perfNow();
-                        enrichedText = buildEnrichedSearchText(image);
+                        enrichedText = buildCompactSearchText(image);
                         searchMetrics.enrichedBuildMs += perfNow() - enrichedStartedAt;
                         searchMetrics.enrichedChars += enrichedText.length;
                     } else {
-                        enrichedText = buildEnrichedSearchText(image);
+                        enrichedText = buildCompactSearchText(image);
                     }
                     if (!enrichedText) {
                         if (perfEnabled) {
