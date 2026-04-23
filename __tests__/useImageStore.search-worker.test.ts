@@ -44,7 +44,7 @@ class MockSearchWorker {
             type: 'complete',
             payload: {
               criteriaKey: message.payload.criteriaKey,
-              filteredIds: this.dataset.map((image) => image.id),
+              filteredIds: this.computeFilteredIds(message.payload.criteria.searchQuery),
               facets: {
                 availableModels: [],
                 availableLoras: [],
@@ -65,10 +65,34 @@ class MockSearchWorker {
     }
   });
   readonly terminate = vi.fn();
-  private dataset: Array<Record<string, unknown>> = [];
+  private dataset: Array<{ id: string; catalogText?: string; searchText?: string }> = [];
 
   constructor() {
     mockWorkerInstances.push(this);
+  }
+
+  private computeFilteredIds(searchQuery: string): string[] {
+    const terms = searchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) {
+      return this.dataset.map((image) => image.id);
+    }
+
+    return this.dataset
+      .filter((image) => {
+        const catalogText = image.catalogText ?? '';
+        const searchText = image.searchText ?? '';
+        const catalogMatch = terms.every((term) => catalogText.includes(term));
+        if (catalogMatch) {
+          return true;
+        }
+
+        if (!searchText) {
+          return false;
+        }
+
+        return terms.every((term) => searchText.includes(term));
+      })
+      .map((image) => image.id);
   }
 }
 
@@ -154,6 +178,21 @@ describe('useImageStore search worker sync', () => {
 
     expect(worker.postMessage.mock.calls.filter(([message]) => message.type === 'syncDataset')).toHaveLength(2);
     expect(worker.postMessage.mock.calls.filter(([message]) => message.type === 'compute')).toHaveLength(2);
+  });
+
+  it('re-syncs after direct image mutations so the next search sees fresh fields', async () => {
+    useImageStore.getState().setSearchQuery('cat');
+    await flushWorker();
+
+    const worker = mockWorkerInstances[0];
+    expect(worker.postMessage.mock.calls.filter(([message]) => message.type === 'syncDataset')).toHaveLength(1);
+
+    await useImageStore.getState().addTagToImage('dir-1::cat.png', 'fresh-tag');
+    useImageStore.getState().setSearchQuery('fresh-tag');
+    await flushWorker();
+
+    expect(worker.postMessage.mock.calls.filter(([message]) => message.type === 'syncDataset')).toHaveLength(2);
+    expect(useImageStore.getState().filteredImages.map((image) => image.name)).toEqual(['cat.png']);
   });
 
   it('sends a compact capped search payload without raw metadata blobs', async () => {

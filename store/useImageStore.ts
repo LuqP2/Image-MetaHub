@@ -1032,6 +1032,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     const FILTER_RECOMPUTE_INDEXING_MS = 5000;
     let searchWorker: Worker | null = null;
     let searchDatasetVersion = 0;
+    let searchDatasetSourceImages: IndexedImage[] | null = null;
     let searchWorkerSyncedDatasetVersion = -1;
     let latestSearchCriteriaKey = '';
 
@@ -1054,12 +1055,25 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const invalidateSearchWorkerDataset = () => {
         searchDatasetVersion += 1;
+        searchDatasetSourceImages = null;
+        searchWorkerSyncedDatasetVersion = -1;
+    };
+
+    const getSearchDatasetVersion = (state: ImageState) => {
+        if (searchDatasetSourceImages !== state.images) {
+            searchDatasetVersion += 1;
+            searchDatasetSourceImages = state.images;
+            searchWorkerSyncedDatasetVersion = -1;
+        }
+
+        return searchDatasetVersion;
     };
 
     const terminateSearchWorker = () => {
         searchWorker?.terminate();
         searchWorker = null;
         searchWorkerSyncedDatasetVersion = -1;
+        searchDatasetSourceImages = null;
     };
 
     const purgePendingDirectoryEntries = (directoryId: string) => {
@@ -1322,7 +1336,7 @@ export const useImageStore = create<ImageState>((set, get) => {
     };
 
     const buildSearchCriteriaKey = (state: ImageState) => JSON.stringify({
-        datasetVersion: searchDatasetVersion,
+        datasetVersion: getSearchDatasetVersion(state),
         criteria: buildSearchWorkerCriteria(state),
     });
 
@@ -1399,28 +1413,29 @@ export const useImageStore = create<ImageState>((set, get) => {
 
     const runAsyncSearchRecompute = (state: ImageState) => {
         const worker = ensureSearchWorker();
+        const datasetVersion = getSearchDatasetVersion(state);
         const criteria = buildSearchWorkerCriteria(state);
         const criteriaKey = JSON.stringify({
-            datasetVersion: searchDatasetVersion,
+            datasetVersion,
             criteria,
         });
 
         latestSearchCriteriaKey = criteriaKey;
-        if (searchWorkerSyncedDatasetVersion !== searchDatasetVersion) {
+        if (searchWorkerSyncedDatasetVersion !== datasetVersion) {
             worker.postMessage({
                 type: 'syncDataset',
                 payload: {
-                    datasetVersion: searchDatasetVersion,
+                    datasetVersion,
                     images: buildSearchWorkerDataset(state),
                 },
             });
-            searchWorkerSyncedDatasetVersion = searchDatasetVersion;
+            searchWorkerSyncedDatasetVersion = datasetVersion;
         }
         worker.postMessage({
             type: 'compute',
             payload: {
                 criteriaKey,
-                datasetVersion: searchDatasetVersion,
+                datasetVersion,
                 criteria,
             },
         });
