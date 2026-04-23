@@ -39,9 +39,19 @@ export const FACET_CONDITION_FIELDS: AutomationConditionField[] = [
   'tag',
   'autoTag',
   'dimension',
+  'generationMode',
+  'mediaType',
 ];
-export const NUMBER_CONDITION_FIELDS: AutomationConditionField[] = ['rating', 'steps', 'cfg'];
+export const NUMBER_CONDITION_FIELDS: AutomationConditionField[] = [
+  'rating',
+  'steps',
+  'cfg',
+  'generationTimeMs',
+  'stepsPerSecond',
+  'vramPeakMb',
+];
 export const BOOLEAN_CONDITION_FIELDS: AutomationConditionField[] = ['favorite'];
+export const DATE_CONDITION_FIELDS: AutomationConditionField[] = ['date'];
 const ALL_CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'search',
   'prompt',
@@ -57,10 +67,16 @@ const ALL_CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'tag',
   'autoTag',
   'dimension',
+  'date',
+  'generationMode',
+  'mediaType',
   'favorite',
   'rating',
   'steps',
   'cfg',
+  'generationTimeMs',
+  'stepsPerSecond',
+  'vramPeakMb',
   'telemetry',
   'verifiedTelemetry',
 ];
@@ -79,10 +95,18 @@ const CONDITION_FIELD_VALUES: AutomationConditionField[] = [
   'tag',
   'autoTag',
   'dimension',
+  'date',
+  'generationMode',
+  'mediaType',
   'favorite',
   'rating',
   'steps',
   'cfg',
+  'generationTimeMs',
+  'stepsPerSecond',
+  'vramPeakMb',
+  'telemetry',
+  'verifiedTelemetry',
 ];
 
 export const CONDITION_FIELD_LABELS: Record<AutomationConditionField, string> = {
@@ -100,10 +124,16 @@ export const CONDITION_FIELD_LABELS: Record<AutomationConditionField, string> = 
   tag: 'Manual Tag',
   autoTag: 'Auto Tag',
   dimension: 'Dimensions',
+  date: 'Date',
+  generationMode: 'Generation Mode',
+  mediaType: 'Media Type',
   favorite: 'Favorite',
   rating: 'Rating',
   steps: 'Steps',
   cfg: 'CFG',
+  generationTimeMs: 'Generation Time (ms)',
+  stepsPerSecond: 'Speed (it/s)',
+  vramPeakMb: 'VRAM Peak (MB)',
   telemetry: 'Performance Data',
   verifiedTelemetry: 'Verified Performance Data',
 };
@@ -163,8 +193,17 @@ export function getOperatorsForField(field: AutomationConditionField): Automatio
   if (TEXT_CONDITION_FIELDS.includes(field)) {
     return ['contains', 'not_contains'];
   }
+  if (field === 'generationMode' || field === 'mediaType') {
+    return ['includes'];
+  }
+  if (field === 'verifiedTelemetry') {
+    return ['is'];
+  }
   if (FACET_CONDITION_FIELDS.includes(field)) {
     return ['includes', 'not_includes'];
+  }
+  if (DATE_CONDITION_FIELDS.includes(field)) {
+    return ['equals', 'at_least', 'at_most', 'between'];
   }
   if (NUMBER_CONDITION_FIELDS.includes(field)) {
     return ['equals', 'at_least', 'at_most', 'between'];
@@ -278,14 +317,31 @@ export function filterCriteriaToConditionRows(filters: AutomationRuleFilterCrite
   if (advanced.dimension) {
     rows.push({ id: createRowId(), field: 'dimension', operator: 'includes', value: advanced.dimension });
   }
+  if (advanced.date) rows.push(...dateRangeToRows(advanced.date));
+  addRowsFromValues(rows, 'generationMode', 'includes', advanced.generationModes);
+  addRowsFromValues(rows, 'mediaType', 'includes', advanced.mediaTypes);
   if (advanced.steps) rows.push(...rangeToRows('steps', advanced.steps));
   if (advanced.cfg) rows.push(...rangeToRows('cfg', advanced.cfg));
+  if (advanced.telemetryState === 'present' || advanced.telemetryState === 'missing') {
+    rows.push({
+      id: createRowId(),
+      field: 'telemetry',
+      operator: advanced.telemetryState === 'present' ? 'is' : 'is_not',
+      value: 'true',
+    });
+  }
+  if (advanced.hasVerifiedTelemetry === true) {
+    rows.push({ id: createRowId(), field: 'verifiedTelemetry', operator: 'is', value: 'true' });
+  }
+  if (advanced.generationTimeMs) rows.push(...rangeToRows('generationTimeMs', advanced.generationTimeMs));
+  if (advanced.stepsPerSecond) rows.push(...rangeToRows('stepsPerSecond', advanced.stepsPerSecond));
+  if (advanced.vramPeakMb) rows.push(...rangeToRows('vramPeakMb', advanced.vramPeakMb));
   return rows;
 }
 
 const rangeToRows = (
-  field: 'steps' | 'cfg',
-  range: NonNullable<AdvancedFilters['steps']>,
+  field: 'steps' | 'cfg' | 'generationTimeMs' | 'stepsPerSecond' | 'vramPeakMb',
+  range: NonNullable<AdvancedFilters['steps'] | AdvancedFilters['cfg'] | AdvancedFilters['generationTimeMs'] | AdvancedFilters['stepsPerSecond'] | AdvancedFilters['vramPeakMb']>,
 ): AutomationConditionRow[] => {
   const hasMin = range.min !== null && range.min !== undefined;
   const hasMax = range.max !== null && range.max !== undefined;
@@ -300,6 +356,24 @@ const rangeToRows = (
   }
   if (hasMax) {
     return [{ id: createRowId(), field, operator: 'at_most', value: String(range.max) }];
+  }
+  return [];
+};
+
+const dateRangeToRows = (range: NonNullable<AdvancedFilters['date']>): AutomationConditionRow[] => {
+  const from = range.from?.trim();
+  const to = range.to?.trim();
+  if (from && to && from === to) {
+    return [{ id: createRowId(), field: 'date', operator: 'equals', value: from }];
+  }
+  if (from && to) {
+    return [{ id: createRowId(), field: 'date', operator: 'between', value: from, valueEnd: to }];
+  }
+  if (from) {
+    return [{ id: createRowId(), field: 'date', operator: 'at_least', value: from }];
+  }
+  if (to) {
+    return [{ id: createRowId(), field: 'date', operator: 'at_most', value: to }];
   }
   return [];
 };
@@ -370,6 +444,32 @@ const applyRowToFilters = (row: AutomationConditionRow, filters: AutomationRuleF
     case 'dimension':
       filters.advancedFilters = { ...filters.advancedFilters, dimension: row.value.trim() };
       break;
+    case 'date':
+      filters.advancedFilters = {
+        ...filters.advancedFilters,
+        date: rowToDateRange(row),
+      };
+      break;
+    case 'generationMode':
+      filters.advancedFilters = {
+        ...filters.advancedFilters,
+        generationModes: Array.from(new Set([
+          ...(filters.advancedFilters?.generationModes ?? []),
+          row.value.trim() as 'txt2img' | 'img2img',
+        ])).filter((value): value is 'txt2img' | 'img2img' => value === 'txt2img' || value === 'img2img'),
+      };
+      break;
+    case 'mediaType':
+      filters.advancedFilters = {
+        ...filters.advancedFilters,
+        mediaTypes: Array.from(new Set([
+          ...(filters.advancedFilters?.mediaTypes ?? []),
+          row.value.trim() as 'image' | 'video' | 'audio',
+        ])).filter((value): value is 'image' | 'video' | 'audio' =>
+          value === 'image' || value === 'video' || value === 'audio'
+        ),
+      };
+      break;
     case 'favorite':
       filters.favoriteFilterMode = row.operator === 'is_not' ? 'exclude' : 'include';
       break;
@@ -379,6 +479,9 @@ const applyRowToFilters = (row: AutomationConditionRow, filters: AutomationRuleF
       break;
     case 'steps':
     case 'cfg':
+    case 'generationTimeMs':
+    case 'stepsPerSecond':
+    case 'vramPeakMb':
       filters.advancedFilters = {
         ...filters.advancedFilters,
         [row.field]: rowToRange(row),
@@ -398,7 +501,9 @@ const applyRowToFilters = (row: AutomationConditionRow, filters: AutomationRuleF
   }
 };
 
-const rowToRange = (row: AutomationConditionRow): NonNullable<AdvancedFilters['steps']> => {
+const rowToRange = (
+  row: AutomationConditionRow,
+): NonNullable<AdvancedFilters['steps'] | AdvancedFilters['cfg'] | AdvancedFilters['generationTimeMs'] | AdvancedFilters['stepsPerSecond'] | AdvancedFilters['vramPeakMb']> => {
   const value = Number(row.value);
   const valueEnd = Number(row.valueEnd);
   if (row.operator === 'between') {
@@ -407,6 +512,21 @@ const rowToRange = (row: AutomationConditionRow): NonNullable<AdvancedFilters['s
   if (row.operator === 'at_least') return { min: Number.isFinite(value) ? value : null, max: null };
   if (row.operator === 'at_most') return { min: null, max: Number.isFinite(value) ? value : null };
   return { min: Number.isFinite(value) ? value : null, max: Number.isFinite(value) ? value : null };
+};
+
+const rowToDateRange = (row: AutomationConditionRow): NonNullable<AdvancedFilters['date']> => {
+  const value = row.value.trim();
+  const valueEnd = row.valueEnd?.trim();
+  if (row.operator === 'between') {
+    return { from: value || undefined, to: valueEnd || undefined };
+  }
+  if (row.operator === 'at_least') {
+    return { from: value || undefined, to: undefined };
+  }
+  if (row.operator === 'at_most') {
+    return { from: undefined, to: value || undefined };
+  }
+  return { from: value || undefined, to: value || undefined };
 };
 
 export function getConditionValueOptions(
@@ -423,6 +543,8 @@ export function getConditionValueOptions(
     case 'tag': return source.availableTags.map((tag) => tag.name);
     case 'autoTag': return source.availableAutoTags.map((tag) => tag.name);
     case 'dimension': return source.availableDimensions;
+    case 'generationMode': return ['txt2img', 'img2img'];
+    case 'mediaType': return ['image', 'video', 'audio'];
     case 'rating': return ['1', '2', '3', '4', '5'];
     case 'favorite': return ['true'];
     case 'prompt':

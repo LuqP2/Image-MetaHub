@@ -3093,7 +3093,7 @@ export const useImageStore = create<ImageState>((set, get) => {
                 const nextImage: IndexedImage = {
                     ...sourceImage,
                     id: nextImageId,
-                    name: normalizedRelativePath,
+                    name: nextFileName,
                     handle: createRenamedFileHandle(sourceImage.handle, nextFileName),
                 };
                 renamedImage = nextImage;

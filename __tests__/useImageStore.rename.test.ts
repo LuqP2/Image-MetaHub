@@ -196,4 +196,17 @@ describe('renameImageRecord', () => {
     expect(readFile).toHaveBeenCalledWith('D:/library/new.png');
     expect(renamedFile.name).toBe('new.png');
   });
+
+  it('keeps image.name as the basename when renaming an image inside a subfolder', () => {
+    const image = createImage('dir-1::subdir/old.png', 'old.png');
+    useImageStore.setState({
+      images: [image],
+      filteredImages: [image],
+    } as any);
+
+    const renamedImage = useImageStore.getState().renameImageRecord('dir-1::subdir/old.png', 'subdir/new.png');
+
+    expect(renamedImage?.id).toBe('dir-1::subdir/new.png');
+    expect(renamedImage?.name).toBe('new.png');
+  });
 });

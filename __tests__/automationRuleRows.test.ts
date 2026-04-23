@@ -86,7 +86,16 @@ describe('automation rule condition rows', () => {
       autoTags: ['portrait'],
       tagMatchMode: 'any',
       favoriteFilterMode: 'exclude',
-      advancedFilters: { hasVerifiedTelemetry: true },
+      advancedFilters: {
+        date: { from: '2026-04-01', to: '2026-04-10' },
+        generationModes: ['img2img'],
+        mediaTypes: ['audio'],
+        telemetryState: 'present',
+        hasVerifiedTelemetry: true,
+        generationTimeMs: { min: 1000, max: 5000 },
+        stepsPerSecond: { min: 2, max: 6 },
+        vramPeakMb: { min: 2048, max: 6144 },
+      },
     });
 
     expect(rows).toEqual(expect.arrayContaining([
@@ -95,7 +104,38 @@ describe('automation rule condition rows', () => {
       expect.objectContaining({ field: 'lora', operator: 'not_includes', value: 'x' }),
       expect.objectContaining({ field: 'autoTag', operator: 'includes', value: 'portrait' }),
       expect.objectContaining({ field: 'favorite', operator: 'is_not' }),
+      expect.objectContaining({ field: 'date', operator: 'between', value: '2026-04-01', valueEnd: '2026-04-10' }),
+      expect.objectContaining({ field: 'generationMode', operator: 'includes', value: 'img2img' }),
+      expect.objectContaining({ field: 'mediaType', operator: 'includes', value: 'audio' }),
+      expect.objectContaining({ field: 'telemetry', operator: 'is' }),
+      expect.objectContaining({ field: 'verifiedTelemetry', operator: 'is' }),
+      expect.objectContaining({ field: 'generationTimeMs', operator: 'between', value: '1000', valueEnd: '5000' }),
+      expect.objectContaining({ field: 'stepsPerSecond', operator: 'between', value: '2', valueEnd: '6' }),
+      expect.objectContaining({ field: 'vramPeakMb', operator: 'between', value: '2048', valueEnd: '6144' }),
     ]));
-    expect(rows.some((row) => row.field === 'telemetry' || row.field === 'verifiedTelemetry')).toBe(false);
+  });
+
+  it('round-trips advanced filter rows for date, mode, media, telemetry, and performance ranges', () => {
+    const criteria = conditionRowsToCriteria([
+      { id: 'date', field: 'date', operator: 'between', value: '2026-04-01', valueEnd: '2026-04-10' },
+      { id: 'mode', field: 'generationMode', operator: 'includes', value: 'img2img' },
+      { id: 'media', field: 'mediaType', operator: 'includes', value: 'audio' },
+      { id: 'telemetry', field: 'telemetry', operator: 'is', value: 'true' },
+      { id: 'verified', field: 'verifiedTelemetry', operator: 'is', value: 'true' },
+      { id: 'time', field: 'generationTimeMs', operator: 'between', value: '1000', valueEnd: '5000' },
+      { id: 'speed', field: 'stepsPerSecond', operator: 'at_least', value: '2' },
+      { id: 'vram', field: 'vramPeakMb', operator: 'at_most', value: '6144' },
+    ], 'all');
+
+    expect(criteria.filters.advancedFilters).toEqual(expect.objectContaining({
+      date: { from: '2026-04-01', to: '2026-04-10' },
+      generationModes: ['img2img'],
+      mediaTypes: ['audio'],
+      telemetryState: 'present',
+      hasVerifiedTelemetry: true,
+      generationTimeMs: { min: 1000, max: 5000 },
+      stepsPerSecond: { min: 2, max: null },
+      vramPeakMb: { min: null, max: 6144 },
+    }));
   });
 });

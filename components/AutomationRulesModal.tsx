@@ -619,6 +619,8 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
   const valueOptions = isText ? [] : getConditionValueOptions(row.field, valueSource);
   const isBoolean = row.field === 'favorite' || row.field === 'telemetry' || row.field === 'verifiedTelemetry';
   const isBetween = row.operator === 'between';
+  const isDateField = row.field === 'date';
+  const isNumericField = ['steps', 'cfg', 'generationTimeMs', 'stepsPerSecond', 'vramPeakMb', 'rating'].includes(row.field);
   const valueContainerClassName = `min-w-0 md:col-span-2 ${isBetween ? 'grid gap-2 sm:grid-cols-2' : ''}`.trim();
 
   return (
@@ -657,7 +659,7 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
             className={compactInputClassName}
             placeholder="Type here..."
           />
-        ) : valueOptions.length > 0 && !['steps', 'cfg'].includes(row.field) ? (
+        ) : valueOptions.length > 0 && !isNumericField && !isDateField ? (
           <select
             aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
             value={row.value}
@@ -670,22 +672,22 @@ const ConditionRowEditor: React.FC<ConditionRowEditorProps> = ({ row, valueSourc
         ) : (
           <input
             aria-label={`${CONDITION_FIELD_LABELS[row.field]} value`}
-            type="number"
+            type={isDateField ? 'date' : 'number'}
             value={row.value}
             onChange={(event) => onUpdate({ value: event.target.value })}
             className={compactInputClassName}
-            placeholder="Value"
+            placeholder={isDateField ? 'YYYY-MM-DD' : 'Value'}
           />
         )}
 
         {isBetween && (
           <input
             aria-label={`${CONDITION_FIELD_LABELS[row.field]} end value`}
-            type="number"
+            type={isDateField ? 'date' : 'number'}
             value={row.valueEnd ?? ''}
             onChange={(event) => onUpdate({ valueEnd: event.target.value })}
             className={compactInputClassName}
-            placeholder="To"
+            placeholder={isDateField ? 'YYYY-MM-DD' : 'To'}
           />
         )}
       </div>

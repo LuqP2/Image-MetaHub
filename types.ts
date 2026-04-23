@@ -498,10 +498,16 @@ export type AutomationConditionField =
   | 'tag'
   | 'autoTag'
   | 'dimension'
+  | 'date'
+  | 'generationMode'
+  | 'mediaType'
   | 'favorite'
   | 'rating'
   | 'steps'
   | 'cfg'
+  | 'generationTimeMs'
+  | 'stepsPerSecond'
+  | 'vramPeakMb'
   | 'telemetry'
   | 'verifiedTelemetry';
 export type AutomationConditionOperator =
