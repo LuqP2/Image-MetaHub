@@ -1993,6 +1993,7 @@ export default function App() {
         directories={safeDirectories}
         requestedImageIds={batchExportRequest?.imageIds ?? null}
         preferredSource={batchExportRequest?.preferredSource ?? null}
+        restrictToRequestedSelection={!canUseBatchExport && (batchExportRequest?.imageIds?.length ?? 0) === 1}
       />
 
       {hasDirectories && (

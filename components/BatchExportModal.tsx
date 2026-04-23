@@ -18,6 +18,7 @@ interface BatchExportModalProps {
   directories: { id: string; path: string }[];
   requestedImageIds?: string[] | null;
   preferredSource?: BatchSource | null;
+  restrictToRequestedSelection?: boolean;
 }
 
 type BatchSource = 'selected' | 'filtered';
@@ -57,6 +58,7 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
   directories,
   requestedImageIds,
   preferredSource,
+  restrictToRequestedSelection = false,
 }) => {
   const availableImages = allImages ?? filteredImages;
   const effectiveSelectedImageIds = useMemo(
@@ -100,6 +102,12 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
       setSource('filtered');
     }
   }, [hasSelected, source]);
+
+  useEffect(() => {
+    if (restrictToRequestedSelection && source !== 'selected') {
+      setSource('selected');
+    }
+  }, [restrictToRequestedSelection, source]);
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
@@ -188,6 +196,11 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
 
     if (imagesToExport.length === 0) {
       setStatus({ type: 'error', message: 'No images available for export.' });
+      return;
+    }
+
+    if (restrictToRequestedSelection && source !== 'selected') {
+      setStatus({ type: 'error', message: 'This export entry is limited to the requested image.' });
       return;
     }
 
@@ -356,15 +369,21 @@ const BatchExportModal: React.FC<BatchExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSource('filtered')}
+                disabled={restrictToRequestedSelection}
                 className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
                   source === 'filtered'
                     ? 'border-blue-500 bg-blue-500/10 text-blue-100'
                     : 'border-gray-700 text-gray-300 hover:border-gray-500'
-                }`}
+                } ${restrictToRequestedSelection ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 Filtered ({filteredImages.length})
               </button>
             </div>
+            {restrictToRequestedSelection && (
+              <p className="text-xs text-amber-300/90">
+                This entry point is limited to the requested image. Multi-image export still requires Pro.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

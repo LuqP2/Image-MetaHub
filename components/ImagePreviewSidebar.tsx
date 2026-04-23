@@ -278,11 +278,11 @@ const ImagePreviewSidebar: React.FC<ImagePreviewSidebarProps> = ({
         },
       }
     : activeImage;
-  const editorInitialMetadata: MetadataEditorDraft | null = {
+  const editorInitialMetadata = useMemo<MetadataEditorDraft | null>(() => ({
     imageId: activeImage.id,
     updatedAt: shadowMetadata?.updatedAt ?? Date.now(),
     ...getEditableMetadataFields(nMeta, shadowMetadata),
-  };
+  }), [activeImage.id, nMeta, shadowMetadata]);
   const effectiveDuration = shadowMetadata?.duration ?? (nMeta as any)?.video?.duration_seconds ?? (nMeta as any)?.audio?.duration_seconds;
   const exportScopeImages = (() => {
     const candidateScopes = [
